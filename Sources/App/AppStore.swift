@@ -839,7 +839,17 @@ final class AppStore: ObservableObject {
 
     private static func makeTodayAIService(apiKeyStore: KeychainAPIKeyStore) -> TodayAIService {
         let key = (try? apiKeyStore.loadAPIKey())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let client: LLMClient = key.isEmpty ? MockLLMClient() : DirectGLMClient(apiKey: key)
+        let client: LLMClient
+        if key.isEmpty {
+            client = MockLLMClient()
+        } else {
+            var config = GLMClientConfiguration()
+            if let customURL = (try? apiKeyStore.loadBaseURL())?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !customURL.isEmpty, let url = URL(string: customURL) {
+                config = GLMClientConfiguration(endpoint: url)
+            }
+            client = DirectGLMClient(apiKey: key, configuration: config)
+        }
         return TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
     }
 
@@ -883,6 +893,43 @@ final class AppStore: ObservableObject {
             apiKeyStatusMessage = "GLM API Key 已清除。"
         } catch {
             apiKeyStatusMessage = "清除 Keychain 失败。"
+        }
+        updateSettingsMessage()
+    }
+
+    var currentBaseURL: String {
+        (try? apiKeyStore.loadBaseURL()) ?? ""
+    }
+
+    func saveGLMBaseURL(_ url: String) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if trimmed.isEmpty {
+                try apiKeyStore.deleteBaseURL()
+                apiKeyStatusMessage = "已恢复默认 API 地址。"
+            } else {
+                guard URL(string: trimmed) != nil else {
+                    apiKeyStatusMessage = "URL 格式不正确。"
+                    updateSettingsMessage()
+                    return
+                }
+                try apiKeyStore.saveBaseURL(trimmed)
+                apiKeyStatusMessage = "API Base URL 已保存。"
+            }
+            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+        } catch {
+            apiKeyStatusMessage = "保存 Base URL 失败。"
+        }
+        updateSettingsMessage()
+    }
+
+    func clearGLMBaseURL() {
+        do {
+            try apiKeyStore.deleteBaseURL()
+            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            apiKeyStatusMessage = "已恢复默认 API 地址。"
+        } catch {
+            apiKeyStatusMessage = "清除 Base URL 失败。"
         }
         updateSettingsMessage()
     }

@@ -44,6 +44,7 @@ struct GrowthView: View {
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var apiKeyInput = ""
+    @State private var baseURLInput = ""
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
@@ -54,6 +55,9 @@ struct SettingsView: View {
                 SettingRow(title: "本地通知", value: store.reminderStatusMessage)
                 SettingRow(title: "数据导出", value: "可用")
             }
+        }
+        .onAppear {
+            baseURLInput = store.currentBaseURL
         }
     }
 
@@ -81,6 +85,35 @@ struct SettingsView: View {
                 Button("清除") {
                     store.clearGLMAPIKey()
                     apiKeyInput = ""
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Text("API Base URL")
+                .font(.headline)
+            Text("自定义 GLM API 地址。留空使用默认地址。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            TextField("https://api.z.ai/api/paas/v4/chat/completions", text: $baseURLInput)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.subheadline)
+
+            HStack(spacing: 10) {
+                Button("保存地址") {
+                    store.saveGLMBaseURL(baseURLInput)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DS.accent)
+
+                Button("恢复默认") {
+                    baseURLInput = ""
+                    store.clearGLMBaseURL()
                 }
                 .buttonStyle(.bordered)
             }

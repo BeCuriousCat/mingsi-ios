@@ -4,6 +4,10 @@ import SwiftUI
 struct MingSiApp: App {
     @StateObject private var store = AppStore.live()
 
+    init() {
+        DS.configureTabBarAppearance()
+    }
+
     var body: some Scene {
         WindowGroup {
             AppRootView()

@@ -4,44 +4,67 @@ struct AppRootView: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        ZStack(alignment: .top) {
-            DS.background.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                if store.hasResumeableLoop && store.selectedTab != .today {
-                    ResumeTodayBanner(
-                        title: store.loopResumeText,
-                        subtitle: "你还可以继续完成今日复盘，避免思路断掉。",
-                        actionTitle: "继续今日复盘",
-                        action: { store.selectedTab = .today }
-                    )
-                    .padding(.horizontal, DS.pagePadding)
-                    .padding(.top, 8)
+        TabView(selection: $store.selectedTab) {
+            TodayView()
+                .tag(AppTab.today)
+                .tabItem {
+                    VStack(spacing: 4) {
+                        Image(systemName: "sun.max")
+                        Text(AppTab.today.title)
+                    }
                 }
 
-                TabView(selection: $store.selectedTab) {
-                    TodayView()
-                        .tag(AppTab.today)
-                        .tabItem { Label(AppTab.today.title, systemImage: "sun.max.fill") }
-
-                    HistoryView()
-                        .tag(AppTab.history)
-                        .tabItem { Label(AppTab.history.title, systemImage: "clock.arrow.circlepath") }
-
-                    ProjectsView()
-                        .tag(AppTab.projects)
-                        .tabItem { Label(AppTab.projects.title, systemImage: "tray.full") }
-
-                    GrowthView()
-                        .tag(AppTab.growth)
-                        .tabItem { Label(AppTab.growth.title, systemImage: "chart.line.uptrend.xyaxis") }
-
-                    SettingsView()
-                        .tag(AppTab.settings)
-                        .tabItem { Label(AppTab.settings.title, systemImage: "gearshape.fill") }
+            HistoryView()
+                .tag(AppTab.history)
+                .tabItem {
+                    VStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                        Text(AppTab.history.title)
+                    }
                 }
+
+            ProjectsView()
+                .tag(AppTab.projects)
+                .tabItem {
+                    VStack(spacing: 4) {
+                        Image(systemName: "tray.full")
+                        Text(AppTab.projects.title)
+                    }
+                }
+
+            GrowthView()
+                .tag(AppTab.growth)
+                .tabItem {
+                    VStack(spacing: 4) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                        Text(AppTab.growth.title)
+                    }
+                }
+
+            SettingsView()
+                .tag(AppTab.settings)
+                .tabItem {
+                    VStack(spacing: 4) {
+                        Image(systemName: "gearshape")
+                        Text(AppTab.settings.title)
+                    }
+                }
+        }
+        .tint(DS.accent)
+        .overlay(alignment: .top) {
+            if store.hasResumeableLoop && store.selectedTab != .today {
+                ResumeTodayBanner(
+                    title: store.loopResumeText,
+                    subtitle: "你还可以继续完成今日复盘，避免思路断掉。",
+                    actionTitle: "继续今日复盘",
+                    action: { store.selectedTab = .today }
+                )
+                .padding(.horizontal, DS.pagePadding)
+                .padding(.top, 4)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: store.hasResumeableLoop)
     }
 }
 
@@ -53,26 +76,32 @@ private struct ResumeTodayBanner: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: "arrow.turn.down.right")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(DS.accent)
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
 
             Button(actionTitle, action: action)
+                .font(.footnote.weight(.semibold))
                 .buttonStyle(.borderedProminent)
                 .tint(DS.accent)
         }
-        .padding(14)
-        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(DS.border, lineWidth: 1)
+                .stroke(DS.accent.opacity(0.25), lineWidth: 1)
         )
     }
 }

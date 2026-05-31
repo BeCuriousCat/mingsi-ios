@@ -8,16 +8,19 @@ enum KeychainAPIKeyError: Error {
 
 final class KeychainAPIKeyStore {
     private let service = "com.codex.mingsi.glm"
-    private let account = "glm_api_key"
+    private let apiKeyAccount = "glm_api_key"
+    private let baseURLAccount = "glm_base_url"
+
+    // MARK: - API Key
 
     func saveAPIKey(_ apiKey: String) throws {
         let data = Data(apiKey.utf8)
-        deleteAPIKeyIfPresent()
+        deleteItem(account: apiKeyAccount)
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+            kSecAttrAccount as String: apiKeyAccount,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
@@ -29,6 +32,51 @@ final class KeychainAPIKeyStore {
     }
 
     func loadAPIKey() throws -> String? {
+        try loadString(account: apiKeyAccount)
+    }
+
+    func deleteAPIKey() throws {
+        let status = deleteItem(account: apiKeyAccount)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainAPIKeyError.unexpectedStatus(status)
+        }
+    }
+
+    // MARK: - Base URL
+
+    func saveBaseURL(_ url: String) throws {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        deleteItem(account: baseURLAccount)
+
+        let data = Data(trimmed.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: baseURLAccount,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainAPIKeyError.unexpectedStatus(status)
+        }
+    }
+
+    func loadBaseURL() throws -> String? {
+        try loadString(account: baseURLAccount)
+    }
+
+    func deleteBaseURL() throws {
+        let status = deleteItem(account: baseURLAccount)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainAPIKeyError.unexpectedStatus(status)
+        }
+    }
+
+    // MARK: - Private
+
+    private func loadString(account: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -40,39 +88,27 @@ final class KeychainAPIKeyStore {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-        if status == errSecItemNotFound {
-            return nil
-        }
-
+        if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else {
             throw KeychainAPIKeyError.unexpectedStatus(status)
         }
 
-        guard
-            let data = result as? Data,
-            let apiKey = String(data: data, encoding: .utf8)
+        guard let data = result as? Data,
+              let string = String(data: data, encoding: .utf8)
         else {
             throw KeychainAPIKeyError.invalidData
         }
 
-        return apiKey
-    }
-
-    func deleteAPIKey() throws {
-        let status = deleteAPIKeyIfPresent()
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainAPIKeyError.unexpectedStatus(status)
-        }
+        return string
     }
 
     @discardableResult
-    private func deleteAPIKeyIfPresent() -> OSStatus {
+    private func deleteItem(account: String) -> OSStatus {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-
         return SecItemDelete(query as CFDictionary)
     }
 }

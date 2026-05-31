@@ -9,6 +9,7 @@ enum DS {
     static let accent = Color(red: 0.16, green: 0.45, blue: 0.76)
     static let caution = Color(red: 0.82, green: 0.46, blue: 0.13)
     static let success = Color(red: 0.17, green: 0.58, blue: 0.36)
+
     static let border = Color.primary.opacity(0.08)
 
     static let cornerRadius: CGFloat = 14
@@ -17,6 +18,29 @@ enum DS {
     static let sectionSpacing: CGFloat = 12
     static let cardSpacing: CGFloat = 10
     static let contentWidth: CGFloat = 720
+
+    static func configureTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = .systemBackground
+
+        let normalAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: UIColor.secondaryLabel
+        ]
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = normalAttributes
+        appearance.stackedLayoutAppearance.normal.iconColor = .secondaryLabel
+
+        let selectedAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: UIColor(red: 0.16, green: 0.45, blue: 0.76, alpha: 1.0)
+        ]
+        appearance.stackedLayoutAppearance.selected.titleTextAttributes = selectedAttributes
+        appearance.stackedLayoutAppearance.selected.iconColor = UIColor(red: 0.16, green: 0.45, blue: 0.76, alpha: 1.0)
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
 }
 
 struct CardSurface: ViewModifier {
