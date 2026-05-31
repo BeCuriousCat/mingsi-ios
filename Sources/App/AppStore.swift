@@ -11,6 +11,7 @@ final class AppStore: ObservableObject {
     @Published var principles: [PrincipleAsset]
     @Published var growthSnapshot: MetricSnapshot
     @Published var hasResumeableLoop: Bool = true
+    @Published var isResumeBannerDismissed: Bool = false
     @Published var apiKeyConfigured: Bool = false
     @Published var settingsMessage: String = ""
     @Published var todayLoopMessage: String = ""

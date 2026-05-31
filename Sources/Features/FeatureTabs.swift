@@ -62,7 +62,7 @@ struct SettingsView: View {
     }
 
     private var apiKeyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("GLM API Key")
                 .font(.headline)
             Text("API Key 只保存到 iOS Keychain，不写入数据库或代码配置。")
@@ -90,7 +90,6 @@ struct SettingsView: View {
             }
 
             Divider()
-                .padding(.vertical, 4)
 
             Text("API Base URL")
                 .font(.headline)
@@ -126,7 +125,9 @@ struct SettingsView: View {
     }
 }
 
-private struct FeatureContainer<Content: View>: View {
+// MARK: - Shared Components
+
+struct FeatureContainer<Content: View>: View {
     let title: String
     let subtitle: String
     let content: Content
@@ -140,47 +141,84 @@ private struct FeatureContainer<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DS.sectionSpacing) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.largeTitle.bold())
                     Text(subtitle)
-                        .font(.callout)
+                        .font(.body)
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: DS.contentWidth, alignment: .leading)
+                .padding(.horizontal, DS.pagePadding)
 
                 VStack(spacing: DS.cardSpacing) {
                     content
                 }
-                .frame(maxWidth: DS.contentWidth)
+                .padding(.horizontal, DS.pagePadding)
             }
-            .padding(DS.pagePadding)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
         .background(DS.background)
     }
 }
 
+struct ResumeBanner: View {
+    let title: String
+    let subtitle: String
+    let actionTitle: String
+    let onDismiss: () -> Void
+    let onAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(actionTitle, action: onAction)
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.borderedProminent)
+                .tint(DS.accent)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+    }
+}
+
+// MARK: - Card Components
+
 private struct HistoryCardRow: View {
     let card: ThinkingCard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(card.type.title)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(DS.surfaceStrong, in: Capsule())
-                Spacer()
-                Text(card.priority.rawValue)
-                    .font(.caption)
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(card.type.color)
+                .frame(width: 8, height: 8)
+                .padding(.top, 7)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.title)
+                    .font(.body.weight(.medium))
+                Text(card.body)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            Text(card.title)
-                .font(.headline)
-            Text(card.body)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         .cardSurface()
     }
@@ -192,15 +230,20 @@ private struct ProjectRow: View {
     let metric: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.headline)
+                .font(.body.weight(.semibold))
             Text(detail)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text(metric)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.caption2)
+                    .foregroundStyle(DS.caution)
+                Text(metric)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .cardSurface()
     }
@@ -211,17 +254,18 @@ private struct MetricCard: View {
     let value: Double
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(.headline)
-                Spacer()
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 Text(String(format: "%.1f", value))
-                    .font(.headline)
+                    .font(.title2.weight(.bold))
                     .foregroundStyle(DS.accent)
             }
-            ProgressView(value: value / 5.0)
-                .tint(DS.accent)
+            Spacer()
+            CircularProgressView(value: value / 5.0, color: DS.accent)
+                .frame(width: 44, height: 44)
         }
         .cardSurface()
     }
@@ -234,11 +278,28 @@ private struct SettingRow: View {
     var body: some View {
         HStack {
             Text(title)
+                .font(.body)
             Spacer()
             Text(value)
+                .font(.body)
                 .foregroundStyle(.secondary)
         }
-        .font(.subheadline)
         .cardSurface()
+    }
+}
+
+private struct CircularProgressView: View {
+    let value: Double
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.06), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: value)
+                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
     }
 }
