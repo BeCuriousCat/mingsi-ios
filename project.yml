@@ -1,0 +1,27 @@
+name: MingSi
+options:
+  bundleIdPrefix: com.codex
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+packages:
+  GRDB:
+    path: Vendor/GRDB.swift
+targets:
+  MingSi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi
+        INFOPLIST_KEY_CFBundleDisplayName: 明思
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: ""
