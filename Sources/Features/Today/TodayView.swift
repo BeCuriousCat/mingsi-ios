@@ -34,8 +34,9 @@ struct TodayView: View {
                 actionRow
             }
             .padding(.horizontal, DS.pagePadding)
+            .padding(.bottom, 32)
         }
-        .background(DS.background)
+        .background(DS.background.ignoresSafeArea())
     }
 
     // MARK: - Header

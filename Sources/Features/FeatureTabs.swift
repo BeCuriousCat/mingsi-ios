@@ -156,9 +156,9 @@ struct FeatureContainer<Content: View>: View {
                 .padding(.horizontal, DS.pagePadding)
             }
             .padding(.top, 8)
-            .padding(.bottom, 24)
+            .padding(.bottom, 32)
         }
-        .background(DS.background)
+        .background(DS.background.ignoresSafeArea())
     }
 }
 
