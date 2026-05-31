@@ -9,6 +9,7 @@ enum PersistenceError: Error {
 protocol DailyEntryRepository {
     func saveDraft(_ draft: DailyEntryDraft) async throws
     func latestDraft() async throws -> DailyEntryDraft?
+    func recentEntries(limit: Int) async throws -> [DailyEntryDraft]
 }
 
 protocol ThinkingCardRepository {
@@ -190,6 +191,17 @@ final class SQLiteDailyEntryRepository: DailyEntryRepository {
                 .order(Column("updated_at").desc)
                 .fetchOne(db)?
                 .domainModel()
+        }
+    }
+
+    func recentEntries(limit: Int) async throws -> [DailyEntryDraft] {
+        try await database.dbQueue.read { db in
+            try DailyEntryRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
         }
     }
 }

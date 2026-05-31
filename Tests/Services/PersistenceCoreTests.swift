@@ -7,13 +7,12 @@ final class PersistenceCoreTests: XCTestCase {
     private var database: AppDatabase!
     private var dbQueue: DatabaseQueue!
 
-    override func setUp() throws {
-        try super.setUp()
-        dbQueue = try DatabaseQueue()
-        // Run migrations manually on the in-memory queue
+    override func setUp() {
+        super.setUp()
+        dbQueue = try! DatabaseQueue()
         let migrator = AppDatabase.makeMigrator()
-        try migrator.migrate(dbQueue)
-        database = AppDatabase(dbQueue: dbQueue)
+        try! migrator.migrate(dbQueue)
+        database = try! AppDatabase(dbQueue: dbQueue)
     }
 
     override func tearDown() {
@@ -107,14 +106,15 @@ final class PersistenceCoreTests: XCTestCase {
         )
 
         try await repo.saveDraft(draft)
-        let loaded = try XCTUnwrap(try await repo.latestDraft())
+        let loaded = try await repo.latestDraft()
+        let unwrapped = try XCTUnwrap(loaded)
 
-        XCTAssertEqual(loaded.sessionMode, .deep)
-        XCTAssertTrue(loaded.hasSelectedSessionMode)
-        XCTAssertEqual(loaded.selectedLens, .opposingView)
-        XCTAssertEqual(loaded.yesterdayCompletion, .partial)
-        XCTAssertEqual(loaded.yesterdayValueRating, .medium)
-        XCTAssertEqual(loaded.state, .answerQuestions)
+        XCTAssertEqual(unwrapped.sessionMode, .deep)
+        XCTAssertTrue(unwrapped.hasSelectedSessionMode)
+        XCTAssertEqual(unwrapped.selectedLens, .opposingView)
+        XCTAssertEqual(unwrapped.yesterdayCompletion, .partial)
+        XCTAssertEqual(unwrapped.yesterdayValueRating, .medium)
+        XCTAssertEqual(unwrapped.state, .answerQuestions)
     }
 
     // MARK: - ThinkingCardRepository
