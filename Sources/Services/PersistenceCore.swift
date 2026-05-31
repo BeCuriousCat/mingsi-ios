@@ -43,6 +43,12 @@ final class AppDatabase {
         try migrator.migrate(dbQueue)
     }
 
+    init(dbQueue: DatabaseQueue) throws {
+        self.dbQueue = dbQueue
+        let migrator = Self.makeMigrator()
+        try migrator.migrate(dbQueue)
+    }
+
     static func defaultURL() throws -> URL {
         let directory = try FileManager.default.url(
             for: .applicationSupportDirectory,
