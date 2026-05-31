@@ -25,3 +25,16 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: 明思
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: ""
+  MingSiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: MingSi
+      - package: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi.tests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: ""
