@@ -2,6 +2,273 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Prepared Claude Code Conclusion-First Log Smoke - Subtask 033
+
+Reason:
+
+- The user clarified the required delegation log model: flow logs are append-only storage and should not be routinely consumed by the manager; conclusion logs are the manager-facing layer containing worker progress, findings, concerns, and suggestions.
+- Subtask 032 proved worker `HANDOFF`, but also exposed that print fallback still streamed raw JSONL to the manager terminal and that untracked `scripts/` files were not synced into the worker worktree.
+- The wrapper has now been patched to keep raw stream output in the raw flow log by default and to sync the delegation scripts into worker worktrees.
+- This is a read-only smoke with a narrow write set, so it is appropriate for Claude Code and should prove the repaired manager-consumption path.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/033-claude-code-conclusion-log-smoke-prd.md`
+- Progress: `docs/subtasks/033-claude-code-conclusion-log-smoke-progress.md`
+- Prompt: `docs/subtasks/033-claude-code-conclusion-log-smoke-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/033-claude-code-conclusion-log-smoke-events.jsonl`
+  - `docs/subtasks/logs/033-claude-code-conclusion-log-smoke-claude-run.jsonl`
+
+Manager constraints:
+
+- No product source changes are allowed.
+- The worker may update only its progress file in the worker worktree.
+- Codex will accept the smoke only if worker progress reaches `HANDOFF`, both delegation scripts are visible inside the worker worktree, and manager `status` / `wait` remain conclusion-first by default.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Default print fallback did not stream raw model JSONL to the manager terminal after worktree setup output.
+- Raw stream was retained in `docs/subtasks/logs/033-claude-code-conclusion-log-smoke-claude-run.jsonl`.
+- Worker progress reached `HANDOFF` with final status token `DONE`.
+- `scripts/claude_delegate.sh wait` found `HANDOFF` through the worker progress file.
+- `scripts/claude_delegate.sh status` showed progress and retained flow-log paths without tailing flow logs by default.
+- Worker confirmed both delegation scripts existed inside the worker worktree:
+  - `scripts/claude_delegate.sh`
+  - `scripts/claude_event_bridge.sh`
+- Worker reported no product source modifications.
+
+Accepted evidence:
+
+- The delegation pipeline now has two manager-facing layers:
+  - Conclusion layer: worker progress/HANDOFF, findings, concerns, and suggestions. This is the routine manager consumption path.
+  - Flow layer: event/raw JSONL logs. These are retained for diagnosis and opened only after a problem or failed acceptance.
+- The wrapper syncs untracked delegation scripts into worker worktrees, so read-only pipeline checks can happen inside isolation.
+
+Residual risk:
+
+- `git worktree add` setup output can still appear before Claude starts. This is acceptable because it is setup output, not model raw flow.
+
+## 2026-06-04: Claude Code Worker Fallback Smoke - Subtask 032
+
+Reason:
+
+- Subtask 031 showed a real Claude Code run through the wrapper command path, but the old print fallback ran from the manager worktree.
+- The wrapper was patched so non-interactive print fallback runs inside the isolated worker worktree.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- The worker ran from `.claude/worktrees/subtask-032-claude-code-worker-fallback-smoke`.
+- Worker progress reached `HANDOFF` with final status token `DONE`.
+- `scripts/claude_delegate.sh wait` found `HANDOFF` through the worker progress file.
+- `scripts/claude_delegate.sh status` now reports progress plus retained flow-log paths without tailing flow logs by default.
+
+Accepted evidence:
+
+- Worker progress path is the active conclusion source.
+- Worker `pwd` confirmed the isolated worker worktree.
+- Worker reported no modified product source files.
+- Raw final usage recorded nonzero GLM usage: `input_tokens=23913`, `cache_read_input_tokens=206208`, `output_tokens=1744`, `costUSD=0.266269`.
+
+Rejected / follow-up evidence:
+
+- The first successful 032 launch still streamed raw JSONL to the manager terminal through `tee`, which violated the user's two-layer log-consumption requirement.
+- The worker could not inspect `scripts/claude_delegate.sh` inside its own worktree because untracked manager scripts were not synced.
+
+Manager action:
+
+- Patched `scripts/claude_delegate.sh` so default print mode writes raw stream only to the raw flow log; `CLAUDE_DELEGATE_SHOW_FLOW_LOGS=1` is required to mirror flow logs to the terminal.
+- Patched worker sync to copy `scripts/claude_delegate.sh` and `scripts/claude_event_bridge.sh` into the worker worktree.
+- Prepared Subtask 033 to verify these repairs.
+
+## 2026-06-04: Prepared Claude Code Worker Fallback Smoke - Subtask 032
+
+Reason:
+
+- Subtask 031 showed a real Claude Code run through the wrapper command path, but the old print fallback ran from the manager worktree.
+- The wrapper has now been patched so non-interactive print fallback runs inside the isolated worker worktree.
+- This is a very small read-only smoke, so it is appropriate for Claude Code and should prove worker-side progress writing without product-source risk.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/032-claude-code-worker-fallback-smoke-prd.md`
+- Progress: `docs/subtasks/032-claude-code-worker-fallback-smoke-progress.md`
+- Prompt: `docs/subtasks/032-claude-code-worker-fallback-smoke-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/032-claude-code-worker-fallback-smoke-events.jsonl`
+  - `docs/subtasks/logs/032-claude-code-worker-fallback-smoke-claude-run.jsonl`
+
+Manager constraints:
+
+- No product source changes are allowed.
+- The worker may update only its progress file in the worker worktree.
+- Codex will accept the smoke only if event logs, raw logs, and worker progress all show a real handoff.
+
+Delegation state:
+
+- Prepared for launch.
+
+## 2026-06-04: Codex Reconciled Claude Code Utilization Smoke - Subtask 031
+
+Reason:
+
+- The raw/event logs contradicted the worker's handoff claim that it did not run through the wrapper.
+- Codex reviewed the evidence before accepting or rejecting the smoke result.
+
+Accepted evidence:
+
+- `scripts/claude_delegate.sh launch` did start the 031 worker path.
+- The wrapper recorded `mode_requested=tmux` and `mode_effective=print`.
+- Task-local hooks fired and appended event-log evidence.
+- Raw stream final usage recorded nonzero GLM usage and cost.
+- Claude reached `HANDOFF` with `DONE_WITH_CONCERNS`.
+
+Rejected evidence:
+
+- 031 did not prove the tmux/worktree implementation lifecycle.
+- The old print fallback ran from the manager worktree, so worker-side progress writing was not proven.
+- The worker's "not through wrapper" statement is rejected as an incorrect inference from its current working directory.
+
+Manager action:
+
+- Patched `scripts/claude_delegate.sh` so print fallback runs from the isolated worker worktree.
+- Patched `status` / `wait` progress selection so legacy manager-hand off evidence can be detected when the worker copy is stale.
+- Prepared Subtask 032 to verify the repaired behavior.
+
+## 2026-06-04: Prepared Claude Code Utilization Smoke Audit - Subtask 031
+
+Reason:
+
+- The wrapper hardening in Subtask 030 fixed the low-utilization / no-execution failure modes on paper, but the pipeline still needed one live worker run to prove that the wrapper can actually launch and recover a handoff.
+- This is a read-only audit slice with a narrow write set, so it is appropriate for Claude Code and does not require new product judgment.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/031-claude-code-utilization-smoke-prd.md`
+- Progress: `docs/subtasks/031-claude-code-utilization-smoke-progress.md`
+- Prompt: `docs/subtasks/031-claude-code-utilization-smoke-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/031-claude-code-utilization-smoke-events.jsonl`
+  - `docs/subtasks/logs/031-claude-code-utilization-smoke-claude-run.jsonl`
+
+Manager constraints:
+
+- No product source changes are allowed.
+- The worker must stay read-only and only inspect the wrapper/status files.
+- Codex will not accept any result without a worker `HANDOFF` and fresh manager-side verification of the logs and progress file.
+
+Delegation state:
+
+- Prepared for launch; no worker has been started yet.
+
+## 2026-06-04: Codex Direct - Subtask 030 Claude Code Pipeline Hardening
+
+Reason:
+
+- The user observed that Claude Code delegated tasks appeared to consume almost no GLM tokens, suggesting the delegation path might not be executing useful worker turns.
+- Subtask 029 already had three Claude Code attempts without an acceptable `HANDOFF`.
+- The task itself is delegation infrastructure and manager acceptance logic, so delegating it to Claude Code would repeat the failure mode being investigated.
+
+Actions:
+
+- Added `scripts/claude_delegate.sh` as the repo-owned delegation wrapper.
+- Added `scripts/claude_event_bridge.sh` for task-local file-bridge hook events.
+- Added Subtask 030 PRD and progress files.
+- Added `prepare`, `launch`, `status`, and `wait` commands.
+- Switched future implementation launches toward `claude --worktree --tmux --agent`.
+- Kept explicit `--` before the prompt when `--allowedTools` is used.
+- Added task-local hook settings under `.claude/delegation/` without modifying global Claude settings.
+- Added launch-time worker worktree creation/reuse plus task doc sync for untracked PRD/progress/prompt files.
+- Updated `status` and `wait` to prefer worker worktree progress before manager progress.
+- Fixed `wait` so `HANDOFF: pending` is not misclassified as completion.
+- Fixed timestamp generation for macOS by avoiding `date -Is`.
+
+Verification:
+
+- `scripts/claude_delegate.sh --help`: passed.
+- `scripts/claude_delegate.sh prepare 030-claude-code-pipeline-hardening docs/subtasks/030-claude-code-pipeline-hardening-progress.md`: passed.
+- `scripts/claude_delegate.sh status 030-claude-code-pipeline-hardening docs/subtasks/030-claude-code-pipeline-hardening-progress.md`: passed and showed one idle interactive Claude agent.
+- `scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md 0 1`: correctly exited 75.
+- `scripts/claude_delegate.sh wait 027-history-repair-ui docs/subtasks/027-history-repair-ui-progress.md 0 1`: correctly exited 0 by reading the worker progress file.
+- `scripts/claude_event_bridge.sh` manual probe appended JSONL evidence to `docs/subtasks/logs/030-claude-code-pipeline-hardening-events.jsonl`.
+
+Delegation status:
+
+- Claude Code was not delegated for Subtask 030.
+- No Claude worker output was accepted.
+- Current wrapper is ready for the next bounded Claude implementation slice, but Codex should still reject any worker result that lacks progress-file `HANDOFF` and fresh verification.
+
+## 2026-06-03: Claude Code Delegation Prepared - Subtask 029 Safe Area And Floating Tab Layout Fix
+
+Reason:
+
+- Subtask 028 real simulator screenshots found P1 safe-area and floating Tab bar overlap defects.
+- This is a bounded SwiftUI layout implementation slice with a narrow write set and fixed acceptance criteria.
+- It does not require prompt strategy, persistence migration, AppStore orchestration, or product semantics decisions.
+- This fits the delegation readiness gate better than direct Codex implementation because Claude Code can make the scoped layout change in isolation while Codex retains simulator visual verification and final acceptance.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/029-safe-area-floating-tab-prd.md`
+- Progress: `docs/subtasks/029-safe-area-floating-tab-progress.md`
+- Prompt: `docs/subtasks/029-safe-area-floating-tab-claude-prompt.md`
+- Expected log: `docs/subtasks/logs/029-claude-run.jsonl`
+
+Manager constraints:
+
+- Expected production write set is limited to `Sources/Features/FeatureTabs.swift`, `Sources/Features/Today/TodayView.swift`, and optionally `Sources/DesignSystem/Theme.swift`.
+- No persistence, prompt, parser, migration, GLM, Keychain, or AppStore orchestration changes.
+- Codex will not inspect or merge partial output before the progress file reaches `HANDOFF`.
+- Codex will perform fresh `xcodebuild`, `git diff --check`, and simulator screenshot verification before accepting.
+
+Delegation status:
+
+- First launch attempt exited before `START` because the prompt argument was not parsed correctly.
+- Failed launch log: `docs/subtasks/logs/029-claude-run-failed-args.jsonl`
+- No worker code was produced by the failed launch.
+- Codex relaunched with an explicit `--` separator before the prompt.
+- Relaunch raw log: `docs/subtasks/logs/029-claude-run.jsonl`
+- Relaunch session id observed by Codex: `32727`
+- Codex stopped session `32727` after two low-frequency progress checks because the worker did not update `START`.
+- Stopped-run log archived as `docs/subtasks/logs/029-claude-run-no-start.jsonl`.
+- Codex tightened the prompt to require `START` before broad source inspection and to use targeted source ranges.
+- Next launch log will be `docs/subtasks/logs/029-claude-run-focused.jsonl`.
+- Focused relaunch session id observed by Codex: `20801`.
+- Focused run reached `START`, then produced no further checkpoint after repeated low-frequency checks.
+- Codex terminated PID `18237`.
+- Worker source status showed no tracked source changes at the last check.
+- No Subtask 029 worker implementation was accepted.
+- Manager decision: pause further `claude -p` implementation attempts for this slice unless the delegation wrapper is improved; Subtask 029 remains the next implementation target.
+
+## 2026-06-03: Claude Code Observability Repair
+
+Reason:
+
+- The user could not see current Claude Code task execution status, raw log output, or progress updates.
+- Subtask 028 did not launch Claude Code, but that was not visible enough from the existing records.
+- Subtask 027 raw logs existed inside the isolated worker worktree but had not been copied into the main `docs/subtasks/logs/` directory.
+
+Actions:
+
+- Added `docs/subtasks/claude-code-current-status.md` as the fixed review entry point.
+- Copied Subtask 027 raw logs into the main workspace:
+  - `docs/subtasks/logs/027-claude-run.jsonl`
+  - `docs/subtasks/logs/027-claude-run-escalated.jsonl`
+- Added `docs/subtasks/logs/README.md` to explain log meanings.
+- Updated Subtask 028 progress to state explicitly that no Claude worker is active and no 028 Claude log is expected.
+
+Current status:
+
+- No active Claude Code worker is running.
+- Current active slice is Subtask 028, owned by Codex manager.
+- Next implementation slice should create the required PRD, progress file, Claude prompt, raw log path, and update the current status file before launch if delegated.
+
 ## 2026-06-03: Claude Code Delegation Accepted - Subtask 027 History Repair UI
 
 Reason:

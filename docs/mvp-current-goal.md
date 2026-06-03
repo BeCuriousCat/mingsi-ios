@@ -1,6 +1,23 @@
 # MingSi MVP Current Goal
 
-Date: 2026-06-03
+Date: 2026-06-04
+
+## Active Codex Pursuit Goal
+
+MingSi is being hardened toward a personal alpha that is quiet, evidence-backed, and operationally verifiable.
+
+Current Codex goal:
+
+> Build MingSi into a usable personal thinking coach while also making the engineering process itself observable and recoverable: Codex owns product judgment and final verification, Claude Code is used only for bounded slices with measurable progress, and every accepted claim must have build, test, screenshot, log, or repository evidence.
+
+This means the project is not trying to maximize generated code volume. It is trying to maximize accepted, verified product progress per manager token:
+
+- Claude Code delegation must be visible through progress checkpoints, task-local hooks, raw logs, and worker status, not inferred from token counters.
+- GLM-backed usage numbers are not treated as proof of work because recent stream logs reported zero usage while the worker had in fact started.
+- GLM coding-plan token capacity is treated as abundant relative to GPT manager tokens: routine Claude Code coding slices should budget generously enough to reach `HANDOFF` instead of stopping early from small budget guards; large slices should set an even higher explicit budget.
+- No worker output is accepted without `HANDOFF`, targeted verification, and Codex rerun evidence.
+- If delegation adds more coordination cost than it saves, Codex implements directly and records why.
+- User-facing bugs, especially AI failure/audit visibility issues, are fixed only when the behavior is visible, retryable, and auditable.
 
 ## Current Stop Condition
 
@@ -20,10 +37,11 @@ MVP can stop only when the app can run as a coherent personal alpha version that
 The repo is past raw skeleton work. Current priority is MVP hardening:
 
 1. Keep process docs aligned before additional coding.
-2. Stabilize visual and interaction bugs in Today / History / Projects / Growth.
-3. Keep AI repair, retry, and PromptRun audit paths visible and testable.
-4. Harden evidence-backed Project and Growth views.
-5. Avoid adding non-MVP expansions until the alpha loop is stable.
+2. Harden the Claude Code delegation pipeline before any further implementation worker attempt.
+3. Stabilize visual and interaction bugs in Today / History / Projects / Growth / Settings.
+4. Keep AI repair, retry, and PromptRun audit paths visible and testable.
+5. Harden evidence-backed Project and Growth views.
+6. Avoid adding non-MVP expansions until the alpha loop is stable.
 
 ## Current Implementation Bias
 

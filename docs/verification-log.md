@@ -2,6 +2,201 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Claude Conclusion-First Delegation Pipeline And Settings Audit Visual Check
+
+Scope:
+
+- Reconcile the user's Claude Code utilization concern with a two-layer delegation log model.
+- Verify that Claude Code can run from an isolated worker worktree, write worker progress, and reach `HANDOFF`.
+- Ensure flow logs are retained but not routinely consumed by the manager.
+- Raise the default print-mode Claude budget guard so ordinary GLM coding tasks are not starved before `HANDOFF`.
+- Build the app after Settings audit flicker and safe-area/floating-tab source changes.
+- Capture Settings audit expand/collapse evidence and Settings bottom scroll evidence.
+
+Changed areas:
+
+- `.gitignore`
+- `scripts/claude_delegate.sh`
+- `scripts/claude_event_bridge.sh`
+- `docs/subtasks/032-claude-code-worker-fallback-smoke-*`
+- `docs/subtasks/033-claude-code-conclusion-log-smoke-*`
+- `docs/subtasks/logs/032-*`
+- `docs/subtasks/logs/033-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-current-goal.md`
+- `docs/mvp-stage-progress.md`
+- `docs/project-continuation-context.md`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/05-today-light-after-build.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/06-settings-light-after-build.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/07-settings-light-scrolled.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/08-settings-audit-toggle-light.mov`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/08-settings-audit-toggle-light-frame-*.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/09-settings-audit-collapsed-after-toggle-light.png`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+bash -n scripts/claude_event_bridge.sh
+CLAUDE_DELEGATE_MAX_BUDGET_USD=1.00 scripts/claude_delegate.sh launch 032-claude-code-worker-fallback-smoke docs/subtasks/032-claude-code-worker-fallback-smoke-claude-prompt.md docs/subtasks/032-claude-code-worker-fallback-smoke-progress.md
+scripts/claude_delegate.sh wait 032-claude-code-worker-fallback-smoke docs/subtasks/032-claude-code-worker-fallback-smoke-progress.md 0 1
+scripts/claude_delegate.sh status 032-claude-code-worker-fallback-smoke docs/subtasks/032-claude-code-worker-fallback-smoke-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=1.00 scripts/claude_delegate.sh launch 033-claude-code-conclusion-log-smoke docs/subtasks/033-claude-code-conclusion-log-smoke-claude-prompt.md docs/subtasks/033-claude-code-conclusion-log-smoke-progress.md
+scripts/claude_delegate.sh wait 033-claude-code-conclusion-log-smoke docs/subtasks/033-claude-code-conclusion-log-smoke-progress.md 0 1
+scripts/claude_delegate.sh status 033-claude-code-conclusion-log-smoke docs/subtasks/033-claude-code-conclusion-log-smoke-progress.md
+ls -l docs/subtasks/logs/033-claude-code-conclusion-log-smoke-events.jsonl docs/subtasks/logs/033-claude-code-conclusion-log-smoke-claude-run.jsonl
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/05-today-light-after-build.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/06-settings-light-after-build.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/07-settings-light-scrolled.png
+xcrun simctl io booted recordVideo --codec h264 docs/subtasks/screenshots/029-safe-area-floating-tab/08-settings-audit-toggle-light.mov
+ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 docs/subtasks/screenshots/029-safe-area-floating-tab/08-settings-audit-toggle-light.mov
+ffmpeg -y -i docs/subtasks/screenshots/029-safe-area-floating-tab/08-settings-audit-toggle-light.mov ...
+```
+
+Result:
+
+- `bash -n` passed for both delegation scripts.
+- Subtask 032 reached worker-progress `HANDOFF` with final token `DONE`; Codex accepted it with follow-up because it exposed raw-stream and script-sync gaps.
+- Subtask 033 reached worker-progress `HANDOFF` with final token `DONE`; Codex accepted it.
+- Default print fallback now keeps raw model JSONL in the raw flow log instead of streaming it to the manager terminal.
+- `status` / `wait` consume worker progress as the conclusion source and show retained flow-log paths without tailing event/raw logs by default.
+- The wrapper syncs `scripts/claude_delegate.sh` and `scripts/claude_event_bridge.sh` into worker worktrees.
+- Flow logs for 033 were retained on disk: raw log 247799 bytes, event log 75787 bytes.
+- Default `CLAUDE_DELEGATE_MAX_BUDGET_USD` was raised from `0.50` to `30.00`; large delegated tasks should explicitly use `60.00` or higher.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- Settings bottom scroll screenshot shows bottom content can rest above the floating Tab bar.
+- Settings audit expanded screenshot frames show stable expanded content with no visible overlapping row residue; the source fix removes group-level animation/transition and disables implicit transaction animation for the audit group.
+
+Residual risk:
+
+- Settings audit collapse was exercised, but the short video's second click did not capture a collapsed frame reliably; a separate collapsed screenshot was captured afterward.
+- Full Subtask 029 visual acceptance is still incomplete: Today/History/Growth/Settings must still be recaptured in both light and dark modes after final scroll positions.
+- The newly reported manual Principle creation feature is not implemented in this slice and should be handled as a separate atomic product task.
+
+## 2026-06-04: Claude Delegation Pipeline Hardening And Settings Audit Flicker Fix
+
+Scope:
+
+- Set the active Codex pursuit goal in repo-owned documentation.
+- Harden Claude Code delegation pipeline after Subtask 029 non-delivery and unreliable GLM usage telemetry.
+- Fix Settings AI audit success/failure group expand-collapse flicker.
+- Continue Subtask 029 safe-area/floating-tab work with build and partial simulator screenshot verification.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `scripts/claude_event_bridge.sh`
+- `.claude/delegation/030-claude-code-pipeline-hardening-settings.json`
+- `docs/subtasks/030-claude-code-pipeline-hardening-prd.md`
+- `docs/subtasks/030-claude-code-pipeline-hardening-progress.md`
+- `docs/subtasks/logs/030-claude-code-pipeline-hardening-events.jsonl`
+- `docs/mvp-current-goal.md`
+- `docs/project-continuation-context.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/subtasks/029-safe-area-floating-tab-progress.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `Sources/DesignSystem/Theme.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Sources/Features/Today/TodayView.swift`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/04-settings-audit-after-toggle-light.png`
+
+Commands run:
+
+```bash
+git status --short
+claude --help
+claude agents --help
+scripts/claude_delegate.sh --help
+scripts/claude_delegate.sh prepare 030-claude-code-pipeline-hardening docs/subtasks/030-claude-code-pipeline-hardening-progress.md
+scripts/claude_delegate.sh status 030-claude-code-pipeline-hardening docs/subtasks/030-claude-code-pipeline-hardening-progress.md
+scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md 0 1
+scripts/claude_delegate.sh wait 027-history-repair-ui docs/subtasks/027-history-repair-ui-progress.md 0 1
+printf '{"probe":"bridge"}' | scripts/claude_event_bridge.sh docs/subtasks/logs/030-claude-code-pipeline-hardening-events.jsonl manual_probe
+bash -n scripts/claude_delegate.sh
+bash -n scripts/claude_event_bridge.sh
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/04-settings-audit-after-toggle-light.png
+```
+
+Result:
+
+- `claude --help` confirmed `--worktree`, `--tmux`, `--agent`, `--settings`, `--allowedTools`, `--permission-mode`, and `--effort` are available.
+- `claude agents --help` confirmed JSON status support through `claude agents --json`.
+- `scripts/claude_delegate.sh --help` passed.
+- `prepare` passed and generated task-local hook settings without changing global Claude settings.
+- `status` passed and showed one idle interactive Claude agent; no Subtask 030 implementation worker was launched.
+- `wait` correctly rejected Subtask 029 `HANDOFF: pending` with exit 75.
+- `wait` correctly accepted Subtask 027 real handoff with exit 0 by reading `.claude/worktrees/subtask-027-history-repair-ui/docs/subtasks/027-history-repair-ui-progress.md`.
+- Wrapper now creates/reuses the worker worktree on launch and syncs matching `docs/subtasks/<id-topic>*` files so untracked PRD/prompt/progress docs are available to the worker.
+- `status` now prints active, manager, and worker progress paths so Codex can see which truth source is being monitored.
+- `bash -n` passed for both wrapper scripts.
+- Event bridge manual probe appended JSONL evidence with base64 payload.
+- Initial pipeline verification exposed a macOS `date -Is` incompatibility; wrapper and bridge were fixed to use portable timestamps.
+- Settings AI audit flicker root cause was removed by deleting the group-wide SwiftUI animation and row transition while keeping chevron-only animation.
+- App build passed after source changes.
+- `git diff --check` passed after final source/script/documentation updates.
+- Screenshot `04-settings-audit-after-toggle-light.png` captured the Settings audit group expanded stable state.
+
+Residual risk:
+
+- Settings flicker was verified by code-level root cause removal and stable screenshots, but not yet by recorded video of the transient animation.
+- Subtask 029 safe-area/floating-tab visual acceptance is incomplete; Settings audit content still appears close to the floating Tab bar boundary in partial screenshots.
+- No new Claude Code worker was launched through the wrapper yet, so actual worker utilization improvement is ready to test but not proven on an implementation slice.
+
+## 2026-06-03: Context Preservation And Subtask 029 Delegation Audit
+
+Scope:
+
+- Preserve current thread/project context into repository-owned docs.
+- Record Subtask 029 Claude Code launch attempts and non-delivery status.
+- Ensure no active Claude worker remains running.
+- Do not accept any Subtask 029 implementation because no worker `HANDOFF` occurred.
+
+Changed areas:
+
+- `docs/project-continuation-context.md`
+- `docs/subtasks/029-safe-area-floating-tab-prd.md`
+- `docs/subtasks/029-safe-area-floating-tab-progress.md`
+- `docs/subtasks/029-safe-area-floating-tab-claude-prompt.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/subtasks/logs/README.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+
+Commands run:
+
+```bash
+git status --short
+git worktree add -b worker-subtask-029-safe-area-floating-tab .claude/worktrees/subtask-029-safe-area-floating-tab HEAD
+claude -p --output-format stream-json --verbose --include-hook-events --permission-mode dontAsk --model glm-5.1 ...
+ps -axo pid,etime,command | rg 'subtask-029-safe-area-floating-tab|029-claude-run-focused|claude -p'
+kill 13981
+kill 18237
+```
+
+Result:
+
+- Subtask 029 delegation package was created.
+- First Claude launch failed before `START` due CLI prompt parsing.
+- Second Claude launch was stopped after no `START`.
+- Focused Claude launch reached `START` but did not reach `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, or `HANDOFF`.
+- No Subtask 029 source implementation was accepted.
+- Current status file records no active Claude worker.
+
+Residual risk:
+
+- Subtask 029 remains unimplemented.
+- No build or simulator verification was run for Subtask 029 because there is no accepted implementation yet.
+- Further Claude Code implementation attempts should use a stronger wrapper or a different launch mode.
+
 ## 2026-06-03: AI Language, Busy State, Recoverable GLM Retry, And History Repair Helpers
 
 Scope:
