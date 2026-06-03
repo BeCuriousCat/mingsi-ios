@@ -2,6 +2,24 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Claude Code Delegation Prepared - Subtask 027 History Repair UI
+
+Reason:
+
+- The AppStore retry semantics, persistence, and prompt boundaries are already fixed by Codex-owned slices.
+- The next slice is a bounded History UI implementation with a fixed contract and testable local helpers.
+- This fits the delegation readiness gate better than direct Codex implementation because Claude Code can handle scoped SwiftUI layout and helper tests while Codex stays in manager/reviewer role.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/027-history-repair-ui-prd.md`
+- Progress: `docs/subtasks/027-history-repair-ui-progress.md`
+- Prompt: `docs/subtasks/027-history-repair-ui-claude-prompt.md`
+
+Delegation status:
+
+- Prepared, not yet handed off.
+
 ## 2026-06-03: Codex Direct Implementation - Historical AI Retry AppStore Guard
 
 Reason:
