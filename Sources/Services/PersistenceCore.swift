@@ -100,6 +100,38 @@ protocol PromptRunRepository {
     func unresolvedFailures(limit: Int) async throws -> [PromptRun]
 }
 
+protocol HistoricalRetryCandidateRepository {
+    func saveCandidate(_ candidate: HistoricalRetryCandidate) async throws
+    func candidate(id: UUID) async throws -> HistoricalRetryCandidate?
+    func candidates(for sourceDailyEntryId: UUID) async throws -> [HistoricalRetryCandidate]
+    func attachRepairRun(_ repairPromptRunId: UUID, candidatePayloadJSON: String, to candidateId: UUID) async throws
+    func updateStatus(
+        _ status: HistoricalRetryCandidateStatus,
+        candidateId: UUID,
+        error: String?,
+        blockedReason: String?
+    ) async throws
+    func softDelete(candidateId: UUID) async throws
+}
+
+extension HistoricalRetryCandidateRepository {
+    func updateStatus(
+        _ status: HistoricalRetryCandidateStatus,
+        candidateId: UUID,
+        blockedReason: String?
+    ) async throws {
+        try await updateStatus(status, candidateId: candidateId, error: nil, blockedReason: blockedReason)
+    }
+
+    func updateStatus(
+        _ status: HistoricalRetryCandidateStatus,
+        candidateId: UUID,
+        error: String?
+    ) async throws {
+        try await updateStatus(status, candidateId: candidateId, error: error, blockedReason: nil)
+    }
+}
+
 final class AppDatabase {
     let dbQueue: DatabaseQueue
 
@@ -415,6 +447,46 @@ final class AppDatabase {
                 WHERE context_record_ids_json IS NULL
                   AND source_record_ids_json IS NOT NULL
                 """)
+        }
+
+        migrator.registerMigration("v8_historical_retry_candidates") { db in
+            try db.create(table: "historical_retry_candidates", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("failed_prompt_run_id", .text).notNull()
+                table.column("repair_prompt_run_id", .text)
+                table.column("prompt_id", .text).notNull()
+                table.column("source_daily_entry_id", .text).notNull()
+                table.column("status", .text).notNull()
+                table.column("reconstructed_input_summary", .text).notNull()
+                table.column("candidate_payload_json", .text)
+                table.column("error", .text)
+                table.column("blocked_reason", .text)
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_historical_retry_candidates_source_daily_entry_id",
+                on: "historical_retry_candidates",
+                columns: ["source_daily_entry_id"]
+            )
+            try db.create(
+                index: "idx_historical_retry_candidates_failed_prompt_run_id",
+                on: "historical_retry_candidates",
+                columns: ["failed_prompt_run_id"]
+            )
+            try db.create(
+                index: "idx_historical_retry_candidates_status",
+                on: "historical_retry_candidates",
+                columns: ["status"]
+            )
+            try db.create(
+                index: "idx_historical_retry_candidates_updated_at",
+                on: "historical_retry_candidates",
+                columns: ["updated_at"]
+            )
         }
 
         return migrator
@@ -1901,6 +1973,84 @@ final class SQLitePromptRunRepository: PromptRunRepository {
     }
 }
 
+final class SQLiteHistoricalRetryCandidateRepository: HistoricalRetryCandidateRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveCandidate(_ candidate: HistoricalRetryCandidate) async throws {
+        try await database.dbQueue.write { db in
+            var row = HistoricalRetryCandidateRow(candidate: candidate)
+            if let existing = try HistoricalRetryCandidateRow.fetchOne(db, key: row.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func candidate(id: UUID) async throws -> HistoricalRetryCandidate? {
+        try await database.dbQueue.read { db in
+            try HistoricalRetryCandidateRow
+                .filter(Column("id") == id.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .fetchOne(db)?
+                .domainModel()
+        }
+    }
+
+    func candidates(for sourceDailyEntryId: UUID) async throws -> [HistoricalRetryCandidate] {
+        try await database.dbQueue.read { db in
+            try HistoricalRetryCandidateRow
+                .filter(Column("source_daily_entry_id") == sourceDailyEntryId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func attachRepairRun(_ repairPromptRunId: UUID, candidatePayloadJSON: String, to candidateId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try HistoricalRetryCandidateRow.fetchOne(db, key: candidateId.uuidString) else { return }
+            row.repairPromptRunId = repairPromptRunId.uuidString
+            row.candidatePayloadJson = candidatePayloadJSON
+            row.status = HistoricalRetryCandidateStatus.candidateReady.rawValue
+            row.error = nil
+            row.blockedReason = nil
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+
+    func updateStatus(
+        _ status: HistoricalRetryCandidateStatus,
+        candidateId: UUID,
+        error: String?,
+        blockedReason: String?
+    ) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try HistoricalRetryCandidateRow.fetchOne(db, key: candidateId.uuidString) else { return }
+            row.status = status.rawValue
+            row.error = error
+            row.blockedReason = blockedReason
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+
+    func softDelete(candidateId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try HistoricalRetryCandidateRow.fetchOne(db, key: candidateId.uuidString) else { return }
+            let now = Date().mingsiStorageString
+            row.updatedAt = now
+            row.deletedAt = now
+            try row.upsert(db)
+        }
+    }
+}
+
 private extension MetricSnapshot {
     var previousScoresStorage: [String: Double] {
         var scores: [String: Double] = [:]
@@ -2106,6 +2256,87 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
             sourceDailyEntryId: sourceDailyEntryUUID,
             userFeedback: feedback,
             candidateStatus: candidateStatus,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
+        )
+    }
+}
+
+private struct HistoricalRetryCandidateRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "historical_retry_candidates"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var failedPromptRunId: String
+    var repairPromptRunId: String?
+    var promptId: String
+    var sourceDailyEntryId: String
+    var status: String
+    var reconstructedInputSummary: String
+    var candidatePayloadJson: String?
+    var error: String?
+    var blockedReason: String?
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(candidate: HistoricalRetryCandidate) {
+        let now = Date().mingsiStorageString
+        id = candidate.id.uuidString
+        schemaVersion = candidate.schemaVersion
+        failedPromptRunId = candidate.failedPromptRunId.uuidString
+        repairPromptRunId = candidate.repairPromptRunId?.uuidString
+        promptId = candidate.promptId.rawValue
+        sourceDailyEntryId = candidate.sourceDailyEntryId.uuidString
+        status = candidate.status.rawValue
+        reconstructedInputSummary = candidate.reconstructedInputSummary
+        candidatePayloadJson = candidate.candidatePayloadJSON
+        error = candidate.error
+        blockedReason = candidate.blockedReason
+        createdAt = candidate.createdAt.mingsiStorageString
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> HistoricalRetryCandidate {
+        guard let uuid = UUID(uuidString: id) else {
+            throw PersistenceError.invalidStoredValue("historical_retry_candidates.id")
+        }
+        guard let failedPromptRunUUID = UUID(uuidString: failedPromptRunId) else {
+            throw PersistenceError.invalidStoredValue("historical_retry_candidates.failed_prompt_run_id")
+        }
+        let repairPromptRunUUID: UUID?
+        if let repairPromptRunId {
+            guard let parsed = UUID(uuidString: repairPromptRunId) else {
+                throw PersistenceError.invalidStoredValue("historical_retry_candidates.repair_prompt_run_id")
+            }
+            repairPromptRunUUID = parsed
+        } else {
+            repairPromptRunUUID = nil
+        }
+        guard let prompt = PromptID(rawValue: promptId) else {
+            throw PersistenceError.invalidStoredValue("historical_retry_candidates.prompt_id")
+        }
+        guard let sourceDailyEntryUUID = UUID(uuidString: sourceDailyEntryId) else {
+            throw PersistenceError.invalidStoredValue("historical_retry_candidates.source_daily_entry_id")
+        }
+        guard let status = HistoricalRetryCandidateStatus(rawValue: status) else {
+            throw PersistenceError.invalidStoredValue("historical_retry_candidates.status")
+        }
+        return HistoricalRetryCandidate(
+            id: uuid,
+            schemaVersion: schemaVersion,
+            failedPromptRunId: failedPromptRunUUID,
+            repairPromptRunId: repairPromptRunUUID,
+            promptId: prompt,
+            sourceDailyEntryId: sourceDailyEntryUUID,
+            status: status,
+            reconstructedInputSummary: reconstructedInputSummary,
+            candidatePayloadJSON: candidatePayloadJson,
+            error: error,
+            blockedReason: blockedReason,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
             updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
         )

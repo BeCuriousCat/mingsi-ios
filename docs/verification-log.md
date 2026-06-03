@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-03: HistoricalRetryCandidate Migration And Repository
+
+Scope:
+
+- Add `HistoricalRetryCandidate` domain status/model.
+- Add v8 SQLite migration for `historical_retry_candidates`.
+- Add `HistoricalRetryCandidateRepository` and `SQLiteHistoricalRetryCandidateRepository`.
+- Add persistence tests for create/query, attach repair run, status update, soft delete, PromptRun preservation, and migration indexes.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/Services/PersistenceCore.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+- `docs/agent-delegation-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testHistoricalRetryCandidate_createAttachAndQueryByEntry test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- RED confirmed before implementation: build failed because `SQLiteHistoricalRetryCandidateRepository` and `HistoricalRetryCandidate` did not exist.
+- First target GREEN passed: 1 test, 0 failures.
+- Full PersistenceCoreTests passed: 55 tests, 0 failures.
+- AppStoreStateMachineTests passed: 91 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Residual risk:
+
+- This only establishes durable candidate storage.
+- Historical retry still needs AppStore/use-case orchestration, acceptance guards against downstream evidence, GLM retry execution, and History candidate review UI.
+- Two parallel single-test xcodebuild runs hit simulator bootstrapping early-exit; the same coverage passed in the serial full PersistenceCoreTests run.
+
 ## 2026-06-03: Historical AI Retry Candidate Review PRD
 
 Scope:

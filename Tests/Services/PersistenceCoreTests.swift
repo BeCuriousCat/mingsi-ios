@@ -826,6 +826,107 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertTrue(recent.first?.error?.contains("API Key") == true)
     }
 
+    // MARK: - HistoricalRetryCandidateRepository
+
+    func testHistoricalRetryCandidate_createAttachAndQueryByEntry() async throws {
+        let repo = SQLiteHistoricalRetryCandidateRepository(database: database)
+        let entryId = UUID()
+        let failedRunId = UUID()
+        let repairRunId = UUID()
+        let candidate = HistoricalRetryCandidate(
+            failedPromptRunId: failedRunId,
+            promptId: .organizeCards,
+            sourceDailyEntryId: entryId,
+            reconstructedInputSummary: "rawText=142 chars"
+        )
+
+        try await repo.saveCandidate(candidate)
+        try await repo.attachRepairRun(
+            repairRunId,
+            candidatePayloadJSON: #"{"cards":[{"title":"A"}]}"#,
+            to: candidate.id
+        )
+
+        let candidates = try await repo.candidates(for: entryId)
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates.first?.id, candidate.id)
+        XCTAssertEqual(candidates.first?.failedPromptRunId, failedRunId)
+        XCTAssertEqual(candidates.first?.repairPromptRunId, repairRunId)
+        XCTAssertEqual(candidates.first?.promptId, .organizeCards)
+        XCTAssertEqual(candidates.first?.sourceDailyEntryId, entryId)
+        XCTAssertEqual(candidates.first?.status, .candidateReady)
+        XCTAssertEqual(candidates.first?.candidatePayloadJSON, #"{"cards":[{"title":"A"}]}"#)
+    }
+
+    func testHistoricalRetryCandidate_statusUpdatesPreserveAuditPayload() async throws {
+        let repo = SQLiteHistoricalRetryCandidateRepository(database: database)
+        let candidate = HistoricalRetryCandidate(
+            failedPromptRunId: UUID(),
+            promptId: .organizeCards,
+            sourceDailyEntryId: UUID(),
+            status: .candidateReady,
+            reconstructedInputSummary: "rawText=42 chars",
+            candidatePayloadJSON: #"{"cards":[]}"#
+        )
+
+        try await repo.saveCandidate(candidate)
+        try await repo.updateStatus(.blocked, candidateId: candidate.id, blockedReason: "confirmed cards exist")
+
+        let loaded = try await repo.candidate(id: candidate.id)
+        XCTAssertEqual(loaded?.status, .blocked)
+        XCTAssertEqual(loaded?.blockedReason, "confirmed cards exist")
+        XCTAssertEqual(loaded?.candidatePayloadJSON, #"{"cards":[]}"#)
+    }
+
+    func testHistoricalRetryCandidate_softDeleteDoesNotDeletePromptRuns() async throws {
+        let promptRepo = SQLitePromptRunRepository(database: database)
+        let candidateRepo = SQLiteHistoricalRetryCandidateRepository(database: database)
+        let failedRun = PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-1"],
+            requestSummary: "failed card organization",
+            error: "HTTP 500"
+        )
+        let repairRun = PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-1"],
+            requestSummary: "repair success",
+            responseJSON: #"{"cards":[]}"#
+        )
+        let candidate = HistoricalRetryCandidate(
+            failedPromptRunId: failedRun.id,
+            repairPromptRunId: repairRun.id,
+            promptId: .organizeCards,
+            sourceDailyEntryId: UUID(),
+            status: .candidateReady,
+            reconstructedInputSummary: "rawText=42 chars",
+            candidatePayloadJSON: #"{"cards":[]}"#
+        )
+
+        try await promptRepo.savePromptRun(failedRun)
+        try await promptRepo.savePromptRun(repairRun)
+        try await candidateRepo.saveCandidate(candidate)
+        try await candidateRepo.softDelete(candidateId: candidate.id)
+
+        let deletedCandidate = try await candidateRepo.candidate(id: candidate.id)
+        XCTAssertNil(deletedCandidate)
+        let promptRuns = try await promptRepo.recentPromptRuns(limit: 10)
+        XCTAssertTrue(promptRuns.contains { $0.id == failedRun.id })
+        XCTAssertTrue(promptRuns.contains { $0.id == repairRun.id })
+    }
+
     // MARK: - Migration
 
     func testMigration_v1_createsAllTables() throws {
@@ -851,6 +952,26 @@ final class PersistenceCoreTests: XCTestCase {
             let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
             XCTAssertTrue(promptRunColumns.contains("source_record_ids_json"))
             XCTAssertTrue(promptRunColumns.contains("context_record_ids_json"))
+        }
+    }
+
+    func testMigration_v8_addsHistoricalRetryCandidatesTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("historical_retry_candidates"))
+
+            let columns = Set(try db.columns(in: "historical_retry_candidates").map(\.name))
+            XCTAssertTrue(columns.contains("failed_prompt_run_id"))
+            XCTAssertTrue(columns.contains("repair_prompt_run_id"))
+            XCTAssertTrue(columns.contains("prompt_id"))
+            XCTAssertTrue(columns.contains("source_daily_entry_id"))
+            XCTAssertTrue(columns.contains("candidate_payload_json"))
+            XCTAssertTrue(columns.contains("blocked_reason"))
+
+            let indexes = try db.indexes(on: "historical_retry_candidates").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_historical_retry_candidates_source_daily_entry_id"))
+            XCTAssertTrue(indexes.contains("idx_historical_retry_candidates_failed_prompt_run_id"))
+            XCTAssertTrue(indexes.contains("idx_historical_retry_candidates_status"))
+            XCTAssertTrue(indexes.contains("idx_historical_retry_candidates_updated_at"))
         }
     }
 

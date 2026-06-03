@@ -2,6 +2,41 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Codex Direct Implementation - HistoricalRetryCandidate Migration And Repository
+
+Reason:
+
+- The slice introduces a new durable table and migration, which is Codex-owned under the delegation rules.
+- The schema and repository contract are foundational for later worker-safe UI or query slices.
+- Delegating before fixing schema/tests would risk worker implementation around unstable product semantics.
+
+Delegation decision:
+
+- Claude Code was not used.
+- Codex implemented the domain model, migration, repository protocol, SQLite repository, and persistence tests directly with TDD.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testHistoricalRetryCandidate_createAttachAndQueryByEntry test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- RED confirmed by missing `HistoricalRetryCandidate` and repository types.
+- PersistenceCoreTests passed: 55 tests, 0 failures.
+- AppStoreStateMachineTests passed: 91 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Next delegation opportunity:
+
+- After Codex defines the AppStore/use-case contract, Claude Code may receive a fixed-contract History UI slice or repository-adjacent query slice.
+
 ## 2026-06-03: Codex Architecture Alignment - Subtask 026 Historical AI Retry Candidate Review PRD
 
 Reason:

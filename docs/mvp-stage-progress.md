@@ -29,6 +29,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Settings AI audit now groups recent calls into failed and successful sections, with failures expanded and successes collapsed by default.
 - Completed read-only Claude Code audit for historical AI retry. Codex accepted the current-state map but rejected immediate implementation because the proposed new table would require an explicit migration and the retry semantics remain product-sensitive.
 - Added historical AI retry candidate-review PRD and data architecture alignment. Historical retry is now specified as a reviewable candidate flow, starting with `organizeCards` only and requiring explicit migration before durable candidate storage.
+- Added `HistoricalRetryCandidate` domain model, v8 SQLite migration, repository contract, SQLite repository implementation, and persistence tests. This establishes durable candidate storage but does not yet add History UI or AppStore retry orchestration.
 
 ## Known Remaining Work
 
@@ -41,9 +42,9 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Current Recommended Next Slice
 
-After Settings AI audit grouping, the Subtask 025 audit, and the Subtask 026 PRD, the next bounded slice should be:
+After Settings AI audit grouping, the Subtask 025 audit, Subtask 026 PRD, and the candidate repository foundation, the next bounded slice should be:
 
-- Historical AI retry migration and repository contract for `HistoricalRetryCandidate`, implemented by Codex or delegated only after schema and tests are fixed.
+- Historical AI retry AppStore guard/use-case layer for `organizeCards`, or a fixed-contract History repair UI slice after the use-case contract is defined.
 
 Secondary candidates:
 

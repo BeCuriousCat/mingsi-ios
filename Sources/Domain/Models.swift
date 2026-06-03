@@ -403,6 +403,64 @@ struct PromptRun: Identifiable, Hashable {
     }
 }
 
+enum HistoricalRetryCandidateStatus: String, CaseIterable, Identifiable {
+    case pending
+    case retrying
+    case candidateReady = "candidate_ready"
+    case accepted
+    case dismissed
+    case blocked
+    case failed
+
+    var id: String { rawValue }
+}
+
+struct HistoricalRetryCandidate: Identifiable, Hashable {
+    let id: UUID
+    var schemaVersion: Int
+    var failedPromptRunId: UUID
+    var repairPromptRunId: UUID?
+    var promptId: PromptID
+    var sourceDailyEntryId: UUID
+    var status: HistoricalRetryCandidateStatus
+    var reconstructedInputSummary: String
+    var candidatePayloadJSON: String?
+    var error: String?
+    var blockedReason: String?
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        schemaVersion: Int = 1,
+        failedPromptRunId: UUID,
+        repairPromptRunId: UUID? = nil,
+        promptId: PromptID,
+        sourceDailyEntryId: UUID,
+        status: HistoricalRetryCandidateStatus = .pending,
+        reconstructedInputSummary: String,
+        candidatePayloadJSON: String? = nil,
+        error: String? = nil,
+        blockedReason: String? = nil,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.schemaVersion = schemaVersion
+        self.failedPromptRunId = failedPromptRunId
+        self.repairPromptRunId = repairPromptRunId
+        self.promptId = promptId
+        self.sourceDailyEntryId = sourceDailyEntryId
+        self.status = status
+        self.reconstructedInputSummary = reconstructedInputSummary
+        self.candidatePayloadJSON = candidatePayloadJSON
+        self.error = error
+        self.blockedReason = blockedReason
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 struct MetricSnapshot: Identifiable, Hashable {
     let id: UUID
     var period: String
