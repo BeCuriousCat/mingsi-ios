@@ -2,6 +2,28 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Separated MingSi Business Thread From Reusable Delegation Framework
+
+Reason:
+
+- The user clarified that MingSi product hardening and Codex-to-Claude Code managed delegation are two different projects.
+- The delegation framework should eventually be open-sourceable and must not become a MingSi-specific ceremony generator.
+- The framework's purpose is to reduce expensive manager-token work by moving routine delegation boilerplate into a generic task contract, wrapper automation, templates, and conclusion-first monitoring.
+
+Actions:
+
+- Added `docs/delegation-framework-boundary.md`.
+- Added generic skill prototype under `delegation-framework/claude-code-managed-delegation/`.
+- Parameterized `scripts/claude_delegate.sh` with:
+  - `CLAUDE_DELEGATE_TASK_ROOT`
+  - `CLAUDE_DELEGATE_LOG_DIR`
+
+Current decision:
+
+- Codex owns framework design and acceptance.
+- Claude Code remains suitable for bounded implementation dogfood tasks.
+- The next MingSi business task, manual Principle creation, should be used to validate the framework without baking MingSi semantics into the framework itself.
+
 ## 2026-06-04: Prepared Claude Code Conclusion-First Log Smoke - Subtask 033
 
 Reason:

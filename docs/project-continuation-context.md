@@ -12,6 +12,13 @@ Claude Code may be used only for bounded implementation or read-only audit slice
 
 Codex is pursuing a usable personal alpha and an engineering loop that can be audited after a context restart.
 
+There are now two explicitly separate project threads:
+
+1. MingSi product hardening is the business main thread.
+2. Codex-to-Claude Code managed delegation is a reusable framework thread that should remain extractable and open-sourceable.
+
+The delegation framework may be dogfooded on MingSi subtasks, but its public contract must not depend on MingSi product semantics, SwiftUI, iOS, or a fixed `docs/subtasks` path.
+
 The current goal is:
 
 - Make MingSi a quiet, reliable, evidence-backed thinking coach rather than an AI wrapper.
@@ -19,6 +26,7 @@ The current goal is:
 - Treat GLM/Claude token counters as weak telemetry only; progress is proven by progress files, changed files, tests, builds, screenshots, and logs.
 - Use Claude Code generously when the slice is well bounded: the user expects GLM coding-plan capacity to be spent to buy back GPT manager tokens, with ordinary worker tasks budgeted high enough to finish rather than starve.
 - Prefer direct Codex implementation when a slice is too small, too taste-heavy, or too process-critical for delegation.
+- Reduce manager-token overhead by moving routine delegation boilerplate into a generic task contract, templates, wrapper commands, and conclusion-first monitoring.
 
 ## Current MVP Stop Condition
 
@@ -137,8 +145,13 @@ Do not touch prompt, persistence, parser, migration, GLM, Keychain, or AppStore 
 
 Preferred next move:
 
-1. Finish Subtask 029 simulator screenshot verification across Today, History, Growth, and Settings in light/dark mode, then decide whether the safe-area/floating-tab patch is accepted or needs another small Codex fix.
-2. Use the new delegation wrapper for any future Claude Code implementation worker:
+1. Treat the next MingSi business slice, manual Principle creation, as the first dogfood task for the generalized delegation framework.
+2. Keep the delegation framework generic:
+   - Boundary doc: `docs/delegation-framework-boundary.md`
+   - Skill prototype: `delegation-framework/claude-code-managed-delegation/SKILL.md`
+   - Wrapper: `scripts/claude_delegate.sh`
+3. Finish Subtask 029 simulator screenshot verification after the current higher-priority user-facing usability slice.
+4. Use the new delegation wrapper for future Claude Code implementation workers:
    - `scripts/claude_delegate.sh prepare <id-topic> docs/subtasks/<id-topic>-progress.md`
    - `scripts/claude_delegate.sh launch <id-topic> docs/subtasks/<id-topic>-claude-prompt.md docs/subtasks/<id-topic>-progress.md`
    - `scripts/claude_delegate.sh status <id-topic> docs/subtasks/<id-topic>-progress.md`

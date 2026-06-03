@@ -6,6 +6,16 @@ Last updated: 2026-06-04
 
 Status: no active Claude Code worker is running.
 
+Current framework thread:
+
+- The Codex-to-Claude Code delegation framework is now treated as a separate tooling project from MingSi product hardening.
+- Boundary doc: `docs/delegation-framework-boundary.md`
+- Generic skill prototype: `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- Wrapper now supports configurable task and log roots:
+  - `CLAUDE_DELEGATE_TASK_ROOT`
+  - `CLAUDE_DELEGATE_LOG_DIR`
+- MingSi continues to use `docs/subtasks` by default, but future projects can use a different task root without changing the wrapper.
+
 Current prepared slice:
 
 - Subtask: `033-claude-code-conclusion-log-smoke`

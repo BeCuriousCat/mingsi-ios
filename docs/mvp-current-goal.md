@@ -6,6 +6,8 @@ Date: 2026-06-04
 
 MingSi is being hardened toward a personal alpha that is quiet, evidence-backed, and operationally verifiable.
 
+This repo is also dogfooding a second, separate framework project: Codex-to-Claude Code managed delegation. The framework is a tooling project, not a MingSi feature. It should be generic enough to extract later and must not bake MingSi business semantics into its skill or wrapper contract.
+
 Current Codex goal:
 
 > Build MingSi into a usable personal thinking coach while also making the engineering process itself observable and recoverable: Codex owns product judgment and final verification, Claude Code is used only for bounded slices with measurable progress, and every accepted claim must have build, test, screenshot, log, or repository evidence.
@@ -17,6 +19,7 @@ This means the project is not trying to maximize generated code volume. It is tr
 - GLM coding-plan token capacity is treated as abundant relative to GPT manager tokens: routine Claude Code coding slices should budget generously enough to reach `HANDOFF` instead of stopping early from small budget guards; large slices should set an even higher explicit budget.
 - No worker output is accepted without `HANDOFF`, targeted verification, and Codex rerun evidence.
 - If delegation adds more coordination cost than it saves, Codex implements directly and records why.
+- The reusable delegation framework should push boilerplate into task contracts, templates, wrapper automation, and conclusion-first monitoring so manager tokens are spent on architecture and acceptance rather than process babysitting.
 - User-facing bugs, especially AI failure/audit visibility issues, are fixed only when the behavior is visible, retryable, and auditable.
 
 ## Current Stop Condition
@@ -37,7 +40,7 @@ MVP can stop only when the app can run as a coherent personal alpha version that
 The repo is past raw skeleton work. Current priority is MVP hardening:
 
 1. Keep process docs aligned before additional coding.
-2. Harden the Claude Code delegation pipeline before any further implementation worker attempt.
+2. Keep the reusable delegation framework separate from MingSi business semantics and dogfood it on bounded implementation slices.
 3. Stabilize visual and interaction bugs in Today / History / Projects / Growth / Settings.
 4. Keep AI repair, retry, and PromptRun audit paths visible and testable.
 5. Harden evidence-backed Project and Growth views.

@@ -21,6 +21,8 @@ environment overrides:
   CLAUDE_DELEGATE_TMUX_STYLE=classic  # classic or native; classic is safer in non-interactive shells
   CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 # print mode only; general GLM coding budget guard
   CLAUDE_DELEGATE_SHOW_FLOW_LOGS=0     # set 1 only for diagnostics / failed acceptance
+  CLAUDE_DELEGATE_TASK_ROOT=docs/subtasks
+  CLAUDE_DELEGATE_LOG_DIR=$CLAUDE_DELEGATE_TASK_ROOT/logs
 
 notes:
   In non-interactive shells, tmux launch falls back to print mode.
@@ -33,6 +35,15 @@ EOF
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
+
+absolute_or_repo_path() {
+  local path="$1"
+  if [[ "$path" == /* ]]; then
+    printf '%s\n' "$path"
+  else
+    printf '%s/%s\n' "$repo_root" "$path"
+  fi
+}
 
 timestamp() {
   date '+%Y-%m-%dT%H:%M:%S%z'
@@ -52,7 +63,10 @@ if [[ -z "$subtask" ]]; then
 fi
 shift || true
 
-log_dir="$repo_root/docs/subtasks/logs"
+task_root="${CLAUDE_DELEGATE_TASK_ROOT:-docs/subtasks}"
+task_root_abs="$(absolute_or_repo_path "$task_root")"
+task_log_dir="${CLAUDE_DELEGATE_LOG_DIR:-$task_root/logs}"
+log_dir="$(absolute_or_repo_path "$task_log_dir")"
 delegate_dir="$repo_root/.claude/delegation"
 event_log="$log_dir/${subtask}-events.jsonl"
 raw_log="$log_dir/${subtask}-claude-run.jsonl"
@@ -85,7 +99,7 @@ progress_file_for() {
   if [[ $# -gt 0 && -n "${1:-}" ]]; then
     printf '%s\n' "$1"
   else
-    printf 'docs/subtasks/%s-progress.md\n' "$subtask"
+    printf '%s/%s-progress.md\n' "$task_root" "$subtask"
   fi
 }
 
@@ -176,7 +190,7 @@ sync_worker_task_docs() {
   copy_repo_file_to_worker "$progress_file"
 
   local task_doc
-  for task_doc in "$repo_root"/docs/subtasks/"$subtask"*; do
+  for task_doc in "$task_root_abs"/"$subtask"*; do
     [[ -f "$task_doc" ]] || continue
     copy_repo_file_to_worker "${task_doc#$repo_root/}"
   done
