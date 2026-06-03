@@ -542,6 +542,42 @@ createdAt
 - 待补跑判断应按 `promptId + sourceRecordIdsJson + contextRecordIdsJson + promptVersion + modelName` 去重，避免同一个失败被重复计数。
 - 如果同一 key 后续已有成功 PromptRun，旧失败不再视为 unresolved failure。
 
+### HistoricalRetryCandidate
+
+用途：
+
+- 保存旧 AI 失败重试后的候选结果，等待用户评审。
+- 防止历史补跑直接覆盖已经确认的证据链。
+- 让历史输入在 GLM 失败后仍可恢复为长期资产。
+
+字段：
+
+```text
+id
+schemaVersion
+failedPromptRunId
+repairPromptRunId
+promptId
+sourceDailyEntryId
+status: pending | retrying | candidate_ready | accepted | dismissed | blocked | failed
+reconstructedInputSummary
+candidatePayloadJson
+error
+blockedReason
+createdAt
+updatedAt
+deletedAt
+```
+
+保留规则：
+
+- 该实体需要显式 migration；不能作为无迁移变更引入。
+- `failedPromptRunId` 指向原始失败 PromptRun。
+- `repairPromptRunId` 指向补跑产生的新 PromptRun，失败和成功都要可审计。
+- `candidatePayloadJson` 保存经过 schema 校验的候选语义输出，不保存 UI 布局。
+- 接受候选前必须重新检查是否存在已确认卡片、问题、任务、原则、项目或成长证据。
+- 被忽略、失败或阻断的 candidate 仍保留，用于解释为什么旧失败没有变成正式资产。
+
 ## Derived or Disposable Data
 
 以下数据可以重建，不是事实源：

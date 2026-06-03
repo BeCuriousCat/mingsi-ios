@@ -2,6 +2,33 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Codex Architecture Alignment - Subtask 026 Historical AI Retry Candidate Review PRD
+
+Reason:
+
+- Subtask 025 completed a read-only audit but recommended implementation details that conflicted with migration requirements.
+- Historical retry touches product semantics, durable persistence, AppStore orchestration, and History evidence integrity.
+- The delegation skill marks those areas as Codex-owned rather than safe worker implementation.
+
+Delegation decision:
+
+- Claude Code was not used for this slice.
+- Codex wrote the PRD and data architecture alignment directly.
+
+Output:
+
+- `docs/subtasks/026-historical-ai-retry-candidate-review-prd.md`
+- `docs/data-architecture.md` updated with `HistoricalRetryCandidate`.
+- `docs/mvp-stage-progress.md` updated with the new recommended next slice.
+- `docs/verification-log.md` updated with verification scope.
+
+Manager decision:
+
+- Historical retry starts with `organizeCards` only.
+- Retry results are reviewable candidates, not automatic overwrites.
+- Durable candidate storage requires explicit migration.
+- Next implementation may be split into smaller slices after schema, guards, and tests are fixed.
+
 ## 2026-06-03: Claude Code Delegation Prepared - Subtask 025 Historical AI Retry Audit
 
 Reason:

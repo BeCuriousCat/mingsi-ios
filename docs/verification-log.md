@@ -2,6 +2,37 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-03: Historical AI Retry Candidate Review PRD
+
+Scope:
+
+- Convert the Subtask 025 audit into a product and architecture decision for historical AI retry.
+- Specify candidate review semantics, first-prompt scope, data model, migration requirement, guards, UI states, and delegatable follow-up slices.
+- Align `docs/data-architecture.md` with the new `HistoricalRetryCandidate` entity.
+
+Changed areas:
+
+- `docs/subtasks/026-historical-ai-retry-candidate-review-prd.md`
+- `docs/data-architecture.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+git status --short
+git diff --check
+```
+
+Result:
+
+- `git diff --check` passed.
+
+Residual risk:
+
+- This is a PRD/architecture alignment slice, not an implementation.
+- The next code slice still needs migration, repository, AppStore guard, and History UI tests.
+
 ## 2026-06-03: Historical AI Retry Read-Only Audit
 
 Scope:
