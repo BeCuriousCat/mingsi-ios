@@ -27,6 +27,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Added a regression test for stable History filter chip metrics.
 - Completed read-only Claude Code visual smoke audit. Accepted Settings AI audit list scalability as the next high-priority bounded implementation slice.
 - Settings AI audit now groups recent calls into failed and successful sections, with failures expanded and successes collapsed by default.
+- Completed read-only Claude Code audit for historical AI retry. Codex accepted the current-state map but rejected immediate implementation because the proposed new table would require an explicit migration and the retry semantics remain product-sensitive.
 
 ## Known Remaining Work
 
@@ -39,9 +40,9 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Current Recommended Next Slice
 
-After Settings AI audit grouping, the next bounded implementation slice should be:
+After Settings AI audit grouping and the Subtask 025 audit, the next bounded slice should be:
 
-- Historical AI retry entry point and candidate review UX.
+- Historical AI retry candidate-review PRD and architecture alignment, followed by a smaller implementation slice only after persistence and overwrite semantics are settled.
 
 Secondary candidates:
 

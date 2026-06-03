@@ -2,6 +2,42 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-03: Historical AI Retry Read-Only Audit
+
+Scope:
+
+- Delegate a read-only audit of current historical AI retry capability.
+- Identify existing retry infrastructure, blockers, and the safest next slice without changing Swift source or tests.
+- Record Codex acceptance and rejection of Claude Code findings.
+
+Changed areas:
+
+- `docs/subtasks/025-historical-ai-retry-audit-prd.md`
+- `docs/subtasks/025-historical-ai-retry-audit-progress.md`
+- `docs/subtasks/025-historical-ai-retry-audit-claude-prompt.md`
+- `docs/subtasks/025-historical-ai-retry-audit-findings.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+- `docs/architecture-decisions.md`
+
+Commands run:
+
+```bash
+git diff --check -- docs/subtasks/025-historical-ai-retry-audit-progress.md docs/subtasks/025-historical-ai-retry-audit-findings.md
+```
+
+Result:
+
+- Whitespace check passed for the delegated audit outputs.
+- Claude Code reached `HANDOFF` with status `DONE`.
+- Codex accepted the implementation map and rejected the direct implementation recommendation because it contradicted migration requirements and touched product-sensitive retry semantics.
+
+Residual risk:
+
+- This was a code/document audit, not a runtime feature implementation.
+- Historical retry still needs a Codex-owned PRD/architecture pass before any implementation delegation.
+
 ## 2026-06-03: Settings AI Audit Grouping
 
 Scope:

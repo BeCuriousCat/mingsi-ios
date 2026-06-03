@@ -108,3 +108,22 @@ Decision:
 Rationale:
 
 - The product's credibility depends on clarity, restraint, and evidence, not AI-wrapper aesthetics.
+
+## ADR-009: Historical AI Retry Must Be Reviewable
+
+Decision:
+
+- Retrying an old failed AI call must first produce a reviewable candidate or proposal.
+- Historical retry must not directly overwrite confirmed cards, questions, quests, principles, project links, project insights, or growth evidence.
+- A new durable retry-candidate table requires an explicit migration and test coverage. It cannot be treated as a no-migration change.
+
+Rationale:
+
+- History is the evidence archive; old failures should become recoverable assets, not hidden liabilities.
+- Cross-day repair can conflict with later manual edits or confirmed downstream evidence.
+- Reviewable candidates preserve user agency and keep AI repair auditable.
+
+Implementation boundary:
+
+- Codex owns historical retry semantics, persistence design, and AppStore orchestration.
+- Claude Code may only receive smaller bounded slices after the PRD names write targets, guards, tests, and migration behavior.

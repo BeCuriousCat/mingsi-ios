@@ -2,6 +2,54 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Claude Code Delegation Prepared - Subtask 025 Historical AI Retry Audit
+
+Reason:
+
+- `docs/mvp-stage-progress.md` names historical AI retry entry point and candidate review UX as the current recommended next slice.
+- Direct implementation would touch cross-day repair semantics and likely AppStore orchestration, which the delegation skill marks as high-risk for worker implementation.
+- A read-only audit is a good Claude Code target: the output is bounded, testable by document quality, and should clarify the next safe implementation slice.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/025-historical-ai-retry-audit-prd.md`
+- Progress: `docs/subtasks/025-historical-ai-retry-audit-progress.md`
+- Prompt: `docs/subtasks/025-historical-ai-retry-audit-claude-prompt.md`
+
+Allowed write set:
+
+- `docs/subtasks/025-historical-ai-retry-audit-progress.md`
+- `docs/subtasks/025-historical-ai-retry-audit-findings.md`
+
+Delegation rationale:
+
+- This task should save Codex context because Claude can inspect existing retry, PromptRun, History UI, and persistence tests while Codex stays in product/architecture review mode.
+
+Launch plan:
+
+- Use Claude Code in read-only audit mode.
+- Check progress at low frequency; for this simple audit, use 3-minute intervals and a 5-check budget if no handoff is produced.
+- Codex will not inspect partial outputs before `HANDOFF`.
+
+Delegation status:
+
+- Completed in read-only audit mode.
+- Claude Code progress reached `HANDOFF` with status `DONE`.
+- Findings were written to `docs/subtasks/025-historical-ai-retry-audit-findings.md`.
+
+Codex acceptance:
+
+- Accepted: current-day retry, PromptRun unresolved failure discovery, History repair-row visibility, and state guards are correctly identified.
+- Accepted: historical retry should produce a reviewable proposal rather than immediately overwriting durable evidence.
+- Rejected: the direct implementation recommendation to add a new repository/table while also claiming no schema migration is required. A new durable table requires an explicit migration and architecture approval.
+- Rejected for immediate delegation: implementation would touch cross-day product semantics, AppStore orchestration, and possibly persistence. Those are Codex-owned unless split into smaller safe slices.
+
+Manager decision:
+
+- Treat Subtask 025 as a completed audit, not an implementation plan.
+- Next safe step is a product/architecture PRD for historical retry candidate review, or a smaller no-migration UI slice that exposes old failure details and a clear retry limitation.
+- Do not delegate historical retry implementation until the write set, persistence strategy, overwrite semantics, and acceptance tests are agreed.
+
 ## 2026-06-03: Claude Code Delegation Prepared - Subtask 024 Settings AI Audit Grouping
 
 Reason:
