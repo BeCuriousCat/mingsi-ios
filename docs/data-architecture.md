@@ -72,6 +72,8 @@ deletedAt
 用途：
 
 - 保存抽象项目上下文，不保存公司敏感原名。
+- 聚合多天 DailyEntry、ThinkingCard、Quest、Verification 和 PrincipleAsset。
+- 支持用户确认的项目合并、拆分、归档和恢复。
 
 字段：
 
@@ -80,12 +82,145 @@ id
 schemaVersion
 name
 goal
+successCriteria
 currentBottleneck
-status
+openQuestionsJson
+status: active | watching | paused | archived
+createdBy: user | ai_suggested
+confidence
+mergeHistoryJson
+fieldRevisionJson
 createdAt
 updatedAt
 deletedAt
 ```
+
+保留规则：
+
+- 项目是长期上下文，不能因为 UI 卡片变化而丢失。
+- AI 只能创建 candidate，正式 Project 必须由用户确认。
+- 项目合并必须保留原项目 id、名称、目标、阻塞和合并理由。
+- 敏感原始文本不写入项目摘要，项目只能引用本地证据 id。
+- goal、successCriteria、currentBottleneck 和 openQuestions 的修改需要保留 revision，避免后续看不出项目认知如何变化。
+
+### ProjectCandidate
+
+用途：
+
+- 保存 AI 或用户从证据中提出但尚未确认的长期议题。
+- 支持用户接受、改名后接受、暂时忽略或拒绝。
+- 防止同类候选在短期内反复出现。
+
+字段：
+
+```text
+id
+schemaVersion
+suggestedName
+suggestedGoal
+suggestedBottleneck
+suggestedSuccessCriteria
+reason
+sourceRefsJson
+privacyReviewNote
+status: pending | accepted | renamed_and_accepted | dismissed | rejected
+acceptedProjectId
+createdBy: user | ai_suggested
+confidence
+createdAt
+updatedAt
+deletedAt
+```
+
+保留规则：
+
+- sourceRefsJson 至少包含 1 个来源。
+- rejected 候选必须保留 reason 和 sourceRefs，避免模型重复建议。
+- accepted 后创建 Project，但 ProjectCandidate 不删除，用于审计创建来源。
+- privacyReviewNote 不能保存公司原名、客户名或内部代号。
+
+### ProjectLink
+
+用途：
+
+- 表示某条证据与某个项目的关系。
+- 解耦项目 UI 和原始记录，方便后续重排页面或替换卡片形态。
+
+字段：
+
+```text
+id
+schemaVersion
+projectId
+sourceType: daily_entry | thinking_card | quest | verification | principle
+sourceId
+linkType: evidence | blocker | decision | task | principle | risk
+confidence
+isUserConfirmed
+createdAt
+updatedAt
+deletedAt
+```
+
+保留规则：
+
+- 未确认卡片不能作为强证据，只能作为 candidate link。
+- 用户拒绝的 link 需要保留 rejection 记录，避免 AI 反复建议。
+
+### ProjectMergeCandidate
+
+用途：
+
+- 保存 AI 提出的项目合并候选，等待用户确认。
+
+字段：
+
+```text
+id
+schemaVersion
+sourceProjectId
+targetProjectId
+reason
+overlappingEvidenceRefsJson
+status: pending | accepted | rejected | dismissed
+createdAt
+updatedAt
+```
+
+### ProjectInsight
+
+用途：
+
+- 保存从项目证据链中生成的进展信号和思考变化说明。
+- 让 Project 页面能回答“项目为什么在推进”和“我的思考哪里变了”。
+- 作为可重建的解释层，不替代 ProjectLink 事实源。
+
+字段：
+
+```text
+id
+schemaVersion
+projectId
+insightType: progress | blocker_change | thinking_change | open_question_closed | principle_practiced | next_bet
+title
+summary
+beforeText
+afterText
+sourceRefsJson
+periodStart
+periodEnd
+confidence
+userFeedback: accepted | inaccurate | dismissed | none
+createdAt
+updatedAt
+deletedAt
+```
+
+保留规则：
+
+- ProjectInsight 必须至少有 1 个 sourceRef；thinking_change 和 blocker_change 类型必须有 before 和 after 来源。
+- 用户标记 inaccurate 的 insight 不参与 Growth 归因，但仍保留审计记录。
+- ProjectInsight 可以随 Prompt 版本重算，但旧 insight 不直接覆盖，使用新 revision 或新记录。
 
 ### DailyEntry
 
@@ -102,7 +237,8 @@ date
 rawText
 sessionMode: quick | standard | deep
 transcriptQuality
-status: draft | organized | confirmed | reflected | quested | verified | incomplete
+loopState: verify_yesterday | capture | organizing | review_cards | select_mode | select_lens | answer_questions | review_quests | extract_principle | session_complete
+displayStatus: draft | in_progress | quested | completed | incomplete
 privacyFlagsJson
 createdAt
 updatedAt
@@ -114,6 +250,8 @@ deletedAt
 - `rawText` 默认不自动删除。
 - 用户可以手动删除整条 DailyEntry。
 - 删除时默认软删除。
+- `loopState` 是事实源，必须对应 Today state machine。
+- `displayStatus` 是派生展示字段，可重建，不作为流程判断事实源。
 
 ### ThinkingCard
 
@@ -146,6 +284,9 @@ deletedAt
 保留规则：
 
 - 用户确认后的卡片不被自动覆盖。
+- 流式整理阶段产生的 `StreamingCardDraft` 是临时 UI 状态，不写入 `ThinkingCard` 表。
+- 闭合并通过 schema 校验的流式卡片只能成为待确认候选；只有 `isConfirmed == true` 或 `isExcludedFromModel == true` 的卡片才允许持久化。
+- 后台 AI 补跑不得在已存在卡片、问题、任务或原则时重跑 `organizeCards`，避免覆盖用户已确认或下游生成的状态。
 - 卡片合并时保留被合并卡片的 sourceRefs。
 - UI 变体不能改变 ThinkingCard 的语义字段。
 
@@ -305,6 +446,11 @@ executionReliability
 calibration
 reflectionDepth
 evidenceRefsJson
+positiveContributionRefsJson
+negativeContributionRefsJson
+previousScoresJson
+deltaScoresJson
+metricReasonsJson
 summary
 createdAt
 updatedAt
@@ -315,12 +461,54 @@ deletedAt
 
 - MetricSnapshot 是报告快照，不是唯一事实源。
 - 报告必须能链接到底层 DailyEntry、Quest、Verification 和 PrincipleAsset。
+- MetricSnapshot 不能只保存分数，必须保存解释和贡献项引用。
+- 少于 3 次完整闭环时，MetricSnapshot 可以保存为 insufficient_evidence 状态，但 UI 不能展示具体分数。
+- 本期值必须可由 previousScoresJson、deltaScoresJson 和 MetricContribution 重建。
+- 如果 contribution 缺少 sourceId，MetricSnapshot 只能保存为 draft 或 insufficient_evidence。
+
+### MetricContribution
+
+用途：
+
+- 解释某个指标为什么加分或减分。
+- 支持 Growth 页面展示“哪一次变化加分，哪一次变化减分”。
+
+字段：
+
+```text
+id
+schemaVersion
+snapshotId
+metric: clarity | value_judgment | execution_reliability | calibration | reflection_depth
+direction: positive | negative
+delta
+title
+reason
+sourceType: daily_entry | thinking_card | quest | verification | principle | project
+sourceId
+sourceDailyEntryId
+userFeedback: accepted | inaccurate | dismissed | none
+candidateStatus: candidate | accepted | rejected
+createdAt
+updatedAt
+deletedAt
+```
+
+保留规则：
+
+- 每个 contribution 必须有 sourceId。
+- sourceDailyEntryId 用于 Growth -> History day detail 的稳定跳转。
+- 没有证据来源的 contribution 不允许进入正式报告。
+- delta 是趋势解释，不是用户能力定论。
+- 用户标记 inaccurate 后，该 contribution 保留但不再计入下一次趋势解释。
+- candidate contribution 可以由 AI 生成，但进入 confirmed trend 前必须经过报告生成规则过滤。
 
 ### PromptRun
 
 用途：
 
 - 保存每次 AI 调用的可追踪信息。
+- 作为后续跨启动补跑、错误审计和模型输出质量评估的持久来源。
 
 字段：
 
@@ -335,6 +523,7 @@ modelProvider
 modelName
 sessionMode
 sourceRecordIdsJson
+contextRecordIdsJson
 requestSummary
 responseJson
 error
@@ -346,6 +535,12 @@ createdAt
 - 不保存隐藏推理链。
 - 保存结构化输出和必要元数据。
 - 用户可在设置中清除 PromptRun 日志，但清除日志不能删除已确认的用户内容。
+- MVP 当前通过 `PromptTracingLLMClient` 写入 `prompt_runs`，成功调用保存 responseJSON，失败调用保存 error。
+- Today 的待补跑横幅会在启动加载本地草稿后，从 `PromptRunRepository.unresolvedFailures` 恢复当前 DailyEntry 的可补跑 Prompt。
+- `sourceRecordIdsJson` 记录本次请求直接来源，例如当前 DailyEntry、卡片、问题、任务。
+- `contextRecordIdsJson` 记录被纳入上下文的辅助资产，例如相关 PrincipleAsset；旧记录在 v7 migration 中用 source ids 回填。
+- 待补跑判断应按 `promptId + sourceRecordIdsJson + contextRecordIdsJson + promptVersion + modelName` 去重，避免同一个失败被重复计数。
+- 如果同一 key 后续已有成功 PromptRun，旧失败不再视为 unresolved failure。
 
 ## Derived or Disposable Data
 
@@ -372,6 +567,11 @@ createdAt
 删除优先 soft delete。
 迁移后写入 migration log。
 ```
+
+当前实现中的兼容迁移：
+
+- `v6_metric_contribution_source_entry_backfill`：为已经执行过早期 Growth 表结构的本地数据库补齐 `metric_contributions.source_daily_entry_id`，避免历史/成长证据查询在旧库上失败。
+- 该迁移只补列，不删除或重写已有贡献记录；旧记录的来源日期为空字符串，后续不会被当作可追溯证据计入展示跳转。
 
 示例：
 

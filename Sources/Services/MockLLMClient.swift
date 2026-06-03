@@ -155,6 +155,23 @@ final class MockLLMClient: LLMClient {
                 "next_month_focus": "Improve verification of quest value after completion.",
                 "value_judgment": ["trend": "improving"]
             ])
+
+        case .suggestProjectLinks:
+            return try encode([
+                "project_link_candidates": [],
+                "new_project_candidates": []
+            ] as [String: [Any]])
+
+        case .generateProjectInsights:
+            return try encode([
+                "insights": [],
+                "insufficient_evidence_reason": "Mock client requires real AI for insights."
+            ] as [String: Any])
+
+        case .suggestProjectMerges:
+            return try encode([
+                "merge_candidates": []
+            ] as [String: [Any]])
         }
     }
 

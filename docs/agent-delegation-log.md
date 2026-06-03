@@ -2,6 +2,914 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Claude Code Delegation Prepared - Subtask 024 Settings AI Audit Grouping
+
+Reason:
+
+- Subtask 023 identified Settings AI audit list scalability as the top accepted concern.
+- The desired implementation is narrow and local: group/collapse recent PromptRun rows in Settings without schema or persistence changes.
+- This is a good Claude Code target if isolated worktree execution can safely include the current source state.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/024-settings-ai-audit-grouping-prd.md`
+- Progress: `docs/subtasks/024-settings-ai-audit-grouping-progress.md`
+- Prompt: `docs/subtasks/024-settings-ai-audit-grouping-claude-prompt.md`
+
+Expected implementation write set:
+
+- `Sources/Features/FeatureTabs.swift`
+- Optional targeted test additions in `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/024-settings-ai-audit-grouping-progress.md`
+
+Delegation status:
+
+- Prepared.
+- Claude Code was run in read-only planning mode because isolated implementation is unsafe with the current dirty manager worktree.
+- Claude returned a START-ready implementation plan, not an implementation handoff.
+- Codex rejected direct Claude implementation in the manager worktree to preserve isolation rules.
+
+Read-only planning result:
+
+- Minimal source change is local to `SettingsView.promptAuditCard` in `Sources/Features/FeatureTabs.swift`.
+- Add local collapse state for failed and successful groups.
+- Group `PromptRun` by `run.error?.isEmpty == false`.
+- Reuse existing `PromptRunAuditRow`.
+- No schema, repository, LLM, or prompt changes needed.
+
+Next manager decision:
+
+- Implement directly in the current manager tree with a small Codex patch, or first stabilize/stage the current dirty worktree and then delegate implementation in an isolated worktree.
+
+Outcome:
+
+- Codex implemented this slice directly after reading the updated `claude-code-managed-delegation` skill.
+- Delegation was not used for coding because:
+  - the expected production/test diff was below the delegation cost threshold;
+  - the manager worktree remained very dirty;
+  - there was no safe isolated worker worktree containing the current uncommitted source state.
+- Claude's read-only plan was accepted as directionally correct.
+- Codex added the grouping helper and Settings grouped audit UI.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' clean test -only-testing:MingSiTests/AppStoreStateMachineTests
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:MingSiTests/AppStoreStateMachineTests
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:MingSiTests/HistoryFeatureTests
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- RED confirmed by clean test before implementation: `PromptRunAuditSummary` missing.
+- AppStoreStateMachineTests passed: 91 tests, 0 failures.
+- HistoryFeatureTests passed: 24 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Delegation lesson:
+
+- For small, local UI/state helpers in a dirty worktree, Claude Code should stay read-only unless a true isolated worktree can be created. The updated delegation threshold correctly avoided turning Claude into a rough-draft generator.
+
+## 2026-06-03: Claude Code Delegation Prepared - Subtask 023 Visual Smoke Audit
+
+Reason:
+
+- Current repo docs identify visual QA across Today, History, Projects, Growth, and Settings as the next hardening priority.
+- This is a read-only audit with clear output and narrow write set, so it is appropriate for Claude Code.
+- Final visual taste and implementation decisions remain with Codex.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/023-visual-smoke-audit-prd.md`
+- Progress: `docs/subtasks/023-visual-smoke-audit-progress.md`
+- Prompt: `docs/subtasks/023-visual-smoke-audit-claude-prompt.md`
+
+Expected write set:
+
+- `docs/subtasks/023-visual-smoke-audit-progress.md`
+- `docs/subtasks/023-visual-smoke-audit-findings.md`
+
+Delegation status:
+
+- Completed in read-only `claude -p` mode.
+- First sandboxed attempt failed because Claude needed to write its own `~/.claude/session-env` files.
+- Escalated CLI execution was approved and completed.
+- Claude returned `DONE_WITH_CONCERNS`; Codex copied the handoff into `docs/subtasks/023-visual-smoke-audit-findings.md`.
+
+Codex acceptance:
+
+- Accepted: Settings AI audit list needs collapsible/grouped presentation and is a good next bounded implementation slice.
+- Partially accepted: Project merge audit hierarchy is a real concern but needs Codex product/taste design before coding.
+- Backlog: History long project-name truncation and Project evidence two-line truncation.
+
+Verification:
+
+- `git diff --check` pending after Codex document updates.
+
+## 2026-06-03: Codex Process Alignment - No Claude Delegation
+
+Reason:
+
+- The active operating prompt requires process files for current goal, stage progress, verification, and architecture decisions.
+- Several required process files were missing from the repo.
+- This is owner/manager alignment work, not a bounded implementation slice.
+
+Delegation decision:
+
+- Claude Code was not used.
+- The task failed the delegation readiness gate because it required repo-wide goal interpretation and final authority over current MVP stop conditions.
+
+Codex actions:
+
+- Added `docs/mvp-current-goal.md`.
+- Added `docs/mvp-stage-progress.md`.
+- Added `docs/verification-log.md`.
+- Added `docs/architecture-decisions.md`.
+- Recorded current History advanced-filter verification evidence.
+
+Verification:
+
+- Required process files exist.
+- `git diff --check` passed.
+
+## 2026-06-03: Claude Code Pipeline Audit + Codex Direct Fixes
+
+Reason:
+
+- The worktree contained broad changes from Codex, Claude Code, and GLM.
+- The user asked whether Claude Code is worth using for coding and how to inspect delegation results.
+- The current app also had two P0 usability bugs: unreadable dark mode and no clear way to supplement input after cards were generated.
+
+Read-only audit:
+
+- Codex delegated a read-only audit to a subagent for Claude Code completion history.
+- Evidence reviewed: `docs/agent-delegation-log.md`, `docs/subtasks/*progress*.md`, and `docs/subtasks/logs/*`.
+- The audit found the raw Claude log files currently present were empty, so reliable evidence came from progress files and Codex review notes.
+
+Findings:
+
+- Useful Claude deliveries: 009 Growth Attribution, 009A Growth Metric Detail UI, 012 Visual QA Polish, 013 Growth AI Report.
+- Partial deliveries requiring Codex takeover: 007, 008A, 010, 014, 018, 019.
+- Non-delivery or no verifiable handoff: read-only review attempt, 021 History Advanced Filters, 022 Project Editing Governance.
+- Conclusion: Claude Code remains useful as a narrow supervised worker for parser/service slices, local UI polish, and read-only audits. It should not own cross-module state machines, persistence migrations, prompt context strategy, product semantics, or final visual taste.
+
+Pipeline rule retained:
+
+- Every Claude task needs a PRD, progress file, and prompt file.
+- Progress file checkpoints are limited to `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Codex checks progress no more often than every 3-5 minutes unless blocked.
+- No Claude output is accepted without diff review and targeted tests.
+
+Codex direct fixes completed:
+
+- Fixed dark-mode readability by converting design-system tokens to dynamic light/dark colors.
+- Added Today supplementary input path after generated cards: append input, return to Capture, clear derived artifacts, and regenerate.
+- Fixed the current Project Editor `Section` compile blocker.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testSupplementCaptureAfterGeneratedCards_appendsTextAndReturnsToCaptureForRegeneration test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testDesignTokens_resolveToReadableDarkModeContrast test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+```
+
+Result:
+
+- Supplement input regression passed: 1 test, 0 failures.
+- Dark-mode design-token regression passed: 1 test, 0 failures.
+- AppStore state-machine suite passed: 88 tests, 0 failures.
+
+## 2026-06-02: Claude Code Non-delivery + Codex Direct Implementation - Subtask 021 History Advanced Filters
+
+Reason:
+
+- History already had keyword search and broad evidence-type filters, but the product still needed project/lens/card/quest filters so History can act as a useful evidence archive for Projects and Growth.
+- The slice was bounded and local-derived: no migration, no AI search, and no saved filter persistence.
+
+Delegation:
+
+- Tool: `/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --model glm-4.6`
+- Required PRD: `docs/subtasks/021-history-advanced-filters-prd.md`
+- Required progress file: `docs/subtasks/021-history-advanced-filters-progress.md`
+- Required prompt: `docs/subtasks/021-history-advanced-filters-claude-prompt.md`
+- Log file: `docs/subtasks/logs/021-history-advanced-filters-claude.log`
+
+Result:
+
+- Claude Code was started with PID `38764`, but did not write a handoff, log output, or progress checkpoints.
+- Codex treated the delegation as non-delivery and implemented the slice directly with TDD.
+
+Accepted changes after Codex implementation:
+
+- Extended `HistorySearchQuery` with optional `projectId`, `lens`, `cardType`, and `questStatus` filters.
+- Kept all query filters as intersections with existing keyword and broad evidence filters.
+- Added compact History advanced filter menus derived from currently loaded records and `store.projectNames`.
+- Kept filter state ephemeral for MVP; no migration or persistence.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+```
+
+Result:
+
+- RED failed before implementation because `HistorySearchQuery` did not accept advanced filter parameters.
+- GREEN passed after implementation: 23 tests, 0 failures.
+
+## 2026-06-02: Codex Direct Implementation - Subtask 020 Growth Report Review
+
+Reason:
+
+- Project merge review is implemented and docs are aligned.
+- The next useful MVP gap is making Growth report results reviewable from existing evidence instead of only showing a generation status message.
+- The slice touches AppStore state and Growth UI together, so Codex is implementing it directly with TDD before considering Claude Code for visual QA.
+
+Scope:
+
+- Required PRD: `docs/subtasks/020-growth-report-review-prd.md`
+- Required progress file: `docs/subtasks/020-growth-report-review-progress.md`
+- No new database table or migration.
+- Use existing `MetricSnapshot` and `MetricContribution`.
+
+Review requirements:
+
+- Only accepted, not-inaccurate, not-dismissed contributions with source ids may appear in report review.
+- No score or progress narrative can appear when `MetricSnapshot.canDisplayScores == false`.
+- Metric detail and history drilldown behavior must remain intact.
+
+## 2026-06-02: Claude Code Delegation - Subtask 019 Project Merge Review
+
+Reason:
+
+- Project candidate/link review and ProjectInsight review are implemented.
+- The targeted Project governance gap was merge candidate generation/review with explicit source refs and user confirmation.
+- This is a bounded implementation slice with existing domain model, parser, persistence repository, and no migration.
+
+Delegation:
+
+- Tool: `/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --model glm-4.6`
+- Required PRD: `docs/subtasks/019-project-merge-review-prd.md`
+- Required progress file: `docs/subtasks/019-project-merge-review-progress.md`
+- Required prompt: `docs/subtasks/019-project-merge-review-claude-prompt.md`
+- Progress protocol: Claude must update the progress file at start, after RED tests, after implementation, after targeted verification, and final handoff.
+
+Codex review requirements:
+
+- Treat Claude output as untrusted until diff review and tests pass.
+- Verify Project merge candidates cannot be saved from unknown project ids or unresolved evidence refs.
+- Verify accept archives source project, preserves target project, appends merge audit history, and marks candidate accepted.
+- Verify SwiftUI calls AppStore only.
+
+Claude result:
+
+- Claude produced RED tests and partial implementation, then Codex stopped it because the diff was broad and the implementation was not verified.
+- Codex repaired compile errors, test issues, AppStore service injection, UI integration, and state refresh directly.
+
+Accepted changes after Codex review:
+
+- Added `PromptID.suggestProjectMerges` and local strict JSON prompt template.
+- Added `ProjectAIService.suggestProjectMerges(context:)` with source refs and context refs.
+- Added AppStore merge candidate state, generation, accept, reject, and dismiss actions.
+- Added Projects tab “议题治理” review section.
+- Kept merge behavior conservative: source project archives, target project records `mergeHistory`, ProjectLink rows are not moved in this slice.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIResponseParserTests -only-testing:MingSiTests/PersistenceCoreTests test
+```
+
+Result:
+
+- Targeted suite passed: 88 tests, 0 failures.
+- Related suite passed: 182 tests, 0 failures.
+
+## 2026-06-02: Codex Direct Implementation - Subtask 017 History Search and Evidence Filter
+
+Reason:
+
+- History is the evidence archive for Projects and Growth, but browsing was mostly date-first.
+- The next useful MVP slice was local search/filter so the user can find prior evidence without adding AI, migrations, or new semantic storage.
+
+Subagent:
+
+- None. Codex implemented this directly with TDD because the work was a narrow domain query plus SwiftUI control wiring.
+
+Changes:
+
+- Added `docs/subtasks/017-history-search-filter-prd.md` and progress tracking.
+- Added `HistoryEvidenceFilter` and `HistorySearchQuery` as local Domain-level derived query objects.
+- Covered keyword search across raw input, cards, quests, principles, verification, lens questions, project links, and growth contributions.
+- Added History UI search field and horizontal evidence-type filters.
+- Calendar sheet now receives the filtered records when a query/filter is active.
+- Updated History flow and implementation audit docs.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+```
+
+Result:
+
+- RED failed before implementation because `HistorySearchQuery` did not exist.
+- GREEN passed after implementation: 18 tests, 0 failures.
+- Related History/AppStore/Persistence suite passed: 137 tests, 0 failures.
+- Full suite passed: 214 tests, 0 failures.
+- Diff whitespace check passed.
+
+## 2026-06-02: Codex Direct Implementation - Subtask 016 Growth Report Trigger and Evidence Gate
+
+Reason:
+
+- Growth already had local attribution and an AI report service/parser, but the user-facing Growth tab still needed explicit weekly/monthly report actions.
+- The report trigger had to preserve the product rule that Growth is an evidence ledger, not unsupported personality scoring.
+
+Delegation:
+
+- `ralph-loop` was unavailable in PATH.
+- A Claude Code prompt was prepared at `docs/subtasks/016-growth-report-trigger-claude-prompt.md`.
+- Codex implemented the bounded slice directly via AppStore tests because the required behavior touched a narrow state-machine/UI path and needed immediate verification.
+
+Changes:
+
+- Added `isGeneratingGrowthReport` and `growthReportMessage` state to `AppStore`.
+- Updated weekly/monthly report generation so duplicate requests are guarded, snapshots are persisted, insufficient evidence creates no contributions, and successful AI report contributions are saved as accepted evidence.
+- Added a restrained Growth report action panel with weekly calibration and monthly growth actions.
+- Added AppStore tests for successful weekly report persistence and insufficient-evidence monthly behavior.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateWeeklyGrowthReport_withEnoughEvidencePersistsAISnapshotAndContributions \
+  -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateMonthlyGrowthReport_withInsufficientEvidenceSavesNoContributions \
+  test
+```
+
+Result:
+
+- Targeted tests passed: 2 tests, 0 failures.
+- Broader related Growth/Prompt suite passed: 129 tests, 0 failures.
+- Full suite passed: 209 tests, 0 failures.
+- Diff whitespace check passed.
+
+## 2026-06-02: Subagent Review + Codex Implementation - Subtask 015 Project Evidence Digest
+
+Reason:
+
+- The Projects tab had a real evidence foundation, but Project Detail still looked like an evidence list plus an insufficient-evidence message.
+- User previously asked how a project should show progress, thinking change, and next valuable action without fake dashboards or unsupported scores.
+
+Subagent:
+
+- Read-only explorer `019e8495-73c4-7ee1-8dd0-8c0f6feb2a56` / `Turing`.
+- Scope: audit `docs/implementation-gap-audit.md`, `docs/ux-flow.md`, `ProjectDetailView`, `ProjectEvidenceBoardItem`, `ProjectLink`, and Project models.
+- Result: confirmed current implementation already uses ProjectLink-backed evidence and recommended the same minimal next slice: local Progress Signals / Next Bet derived from existing evidence, with no new database schema and no GLM call.
+
+Changes:
+
+- Added `docs/subtasks/015-project-evidence-digest-prd.md` and `docs/subtasks/015-project-evidence-digest-progress.md`.
+- Added `ProjectEvidenceDigest`, `ProjectEvidenceSignal`, and `ProjectEvidenceSignalKind` as local derived domain objects.
+- Mapped confirmed ProjectLink evidence into Done / Learned / Newly Blocked / Risk signals.
+- Derived a local Next Bet from the latest quest, blocker/risk, or decision evidence.
+- Kept Thinking Change evidence-gated; multiple entries no longer produce fabricated change claims.
+- Added Project Detail “进展信号” rows with the existing History deep-link path.
+- Added a compact Next Bet line to Project list rows and Project Detail overview.
+- Added regression tests for task, blocker/risk, next bet, and before/after evidence gating.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/TodayAIResponseParserTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+git diff --check -- Sources/Domain/Models.swift Sources/Features/FeatureTabs.swift Tests/Features/HistoryFeatureTests.swift docs/subtasks/015-project-evidence-digest-prd.md docs/subtasks/015-project-evidence-digest-progress.md docs/agent-delegation-log.md
+```
+
+Result:
+
+- Targeted HistoryFeatureTests passed: 13 tests, 0 failures.
+- Related AppStore/History/ProjectAI/parser suite passed: 124 tests, 0 failures.
+- Full test suite passed: 207 tests, 0 failures.
+- Diff whitespace check passed.
+
+## 2026-06-02: Claude Code Delegation - Subtask 012 Visual QA Polish
+
+Reason:
+
+- Current gap audit listed visual QA for Today / History / Projects / Growth as the next implementation priority before adding more feature layers.
+- User asked Codex to act as architect and delegate bounded implementation work to Claude Code where practical, with a fixed progress file instead of frequent polling.
+
+Delegation:
+
+- Tool: `/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --effort high`
+- Required PRD: `docs/subtasks/012-visual-qa-polish-prd.md`
+- Required progress file: `docs/subtasks/012-visual-qa-polish-claude-progress.md`
+- Progress protocol: Claude updated the progress file at start and after checklist completion; Codex checked it at a low-frequency checkpoint.
+
+Claude result:
+
+- Completed the visual QA polish pass.
+- Modified only `Sources/Features/FeatureTabs.swift`.
+- Reported full test success.
+
+Accepted changes after Codex review:
+
+- `FeatureContainer` and `ProjectsView` now use full-bleed `DS.background.ignoresSafeArea()`.
+- Shared scroll surfaces now have 120pt bottom padding to reduce Tab bar collision risk.
+- History calendar sheet uses full-bleed background and lighter top/bottom padding so controls are readable immediately.
+- Projects header proportions were reduced and the existing evidence-backed board was preserved.
+- Growth kept the `canDisplayScores` guard and no longer carries the unused circular chart component.
+- Settings API configuration was compressed into smaller labeled sections with inline paste controls and a less dominant connection test row.
+
+Codex review notes:
+
+- No persistence, domain model, prompt, GLM client, repository, or Today state-machine changes were introduced by this delegated pass.
+- Codex did not accept Claude's summary as proof; Codex inspected the progress file, checked changed code regions, and reran verification.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 189 tests, 0 failures.
+
+Follow-up:
+
+- Added `docs/subtasks/013-growth-ai-report-prd.md` for the next independent service/parser/test slice: AI-assisted weekly/monthly Growth reports with strict evidence-backed schema.
+
+## 2026-06-02: Codex Direct Fix - Streaming Persistence Boundary and XML Parser Hardening
+
+Reason:
+
+- Follow-up review found that streamed candidate cards could cross the durable storage boundary too early, and background AI repair could rerun `organizeCards` after confirmed/downstream state already existed.
+- The XML-like stream parser also needed stricter schema validation: unknown card types must not silently become `.idea`, and literal text such as `< 30` inside card body must not swallow later closing tags.
+
+Subagent:
+
+- None. Codex implemented this directly because the fixes touched AppStore state boundaries, parser semantics, and regression tests.
+
+Changes:
+
+- `persistCards()` now persists only cards the user confirmed or explicitly excluded from model context.
+- Local fallback cards no longer auto-confirm the first card.
+- Background card repair now only runs while the current draft has no thinking cards, questions, quests, or principles; otherwise `.organizeCards` is removed from pending repairs instead of overwriting downstream state.
+- `XMLStreamingCardAssembler` now validates `TYPE`, `IMPORTANCE`, `SENSITIVITY`, and `CONFIDENCE` before exposing a `domainCard`.
+- Unknown XML-like tags are treated as literal field text one `<` at a time, so body text like `< 30` is preserved while later `</BODY>` and `</CARD>` tags still close correctly.
+- Added regression tests for in-memory streamed candidates, blocked background repair, literal angle bracket text, and invalid type rejection.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/XMLStreamingCardAssemblerTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testCapture_streamingCardsPopulateBeforeDomainCardsPersist -only-testing:MingSiTests/AppStoreStateMachineTests/testRetryPendingAIRepairs_doesNotRerunOrganizeCardsAfterConfirmedCardsOrDownstreamState -only-testing:MingSiTests/XMLStreamingCardAssemblerTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- XML streaming parser tests passed: 4 tests, 0 failures.
+- Targeted AppStore + XML regression tests passed: 6 tests, 0 failures.
+- Full test suite passed: 189 tests, 0 failures.
+
+## 2026-06-02: Codex Direct Implementation - XML SSE Streaming Cards
+
+Reason:
+
+- User required real streaming for MVP because a long opaque wait made AI card generation feel unreliable.
+- The agreed product shape is XML-like `MINGSI_STREAM_V1`: create a temporary card on `<CARD>`, append deltas into fields, close and validate on `</CARD>`, then convert only closed cards into candidate `ThinkingCard`s.
+
+Subagent:
+
+- None. Codex implemented this directly because the active blocker was tightly coupled compiler/test integration across the streaming parser, GLM client, Today AI service, AppStore, and Today UI.
+
+Changes:
+
+- Added `StreamingLLMClient` and stream event support.
+- Added `XMLStreamingCardAssembler` and `StreamingCardDraft` as temporary UI state.
+- Updated `DirectGLMClient` to call OpenAI-compatible SSE with `stream: true`, no `response_format`, and delta parsing from `choices[].delta.content`.
+- Preserved stream HTTP error response bodies so API key/Base URL/model errors remain visible.
+- Updated `TodayAIService.streamOrganizedCards` to assemble streamed drafts and return only closed valid domain cards.
+- Updated `AppStore` and Today organizing UI so streamed draft cards appear before persisted candidate cards.
+- Updated `organizeCards` prompt contract to use `MINGSI_STREAM_V1` and to avoid injecting historical principles at this stage.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/DirectGLMClientTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIServiceContextTests -only-testing:MingSiTests/DirectGLMClientTests -only-testing:MingSiTests/XMLStreamingCardAssemblerTests test
+```
+
+Result:
+
+- Direct GLM client tests passed: 5 tests, 0 failures.
+- Related AppStore, TodayAIService, DirectGLMClient, and XML assembler tests passed: 79 tests, 0 failures.
+
+## 2026-06-02: Codex Direct Spec Revision - Superpowers Streaming Card MVP
+
+Reason:
+
+- User decided that real streaming card generation is required for MVP because waiting without progress makes the app feel unreliable.
+- User proposed XML-like tags so the UI can create a card on the opening tag, append fields during SSE deltas, and close the card on the closing tag.
+
+Subagent:
+
+- None. Codex handled this as product/architecture spec revision directly.
+
+Changes:
+
+- Created `2026-06-02/superpowers/todo.md` to track the streaming card generation design and implementation TODO.
+- Promoted `organizeCards` streaming from future scope to MVP scope.
+- Specified `MINGSI_STREAM_V1`, a controlled XML-like protocol with `<CARD>`, field tags, and closing tags.
+- Clarified that streaming output only creates temporary `StreamingCardDraft` UI state; durable storage remains `ThinkingCard`.
+- Updated PRD, UX Flow, Prompt Spec, Technical Architecture, UI Design Draft, MVP Task Breakdown, Prompt Context Engineering PRD, and Spec Consistency Audit.
+- Explicitly separated fixed-card streaming from schema-driven dynamic UI, which remains out of MVP scope.
+
+## 2026-06-02: Socrates Audit + Codex Direct Fix - AI Waiting State and History Evidence Signals
+
+Reason:
+
+- User reported that card generation had no meaningful progress, no streaming/SSE feeling, repair controls felt duplicated, failure reasons were unclear, History card counts were misleading, and the calendar only showed a single red dot.
+
+Subagent:
+
+- Spawned read-only explorer `019e8414-8de5-7920-a3ed-8511ac393a91` (Socrates) to audit History statistics and calendar evidence markers.
+- Socrates confirmed that History summary and calendar summary used raw `record.cards.count`, while detail showed confirmed/excluded cards, and that calendar month cells used one boolean red dot for any record.
+
+Changes:
+
+- Added `HistoryRecord.confirmedCards`, `pendingCards`, `excludedCards`, `cardCountSummary`, and evidence booleans.
+- Updated History summary and calendar summaries to distinguish confirmed/pending/excluded cards.
+- Replaced the calendar's single red dot with evidence dots for cards, task/verification, and principle/summary.
+- Reworked Today organizing state into a staged AI generation progress surface with fallback reason and “重试当前步骤”.
+- Raised direct GLM request timeout default to 180 seconds and made timeout errors explicit.
+- Documented future streaming/SSE and schema-incremental card assembly as a separate protocol path, not fake MVP streaming.
+
+## 2026-06-01: Codex Direct Audit - MVP Gap Rebaseline After Project Slice
+
+Reason:
+
+- After implementing Project minimal evidence flow, several audit documents still described Projects as missing models, repositories, and real detail UI.
+- User's active goal requires product docs and implementation to stay aligned before continuing development.
+
+Subagent:
+
+- None. Codex reviewed current source, tests, and docs directly.
+
+Changes:
+
+- Updated `docs/implementation-gap-audit.md`.
+  - Reclassified Project domain/UI from critical missing foundation to medium future work.
+  - Marked verification, lens sessions, project evidence, growth attribution, history deep links, AI repair, and editable Today flow as implemented foundations.
+  - Reordered remaining work toward visual QA, search/filter, weekly/monthly report generation, Project candidates/insights/merge, and later AppStore use-case extraction.
+- Updated `docs/spec-consistency-audit.md`.
+  - Marked Projects aligned for MVP implementation.
+  - Listed current Project creation/detail/deep-link capabilities and future-scope candidate/rename/archive/merge/insight work.
+  - Clarified Growth still needs real weekly/monthly AI-assisted report generation.
+- Updated `docs/prompt-context-engineering-prd.md`.
+  - Replaced stale P0 items for verification and AI retry with current next risks: structured PromptContextPayload, strict Project/Growth schema validators, and PromptRun/ContextRun audit UI.
+
+Verification:
+
+- Documentation-only change after the Project slice.
+- Cross-checked against `Sources/App/AppStore.swift`, `Sources/App/AppRootView.swift`, `Sources/Features/Today/TodayView.swift`, `Sources/Features/FeatureTabs.swift`, and current AppStore tests.
+
+## 2026-06-01: Codex Integration With Subagent Tests - Project Minimal Evidence Flow
+
+Reason:
+
+- Project tab still lacked the MVP evidence loop: History evidence could not be saved as a long-term topic, and project rows had no detail/timeline.
+- User asked Codex to remain architect/owner and delegate bounded implementation or verification work when useful.
+
+Subagent:
+
+- Agent `019e7f70-1ccd-7c32-b56d-786937b95b80` / `Carson`
+  - Ownership: tests only.
+  - Result: added focused AppStore tests for historical Quest -> Project, historical PrincipleAsset -> Project, duplicate source-id prevention, and History deep-link data.
+  - Initial verification failed before tests due production Project Detail gaps that Codex was implementing locally.
+
+Changes:
+
+- Added `AppStore.projectsById` so Project Detail can show full overview fields, not only names.
+- Added `createProjectFromQuest(_:dailyEntryId:)` and `createProjectFromPrinciple(_:dailyEntryId:)`.
+- Centralized Project creation with repository-backed duplicate source-id checks.
+- History day detail now exposes compact `保存为长期议题` actions on Quest and Principle evidence when not already linked.
+- Projects list rows now navigate to Project Detail.
+- Project Detail shows overview fields, evidence count/date/status, Evidence Timeline, and an explicit `证据不足` thinking-change section instead of generated claims.
+- Evidence Timeline rows deep-link back to the History day and source id.
+- Updated `docs/subtasks/011-project-minimal-evidence-flow-prd.md` status to implemented.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testCreateProjectFromCurrentFocus_persistsProjectAndConfirmedQuestLink -only-testing:MingSiTests/AppStoreStateMachineTests/testCreateProjectFromCurrentFocus_doesNotDuplicateExistingQuestLink -only-testing:MingSiTests/AppStoreStateMachineTests/testCreateProjectFromHistoricalQuest_persistsProjectAndConfirmedProjectLink -only-testing:MingSiTests/AppStoreStateMachineTests/testCreateProjectFromHistoricalPrinciple_persistsProjectAndConfirmedProjectLink -only-testing:MingSiTests/AppStoreStateMachineTests/testCreateProjectFromHistoricalQuest_duplicateSourceIdDoesNotCreateDuplicateProjectOrLink -only-testing:MingSiTests/AppStoreStateMachineTests/testProjectEvidenceTimelineDeepLinkDataLocatesHistoryRecord test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted Project evidence tests passed: 6 tests, 0 failures.
+- Full test suite passed: 162 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Documentation - Prompt Context PRD Alignment v1.3
+
+Reason:
+
+- User asked for explicit alignment on the current prompt design, lens/question logic, principle extraction, and context engineering.
+- User emphasized that accumulated rules and when they enter request context are core product assets and should be documented as PRD-level requirements.
+
+Subagent:
+
+- None. Codex handled this documentation alignment directly against the current implementation.
+
+Changes:
+
+- Updated `docs/prompt-context-engineering-prd.md` to v1.3.
+- Added a front-loaded alignment summary explaining the actual MVP chain: raw input -> cards -> lens -> questions -> quests -> principle -> verification -> PromptRun audit.
+- Added prompt context gates for each PromptID, including mandatory context, optional context, explicit exclusions, and failure behavior.
+- Added a distinction between source context, reference context, and profile/trend context.
+- Documented the actual GLM request shape built by `DirectGLMClient`.
+- Added a current code implementation index and an algorithm-asset roadmap for Prompt Asset, Lens Asset, Principle Retrieval Policy, Context Policy, and Eval Asset.
+
+Verification:
+
+- Documentation-only change.
+- Cross-checked against `Sources/Services/CoreProtocols.swift`, `Sources/Services/TodayAIService.swift`, `Sources/Services/DirectGLMClient.swift`, `Sources/Services/TodayAIResponseParser.swift`, and related prompt/context tests.
+
+## 2026-06-01: Codex Direct Fix - Mode-Aware Card Organization
+
+Reason:
+
+- Dalton's read-only review found that Quick / Standard / Deep selection happened after cards were already organized.
+- That meant the first AI step, `organizeCards`, always ran with the default mode instead of the user's intended thinking depth.
+
+Subagent:
+
+- Agent `019e7f21-cbdf-7220-8756-ae253163901d` / `Dalton`
+  - Task: read-only remaining MVP gap inspection.
+  - Finding accepted and fixed in this slice.
+
+Changes:
+
+- Moved Quick / Standard / Deep selection into the Capture screen before card organization.
+- `organizeCapture()` now requires a selected mode before calling AI or local card generation.
+- Normal Today flow now goes `capture -> organizing -> reviewCards -> selectLens`, skipping the old standalone select-mode step.
+- Kept `.selectMode` handling as a legacy-compatible state for old persisted drafts and direct navigation.
+- Updated CTA/progress copy to reflect "collect input + choose training depth".
+- Added regression coverage proving a selected Deep mode reaches the `organizeCards` prompt template and payload.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- AppStore state-machine tests passed: 48 tests, 0 failures.
+- Full test suite passed: 150 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - Verification History Evidence Chain
+
+Reason:
+
+- Dalton's read-only review found that next-day verification was being saved against the new-day draft id instead of the original quest's source day.
+- This broke the MVP core evidence chain: yesterday quest -> next-day verification -> History detail.
+
+Subagent:
+
+- Agent `019e7f21-cbdf-7220-8756-ae253163901d` / `Dalton`
+  - Task: read-only remaining MVP gap inspection.
+  - Finding accepted and fixed in this slice.
+
+Changes:
+
+- Added `QuestRepository.sourceDailyEntryId(forQuestId:)`.
+- Implemented the lookup in `SQLiteQuestRepository`.
+- Updated `AppStore.persistVerification(...)` to save `Verification.sourceDailyEntryId` using the original quest's source DailyEntry id, with current draft id only as a fallback.
+- Added an AppStore regression test proving that verifying yesterday's active quest stores verification on the original quest day and History loads it there.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory -only-testing:MingSiTests/PersistenceCoreTests/testSaveVerification_andLoadByEntryAndQuest test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted verification/history tests passed: 2 tests, 0 failures.
+- Full test suite passed: 148 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Documentation - Prompt Context Algorithm PRD
+
+Reason:
+
+- User requested a complete PRD explaining the current prompt design for questions, lenses, and principle extraction.
+- User also asked how accumulated rules/principles are selected, when they enter request context, and how this becomes a core competitive asset.
+
+Subagent:
+
+- Agent `019e7f21-cbdf-7220-8756-ae253163901d` / `Dalton`
+  - Task: read-only remaining MVP gap inspection.
+  - Result: no file edits.
+  - Accepted findings for later implementation:
+    - Verification is currently saved against the new-day draft id instead of the original quest source day, breaking history evidence chain.
+    - Capture mode selection happens too late for mode-aware card organization.
+    - Card, quest, and principle review need stronger user editing.
+    - Projects needs a real evidence-detail layer beyond grouping links.
+    - Reminder scheduling exists but needs a user-facing setting.
+  - Deferred to implementation slices because this turn focused on prompt/context PRD alignment.
+
+Changes:
+
+- Rewrote `docs/prompt-context-engineering-prd.md` as a full product/algorithm PRD.
+  - Defines the request lifecycle from user action through `TodayAIService`, `PromptProvider`, `ContextAssembler`, `PrincipleRetriever`, `LLMClient`, parser, and `PromptRun`.
+  - Documents every current prompt: `organizeCards`, `generateQuestions`, `generateQuests`, `verifyQuest`, `extractPrinciple`, `weeklyCalibration`, and `monthlyGrowth`.
+  - Clarifies which context enters each prompt and which context must not enter.
+  - Defines principle asset lifecycle and retrieval rules.
+  - Documents anti-bubble constraints, prompt audit requirements, data-structure evolution, and server migration boundaries.
+  - Lists current P0/P1/P2 gaps for prompt/context engineering.
+
+Verification:
+
+- Documentation-only change.
+- Cross-checked against current `Sources/Services/CoreProtocols.swift`, `Sources/Services/TodayAIService.swift`, `Sources/Services/DirectGLMClient.swift`, and `Sources/Domain/Models.swift`.
+
+## 2026-06-01: Codex Direct Test Hardening - Reminder MVP
+
+Reason:
+
+- The MVP scope requires local notification reminders for tomorrow's main quest.
+- Reminder scheduling was already wired through `ReminderService`, but AppStore-level tests did not prove the scheduling, duplicate prevention, or denied-permission behavior.
+
+Subagent:
+
+- None. Codex implemented and verified directly.
+
+Changes:
+
+- Added reminder coverage in `Tests/App/AppStoreStateMachineTests.swift`.
+  - Saving a valid main quest schedules one reminder.
+  - Reminder title/body are privacy-light and tied to the main quest.
+  - Re-saving the same quest during the same session does not schedule a duplicate reminder.
+  - Denied notification permission does not block the Today loop.
+  - Denied permission shows a visible reminder status and does not call schedule.
+- Added a local `RecordingReminderService` test double.
+- No production code changes were needed; the existing AppStore reminder flow matched the Reminder MVP PRD.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted AppStore state-machine tests passed: 45 tests, 0 failures.
+- Full test suite passed: 147 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix With Subagent Review - Prompt Eval Fixtures
+
+Reason:
+
+- `docs/mvp-task-breakdown.md` required Prompt Eval fixtures for card organization, lens questions, quest generation, principle extraction, and growth attribution.
+- Prompt/context engineering is a core product asset; tests should prevent GLM output from becoming generic JSON that does not support the product loop.
+
+Subagent:
+
+- Agent `019e7f17-db8a-7640-9d1b-7e1ccf140fb2` / `Herschel`
+  - Task: read-only Prompt Eval readiness review.
+  - Result: no file edits.
+  - Accepted findings:
+    - Prompt Eval fixtures were missing as a stable test suite.
+    - LocalPromptProvider template contract tests were missing.
+    - TodayAIService context tests only covered organize cards and questions.
+    - Growth/project-style outputs must reject missing source ids once parsers exist.
+  - Deferred finding:
+    - The parser is intentionally still somewhat tolerant for existing Today fallback behavior. A later strict-mode parser or prompt-schema validator should reject more missing optional-looking fields and invalid enums without breaking current editing/fallback flows.
+
+Changes:
+
+- Added `Tests/Services/PromptEvalFixtureTests.swift`.
+  - Covers messy card organization with sensitivity marking.
+  - Covers concrete lens-specific questions.
+  - Covers one main quest with verifiable completion criteria.
+  - Covers principle acceptance for behavior rules and rejection of slogan-like candidates.
+  - Covers growth metric contributions requiring source evidence and clamping excessive deltas.
+- Added `Tests/Services/LocalPromptProviderTests.swift`.
+  - Checks common thinking-coach guardrails, JSON output requirements, confidentiality constraints, and no-replacement-thinking rules.
+  - Checks key schema and mode-specific guidance for organize cards, questions, quests, and principles.
+- Expanded `Tests/Services/TodayAIServiceContextTests.swift`.
+  - Added coverage for generateQuests principle injection and grounding payload.
+  - Added extractPrinciple existing principle de-dupe context.
+  - Added verifyQuest source/context ids.
+  - Added cap of 3 relevant principles and inactive-principle exclusion.
+- Added `TodayAIResponseParser.parseMetricContributions(from:snapshotId:)`.
+  - Parses candidate `MetricContribution` records from local JSON.
+  - Rejects items without source id or source daily entry id.
+  - Clamps delta to the MVP explainable range.
+- Regenerated `MingSi.xcodeproj` via `xcodegen generate` so the new tests are in the test target.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests -only-testing:MingSiTests/LocalPromptProviderTests -only-testing:MingSiTests/TodayAIServiceContextTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted Prompt/Context tests passed: 18 tests, 0 failures.
+- Full test suite passed: 144 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - Prompt Context Retrieval Hardening
+
+Reason:
+
+- User emphasized that prompt design, lens questions, principle reuse, and context engineering are the app's core competitive asset and required a complete PRD-level explanation.
+- The initial Prompt Context PRD still described some already-implemented context pieces as future gaps.
+- The new `LocalPrincipleRetriever` had a false-positive risk: unrelated principles could be selected through generic word overlap.
+
+Subagent:
+
+- None. Codex implemented and verified directly.
+
+Changes:
+
+- Updated `docs/prompt-context-engineering-prd.md` to reflect the current implementation:
+  - `ContextAssembler`, `PrincipleRetriever`, `contextVersion`, and `contextRecordIDs` are now documented as current architecture.
+  - Added a Prompt Context Matrix covering `organizeCards`, `generateQuestions`, `generateQuests`, `verifyQuest`, `extractPrinciple`, `weeklyCalibration`, and `monthlyGrowth`.
+  - Added Principle Asset Lifecycle: candidate -> user confirmed -> active -> practiced/challenged -> verified useful / needs review / archived.
+  - Clarified when principles enter context and when they must not enter context.
+  - Clarified current PromptRun traceability and future `context_refs` / `retrieval_reason` requirements.
+- Hardened `LocalPrincipleRetriever`:
+  - filters generic low-signal stop words
+  - requires a minimum relevance score before injection
+  - weights title and trigger-context matches above generic summary/action matches
+  - keeps `organizeCards` free of principle injection
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 128 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - Prompt Context Engineering PRD And Project Creation Slice
+
+Reason:
+
+- User pointed out that prompt design, lens questioning, context engineering, and principle reuse had not been explicitly aligned.
+- This is a core product asset: it determines when historical principles, project context, growth weak signals, and current cards enter GLM requests.
+- A parallel read-only subagent review confirmed that Growth is near a local-rule MVP, while Projects lacked a user-facing creation/association loop.
+
+Subagent:
+
+- Agent `019e7efc-f69c-7ce0-a10b-3cfcb6610feb` / `Pascal`
+  - Task: read-only Projects/Growth MVP gap review against PRD, UX, data architecture, and task breakdown.
+  - Result: no file edits; useful finding accepted.
+  - Key accepted finding: Projects had data models and evidence display but lacked product entry/use case to create confirmed projects from evidence.
+
+Changes:
+
+- Added `docs/prompt-context-engineering-prd.md`.
+  - Defines Prompt role boundaries, lens system, prompt inventory, context layers, ContextAssembler, PrincipleRetriever, principle retrieval rules, anti-bubble design, eval cases, and PromptRun traceability.
+- Updated `docs/prompt-spec.md`, `docs/technical-architecture.md`, and `docs/mvp-task-breakdown.md` to reference the new PRD and reserve ContextAssembler / PrincipleRetriever boundaries.
+- Added a minimal Project creation path:
+  - `AppStore.createProjectFromCurrentFocus()` creates a user-confirmed Project from the current main quest.
+  - The same action creates a confirmed `ProjectLink` to the quest source id.
+  - `ProjectsView` exposes a compact `保存为长期议题` action in the current-focus panel.
+- Added AppStore tests for:
+  - persisting a Project and confirmed quest ProjectLink from current focus
+  - preventing duplicate Project creation for the same quest link
+- Hardened metric contribution repository reads by filtering accepted contributions in the domain layer instead of depending on `candidate_status` in read SQL.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 126 tests, 0 failures.
+
 ## 2026-05-31: Claude Code Read-Only Review Attempt
 
 Status:
@@ -43,6 +951,147 @@ Future delegation rule:
   - accepted changes
   - rejected changes
   - Codex verification result
+
+## 2026-05-31: Subtask 010 Claude Code Attempt And Codex Integration
+
+Status:
+
+- Claude Code was delegated the History Evidence Drilldown subtask with a required progress handshake file.
+- Claude Code updated the progress file once and produced useful partial code, then stalled without further progress-file updates or active build/test activity.
+- Codex terminated the stalled process, reviewed the diff, repaired integration issues, and completed the subtask.
+
+Command:
+
+```bash
+/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --effort high
+```
+
+Progress handshake:
+
+- `docs/subtasks/010-history-evidence-drilldown-claude-progress.md`
+
+Requested subtask:
+
+- Implement `docs/subtasks/010-history-evidence-drilldown-prd.md`.
+- Make History show the full evidence chain for a day.
+- Load Project and Growth evidence from real repositories, not fake UI placeholders.
+- Add compact resume affordances on non-Today tabs.
+- Add lightweight History deep-link/highlight support where practical.
+
+Observed Claude result:
+
+- Read the PRD and inspected the relevant History, domain, and repository files.
+- Began extending `HistoryRecord` and repository helpers.
+- Stopped updating the progress file at `Current step: Extending HistoryRecord and implementing repository helpers.`
+- No active build/test progress was observed during low-frequency checks, so the process was killed.
+
+Codex accepted/finalized:
+
+- Extended `HistoryRecord` with `projectLinks`, `growthContributions`, and `sourceIds`.
+- Added `HistoryDeepLink`.
+- Added repository helpers for Project links by source IDs and Metric contributions by daily entry ID.
+- Updated `AppStore.loadHistoryRecords()` to load cards, quests, principles, verification, lens session, project links, growth contributions, and project names.
+- Updated History UI with collapsed raw input, cards, lens/questions, quests, verification, principles, project evidence, and growth contribution sections.
+- Added compact `ResumeTodayRow` affordance on non-Today pages.
+- Added History source highlighting and a Growth contribution detail jump back into History evidence.
+- Added focused persistence tests for repository helper changes.
+
+Codex rejected/fixed:
+
+- Did not accept the stalled Claude session as a complete handoff.
+- Repaired partial integration so the app builds and the History/Growth evidence loop remains repository-backed.
+- Kept raw input collapsed by default to avoid turning History into a large unstructured text dump.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Build passed.
+- Test suite passed with 111 tests and 0 failures after the final Growth contribution deep-link polish.
+
+## 2026-05-31: Today Input Robustness Codex Direct Repair
+
+Status:
+
+- Codex handled this directly because it was a user-facing input blocker.
+- Not delegated to Claude Code.
+
+Issue:
+
+- The Today capture field could fail or feel broken when the user tried to type or paste in the iOS simulator.
+- Chinese IME composition was a likely trigger because SwiftUI state updates can interrupt marked-text candidate selection.
+
+Codex change:
+
+- Replaced the Today capture `TextEditor` with a `UITextView` wrapper named `CaptureTextView`.
+- Avoided writing back to SwiftUI state while `markedTextRange` is active.
+- Added explicit `开始输入` focus and `粘贴剪贴板` actions.
+- Prevented the input border overlay from intercepting touch events.
+
+Verification:
+
+- The app built and launched in the iPhone 17 simulator.
+- Build/test passed with 111 tests and 0 failures.
+
+## 2026-05-31: GLM Endpoint Compatibility Codex Direct Repair
+
+Status:
+
+- Codex handled this directly because it is an architecture boundary in `DirectGLMClient`, not a broad UI implementation task.
+- Not delegated to Claude Code.
+
+Issue:
+
+- Settings already saved Base URL/model and immediately tested GLM connectivity.
+- The transport layer still assumed every OpenAI-compatible GLM endpoint accepts `response_format: json_object`.
+- Some GLM-compatible Base URLs/models can reject `response_format`, causing configuration tests and Today AI calls to fail even when the API Key and endpoint are otherwise valid.
+
+Codex change:
+
+- Added a `DirectGLMClient` compatibility fallback.
+- First request still uses OpenAI-compatible Chat Completions with `response_format`.
+- If the endpoint returns 400/422 and the body identifies `response_format` as unsupported, the client retries once without that field.
+- Updated Settings copy and architecture/prompt/UX docs to reflect the behavior.
+- Added focused URLProtocol-backed tests for the retry behavior.
+- During verification, test logs exposed a legacy local database migration gap for `metric_contributions.source_daily_entry_id`; Codex added `v6_metric_contribution_source_entry_backfill` and a migration regression test.
+
+Verification:
+
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/DirectGLMClientTests test` passed.
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test` passed with 114 tests and 0 failures.
+
+## 2026-05-31: UX Bugfix Batch Codex Direct Repair
+
+Status:
+
+- Codex handled this directly because these were user-reported interaction and visual defects.
+- Not delegated to Claude Code.
+
+Issues:
+
+- History calendar sheet opened too low/short, requiring the user to drag it upward before the calendar was fully usable.
+- Today loop can become long; the user needed a fast way to return to the top after progressing through the flow.
+- App icon looked like an accidental abstract glyph and did not clearly carry the “明思” meaning.
+- Thinking lens cards used English names and looked too uniform.
+
+Codex changes:
+
+- History calendar now opens as a large sheet and its content is internally scrollable.
+- Today progress bar is tappable and scrolls back to the top.
+- Replaced App Icon with a warm paper/ink mark built from explicit `日` and `月` forms plus a thought baseline.
+- Renamed lens cards to Chinese labels: `证据校验`、`反方视角`、`杠杆分析`.
+- Added per-lens icon, short tag, method hint, accent color, and differentiated card surfaces.
+
+Verification:
+
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test` passed with 114 tests and 0 failures.
+- Installed and launched the app in the iPhone 17 simulator.
+- Captured `/tmp/mingsi-after-bugfix.png` for a quick visual smoke check of the Today page.
 
 ## 2026-05-31: Xcode Verification After Installation
 
@@ -211,6 +1260,542 @@ Result:
 
 - Build succeeded.
 
+## 2026-06-01: Codex Direct Verification - AI Repair Recovery Stabilization
+
+Context:
+
+- User re-raised the AI failure behavior: connection validation can pass while a later production prompt fails, and fallback must not make the failure invisible.
+- The code already included visible AI failure messaging, same-step retry, editable step navigation, background repair, and PromptRun tracing.
+- The full suite had one unstable PromptRun repository test after repair recovery logic was added.
+
+Changes:
+
+- Fixed `testPromptRun_unresolvedFailuresReturnsOnlyFailedRuns` to set explicit timestamps.
+- Preserved the intended rule: an older success does not resolve a newer failure; only a later success for the same prompt/source/model key clears an unresolved failure.
+- Verified that `PromptRunRepository.unresolvedFailures` and AppStore repair recovery now remain stable under the full suite.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+```
+
+Result:
+
+- Full test suite passed: 124 tests, 0 failures.
+- Simulator install and launch succeeded.
+
+## 2026-05-31: Subtask 009 Claude Code Progress-File Delegation And Codex Integration
+
+Status:
+
+- Claude Code was delegated the Growth Attribution Layer with a required progress handshake file.
+- The first Claude attempt produced no output or progress after a 3-minute check and was killed.
+- A second Claude attempt was started with `docs/subtasks/009-growth-attribution-claude-progress.md` as the required todo/status file.
+- Claude completed the pass and reported tests passing.
+- Codex reviewed the implementation, corrected attribution schema semantics, and reran the full suite.
+
+Command:
+
+```bash
+/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --effort high
+```
+
+Progress file:
+
+- `docs/subtasks/009-growth-attribution-claude-progress.md`
+
+Requested subtask:
+
+- Implement `docs/subtasks/009-growth-attribution-layer-prd.md`.
+- Add Growth attribution persistence before rebuilding Growth UI.
+- Preserve evidence links so Growth can answer why a metric changed.
+
+Observed Claude result:
+
+- Added a first pass of `MetricSnapshot` expansion, `MetricContribution`, repositories, migration, tests, and Growth UI score guard.
+- Updated the progress file with completion status and reported 109 tests passing.
+
+Codex rejected/fixed:
+
+- Rejected the single `ContributionStatus` design because it mixed candidate lifecycle and user feedback.
+- Replaced generic `sourceIds` with explicit `sourceType`, `sourceId`, and `sourceDailyEntryId`.
+- Added separate `MetricContributionStatus` and `MetricContributionFeedback`.
+- Added `MetricSnapshotStatus`, `GrowthMetric`, contribution refs, metric reasons, loop count, and `canDisplayScores`.
+- Wired `AppStore.live()` to create Growth repositories and load the latest `MetricSnapshot` during startup.
+- Updated migration `v5_growth_attribution_layer` to use PRD-aligned columns:
+  - `previous_scores_json`
+  - `delta_scores_json`
+  - `metric_reasons_json`
+  - `positive_contribution_refs_json`
+  - `negative_contribution_refs_json`
+  - `source_type`
+  - `source_id`
+  - `source_daily_entry_id`
+  - `user_feedback`
+  - `candidate_status`
+- Updated persistence tests to prove source-backed contribution storage, feedback exclusion, and reconstructable accepted deltas.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Test suite succeeded.
+- 109 tests passed, 0 failures.
+- Growth UI still needs a follow-up metric detail view, but the attribution persistence layer is now evidence-backed enough to support it.
+
+## 2026-05-31: Subtask 009A Claude Code Progress-File Delegation And Codex Review
+
+Status:
+
+- Claude Code was delegated the Growth Metric Detail UI with a required progress handshake file.
+- Claude updated the progress file, completed the requested UI pass, and reported a successful build.
+- Codex reviewed the implementation, made a small evidence-display correction, and reran the full test suite.
+
+Command:
+
+```bash
+/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --effort high
+```
+
+Progress file:
+
+- `docs/subtasks/009a-growth-metric-detail-claude-progress.md`
+
+Requested subtask:
+
+- Implement `docs/subtasks/009a-growth-metric-detail-ui-prd.md`.
+- Make Growth metric rows tappable.
+- Add a metric detail sheet that explains current score, delta, reasons, positive/negative contributions, and next training focus.
+- Preserve insufficient-evidence fallbacks and avoid decorative score-only UI.
+
+Observed Claude result:
+
+- Added tappable Growth metric rows in `Sources/Features/FeatureTabs.swift`.
+- Added `MetricDetailSheet` and `ContributionRow`.
+- Added `AppStore.metricContributions`, `loadMetricContributions(for:)`, and `acceptedContributions(for:)`.
+- Reported build success and noted deep navigation to History as a follow-up.
+
+Codex accepted/finalized:
+
+- Kept the metric detail information architecture.
+- Kept contribution filtering in `AppStore` as a UI-facing read helper.
+- Kept insufficient-evidence degradation instead of showing unsupported scores.
+
+Codex rejected/fixed:
+
+- Tightened `acceptedContributions(for:)` so empty or whitespace-only `sourceId` values are not displayable evidence.
+- Updated contribution rows to show the source day reference (`sourceDailyEntryId`) when available, so Growth detail can point back toward History evidence instead of showing only a generic source id.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Test suite succeeded.
+- 109 tests passed, 0 failures.
+- Remaining follow-up: implement History evidence drilldown and deep links from Growth/Project claims to the exact source evidence.
+
+## 2026-05-31: Subtask 008A Claude Code Attempt And Codex Integration
+
+Status:
+
+- Claude Code was delegated the Project evidence persistence slice.
+- Claude produced partial edits, then hung without a usable final handoff.
+- Codex reviewed the partial implementation, repaired the compile issue, and verified the full test suite.
+
+Command:
+
+```bash
+/opt/homebrew/bin/claude -p --permission-mode bypassPermissions --effort high
+```
+
+Requested subtask:
+
+- Implement `docs/subtasks/008a-project-persistence-slice-prd.md`.
+- Add Project evidence persistence only.
+- Keep Project/Growth UI blocked until evidence-backed data exists.
+
+Observed Claude result:
+
+- Partial edits were left in:
+  - `Sources/Domain/Models.swift`
+  - `Sources/Services/PersistenceCore.swift`
+  - `Tests/Services/PersistenceCoreTests.swift`
+- The process produced no final response after repeated polling and was killed to avoid a stalled coding session.
+
+Codex accepted/finalized:
+
+- Added Project evidence domain models:
+  - `Project`
+  - `ProjectCandidate`
+  - `ProjectLink`
+  - `ProjectMergeCandidate`
+  - `ProjectInsight`
+- Added repository protocols and SQLite repositories for the Project evidence layer.
+- Added migration `v4_project_evidence_layer` with tables:
+  - `projects`
+  - `project_candidates`
+  - `project_links`
+  - `project_merge_candidates`
+  - `project_insights`
+- Added validation so candidates, links, and insights cannot be persisted without source evidence.
+- Added thinking-change validation requiring before/after text.
+- Added persistence tests for saving, loading, updating status/feedback, validation failure paths, and migration columns.
+
+Codex rejected/fixed:
+
+- Fixed ambiguous `PersistenceError` resolution in tests by qualifying the app error type as `MingSi.PersistenceError`.
+- Kept this slice persistence-only; no Projects/Growth UI changes were made.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Test suite succeeded.
+- 100 tests passed, 0 failures.
+- Next implementation should not start Projects/Growth UI until Growth attribution persistence is implemented and verified.
+
+## 2026-05-31: Product Gate - Projects And Growth Evidence
+
+User feedback:
+
+- Project tab meaning was unclear.
+- Project extraction, merge constraints, maintenance, progress, and thinking-change display needed product definition before more UI work.
+- Growth needed to explain current scores, score changes, positive contributions, negative contributions, and source evidence.
+- UI still had white gutters and placeholder-like visual structure, but the root issue was missing PRD/data flow rather than only styling.
+
+Read-only audits:
+
+- Explorer `Fermat` / agent `019e7d0e-8ed3-7651-9e7f-dbfdaee6fe9c`
+  - Audited Today loop, GLM, persistence, and core fact-source alignment.
+  - Found critical gaps in Verification, preview quests, missing LensSession/ReflectionQuestion persistence, PromptRun tracing, and Project/Growth evidence models.
+- Explorer `Noether` / agent `019e7d0e-c890-7241-be9e-f5cf6ddd2e1e`
+  - Audited History, Projects, Growth, evidence chain, and UI constraints.
+  - Found Projects were static/derived UI without `Project` evidence models, Growth showed unsupported preview metrics, and History lacked full drilldown evidence.
+
+Codex product correction:
+
+- Updated `docs/prd.md`
+  - Clarified Project as user-confirmed long-running topic/workflow, not keyword clustering.
+  - Added project creation constraints, merge constraints, maintenance rules, progress signals, and thinking-change before/after rules.
+  - Added Growth score lifecycle, insufficient-evidence state, metric detail questions, and contribution requirements.
+- Updated `docs/ux-flow.md`
+  - Added project candidate confirmation flow, project detail jump rules, progress signal interaction, thinking-change interaction, Growth degradation rules, and metric deep-link loop.
+- Updated `docs/data-architecture.md`
+  - Added `ProjectInsight`.
+  - Added project field revision needs.
+  - Expanded `MetricSnapshot` and `MetricContribution` attribution fields.
+- Updated `docs/prompt-spec.md`
+  - Added Project Insight schema.
+  - Added Generate Project Insights prompt.
+  - Tightened project link and monthly growth prompt rules.
+- Updated `docs/technical-architecture.md`, `docs/mvp-task-breakdown.md`, `docs/ui-design-draft.md`, and `docs/spec-consistency-audit.md`.
+- Added `docs/implementation-gap-audit.md`.
+
+Subtask PRDs created:
+
+- `docs/subtasks/007-verification-lens-fact-source-prd.md`
+- `docs/subtasks/008-project-evidence-layer-prd.md`
+- `docs/subtasks/009-growth-attribution-layer-prd.md`
+- `docs/subtasks/010-history-evidence-drilldown-prd.md`
+
+Decision:
+
+- Do not continue Projects/Growth visual implementation until evidence models are in place.
+
+## 2026-05-31: Subtask 007 Claude Code Attempt And Codex Integration
+
+Status:
+
+- Claude Code attempt did not produce a complete usable handoff.
+- Codex reviewed the partial state, completed the integration, fixed tests, and verified the suite.
+
+Command:
+
+```bash
+claude -p --permission-mode bypassPermissions --effort high
+```
+
+Requested subtask:
+
+- Implement `docs/subtasks/007-verification-lens-fact-source-prd.md`.
+- Add persisted Verification and LensSession fact sources.
+- Keep Project/Growth visual work blocked until evidence models exist.
+
+Observed Claude result:
+
+- Claude Code wrote partial code but then hung without further output.
+- The process was killed to avoid leaving a stalled implementation session running.
+
+Codex accepted/finalized:
+
+- Added `Verification` and `LensSession` domain support.
+- Added verification and lens repositories plus migration `v3_verification_and_lens_sessions`.
+- Saved quest verification results and updated quest status.
+- Persisted selected lens questions and answers.
+- Removed fake default quests from live startup state.
+- Made Today state-machine tests use an injected mock LLM service instead of reading the user's real Keychain/API configuration.
+- Added wait helpers for async state transitions.
+
+Codex rejected/fixed:
+
+- Rejected test behavior that could call the user's real GLM endpoint from unit tests.
+- Fixed state-machine test flakiness caused by fixed sleeps and Keychain-coupled AI service refresh.
+- Kept Project/Growth UI work deferred until `ProjectCandidate`, `ProjectLink`, `ProjectInsight`, `MetricSnapshot`, and `MetricContribution` are implemented.
+
+Product/spec follow-up completed:
+
+- Added `ProjectCandidate` to PRD/data/task specs.
+- Added Project lifecycle and candidate queue rules.
+- Added Growth scoring reconstruction rules and contribution ledger requirements.
+- Updated subtask 008 and 009 PRDs so Projects/Growth cannot become decorative tabs.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Test suite succeeded.
+- 89 tests passed, 0 failures.
+- Next implementation should follow subtask order 007 -> 008 -> 009 -> 010.
+
+## 2026-05-31: Codex Direct Repair - Settings Validation and Taste Pass
+
+Reason:
+
+- User reported weak UI quality in History, Projects, and Growth, purple/AI-looking color usage, poor icons, and missing immediate GLM connectivity validation after saving API configuration.
+- This was handled directly by Codex because it cut across design system, SwiftUI pages, Keychain configuration, and GLM client diagnostics.
+
+Changes:
+
+- Reworked the design system away from blue/purple accents toward warm paper, ink, graphite, deep green, and restrained rust/yellow accents.
+- Replaced bottom tab symbols with calmer SF Symbols and regenerated the app icon as a restrained paper/ink mark.
+- Rebuilt History as an evidence timeline plus principle archive instead of a flat card list.
+- Rebuilt Projects as a current-focus panel plus compact project board linked to current app state.
+- Rebuilt Growth as a summary panel, metric rows, and evidence panel instead of identical metric cards.
+- Added Keychain-backed GLM model name storage.
+- Added a combined GLM endpoint/model save path.
+- Added immediate GLM connection testing after saving API key, base URL, or model.
+- Added user-facing HTTP/network diagnostics for GLM failures without exposing API keys.
+
+Verification:
+
+```bash
+xcodegen generate
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Build succeeded.
+- Simulator launch and screenshot smoke test succeeded for the app shell.
+
+## 2026-05-31: Codex Direct Repair - History Calendar and Icon Content
+
+Reason:
+
+- User pointed out that the previous app icon changed color but not enough symbolic content.
+- User also clarified that History must support looking back by week, month, and year instead of only showing one day.
+
+Changes:
+
+- Replaced AppIcon content with an abstract `明` mark: left 日 structure, right 月 structure, and a restrained insight stroke.
+- Added `HistoryRecord` domain view model for date-based history browsing.
+- Added `AppStore.loadHistoryRecords(limit:)`, backed by existing repositories and SQLite `recentEntries`.
+- Reworked History to load persisted records, select dates, and show empty states for days without records.
+- Added a calendar sheet with week/month/year modes, previous/next navigation, record dots/counts, and date selection.
+
+Verification:
+
+```bash
+xcodegen generate
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Build succeeded.
+- App installed and launched in the iPhone 17 simulator.
+
+## 2026-05-31: Codex Product Spec Correction - Projects and Growth
+
+Reason:
+
+- User pointed out that Projects and Growth were under-specified: project meaning, extraction, merge constraints, maintenance, progress, thinking change, metric explanation, and score attribution were not defined before UI implementation.
+
+Changes:
+
+- Updated `docs/prd.md`:
+  - Defined Project as an abstract long-running topic/workflow, not a folder or raw company project name.
+  - Added project candidate generation, merge constraints, maintenance, progress, and thinking-change requirements.
+  - Expanded Growth Metrics with score explanation, positive/negative contribution attribution, and evidence-link requirements.
+- Updated `docs/ux-flow.md`:
+  - Added Project Flow, including creation, daily association, merge review, detail IA, progress display, and thinking-change display.
+  - Expanded Growth Flow with metric detail, contribution events, score explanation, evidence jumps, and next training focus loop.
+- Updated `docs/data-architecture.md`:
+  - Expanded Project fields and retention rules.
+  - Added ProjectLink, ProjectMergeCandidate, and MetricContribution concepts.
+  - Required metric snapshots to persist evidence and contribution references.
+
+Verification:
+
+```bash
+git diff --check -- docs/prd.md docs/ux-flow.md docs/data-architecture.md
+```
+
+Result:
+
+- Markdown diff check passed.
+
+## 2026-05-31: Codex Product Spec Alignment - Architecture, Prompts, Tasks
+
+Reason:
+
+- After Projects and Growth were clarified in PRD/UX/Data Architecture, the same rules needed to be propagated to Technical Architecture, Prompt Spec, and MVP Task Breakdown before implementation resumes.
+
+Changes:
+
+- Updated `docs/technical-architecture.md`:
+  - Added Project, ProjectLink, ProjectMergeCandidate, and MetricContribution to DomainCore.
+  - Expanded ProjectFeature and GrowthFeature boundaries.
+  - Added project aggregation and growth attribution data flows.
+  - Added ProjectRepository and GrowthRepository protocol boundaries.
+- Updated `docs/prompt-spec.md`:
+  - Added Project Link Candidate, Project Merge Candidate, and Metric Contribution output shapes.
+  - Added prompts for project link suggestions and project merge suggestions.
+  - Expanded weekly/monthly growth prompts to require metric contributions and evidence ids.
+- Updated `docs/mvp-task-breakdown.md`:
+  - Added persistence tasks for ProjectLink, ProjectMergeCandidate, and MetricContribution.
+  - Added prompt parsing requirements for Projects/Growth.
+  - Added Project Evidence Layer milestone.
+  - Expanded Growth milestone with metric contribution and evidence-link acceptance criteria.
+
+Verification:
+
+```bash
+git diff --check -- docs/technical-architecture.md docs/prompt-spec.md docs/mvp-task-breakdown.md docs/agent-delegation-log.md
+```
+
+Result:
+
+- Documentation diff check passed.
+
+## 2026-05-31: Codex Spec Consistency Audit
+
+Reason:
+
+- Before further iOS implementation, the core product documents needed a consistency audit against the agreed MVP scope, especially around Daily loop state, Projects/Growth evidence rules, and UI placeholder risk.
+
+Changes:
+
+- Added `docs/spec-consistency-audit.md`.
+- Corrected `docs/data-architecture.md` so `DailyEntry.loopState` matches the Today state machine and display status is derived.
+- Corrected `docs/prd.md` History status wording to avoid a conflicting status enum.
+- Updated `docs/ui-design-draft.md`:
+  - Removed the idea that non-Today tabs can be placeholder-only.
+  - Added full-bleed page background rule to prevent accidental white gutters.
+  - Added Projects and Growth UI rules grounded in evidence and drill-down.
+  - Removed early `Project A` placeholder examples.
+- Updated `docs/mvp-task-breakdown.md` with a pre-development gate that blocks more coding until docs agree on state names, evidence rules, non-goals, and adapter boundaries.
+
+Verification:
+
+```bash
+git diff --check -- docs/prd.md docs/data-architecture.md docs/ui-design-draft.md docs/mvp-task-breakdown.md docs/spec-consistency-audit.md docs/agent-delegation-log.md
+```
+
+Result:
+
+- Documentation diff check passed.
+
+## 2026-05-31: Codex UI Review and Repair After GLM Changes
+
+Trigger:
+
+- User reported that GLM-generated UI/code had poor taste and visible issues:
+  - black bars above and below the app
+  - Tab bar overlapping main page content
+  - cards looked too uniform and AI-template-like
+  - flow felt unclear and not smooth
+
+Subagent status:
+
+- Worker `Wegener` / agent `019e7c37-bb35-7b63-bdea-7e98f659d54d` for History Evidence failed before work began:
+  - error: `403 Forbidden`, no available quota/subscription from the subagent provider.
+  - no files were changed by this worker.
+- Codex took over the UI review and repair directly because this was architecture/product quality work and a visible blocker.
+
+Findings:
+
+- The black bars were caused by missing modern launch screen configuration; the app was letterboxed on the iPhone 17 simulator.
+- `TodayView` placed the primary action inside the scroll content while TabView occupied the bottom, causing overlap and poor bottom spacing.
+- `DS.background.ignoresSafeArea()` and fixed bottom padding created brittle layout behavior.
+- Repeated large rounded cards, oversized type, centered-feeling composition, and uniform card surfaces created a strong AI-template smell.
+- The Today loop lacked an explicit progress indicator, so the multi-step flow felt arbitrary.
+
+Fixes:
+
+- Added `Sources/LaunchScreen.storyboard`.
+- Added `INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen` in `project.yml`.
+- Updated `TodayView`:
+  - wrapped Today in a `NavigationStack`
+  - removed full-screen background ignore behavior
+  - moved the primary CTA into `safeAreaInset(edge: .bottom)`
+  - increased scroll bottom padding to account for the CTA and Tab bar
+  - added a 10-step loop progress indicator and caption
+  - reduced oversized typography and replaced repeated section headings with compact step labels
+- Updated `Theme.swift`:
+  - tightened corner radii, spacing, shadows, and background palette
+  - added semantic surfaces for thinking cards, quests, questions, principles, mode cards, lens cards, and summaries
+- Updated `FeatureTabs.swift`:
+  - removed unsafe background behavior
+  - reduced large title scale
+  - aligned shared card styling with the Today visual system
+
+Verification:
+
+```bash
+xcodegen generate
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install 'iPhone 17' /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch 'iPhone 17' com.codex.mingsi
+xcrun simctl io 'iPhone 17' screenshot /tmp/mingsi-final.png
+```
+
+Result:
+
+- Build succeeded.
+- App installed and launched in the iPhone 17 simulator.
+- Visual screenshot confirmed:
+  - black bars are gone
+  - Tab bar no longer overlaps page content or the CTA
+  - primary CTA sits in a separate safe-area action bar
+  - Today flow now shows explicit progress
+  - card styles are more differentiated and less template-like
+
+Remaining risks:
+
+- This is still MVP-level visual polish, not a final high-fidelity product UI pass.
+- History Evidence work remains pending because the subagent failed with quota error.
+- A deeper interaction pass should later add manual flow testing across all Today states, not just the first screen.
+
 ## 2026-05-31: Subagent Delegation Round 3
 
 Subtask PRDs created:
@@ -295,6 +1880,232 @@ Result:
 - Build succeeded.
 - Feature views still do not import GRDB or call repositories directly.
 
+## 2026-05-31: Codex Direct Fix - Project Board and Icon
+
+Reason:
+
+- User reported that the Project tab still had side gutters, unclear board logic, and weak visual taste.
+- User rejected the previous text-like App Icon and requested a no-text compass/direction metaphor.
+- This patch was small and partially started in `FeatureTabs.swift`, so Codex completed it directly instead of delegating.
+
+Changes:
+
+- Rebuilt Project tab as an evidence-backed working surface.
+  - It groups real `ProjectLink` entries from `historyRecords`.
+  - It shows the current Today quest only as a temporary focus, not as a formal project.
+  - It shows an empty evidence state when no project evidence exists, with no fake sample projects.
+  - Each project row exposes evidence count, confirmation state, latest date, dominant evidence type, and up to three tap-through evidence lines.
+  - Evidence rows jump back into History via `HistoryDeepLink`.
+- Removed the old generic project row/focus placeholders.
+- Forced Project tab background to fill the safe area to avoid white side gutters.
+- Replaced the App Icon with a no-text warm-paper compass symbol.
+
+Verification:
+
+```bash
+git diff --check -- Sources/Features/FeatureTabs.swift Sources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+```
+
+Result:
+
+- Diff check passed.
+- Full test suite passed: 114 tests, 0 failures.
+- App installed and launched in the iPhone 17 simulator.
+
+## 2026-05-31: Codex Direct Fix - Settings Paste Feedback
+
+Reason:
+
+- User reported that `粘贴 Key` still did not paste into the GLM API Key field.
+- The failure mode was ambiguous because the UI had no feedback when the simulator pasteboard was empty or not synced.
+
+Changes:
+
+- Settings paste now reads from `UIPasteboard.general.string`, `strings`, and plain-text pasteboard items.
+- `粘贴 Key` now reports whether clipboard text was read and how many characters were inserted.
+- Added `粘贴并保存` to write the clipboard text directly to Keychain, bypassing secure text-field visual sync.
+- Secure text-field updates now only toggle `isSecureTextEntry` when it actually changes, reducing UIKit secure-field reset behavior.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+```
+
+Result:
+
+- Full test suite passed: 114 tests, 0 failures.
+- App installed and launched in the iPhone 17 simulator.
+
+## 2026-05-31: Codex Direct Fix - State, History Markers, Icon, Lens Extensibility
+
+Reason:
+
+- User reported that after completing the daily review, other tabs could still show `今日复盘未完成`.
+- User rejected the App Icon's inner white square frame.
+- User could not distinguish History task evidence from feedback/verification evidence.
+- User asked whether custom lenses, sharing, and future marketplace support should be supported.
+- User reported the Settings paste buttons were too large and hurt the UI.
+
+Changes:
+
+- `hasResumeableLoop` is now derived from `todayDraft.state` instead of cached as an independent published flag.
+- History quest rows now have explicit task icons and type colors.
+- History verification rows now show a `反馈` badge and source marker.
+- Settings API Key paste actions are collapsed into a compact `粘贴` menu with:
+  - paste into field
+  - paste and save
+- Regenerated App Icon with the compass directly on the warm paper background and no inner square frame.
+- Added future custom lens pack shape to `docs/prompt-spec.md`, including private, shared-link, and marketplace visibility.
+
+Verification:
+
+```bash
+git diff --check -- Sources/App/AppStore.swift Sources/Features/FeatureTabs.swift Sources/Assets.xcassets/AppIcon.appiconset/AppIcon.png docs/prompt-spec.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+```
+
+Result:
+
+- Diff check passed.
+- Full test suite passed: 114 tests, 0 failures.
+- App installed and launched in the iPhone 17 simulator.
+
+## 2026-06-01: Codex Direct Fix - Growth Default Evidence State
+
+Reason:
+
+- Live `AppStore` still defaulted to preview-style Growth copy, which could make a new install look like it had model-derived conclusions.
+- MVP rule: Growth cannot show unsupported numbers or narrative without evidence.
+
+Changes:
+
+- Added `makeEmptyGrowth()` as the live default Growth snapshot.
+- Kept `makePreviewGrowth()` only for explicit preview/demo contexts.
+- New live default is `insufficientEvidence`, complete loop count `0`, and summary copy says evidence is still being collected.
+- Added an AppStore state-machine test to ensure the default snapshot does not contain preview narrative.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 123 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - PromptRun Repair Recovery
+
+Reason:
+
+- PromptRun tracing was implemented, but the UI repair banner still did not survive app restart.
+- User expectation: failed AI results should be repairable later from locally stored data.
+
+Changes:
+
+- `SQLitePromptRunRepository.unresolvedFailures` now treats a later success for the same prompt/source/model key as resolving earlier failures.
+- `AppStore.loadPersistedState()` now restores repairable pending prompts for the current DailyEntry from unresolved PromptRun failures.
+- Added tests for:
+  - later PromptRun success resolving older failure
+  - AppStore restoring pending AI repair state after loading persisted draft
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 122 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - PromptRun Tracing
+
+Reason:
+
+- The database had a `prompt_runs` table and the product architecture required PromptRun auditability, but no write path existed.
+- AI failure retry needed a durable audit trail for later cross-launch repair.
+
+Changes:
+
+- Added `PromptRun` domain model.
+- Added `PromptRunRepository` and `SQLitePromptRunRepository`.
+- Added `PromptRunRow` mapping for the existing `prompt_runs` table.
+- Added `PromptTracingLLMClient` wrapper.
+  - Records successful responses with `responseJSON`.
+  - Records failed calls with user-facing error text.
+  - Preserves prompt id, prompt version, schema versions, model provider, model name, session mode, request summary, and source record ids.
+- Wired live GLM and local mock clients through the tracing wrapper when SQLite is available.
+- Added source record ids to `LLMRequest` and Today AI requests.
+
+Remaining design note:
+
+- Repair recovery is now hydrated from PromptRun. A later UX slice can expose a detailed repair history screen, but it is not required for MVP.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Full test suite passed: 120 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - AI Failure Retry and Editable Flow
+
+Reason:
+
+- User reported that AI call failures were silently replaced by local fallback data.
+- User asked why the AI failed after connection validation succeeded.
+- User asked for retry, back navigation to earlier steps, and later/background AI reprocessing from local data.
+
+Changes:
+
+- AI failures now preserve a user-facing failure reason from `LLMClientError.userFacingMessage` when available.
+- Fallback still keeps the workflow moving, but the Today screen now exposes `重试 AI` on retryable failures.
+- Added `retryCurrentAIStep()` for:
+  - organizing cards
+  - generating questions
+  - generating quests
+  - extracting principles
+- Added editable back navigation:
+  - progress segments for completed steps are tappable
+  - bottom action row includes `上一步` where safe
+  - returning to an earlier step trims downstream derived data to avoid stale AI results
+- Added a top repair banner for pending AI fallback results.
+  - `后台重试` uses local persisted/current data to re-run AI generation without forcing the user to manually replay the loop.
+- Added `PromptID.displayName` for clearer AI failure messages.
+- Follow-up refinement:
+  - pending repair tracking is now keyed by `PromptID` instead of raw incrementing count
+  - successful retry removes only the repaired prompt
+  - failed retry keeps the existing fallback result and does not duplicate pending count
+  - background retry only runs prompts that are actually pending
+
+Remaining design note:
+
+- Superseded by the later PromptRun tracing and repair recovery slices: the repair queue is now hydrated from persisted PromptRun failures, and later successes clear earlier unresolved failures.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+```
+
+Result:
+
+- Full test suite passed after follow-up repair tests at that point: 117 tests, 0 failures.
+
 ## 2026-05-31: Subagent Delegation Round 2
 
 Delegated workers:
@@ -332,3 +2143,479 @@ xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS S
 Result:
 
 - Build succeeded.
+
+## 2026-06-01: Codex Direct Spec - Prompt and Context Engineering PRD
+
+Reason:
+
+- User asked to align on the most important product asset: how questions, lenses, experience summaries, prompts, and context engineering are designed.
+- The app already had `LocalPromptProvider`, `ContextAssembler`, `PrincipleRetriever`, `PromptRun`, and prompt eval tests, but the product algorithm needed to be written as an auditable PRD rather than implicit code behavior.
+
+Changes:
+
+- Expanded `docs/prompt-context-engineering-prd.md` to v1.1.
+- Added the current real GLM request structure:
+  - system message from `PromptTemplate.systemText`
+  - user message with prompt id, prompt version, context version, output schema version, task, input summary, and payload
+  - JSON mode with fallback when an endpoint rejects `response_format`
+- Added the Prompt orchestration algorithm and module boundaries:
+  - View
+  - AppStore
+  - TodayAIService
+  - PromptProvider
+  - ContextAssembler
+  - PrincipleRetriever
+  - Parser
+- Added context budget and priority rules, including current facts > user confirmation > historical principles.
+- Added MVP vs target-state differences for templates, payload, principle retrieval, lenses, PromptRun, Project/Growth context.
+- Expanded lens strategy:
+  - Evidence Check
+  - Opposing View
+  - Leverage Analysis
+  - future custom lenses and role/person-inspired cards
+- Added principle asset retrieval decision tree and usage rules.
+- Added experience-summary asset layers:
+  - ThinkingCard
+  - daily conclusion
+  - PrincipleAsset
+  - Growth/MetricContribution
+- Added how principles connect to projects and growth metrics.
+- Added anti-bubble prompt rules and user-feedback-to-context rules.
+- Added server migration contract for remote prompt templates, lens packs, principle packs, context assembly, and eval.
+
+Verification:
+
+- Documentation structure checked with heading scan.
+- No source code changed in this slice, so no Xcode test run was required.
+
+## 2026-06-01: Codex Direct Fix - PromptRun Source/Context Audit Split
+
+Reason:
+
+- Prompt/context engineering is a core product asset, and audit logs need to distinguish direct source records from retrieved context records.
+- Previously `PromptTracingLLMClient` stored the union of `sourceRecordIDs` and `contextRecordIDs` in `PromptRun.sourceRecordIds`, which made later UI explanations and server-side context migration harder to verify.
+
+Changes:
+
+- Added `PromptRun.contextRecordIds` to the domain model.
+- Updated `PromptTracingLLMClient` to store:
+  - `sourceRecordIds` from `LLMRequest.sourceRecordIDs`
+  - `contextRecordIds` from `LLMRequest.contextRecordIDs`
+- Added `prompt_runs.context_record_ids_json`.
+- Added migration `v7_prompt_run_context_refs`, backfilling old rows from `source_record_ids_json` so existing PromptRun logs remain auditable.
+- Updated `SQLitePromptRunRepository` row mapping and unresolved-failure resolution key to include context refs.
+- Updated Prompt/context and data architecture docs to reflect the current implementation.
+- Added persistence tests for separate source/context roundtrip, tracing client behavior, and v7 migration.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests -only-testing:MingSiTests/TodayAIServiceContextTests test
+```
+
+Result:
+
+- Targeted persistence/context tests passed: 53 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - Referenced Principle Context Visibility
+
+Reason:
+
+- User identified prompt/context engineering as the core product asset and asked how questions, lenses, and experience summaries are organized.
+- The implementation already separated source/context PromptRun ids, but the user still could not see which historical principles were actually used by question/task generation.
+- `AppStore.principles` mostly represented today's principle candidate, so AI context needed to read historical active principles from `PrincipleRepository.activePrinciples()`.
+
+Changes:
+
+- Added `AppStore.referencedPrinciples` as the current visible set of principles used by question/task context.
+- Updated question and quest generation to use historical active principles from `PrincipleRepository.activePrinciples()` when available.
+- Kept existing principle candidates merged only for `extractPrinciple` dedupe/merge behavior.
+- Added a compact “本次参考的原则 / 仅作对照” UI block in AnswerQuestions and ReviewQuests.
+- Ensured referenced principles clear when the user navigates back to earlier steps or resets/edits downstream state.
+- Updated `docs/prompt-context-engineering-prd.md` to v1.2 with:
+  - request lifecycle including visible referenced-principle refresh
+  - Referenced Principles UI current/target state
+  - section 11.6 defining visibility, clearing, and feedback rules
+- Updated `docs/ux-flow.md` so AnswerQuestions and ReviewQuests include referenced-principle display when historical active principles are used.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted AppStore state-machine tests passed: 52 tests, 0 failures.
+- Full suite passed: 156 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Fix - Growth Contribution Feedback Loop
+
+Reason:
+
+- Growth contribution rows needed an explicit user feedback loop so incorrect attribution can be removed from accepted evidence without waiting for a restart.
+- Today completion and next-day verification should refresh Growth evidence in the current session.
+
+Changes:
+
+- Added an AppStore feedback method that updates `MetricContributionFeedback`, reloads the latest Growth snapshot, and refreshes the current metric contribution cache.
+- Metric detail rows now expose a compact inaccurate/restore action while preserving tap-to-History behavior.
+- Growth evidence generation now includes verification ids in snapshot evidence refs, so saving a new verification can invalidate and rebuild local Growth evidence even when the completed day set is unchanged.
+- Today verification save and loop completion now trigger History/Growth refresh in-session.
+- Added state-machine tests for contribution feedback removal/restore and Growth evidence refresh after verification.
+
+Verification:
+
+- Delegated the Growth feedback slice to worker `019e7f5a-7aa0-7b00-bcfd-17a43c7f7f57` (Leibniz), but the worker did not return a final handoff within the long wait window and was closed while still running.
+- Codex reviewed and repaired the worker's partial changes directly.
+- Fixed a Swift test compile error caused by using `await` inside an `XCTUnwrap` autoclosure.
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted AppStore state-machine tests passed: 54 tests, 0 failures.
+- Full suite passed: 158 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Spec - Project Minimal Evidence Flow PRD
+
+Reason:
+
+- Current Projects implementation has evidence-backed storage and a board, but it still does not form a complete MVP project loop.
+- User expects Projects to show why a long-term topic exists, how it progresses, and how it links back to History evidence.
+
+Changes:
+
+- Added `docs/subtasks/011-project-minimal-evidence-flow-prd.md`.
+- Defined the next bounded Project slice:
+  - Project Detail from existing `ProjectLink` evidence.
+  - History -> Project manual creation from reliable Quest / Principle evidence.
+  - Evidence Timeline with History deep links.
+  - Explicit “证据不足” state for before/after thinking changes.
+- Marked non-goals to keep the slice small:
+  - no AI project candidates
+  - no merge flow
+  - no rename/archive UI
+  - no generated ProjectInsight
+
+Verification:
+
+- Document-only slice. Covered by the full test run above because source changes in the same work session passed the full suite.
+
+## 2026-06-01: Codex Direct Spec - Prompt Context Engineering v1.4
+
+Reason:
+
+- User asked for a complete PRD-level explanation of the current question prompts, lens prompts, experience-summary prompts, context engineering, and the rule-asset retrieval strategy.
+- This area is the core competitive asset of 明思 and needed to be explicit before further product/engineering expansion.
+
+Changes:
+
+- Updated `docs/prompt-context-engineering-prd.md` to v1.4.
+- Added an explicit current alignment summary for the staged algorithm:
+  - material cleanup
+  - user-confirmed evidence
+  - lens-guided questions
+  - action selection
+  - next-day verification
+  - principle extraction
+  - future rule retrieval
+- Added the five versioned algorithm asset categories:
+  - Prompt Template
+  - Lens Asset
+  - Principle Asset
+  - Context Policy
+  - PromptRun / Context Audit
+- Added Prompt asset organization rules, including System Policy, Task Template, Mode Guidance, Lens Context, Context Payload, and Output Schema.
+- Added a concrete context payload example for meeting-preparation principles entering `generateQuestions`.
+- Clarified current MVP audit semantics:
+  - `sourceRecordIDs` are direct evidence.
+  - `contextRecordIDs` currently represent visible request context and may include source ids plus reference ids in the MVP implementation.
+  - audit UI must display reference assets as `contextRecordIDs - sourceRecordIDs` until a future `prompt_context_refs` table exists.
+- Added multi-rule retrieval strategy for users with many saved rules, including behavior principles, judgment criteria, project experience, and growth patterns.
+- Added rule-asset training states:
+  - known but not used
+  - consciously practiced
+  - internalized
+- Added minimal production support for the subagent's PromptRun audit tests:
+  - `AppStore.recentPromptRuns`
+  - `AppStore.promptRunAuditMessage`
+  - `AppStore.loadRecentPromptRuns(limit:)`
+
+Subagent note:
+
+- Worker `019e7f7d-d973-7040-9206-8e7859494b4d` (Peirce) completed a separate PromptRun audit test task while this spec work was active.
+- Peirce added tests for intended `AppStore` PromptRun audit APIs.
+- Codex implemented the minimal production API and accepted the tests after targeted verification.
+
+Verification:
+
+- Documentation diff check passed:
+
+```bash
+git diff --check -- docs/prompt-context-engineering-prd.md docs/agent-delegation-log.md
+```
+
+- Targeted AppStore state-machine tests passed:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- AppStore state-machine tests passed: 60 tests, 0 failures.
+- Full test suite passed: 164 tests, 0 failures.
+
+## 2026-06-01: Codex Direct Implementation - Settings PromptRun Audit Entry
+
+Reason:
+
+- Prompt/context engineering is now documented as a core algorithm asset, but the user still needed a visible way to inspect recent AI calls, failures, and source/context refs from the app.
+- Peirce's test slice already proved the AppStore state API; Settings needed the user-facing entry.
+
+Changes:
+
+- Added a Settings `AI 调用审计` card in `Sources/Features/FeatureTabs.swift`.
+  - Loads recent PromptRun records on Settings appear.
+  - Provides a compact refresh action.
+  - Shows prompt display name, success/failure badge, date, model, session mode, prompt version, source count, reference count, and error/request summary.
+  - Keeps the visual style restrained and consistent with the current warm paper / graphite design system.
+- Kept PromptRun audit state in `AppStore`:
+  - `recentPromptRuns`
+  - `promptRunAuditMessage`
+  - `loadRecentPromptRuns(limit:)`
+- Updated docs:
+  - `docs/ux-flow.md` now lists AI 调用审计 in Settings.
+  - `docs/prompt-context-engineering-prd.md` now marks Settings PromptRun audit entry as current and narrows the next gap to full ContextRun detail/retrieval reasons/feedback.
+  - `docs/implementation-gap-audit.md` now marks the minimal Settings audit list as implemented.
+- Fixed a related persistence-order instability discovered during full test:
+  - `SQLiteDailyEntryRepository.latestDraft()` and `recentEntries(limit:)` now sort by entry `date` first, then `updated_at`.
+  - Added a regression test proving a later-updated older day does not override today's draft.
+
+Verification:
+
+```bash
+git diff --check -- Sources/Services/PersistenceCore.swift Tests/Services/PersistenceCoreTests.swift Sources/Features/FeatureTabs.swift docs/prompt-context-engineering-prd.md docs/implementation-gap-audit.md docs/ux-flow.md docs/agent-delegation-log.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIServiceContextTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testLatestDraft_prefersNewestEntryDateOverLaterUpdateTimestamp -only-testing:MingSiTests/AppStoreStateMachineTests/testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Prompt/State targeted tests passed: 66 tests, 0 failures.
+- Persistence/verification regression tests passed: 2 tests, 0 failures.
+- Full test suite passed: 165 tests, 0 failures.
+
+## 2026-06-01: Dirac Delegation + Codex Integration - Structured PromptContextPayload
+
+Delegation:
+
+- Worker `019e7f8b-f5cf-7aa0-97c1-f0b5493e4ed1` (Dirac) was assigned a tests-only migration task for structured Prompt context.
+- Dirac added focused tests in `Tests/Services/TodayAIServiceContextTests.swift`.
+- Covered:
+  - `organizeCards` exposes structured raw text, privacy rules, session mode, and no principles.
+  - `generateQuestions` exposes structured cards, selected lens, session mode, and relevant principles.
+  - structured payload coexists with legacy `jsonPayload` for DirectGLM compatibility.
+
+Integration:
+
+- Codex added `LLMRequest.contextPayload: PromptContextPayload?`.
+- Added `PromptContextPayload: Codable, Hashable` with current input, user choice, cards, answers, quests, relevant principles, existing principles, privacy, and extra fields.
+- `DirectGLMClient` now prefers `contextPayload.renderedJSON()` and falls back to legacy payload lines.
+- `DefaultContextAssembler` now builds structured context from the Today loop state.
+- `extractPrinciple` now injects explicit `existingPrinciples` for dedupe/merge behavior and records those IDs in `contextRecordIDs`.
+- Kept legacy keys including `existingPrinciples` so current prompt templates and tests remain compatible during migration.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests -only-testing:MingSiTests/DirectGLMClientTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted Prompt context and DirectGLM tests passed: 11 tests, 0 failures.
+- Full test suite passed: 168 tests, 0 failures.
+
+## 2026-06-01: Hypatia Audit + Carver Tests - Project Prompt Schema Validators
+
+Delegation:
+
+- Explorer `019e7f95-053d-77a1-a2a5-a2edd3a3a82d` (Hypatia) performed a read-only MVP gap audit.
+- Hypatia identified the highest remaining risks as live BYOK fallback behavior, verification evidence capture, lens recommendation mismatch, and Project/Growth gaps.
+- Worker `019e7f96-6c1a-7220-9d73-475345a48b80` (Carver) owned tests-only changes in `Tests/Services/TodayAIResponseParserTests.swift`.
+
+Changes:
+
+- Added domain result types for Project prompt outputs:
+  - `ProjectLinkCandidate`
+  - `ProjectSuggestionResult`
+  - `ProjectInsightsResult`
+- Added strict parser support in `TodayAIResponseParser`:
+  - `parseProjectSuggestions(from:)`
+  - `parseProjectInsights(from:)`
+  - `parseProjectMergeCandidates(from:)`
+- Project prompt outputs now reject or filter unsupported long-term conclusions when evidence is missing:
+  - project links require source id and user confirmation requirement
+  - new project candidates require source refs
+  - project insights require source refs
+  - `thinking_change` requires both before and after evidence
+  - merge candidates require valid source/target project ids and overlapping evidence refs
+- Updated docs to mark Project parser validation as implemented foundation and narrow remaining work to AI use cases and user confirmation UI.
+- Addressed Hypatia's top BYOK audit finding:
+  - Added `MissingAPIKeyLLMClient`.
+  - Live no-key path now records a GLM failure through PromptRun tracing instead of returning mock success.
+  - Today can still use visible local fallback, but the result remains auditable and repairable.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIResponseParserTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testPromptTracingLLMClient_recordsMissingAPIKeyAsFailure -only-testing:MingSiTests/TodayAIResponseParserTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- TodayAIResponseParser targeted tests passed: 36 tests, 0 failures.
+- Missing-key tracing + parser targeted tests passed: 37 tests, 0 failures.
+- Full test suite passed: 176 tests, 0 failures.
+
+## 2026-06-02: Claude Code Delegation + Codex Integration - Growth AI Report
+
+Delegation:
+
+- Claude Code was assigned `docs/subtasks/013-growth-ai-report-prd.md` using the fixed progress file `docs/subtasks/013-growth-ai-report-claude-progress.md`.
+- Claude reported completion of a service/parser slice for weekly/monthly Growth AI reports.
+- Reported changed files included `Sources/Services/GrowthAIService.swift`, `Sources/Services/TodayAIResponseParser.swift`, `Sources/Services/CoreProtocols.swift`, `Sources/App/AppStore.swift`, `Tests/Services/TodayAIResponseParserTests.swift`, `docs/prompt-spec.md`, and `project.yml`.
+
+Codex review:
+
+- Accepted the strict report-level parser, insufficient-evidence handling, contribution source validation, AppStore intent methods, and prompt schema documentation.
+- Rejected one architecture gap in the initial service implementation: `GrowthAIService` sent Growth context only through legacy `[String: String]` payload and left `LLMRequest.contextPayload` empty.
+- Added a typed optional `PromptContextPayload.growth` section so weekly/monthly Growth context can later move to a server PromptProvider/ContextAssembler without changing the UI contract.
+- Updated `GrowthAIService` to send both typed Growth context and legacy GLM-compatible payload keys.
+- Added `TodayAIServiceContextTests.testGrowthAIService_exposesStructuredGrowthContextPayload` to lock this boundary.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIResponseParserTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests/testGrowthAIService_exposesStructuredGrowthContextPayload test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIResponseParserTests -only-testing:MingSiTests/TodayAIServiceContextTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Parser targeted tests passed: 42 tests, 0 failures.
+- Growth context red/green test passed after typed context implementation: 1 test, 0 failures.
+- Parser + context targeted tests passed: 54 tests, 0 failures.
+- Full test suite passed: 196 tests, 0 failures.
+
+## 2026-06-02: Claude Code Delegation + Codex Review - Project AI Candidate Review
+
+Delegation:
+
+- Claude Code was assigned `docs/subtasks/014-project-ai-candidate-review-prd.md` with the fixed progress file `docs/subtasks/014-project-ai-candidate-review-claude-progress.md`.
+- Claude started the task and produced code changes, but did not fully maintain the progress checklist. Codex treated the output as untrusted and reviewed it directly.
+
+Accepted changes:
+
+- Added `PromptID.suggestProjectLinks` and a local prompt template for evidence-backed long-term project suggestions.
+- Added `ProjectAIService` using `PromptProvider`, `LLMClient`, and `TodayAIResponseParser.parseProjectSuggestions(from:)`.
+- Added typed `PromptContextPayload.project` plus legacy payload keys for future server-side prompt/context migration.
+- Wired `AppStore` with project candidate repositories, published pending-review state, suggestion generation, accept/dismiss actions, and existing-project link acceptance.
+- Added restrained candidate review UI in Today completion and Projects tab.
+
+Codex fixes after review:
+
+- Fixed accepted new project candidates so the created `ProjectLink.sourceType` is inferred from the actual source id (`thinking_card`, `quest`, `principle`, `verification`, or `daily_entry`) instead of always writing `daily_entry`.
+- Added pending candidate restoration during `loadPersistedState()`, so pending Project candidates survive app restart while dismissed candidates remain hidden from review UI.
+- Added regression coverage for both issues.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testAcceptProjectCandidate_createsProjectAndConfirmedLink test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadPersistedState_restoresOnlyPendingProjectCandidates test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIResponseParserTests -only-testing:MingSiTests/TodayAIServiceContextTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Project source-type regression test failed before the fix, then passed after the fix.
+- Pending candidate restore regression test failed before the fix, then passed after the fix.
+- Targeted Project/AppStore/parser/context suite passed: 123 tests, 0 failures.
+- Full suite passed: 203 tests, 0 failures.
+
+## 2026-06-02: Claude Code Delegation + Codex Takeover - Project Insight Review
+
+Delegation:
+
+- Claude Code was assigned `docs/subtasks/018-project-insight-review-prd.md` using `docs/subtasks/018-project-insight-review-progress.md` and `docs/subtasks/018-project-insight-review-claude-prompt.md`.
+- Claude Code started implementation but did not complete the required checkpoint protocol. It updated only the start checkpoint and was interrupted before verified handoff.
+- Codex treated the output as untrusted partial work and reviewed the changed files directly.
+
+Accepted partial direction:
+
+- `ProjectAIService.generateProjectInsights(context:)` as a separate service entry point.
+- AppStore-level state for pending/accepted project insights and feedback submission.
+- Parser reuse through `TodayAIResponseParser.parseProjectInsights(from:)`.
+
+Codex fixes after review:
+
+- Fixed the local prompt schema for Project Insight generation so it matches the parser contract: `project_insights`, `project_id`, `insight_type`, nested `before` / `after`, and `source_refs`.
+- Added AppStore persistence guards: generated insights are saved only when they belong to the selected project and every `sourceRef` resolves to loaded confirmed evidence.
+- Repaired the AppStore insight tests so they exercise the real chain: saved project, confirmed links, loaded history evidence, AI response, persisted candidates.
+- Added Project Detail insight UI:
+  - compact “生成项目洞察” action,
+  - loading and insufficient-evidence message,
+  - pending review cards with accept / inaccurate / dismiss,
+  - accepted narrative cards,
+  - before/after rendering for thinking-change insights.
+- Kept SwiftUI behind the AppStore boundary; the UI does not call GLM or repositories directly.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateProjectInsights_withSufficientEvidence_savesCandidatesAndPublishesState -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateProjectInsights_withInsufficientEvidence_savesNoneAndShowsMessage -only-testing:MingSiTests/AppStoreStateMachineTests/testAcceptProjectInsight_updatesFeedbackToAcceptedAndKeepsVisible -only-testing:MingSiTests/AppStoreStateMachineTests/testMarkInaccurateProjectInsight_removesFromAcceptedNarrative -only-testing:MingSiTests/AppStoreStateMachineTests/testDismissProjectInsight_removesFromBothPendingAndAccepted test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIResponseParserTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- Targeted Project Insight tests passed: 10 tests, 0 failures.
+- Related Project/AppStore/parser tests passed: 121 tests, 0 failures.
+- Full suite passed: 222 tests, 0 failures.
+
+Post-review fixes:
+
+- A read-only code review subagent found that `blocker_change` was specified as a before/after insight in the prompt contract, but parser, persistence, and UI treated only `thinking_change` as before/after.
+- Codex tightened parser and persistence validation so both `thinking_change` and `blocker_change` require before/after evidence.
+- Codex updated Project Detail UI so `blocker_change` cards render the before/after transition instead of losing the evidence transition.
+- Codex added regression coverage for wrong-project and unresolved-source model output in AppStore generation.
+
+Post-review verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIResponseParserTests/testParseProjectInsights_blockerChangeMissingBeforeOrAfter_skipsInvalidInsights -only-testing:MingSiTests/PersistenceCoreTests/testSaveProjectInsight_blockerChangeWithoutBeforeAfterThrowsValidation -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateProjectInsights_dropsWrongProjectAndUnresolvedSourceRefs test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/ProjectAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/TodayAIResponseParserTests -only-testing:MingSiTests/PersistenceCoreTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Result:
+
+- New regression tests passed: 3 tests, 0 failures.
+- Related Project/AppStore/parser/persistence tests passed: 174 tests, 0 failures.
+- Full suite passed: 225 tests, 0 failures.

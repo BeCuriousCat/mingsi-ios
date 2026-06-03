@@ -28,7 +28,19 @@ Primary tabs:
 - Growth: before/after evidence and trend indicators.
 - Settings: privacy, model, and data controls.
 
-The MVP can start with Today as the primary complete flow and simpler placeholder versions of the other tabs. Tabs are not workflow steps; Today owns the active state machine.
+Today is the primary complete flow. History, Projects, and Growth can be minimal in MVP, but they cannot be decorative placeholders: each must render real evidence-backed records and must support jumping back to source history where relevant. Tabs are not workflow steps; Today owns the active state machine.
+
+Global layout rule:
+
+- Page backgrounds must extend full bleed to screen edges.
+- Content may use horizontal padding, but the app must not show accidental white gutters on the left or right.
+- Repeated objects can be cards; whole pages should not look like nested cards.
+
+App icon rule:
+
+- The icon should carry the meaning of `明` rather than an arbitrary abstract glyph.
+- MVP icon uses explicit `日` and `月` forms on warm paper with deep ink and a small cinnabar thought mark.
+- Avoid purple AI gradients, random initials, or decorative symbols that do not explain the product.
 
 ## Today Screen Structure
 
@@ -141,6 +153,17 @@ MVP fixed components:
 
 Future versions may support schema-driven UI, but only through a constrained component registry. The model should never generate arbitrary executable UI. It may only propose declarative component recipes that the client validates and renders through approved native components.
 
+AI generation states follow the same rule. The MVP renders temporary card placeholders from the controlled `MINGSI_STREAM_V1` XML-like stream. These temporary cards are presentation state only and must be revalidated before becoming editable `ThinkingCard` candidates.
+
+Streaming card interaction:
+
+- New card appears when `<CARD>` arrives.
+- Title fades in when `<TITLE>` content arrives.
+- Body text appends in small batches, not per-character jitter.
+- `</CARD>` adds a small completion mark.
+- If the stream stalls, show the latest received card and a concise status line.
+- Respect Reduce Motion: disable movement and keep opacity-only updates.
+
 Future flow:
 
 ```text
@@ -182,14 +205,23 @@ Purpose:
 
 Visible elements:
 
-- Lens name.
+- Chinese lens name.
+- Short tag, such as `事实` / `反证` / `杠杆`.
 - One-line purpose.
-- Why recommended.
+- Concrete method hint: the first question this lens asks.
+- Distinct icon/accent treatment per lens.
 - Select action.
 
 Tone:
 
 - Direct and intellectual, not mystical or motivational.
+- No English-only lens names in MVP.
+
+Current MVP lens cards:
+
+- `证据校验`：graphite accent, checklist mark, separates fact/judgment/assumption.
+- `反方视角`：brick accent, opposing-arrows mark, searches for disconfirming evidence.
+- `杠杆分析`：green ink accent, leverage path mark, identifies the highest-impact next move.
 
 ### QuestionCard
 
@@ -355,7 +387,7 @@ Top card:
 
 ```text
 Yesterday's Main Quest
-Confirm the real bottleneck in Project A
+Confirm the real bottleneck in the current project
 
 Completed / Partially / Not completed
 Actual value: High / Medium / Low / Unclear
@@ -436,7 +468,7 @@ Quest cards:
 
 ```text
 Main Quest
-Clarify the real bottleneck in Project A
+Clarify the real bottleneck in the current project
 
 Completion criteria:
 Identify whether the bottleneck is requirement, collaboration, or technical.
@@ -493,9 +525,75 @@ Detail view:
 
 History should feel like an evidence archive, not a file browser. Raw input should be collapsed by default, with confirmed cards and verified outcomes more prominent.
 
+## Projects UI Draft
+
+Projects should answer why a project exists, what changed, and what evidence supports that view.
+
+Project is a working surface, not a folder list. The page should use a quiet split rhythm:
+
+- A narrow status rail for Active / Watching / Paused / Archived.
+- A dense project list with goal, bottleneck, and last evidence date.
+- A detail surface driven by timeline and before/after evidence.
+
+It should not use identical centered cards for every row. Progress is shown as evidence signals, not decorative completion rings.
+
+List view:
+
+```text
+项目
+
+[Active] [Watching] [Paused] [Archived]
+
+会议效率
+目标：会前明确确认事项，会后形成 Action
+当前阻塞：会前材料准备不稳定
+最近进展：2 个主线任务完成 · 1 个开放问题关闭
+
+判断质量
+目标：把模糊任务转成可验证判断
+当前阻塞：任务价值验证不足
+最近进展：本周 3 条证据
+```
+
+Detail view:
+
+```text
+会议效率
+
+当前目标
+会前列出要确认的问题，会后发出结论与责任人。
+
+当前阻塞
+会前没有稳定准备材料。
+
+最近进展
+- 5月31日：完成会前确认清单
+- 6月1日：会后摘要减少二次沟通
+
+思考变化
+Before: "开会推进一下。"
+After: "这次会议必须确认接口责任人、验收标准和下一步。"
+
+开放问题
+- 哪类会议需要正式纪要？
+- 什么时候只需要同步，不需要完整流程？
+```
+
+Project UI rules:
+
+- Every progress item must link to History.
+- Merge candidates must show reason, overlapping evidence, and risks before user confirmation.
+- Project names should stay abstract and privacy-safe.
+- The page should use a dense working layout, not oversized centered cards.
+- If there is no ProjectLink evidence, show an empty evidence state instead of sample projects.
+- Thinking change uses before/after contrast with source dates; never show a generic insight block without source links.
+- Avoid left/right white gutters by letting the page background fill the full safe area, then constraining inner content.
+
 ## Growth UI Draft
 
 Growth should prioritize evidence over decoration.
+
+Growth is closer to an attribution ledger than a dashboard. The first screen may summarize trends, but every number must open into why it changed.
 
 Sections:
 
@@ -517,6 +615,50 @@ After
 What changed
 The later task has clearer completion criteria and better validation value.
 ```
+
+Metric detail:
+
+```text
+清晰度 3.8 (+0.4)
+
+为什么变化
+本周主线任务的完成标准更具体，且两次主动区分了事实和假设。
+
+加分事件
++ 5月31日：把“推进项目”改成“确认当前真实瓶颈”
++ 6月2日：先列出会议必须确认的问题
+
+减分事件
+- 6月3日：输入只有情绪判断，没有可验证事实
+
+下一步训练
+继续练习 Evidence Check，在任务生成前先分离事实、判断和假设。
+```
+
+Contribution detail:
+
+```text
+加分事件
+5月31日 · 清晰度 +0.2
+
+为什么加分
+把“推进项目”改成“确认当前真实瓶颈”，完成标准从动作变成了验证问题。
+
+来源
+History · 5月31日 · 主线任务
+
+[查看来源] [标记不准确]
+```
+
+Growth UI rules:
+
+- No metric number appears without a reason.
+- Every positive or negative event links to a source record.
+- Scores are trend indicators, not labels about the user.
+- The first view should show overview; metric detail should handle explanation depth.
+- With insufficient evidence, show collection progress and next action instead of fake scores.
+- Positive and negative contributions should be visually distinct, but not gamified as rewards or punishments.
+- Use off-white paper, off-black text, fine dividers, restrained red for negative deltas, restrained green or ink-blue for positive deltas. Avoid purple AI styling.
 
 ## Design Debt to Avoid
 

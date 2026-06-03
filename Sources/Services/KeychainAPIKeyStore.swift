@@ -10,6 +10,7 @@ final class KeychainAPIKeyStore {
     private let service = "com.codex.mingsi.glm"
     private let apiKeyAccount = "glm_api_key"
     private let baseURLAccount = "glm_base_url"
+    private let modelNameAccount = "glm_model_name"
 
     // MARK: - API Key
 
@@ -74,7 +75,43 @@ final class KeychainAPIKeyStore {
         }
     }
 
+    // MARK: - Model Name
+
+    func saveModelName(_ modelName: String) throws {
+        try saveString(modelName, account: modelNameAccount)
+    }
+
+    func loadModelName() throws -> String? {
+        try loadString(account: modelNameAccount)
+    }
+
+    func deleteModelName() throws {
+        let status = deleteItem(account: modelNameAccount)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainAPIKeyError.unexpectedStatus(status)
+        }
+    }
+
     // MARK: - Private
+
+    private func saveString(_ value: String, account: String) throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        deleteItem(account: account)
+
+        let data = Data(trimmed.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainAPIKeyError.unexpectedStatus(status)
+        }
+    }
 
     private func loadString(account: String) throws -> String? {
         let query: [String: Any] = [

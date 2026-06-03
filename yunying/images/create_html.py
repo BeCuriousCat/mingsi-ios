@@ -1,0 +1,819 @@
+#!/usr/bin/env python3
+"""Generate MingSi HTML introduction page."""
+import os
+
+html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>明思 MingSi — 把事情想清楚</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --paper: #F5F0E8;
+    --paper-light: #FAF7F0;
+    --graphite: #2C2C2C;
+    --graphite-light: #4A4A48;
+    --cinnabar: #C54B3C;
+    --cinnabar-light: #E8D5CE;
+    --deep-green: #2D6A4F;
+    --indigo: #4338CA;
+    --amber: #D97706;
+    --mid-gray: #787670;
+    --light-gray: #B5B0A8;
+    --border: #DDD8CE;
+    --card-bg: #F8F4EC;
+    --input-bg: #F2EEE4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    font-family: 'Inter', 'Noto Serif SC', -apple-system, sans-serif;
+    background: var(--paper);
+    color: var(--graphite);
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ── Navigation ────────────────────────────────────── */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(245, 240, 232, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .nav-brand {
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--graphite);
+    letter-spacing: -0.5px;
+  }
+
+  .nav-brand span { color: var(--cinnabar); }
+
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    text-decoration: none;
+    color: var(--mid-gray);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.5px;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--cinnabar); }
+
+  /* ── Hero ───────────────────────────────────────────── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 40px;
+    position: relative;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 56px;
+    right: 0;
+    width: 40%;
+    height: calc(100% - 56px);
+    background: radial-gradient(ellipse at 80% 40%, rgba(197, 75, 60, 0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-inner {
+    max-width: 1100px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+  }
+
+  .hero-text { position: relative; z-index: 2; }
+
+  .hero-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--light-gray);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .hero-title {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -2px;
+    margin-bottom: 12px;
+  }
+
+  .hero-subtitle {
+    font-family: 'Noto Serif SC', serif;
+    font-size: 22px;
+    color: var(--mid-gray);
+    font-weight: 400;
+    margin-bottom: 32px;
+  }
+
+  .hero-tagline {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 36px;
+    position: relative;
+    padding-left: 20px;
+  }
+
+  .hero-tagline::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 4px;
+    background: var(--cinnabar);
+    border-radius: 2px;
+  }
+
+  .hero-cycle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--mid-gray);
+  }
+
+  .hero-cycle .step {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+
+  .hero-cycle .step:hover {
+    border-color: var(--cinnabar);
+    color: var(--cinnabar);
+  }
+
+  .hero-cycle .arrow { color: var(--cinnabar); font-weight: 500; }
+
+  .hero-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    background: var(--graphite);
+    color: var(--paper);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
+
+  .hero-cta:hover { background: var(--cinnabar); }
+
+  .hero-cta-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    border: 1px solid var(--border);
+    color: var(--mid-gray);
+    text-decoration: none;
+    font-size: 15px;
+    border-radius: 8px;
+    margin-left: 12px;
+    transition: all 0.2s;
+  }
+
+  .hero-cta-secondary:hover {
+    border-color: var(--cinnabar);
+    color: var(--cinnabar);
+  }
+
+  .hero-image {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .hero-image img {
+    max-width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(44, 44, 44, 0.12), 0 4px 16px rgba(44, 44, 44, 0.06);
+  }
+
+  /* ── Section base ──────────────────────────────────── */
+  section {
+    padding: 100px 40px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--light-gray);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+
+  .section-desc {
+    font-size: 17px;
+    color: var(--mid-gray);
+    max-width: 600px;
+    line-height: 1.8;
+    margin-bottom: 48px;
+  }
+
+  /* ── Why ────────────────────────────────────────────── */
+  .why-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+
+  .why-card {
+    padding: 32px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    position: relative;
+  }
+
+  .why-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 2px;
+  }
+
+  .why-card:nth-child(1)::before { background: var(--light-gray); }
+  .why-card:nth-child(2)::before { background: var(--cinnabar); }
+  .why-card:nth-child(3)::before { background: var(--deep-green); }
+  .why-card:nth-child(4)::before { background: var(--indigo); }
+
+  .why-card h4 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .why-card p {
+    font-size: 14px;
+    color: var(--mid-gray);
+    line-height: 1.7;
+  }
+
+  /* ── Cycle ──────────────────────────────────────────── */
+  .cycle-steps {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .cycle-step {
+    flex: 1;
+    padding: 28px 20px;
+    border-top: 3px solid var(--border);
+    position: relative;
+    transition: all 0.2s;
+  }
+
+  .cycle-step:hover {
+    border-top-color: var(--cinnabar);
+  }
+
+  .cycle-step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--light-gray);
+    margin-bottom: 8px;
+  }
+
+  .cycle-step-en {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .cycle-step-zh {
+    font-size: 13px;
+    color: var(--mid-gray);
+  }
+
+  .cycle-step-desc {
+    font-size: 13px;
+    color: var(--mid-gray);
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+
+  /* ── Features ───────────────────────────────────────── */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .feature-item {
+    padding: 28px 24px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
+
+  .feature-item:hover {
+    border-color: var(--cinnabar);
+    box-shadow: 0 4px 20px rgba(197, 75, 60, 0.06);
+  }
+
+  .feature-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+
+  .feature-item h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .feature-item p {
+    font-size: 13px;
+    color: var(--mid-gray);
+    line-height: 1.6;
+  }
+
+  /* ── Screenshots ────────────────────────────────────── */
+  .screenshots {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+
+  .screenshot {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+
+  .screenshot:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(44, 44, 44, 0.1);
+  }
+
+  .screenshot img {
+    width: 100%;
+    display: block;
+  }
+
+  .screenshot-label {
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--mid-gray);
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Differences ────────────────────────────────────── */
+  .diff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .diff-item {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 20px;
+    padding: 24px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    align-items: start;
+  }
+
+  .diff-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--cinnabar);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding-top: 2px;
+  }
+
+  .diff-text {
+    font-size: 16px;
+    line-height: 1.7;
+  }
+
+  /* ── Privacy ────────────────────────────────────────── */
+  .privacy-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+
+  .privacy-item {
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .privacy-item .icon {
+    font-size: 24px;
+    margin-bottom: 12px;
+  }
+
+  .privacy-item h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .privacy-item p {
+    font-size: 13px;
+    color: var(--mid-gray);
+    line-height: 1.6;
+  }
+
+  /* ── Footer ─────────────────────────────────────────── */
+  footer {
+    padding: 60px 40px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--light-gray);
+    font-size: 13px;
+  }
+
+  footer .footer-brand {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--graphite);
+    margin-bottom: 8px;
+  }
+
+  footer .footer-tagline {
+    font-family: 'Noto Serif SC', serif;
+    color: var(--mid-gray);
+    margin-bottom: 24px;
+  }
+
+  footer .footer-links {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+
+  footer .footer-links a {
+    color: var(--mid-gray);
+    text-decoration: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    transition: color 0.2s;
+  }
+
+  footer .footer-links a:hover { color: var(--cinnabar); }
+
+  /* ── Responsive ─────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; }
+    .hero-title { font-size: 42px; }
+    .why-grid { grid-template-columns: 1fr; }
+    .feature-grid { grid-template-columns: 1fr 1fr; }
+    .screenshots { grid-template-columns: 1fr 1fr; }
+    .cycle-steps { flex-wrap: wrap; }
+    .cycle-step { flex: 0 0 calc(50% - 4px); }
+    .privacy-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+  }
+
+  @media (max-width: 600px) {
+    .hero-title { font-size: 32px; }
+    .hero-tagline { font-size: 22px; }
+    section { padding: 60px 20px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .screenshots { grid-template-columns: 1fr; }
+    .cycle-step { flex: 0 0 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-brand">明思<span> MingSi</span></div>
+  <ul class="nav-links">
+    <li><a href="#why">为什么</a></li>
+    <li><a href="#cycle">闭环</a></li>
+    <li><a href="#features">功能</a></li>
+    <li><a href="#screens">界面</a></li>
+    <li><a href="#privacy">隐私</a></li>
+    <li><a href="https://github.com">GitHub</a></li>
+  </ul>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-label">Personal Thinking System</div>
+      <h1 class="hero-title">明思</h1>
+      <div class="hero-subtitle">MingSi</div>
+      <div class="hero-tagline">把事情想清楚。</div>
+      <div class="hero-cycle">
+        <span class="step">Clarify</span><span class="arrow">→</span>
+        <span class="step">Challenge</span><span class="arrow">→</span>
+        <span class="step">Choose</span><span class="arrow">→</span>
+        <span class="step">Act</span><span class="arrow">→</span>
+        <span class="step">Calibrate</span>
+      </div>
+      <div>
+        <a href="#features" class="hero-cta">了解功能</a>
+        <a href="https://github.com" class="hero-cta-secondary">查看源码 →</a>
+      </div>
+    </div>
+    <div class="hero-image">
+      <img src="images/00-cover-readme.png" alt="明思 App 界面预览" />
+    </div>
+  </div>
+</section>
+
+<!-- Why -->
+<section id="why">
+  <div class="section-label">Why</div>
+  <h2 class="section-title">为什么做这个 App</h2>
+  <p class="section-desc">
+    做了很多事，但没想清楚。日记写几周就断了，Todo 越来越长但没人验证完成质量，AI 聊天聊完就忘了。不是缺工具，是缺一个把事情想清楚的闭环。
+  </p>
+  <div class="why-grid">
+    <div class="why-card">
+      <h4>日记记的是感受，不是判断</h4>
+      <p>写完就完了，没有追问，没有验证。感受是真实的，但判断力没有得到训练。</p>
+    </div>
+    <div class="why-card">
+      <h4>Todo 只管执行，不管验证</h4>
+      <p>完成了打勾，没完成延期。但没人问"这件事重要吗？完成它证明了什么？"</p>
+    </div>
+    <div class="why-card">
+      <h4>AI 聊天很方便，但聊完就散了</h4>
+      <p>AI 给了建议，你点了头，关掉窗口，什么都没留下。没有证据，没有校准。</p>
+    </div>
+    <div class="why-card">
+      <h4>缺的不是工具，是闭环</h4>
+      <p>输入混乱的思考，输出可验证的判断。第二天回来校准。如此往复。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Cycle -->
+<section id="cycle">
+  <div class="section-label">Core Loop</div>
+  <h2 class="section-title">核心闭环</h2>
+  <p class="section-desc">
+    澄清、质疑、选择、行动、校准。每天一个完整循环，训练你的判断力。
+  </p>
+  <div class="cycle-steps">
+    <div class="cycle-step">
+      <div class="cycle-step-num">01</div>
+      <div class="cycle-step-en">Clarify</div>
+      <div class="cycle-step-zh">澄清</div>
+      <div class="cycle-step-desc">输入今天发生的事、想法、困惑。不需要写成文章，想到什么说什么。</div>
+    </div>
+    <div class="cycle-step">
+      <div class="cycle-step-num">02</div>
+      <div class="cycle-step-en">Challenge</div>
+      <div class="cycle-step-zh">质疑</div>
+      <div class="cycle-step-desc">AI 将输入整理成思考卡片，你确认或修正。透镜提供不同审视角度。</div>
+    </div>
+    <div class="cycle-step">
+      <div class="cycle-step-num">03</div>
+      <div class="cycle-step-en">Choose</div>
+      <div class="cycle-step-zh">选择</div>
+      <div class="cycle-step-desc">AI 提出追问，你做出判断。发现假设、漏洞、取舍和更高价值的方向。</div>
+    </div>
+    <div class="cycle-step">
+      <div class="cycle-step-num">04</div>
+      <div class="cycle-step-en">Act</div>
+      <div class="cycle-step-zh">行动</div>
+      <div class="cycle-step-desc">从判断中生成明天最重要的任务，包含完成标准和验证问题。</div>
+    </div>
+    <div class="cycle-step">
+      <div class="cycle-step-num">05</div>
+      <div class="cycle-step-en">Calibrate</div>
+      <div class="cycle-step-zh">校准</div>
+      <div class="cycle-step-desc">第二天回看昨天的判断是否成立，校准自己的思考偏差。</div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="section-label">Features</div>
+  <h2 class="section-title">核心功能</h2>
+  <p class="section-desc">
+    每个功能都服务于同一个目标：帮你把事情想清楚。
+  </p>
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(180,175,168,0.15);">📝</div>
+      <h4>今日复盘</h4>
+      <p>语音或文字输入，低成本收集原始思考材料。不要求写成文章。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(197,75,60,0.1);">🃏</div>
+      <h4>思考卡片</h4>
+      <p>AI 整理成事实、问题、风险、决策、想法、沟通、任务七类卡片。用户确认或修正。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(67,56,202,0.1);">🔍</div>
+      <h4>思考透镜</h4>
+      <p>证据校验、反方视角、杠杆分析三种内置视角。后续支持自定义透镜。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(200,160,60,0.1);">❓</div>
+      <h4>深度追问</h4>
+      <p>基于确认卡片提出引导性问题。引导你思考，不替你下结论。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(45,106,79,0.1);">🎯</div>
+      <h4>明日任务</h4>
+      <p>生成带完成标准的可验证任务。不是 Todo，是"明天要验证的判断"。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(45,106,79,0.1);">✅</div>
+      <h4>次日验证</h4>
+      <p>回看昨日任务完成度和实际价值。校准判断，不只是记录完成。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(180,175,168,0.15);">📚</div>
+      <h4>历史证据</h4>
+      <p>回溯复盘、卡片、任务、验证记录。历史是个人判断和行动的证据链。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(197,75,60,0.1);">🔒</div>
+      <h4>本地存储</h4>
+      <p>所有数据存储在设备本地，不经服务器。不需要注册账号。</p>
+    </div>
+    <div class="feature-item">
+      <div class="feature-icon" style="background: rgba(45,106,79,0.1);">⚙️</div>
+      <h4>自有 AI</h4>
+      <p>使用你自己的 API Key，调用你信任的 AI 服务。数据不经我们的服务器。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Screenshots -->
+<section id="screens">
+  <div class="section-label">Screenshots</div>
+  <h2 class="section-title">界面预览</h2>
+  <p class="section-desc">
+    温暖纸质感，克制的信息层次。每个界面都服务于思考，不是展示。
+  </p>
+  <div class="screenshots">
+    <div class="screenshot">
+      <img src="images/01-today-review.png" alt="今日复盘" />
+      <div class="screenshot-label">01 · 今日复盘</div>
+    </div>
+    <div class="screenshot">
+      <img src="images/02-thinking-cards.png" alt="思考卡片" />
+      <div class="screenshot-label">02 · 思考卡片</div>
+    </div>
+    <div class="screenshot">
+      <img src="images/03-lens-selection.png" alt="透镜选择" />
+      <div class="screenshot-label">03 · 透镜选择</div>
+    </div>
+    <div class="screenshot">
+      <img src="images/04-history-evidence.png" alt="历史证据" />
+      <div class="screenshot-label">04 · 历史证据</div>
+    </div>
+  </div>
+</section>
+
+<!-- Differences -->
+<section id="differences">
+  <div class="section-label">Difference</div>
+  <h2 class="section-title">明思不是什么</h2>
+  <div class="diff-list">
+    <div class="diff-item">
+      <div class="diff-label">不是日记</div>
+      <div class="diff-text">明思不是记录人生，而是训练判断。输入是为了校准，不是为了回顾。</div>
+    </div>
+    <div class="diff-item">
+      <div class="diff-label">不是 Todo</div>
+      <div class="diff-text">明思的明日任务不是普通 Todo，而是让明天的任务变成可验证的判断。</div>
+    </div>
+    <div class="diff-item">
+      <div class="diff-label">不是聊天</div>
+      <div class="diff-text">明思不是 AI 聊天，而是一个证据驱动的个人复盘系统。AI 负责整理和追问，你负责判断。</div>
+    </div>
+    <div class="diff-item">
+      <div class="diff-label">不是打卡</div>
+      <div class="diff-text">明思不是成功学打卡，而是基于事实、行动、反馈和校准的训练闭环。不统计连续天数。</div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy -->
+<section id="privacy">
+  <div class="section-label">Privacy</div>
+  <h2 class="section-title">隐私原则</h2>
+  <p class="section-desc">
+    你的思考数据只属于你。这不是一个要拿你数据的产品。
+  </p>
+  <div class="privacy-grid">
+    <div class="privacy-item">
+      <div class="icon">📱</div>
+      <h4>本地存储</h4>
+      <p>所有数据存储在设备本地，不经服务器。</p>
+    </div>
+    <div class="privacy-item">
+      <div class="icon">🔑</div>
+      <h4>自有 Key</h4>
+      <p>AI 调用使用你自己的 API Key，不经过我们的服务器。</p>
+    </div>
+    <div class="privacy-item">
+      <div class="icon">🚫</div>
+      <h4>不采集</h4>
+      <p>不要求注册账号，不收集用户行为数据。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-brand">明思 MingSi</div>
+  <div class="footer-tagline">把事情想清楚。</div>
+  <p>一个个人思维训练系统的实验 · iOS / SwiftUI / 开源</p>
+  <div class="footer-links">
+    <a href="#">GitHub</a>
+    <a href="#">即刻</a>
+    <a href="#">X / Twitter</a>
+    <a href="#">公众号</a>
+  </div>
+  <p style="margin-top: 24px; font-size: 11px; color: #ccc;">© 2026 明思 MingSi · MIT License</p>
+</footer>
+
+</body>
+</html>"""
+
+output_path = "/Users/chenzewei/Documents/codex/2026-05-30/image-2/yunying/index.html"
+with open(output_path, "w", encoding="utf-8") as f:
+    f.write(html)
+print(f"Saved: {output_path}")

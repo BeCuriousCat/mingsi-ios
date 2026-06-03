@@ -9,24 +9,69 @@ final class AppStore: ObservableObject {
     @Published var questions: [ReflectionQuestion]
     @Published var quests: [Quest]
     @Published var principles: [PrincipleAsset]
+    @Published private(set) var referencedPrinciples: [PrincipleAsset] = []
+    @Published var historyRecords: [HistoryRecord] = []
+    @Published var projectNames: [UUID: String] = [:]
+    @Published var projectsById: [UUID: Project] = [:]
     @Published var growthSnapshot: MetricSnapshot
-    @Published var hasResumeableLoop: Bool = true
+    @Published var metricContributions: [MetricContribution] = []
+    @Published var growthReportReviewContributions: [MetricContribution] = []
     @Published var isResumeBannerDismissed: Bool = false
+    @Published var historyDeepLink: HistoryDeepLink?
     @Published var apiKeyConfigured: Bool = false
     @Published var settingsMessage: String = ""
+    @Published var isTestingGLMConnection: Bool = false
     @Published var todayLoopMessage: String = ""
+    @Published var lastAIFailureMessage: String?
+    @Published var canRetryCurrentAI: Bool = false
+    @Published var streamingCards: [StreamingCardDraft] = []
+    @Published var streamingStatusText: String = ""
+    @Published var recentPromptRuns: [PromptRun] = []
+    @Published var promptRunAuditMessage: String = ""
+    @Published private(set) var pendingAIRepairCount: Int = 0
     @Published private(set) var reminderStatusMessage: String = "明日 09:00 本地提醒将在保存主线任务后请求授权。"
+    @Published var projectCandidates: [ProjectCandidate] = []
+    @Published var projectLinkCandidates: [ProjectLinkCandidate] = []
+    @Published var isGeneratingProjectSuggestions: Bool = false
+    @Published var projectSuggestionMessage: String = ""
+    @Published var isGeneratingGrowthReport: Bool = false
+    @Published var growthReportMessage: String = ""
+    @Published var pendingProjectInsights: [ProjectInsight] = []
+    @Published var acceptedProjectInsights: [ProjectInsight] = []
+    @Published var isGeneratingProjectInsights: Bool = false
+    @Published var projectInsightGenerationMessage: String = ""
+    @Published var pendingProjectMergeCandidates: [ProjectMergeCandidate] = []
+    @Published var isGeneratingProjectMerges: Bool = false
+    @Published var projectMergeMessage: String = ""
 
     private let apiKeyStore: KeychainAPIKeyStore
     private let dailyEntryRepository: DailyEntryRepository?
     private let thinkingCardRepository: ThinkingCardRepository?
     private let questRepository: QuestRepository?
     private let principleRepository: PrincipleRepository?
+    private let verificationRepository: VerificationRepository?
+    private let lensSessionRepository: LensSessionRepository?
+    private let metricSnapshotRepository: MetricSnapshotRepository?
+    private let metricContributionRepository: MetricContributionRepository?
+    private let projectLinkRepository: ProjectLinkRepository?
+    private let projectRepository: ProjectRepository?
+    private let projectCandidateRepository: ProjectCandidateRepository?
+    private let projectMergeCandidateRepository: ProjectMergeCandidateRepository?
+    private let projectInsightRepository: ProjectInsightRepository?
+    private let promptRunRepository: PromptRunRepository?
     private let reminderService: ReminderService?
     private let persistenceUnavailableMessage: String?
+    private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
+    private var growthAIService: GrowthAIService?
     private var apiKeyStatusMessage: String = ""
+    private var glmConnectionMessage: String = ""
     private var scheduledReminderIDs: Set<String> = []
+    private var pendingAIRepairPrompts: Set<PromptID> = [] {
+        didSet {
+            pendingAIRepairCount = pendingAIRepairPrompts.count
+        }
+    }
 
     init(
         todayDraft: DailyEntryDraft? = nil,
@@ -34,49 +79,95 @@ final class AppStore: ObservableObject {
         questions: [ReflectionQuestion]? = nil,
         quests: [Quest]? = nil,
         principles: [PrincipleAsset]? = nil,
+        historyRecords: [HistoryRecord]? = nil,
         growthSnapshot: MetricSnapshot? = nil,
         apiKeyStore: KeychainAPIKeyStore = KeychainAPIKeyStore(),
         dailyEntryRepository: DailyEntryRepository? = nil,
         thinkingCardRepository: ThinkingCardRepository? = nil,
         questRepository: QuestRepository? = nil,
         principleRepository: PrincipleRepository? = nil,
+        verificationRepository: VerificationRepository? = nil,
+        lensSessionRepository: LensSessionRepository? = nil,
+        metricSnapshotRepository: MetricSnapshotRepository? = nil,
+        metricContributionRepository: MetricContributionRepository? = nil,
+        projectLinkRepository: ProjectLinkRepository? = nil,
+        projectRepository: ProjectRepository? = nil,
+        projectCandidateRepository: ProjectCandidateRepository? = nil,
+        projectMergeCandidateRepository: ProjectMergeCandidateRepository? = nil,
+        projectInsightRepository: ProjectInsightRepository? = nil,
+        promptRunRepository: PromptRunRepository? = nil,
         reminderService: ReminderService? = nil,
         todayAIService: TodayAIService? = nil,
-        persistenceUnavailableMessage: String? = nil
+        persistenceUnavailableMessage: String? = nil,
+        refreshesAIServiceFromKeychain: Bool = true,
+        growthAIService: GrowthAIService? = nil
     ) {
         self.apiKeyStore = apiKeyStore
         self.dailyEntryRepository = dailyEntryRepository
         self.thinkingCardRepository = thinkingCardRepository
         self.questRepository = questRepository
         self.principleRepository = principleRepository
+        self.verificationRepository = verificationRepository
+        self.lensSessionRepository = lensSessionRepository
+        self.metricSnapshotRepository = metricSnapshotRepository
+        self.metricContributionRepository = metricContributionRepository
+        self.projectLinkRepository = projectLinkRepository
+        self.projectRepository = projectRepository
+        self.projectCandidateRepository = projectCandidateRepository
+        self.projectMergeCandidateRepository = projectMergeCandidateRepository
+        self.projectInsightRepository = projectInsightRepository
+        self.promptRunRepository = promptRunRepository
         self.reminderService = reminderService
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
+        self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
+        self.growthAIService = growthAIService
         self.todayDraft = todayDraft ?? DailyEntryDraft()
         self.thinkingCards = thinkingCards ?? []
         self.questions = questions ?? []
-        self.quests = quests ?? Self.makePreviewQuests()
+        self.quests = quests ?? []
         self.principles = principles ?? []
-        self.growthSnapshot = growthSnapshot ?? Self.makePreviewGrowth()
+        self.historyRecords = historyRecords ?? []
+        self.growthSnapshot = growthSnapshot ?? Self.makeEmptyGrowth()
         refreshAPIKeyStatus()
     }
 
     static func live() -> AppStore {
         let apiKeyStore = KeychainAPIKeyStore()
-        let todayAIService = makeTodayAIService(apiKeyStore: apiKeyStore)
 
         do {
             let database = try AppDatabase(url: AppDatabase.defaultURL())
+            let promptRunRepository = SQLitePromptRunRepository(database: database)
+            let todayAIService = makeTodayAIService(
+                apiKeyStore: apiKeyStore,
+                promptRunRepository: promptRunRepository
+            )
+            let growthService = GrowthAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+            )
             return AppStore(
                 apiKeyStore: apiKeyStore,
                 dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
                 thinkingCardRepository: SQLiteThinkingCardRepository(database: database),
                 questRepository: SQLiteQuestRepository(database: database),
                 principleRepository: SQLitePrincipleRepository(database: database),
+                verificationRepository: SQLiteVerificationRepository(database: database),
+                lensSessionRepository: SQLiteLensSessionRepository(database: database),
+                metricSnapshotRepository: SQLiteMetricSnapshotRepository(database: database),
+                metricContributionRepository: SQLiteMetricContributionRepository(database: database),
+                projectLinkRepository: SQLiteProjectLinkRepository(database: database),
+                projectRepository: SQLiteProjectRepository(database: database),
+                projectCandidateRepository: SQLiteProjectCandidateRepository(database: database),
+                projectMergeCandidateRepository: SQLiteProjectMergeCandidateRepository(database: database),
+                projectInsightRepository: SQLiteProjectInsightRepository(database: database),
+                promptRunRepository: promptRunRepository,
                 reminderService: LocalNotificationReminder(),
-                todayAIService: todayAIService
+                todayAIService: todayAIService,
+                growthAIService: growthService
             )
         } catch {
+            let todayAIService = makeTodayAIService(apiKeyStore: apiKeyStore, promptRunRepository: nil)
             return AppStore(
                 apiKeyStore: apiKeyStore,
                 reminderService: LocalNotificationReminder(),
@@ -204,7 +295,23 @@ final class AppStore: ObservableObject {
             executionReliability: 3.2,
             calibration: 3.0,
             reflectionDepth: 3.6,
-            summary: "本周对会议类问题的定义更清楚，但会后验证仍然偏少。"
+            summary: "本周对会议类问题的定义更清楚，但会后验证仍然偏少。",
+            hasInsufficientEvidence: true
+        )
+    }
+
+    nonisolated static func makeEmptyGrowth() -> MetricSnapshot {
+        MetricSnapshot(
+            period: "weekly",
+            clarity: 3.0,
+            valueJudgment: 3.0,
+            executionReliability: 3.0,
+            calibration: 3.0,
+            reflectionDepth: 3.0,
+            summary: "证据正在积累。完成 3 次完整复盘后，再生成可解释的成长趋势。",
+            status: .insufficientEvidence,
+            completeLoopCount: 0,
+            nextTrainingFocus: "先稳定完成输入、卡片确认、明日任务和次日验证。"
         )
     }
 
@@ -216,12 +323,24 @@ final class AppStore: ObservableObject {
         todayDraft.state == .sessionComplete ? "今日闭环已完成" : "今日复盘未完成"
     }
 
+    var hasResumeableLoop: Bool {
+        todayDraft.state != .sessionComplete
+    }
+
     var hasAnsweredReflectionQuestion: Bool {
         questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     var mainQuest: Quest? {
         quests.first { $0.type == .main }
+    }
+
+    var canCreateProjectFromCurrentFocus: Bool {
+        guard let mainQuest,
+              projectRepository != nil,
+              projectLinkRepository != nil
+        else { return false }
+        return !hasProjectLink(forSourceId: mainQuest.id.uuidString)
     }
 
     func loadPersistedState() async {
@@ -232,12 +351,34 @@ final class AppStore: ObservableObject {
 
         do {
             guard let draft = try await dailyEntryRepository.latestDraft() else {
+                pendingAIRepairPrompts = []
+                await initializeFromLastActiveQuest()
                 persistDraft()
+                await loadPendingProjectCandidates()
+                await loadPendingProjectMergeCandidates()
+                await loadLatestGrowthSnapshot()
                 return
             }
-            todayDraft = draft
-            hasResumeableLoop = draft.state != .sessionComplete
 
+            if !Calendar.current.isDateInToday(draft.date) {
+                todayDraft = DailyEntryDraft()
+                thinkingCards = []
+                questions = []
+                quests = []
+                principles = []
+                referencedPrinciples = []
+                pendingAIRepairPrompts = []
+                await initializeFromLastActiveQuest()
+                persistDraft()
+                await loadHistoryRecords()
+                await loadPendingProjectCandidates()
+                await loadPendingProjectMergeCandidates()
+                await loadLatestGrowthSnapshot()
+                updateSettingsMessage()
+                return
+            }
+
+            todayDraft = draft
             if let cards = try await thinkingCardRepository?.cards(for: draft.id) {
                 thinkingCards = cards
             }
@@ -247,11 +388,742 @@ final class AppStore: ObservableObject {
             if let storedPrinciples = try await principleRepository?.principles(for: draft.id) {
                 principles = storedPrinciples
             }
+            referencedPrinciples = []
+            if let session = try await lensSessionRepository?.lensSession(for: draft.id) {
+                questions = session.questions
+                if draft.selectedLens == nil {
+                    todayDraft.selectedLens = session.selectedLens
+                }
+            }
+            if todayDraft.state == .verifyYesterday {
+                await initializeFromLastActiveQuest()
+                persistDraft()
+            }
+            await loadHistoryRecords()
+            await loadPendingProjectCandidates()
+            await loadPendingProjectMergeCandidates()
+            await loadLatestGrowthSnapshot()
+            await generateLocalGrowthSnapshotFromHistoryIfNeeded()
+            await restorePendingAIRepairsFromPromptRuns()
         } catch {
             todayLoopMessage = "读取本地复盘记录失败，已继续使用当前内存数据。"
         }
 
         updateSettingsMessage()
+    }
+
+    private func restorePendingAIRepairsFromPromptRuns() async {
+        guard let promptRunRepository else { return }
+        do {
+            let failures = try await promptRunRepository.unresolvedFailures(limit: 100)
+            let todayEntryID = todayDraft.id.uuidString
+            let restoredPrompts = failures.reduce(into: Set<PromptID>()) { result, run in
+                guard run.sourceRecordIds.contains(todayEntryID),
+                      let prompt = PromptID(rawValue: run.promptId),
+                      Self.canRepairPrompt(prompt)
+                else { return }
+                result.insert(prompt)
+            }
+            pendingAIRepairPrompts = restoredPrompts
+        } catch {
+            // Repair recovery should never block the daily loop.
+        }
+    }
+
+    func loadRecentPromptRuns(limit: Int = 12) async {
+        guard let promptRunRepository else {
+            recentPromptRuns = []
+            promptRunAuditMessage = "AI 调用记录暂不可用。"
+            return
+        }
+
+        do {
+            recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
+            promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
+        } catch {
+            recentPromptRuns = []
+            promptRunAuditMessage = "读取 AI 调用记录失败。"
+        }
+    }
+
+    func repairablePromptRuns(for dailyEntryId: UUID, limit: Int = 100) async -> [PromptRun] {
+        guard let promptRunRepository else { return [] }
+        do {
+            let dailyEntryId = dailyEntryId.uuidString
+            return try await promptRunRepository.unresolvedFailures(limit: limit)
+                .filter { run in
+                    guard let prompt = PromptID(rawValue: run.promptId),
+                          Self.canRepairPrompt(prompt)
+                    else { return false }
+                    return run.sourceRecordIds.contains(dailyEntryId)
+                }
+        } catch {
+            return []
+        }
+    }
+
+    private static func canRepairPrompt(_ prompt: PromptID) -> Bool {
+        switch prompt {
+        case .organizeCards, .generateQuestions, .generateQuests, .extractPrinciple:
+            return true
+        case .recommendLenses, .verifyQuest, .weeklyCalibration, .monthlyGrowth, .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges:
+            return false
+        }
+    }
+
+    private func initializeFromLastActiveQuest() async {
+        do {
+            if let activeQuest = try await questRepository?.activeMainQuest() {
+                let existingVerification: Verification?
+                if let verificationRepository {
+                    existingVerification = try await verificationRepository.verification(forQuestId: activeQuest.id)
+                } else {
+                    existingVerification = nil
+                }
+
+                if existingVerification != nil {
+                    todayDraft.state = .capture
+                } else {
+                    quests = [activeQuest]
+                    todayDraft.state = .verifyYesterday
+                }
+            } else {
+                todayDraft.state = .capture
+            }
+        } catch {
+            todayDraft.state = .capture
+        }
+    }
+
+    func loadHistoryRecords(limit: Int = 180) async {
+        guard let dailyEntryRepository else {
+            historyRecords = [currentHistoryRecord]
+            return
+        }
+
+        do {
+            let entries = try await dailyEntryRepository.recentEntries(limit: limit)
+            var records: [HistoryRecord] = []
+            for entry in entries {
+                let cards = try await thinkingCardRepository?.cards(for: entry.id) ?? []
+                let entryQuests = try await questRepository?.quests(for: entry.id) ?? []
+                let entryPrinciples = try await principleRepository?.principles(for: entry.id) ?? []
+                let verification = try await verificationRepository?.verification(for: entry.id)
+                let lensSession = try await lensSessionRepository?.lensSession(for: entry.id)
+
+                var sourceIds: [String] = [entry.id.uuidString]
+                sourceIds.append(contentsOf: cards.map { $0.id.uuidString })
+                sourceIds.append(contentsOf: entryQuests.map { $0.id.uuidString })
+                if let verification { sourceIds.append(verification.id.uuidString) }
+                sourceIds.append(contentsOf: entryPrinciples.map { $0.id.uuidString })
+
+                let projectLinks = (try? await projectLinkRepository?.links(forSourceIds: sourceIds)) ?? []
+                let growthContributions = (try? await metricContributionRepository?.contributions(forDailyEntryId: entry.id)) ?? []
+
+                records.append(
+                    HistoryRecord(
+                        draft: entry,
+                        cards: cards,
+                        quests: entryQuests,
+                        principles: entryPrinciples,
+                        verification: verification,
+                        lensSession: lensSession,
+                        projectLinks: projectLinks,
+                        growthContributions: growthContributions
+                    )
+                )
+            }
+            historyRecords = records.isEmpty ? [currentHistoryRecord] : records
+
+            var names: [UUID: String] = [:]
+            var projects: [UUID: Project] = [:]
+            let projectIds = Set(records.flatMap { $0.projectLinks.map(\.projectId) })
+            for projectId in projectIds {
+                if let project = try? await projectRepository?.project(id: projectId) {
+                    names[projectId] = project.name
+                    projects[projectId] = project
+                }
+            }
+            projectNames = names
+            projectsById = projects
+        } catch {
+            historyRecords = [currentHistoryRecord]
+            todayLoopMessage = "读取历史记录失败，已显示当前复盘。"
+        }
+    }
+
+    private func loadPendingProjectCandidates() async {
+        guard let projectCandidateRepository else { return }
+        do {
+            projectCandidates = try await projectCandidateRepository.pendingCandidates()
+        } catch {
+            projectSuggestionMessage = "读取项目候选失败。"
+        }
+    }
+
+    func loadLatestGrowthSnapshot() async {
+        guard let metricSnapshotRepository else { return }
+
+        do {
+            if let snapshot = try await metricSnapshotRepository.latestSnapshot() {
+                growthSnapshot = snapshot
+                await loadGrowthReportReviewContributions()
+            }
+        } catch {
+            todayLoopMessage = "读取成长快照失败，已保留当前证据状态。"
+        }
+    }
+
+    func loadGrowthReportReviewContributions() async {
+        guard let metricContributionRepository, growthSnapshot.canDisplayScores else {
+            growthReportReviewContributions = []
+            return
+        }
+
+        do {
+            growthReportReviewContributions = try await metricContributionRepository
+                .contributions(for: growthSnapshot.id)
+                .filter { contribution in
+                    contribution.isAcceptedForTrend &&
+                    !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+        } catch {
+            growthReportReviewContributions = []
+        }
+    }
+
+    func loadMetricContributions(for metric: GrowthMetric) async {
+        guard let metricContributionRepository else {
+            metricContributions = []
+            return
+        }
+        do {
+            metricContributions = try await metricContributionRepository
+                .contributions(for: growthSnapshot.id)
+                .filter { contribution in
+                    contribution.metric == metric &&
+                    contribution.candidateStatus == .accepted &&
+                    contribution.userFeedback != .dismissed &&
+                    !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+        } catch {
+            metricContributions = []
+        }
+    }
+
+    func updateContributionFeedback(
+        _ feedback: MetricContributionFeedback,
+        for contribution: MetricContribution
+    ) async {
+        guard let metricContributionRepository else { return }
+
+        do {
+            try await metricContributionRepository.updateContributionFeedback(
+                feedback,
+                contributionId: contribution.id
+            )
+            await loadLatestGrowthSnapshot()
+            await loadMetricContributions(for: contribution.metric)
+            await loadGrowthReportReviewContributions()
+        } catch {
+            todayLoopMessage = "成长证据反馈保存失败，请稍后重试。"
+        }
+    }
+
+    private func generateLocalGrowthSnapshotFromHistoryIfNeeded() async {
+        guard let metricSnapshotRepository, let metricContributionRepository else { return }
+
+        let completedRecords = historyRecords
+            .filter { $0.draft.state == .sessionComplete }
+            .sorted { $0.draft.date < $1.draft.date }
+        guard completedRecords.count >= 3 else {
+            growthSnapshot = Self.makeEmptyGrowth()
+            return
+        }
+
+        let verifiedRecords = completedRecords.filter { $0.verification != nil }
+        guard !verifiedRecords.isEmpty else {
+            growthSnapshot = MetricSnapshot(
+                period: "weekly",
+                clarity: 3.0,
+                valueJudgment: 3.0,
+                executionReliability: 3.0,
+                calibration: 3.0,
+                reflectionDepth: 3.0,
+                summary: "已有 \(completedRecords.count) 次闭环，但缺少次日验证，暂不生成成长趋势。",
+                status: .insufficientEvidence,
+                completeLoopCount: completedRecords.count,
+                nextTrainingFocus: "优先补齐次日验证，让成长判断有结果证据。"
+            )
+            return
+        }
+
+        let evidenceIds = completedRecords.flatMap { record in
+            var ids = [record.draft.id.uuidString]
+            if let verificationId = record.verification?.id.uuidString {
+                ids.append(verificationId)
+            }
+            return ids
+        }
+        if growthSnapshot.canDisplayScores,
+           growthSnapshot.completeLoopCount >= completedRecords.count,
+           Set(growthSnapshot.evidenceRefs) == Set(evidenceIds) {
+            return
+        }
+
+        let snapshotID = UUID()
+        let contributions = makeLocalGrowthContributions(
+            snapshotID: snapshotID,
+            records: completedRecords
+        )
+        guard !contributions.isEmpty else { return }
+
+        let positiveRefs = contributions
+            .filter { $0.direction == .positive }
+            .map { $0.id.uuidString }
+        let negativeRefs = contributions
+            .filter { $0.direction == .negative }
+            .map { $0.id.uuidString }
+        let scores = growthScores(from: contributions)
+        let reasons = growthReasons(from: contributions)
+        let summary = localGrowthSummary(
+            completeLoopCount: completedRecords.count,
+            positiveCount: positiveRefs.count,
+            negativeCount: negativeRefs.count
+        )
+
+        let snapshot = MetricSnapshot(
+            id: snapshotID,
+            period: "weekly",
+            startDate: completedRecords.first?.draft.date,
+            endDate: completedRecords.last?.draft.date,
+            clarity: scores[.clarity] ?? 3.0,
+            valueJudgment: scores[.valueJudgment] ?? 3.0,
+            executionReliability: scores[.executionReliability] ?? 3.0,
+            calibration: scores[.calibration] ?? 3.0,
+            reflectionDepth: scores[.reflectionDepth] ?? 3.0,
+            previousClarity: 3.0,
+            previousValueJudgment: 3.0,
+            previousExecutionReliability: 3.0,
+            previousCalibration: 3.0,
+            previousReflectionDepth: 3.0,
+            clarityDelta: (scores[.clarity] ?? 3.0) - 3.0,
+            valueJudgmentDelta: (scores[.valueJudgment] ?? 3.0) - 3.0,
+            executionReliabilityDelta: (scores[.executionReliability] ?? 3.0) - 3.0,
+            calibrationDelta: (scores[.calibration] ?? 3.0) - 3.0,
+            reflectionDepthDelta: (scores[.reflectionDepth] ?? 3.0) - 3.0,
+            summary: summary,
+            metricReasons: reasons,
+            evidenceRefs: evidenceIds,
+            positiveContributionRefs: positiveRefs,
+            negativeContributionRefs: negativeRefs,
+            status: .confirmedTrend,
+            completeLoopCount: completedRecords.count,
+            nextTrainingFocus: "继续把明日任务写成可验证结果，并在第二天做价值校准。"
+        )
+
+        do {
+            try await metricSnapshotRepository.saveSnapshot(snapshot)
+            for contribution in contributions {
+                try await metricContributionRepository.saveContribution(contribution)
+            }
+            growthSnapshot = snapshot
+            await loadGrowthReportReviewContributions()
+        } catch {
+            todayLoopMessage = "成长快照生成失败，已保留当前证据状态。"
+        }
+    }
+
+    private func makeLocalGrowthContributions(
+        snapshotID: UUID,
+        records: [HistoryRecord]
+    ) -> [MetricContribution] {
+        var contributions: [MetricContribution] = []
+
+        for record in records {
+            if let mainQuest = record.mainQuest,
+               !mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                contributions.append(
+                    MetricContribution(
+                        snapshotId: snapshotID,
+                        metric: .clarity,
+                        direction: .positive,
+                        delta: 0.08,
+                        title: "任务完成标准更具体",
+                        reason: "主线任务包含可验证的完成标准。",
+                        sourceType: .quest,
+                        sourceId: mainQuest.id.uuidString,
+                        sourceDailyEntryId: record.draft.id,
+                        candidateStatus: .accepted
+                    )
+                )
+            }
+
+            if let verification = record.verification {
+                switch verification.completion {
+                case .done:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .executionReliability,
+                            direction: .positive,
+                            delta: 0.14,
+                            title: "主线任务完成",
+                            reason: "次日验证显示主线任务已完成。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                case .partial:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .executionReliability,
+                            direction: .positive,
+                            delta: 0.05,
+                            title: "主线任务部分完成",
+                            reason: "次日验证显示任务有推进但未完全闭合。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                case .missed:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .executionReliability,
+                            direction: .negative,
+                            delta: 0.12,
+                            title: "主线任务未完成",
+                            reason: "次日验证显示任务没有完成，需要校准任务大小或阻力判断。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                }
+
+                switch verification.valueRating {
+                case .high:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .valueJudgment,
+                            direction: .positive,
+                            delta: 0.14,
+                            title: "完成了高价值任务",
+                            reason: "次日验证显示任务实际价值高。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                case .medium:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .valueJudgment,
+                            direction: .positive,
+                            delta: 0.05,
+                            title: "任务价值中等",
+                            reason: "任务产生了一定价值，但仍有校准空间。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                case .low:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .valueJudgment,
+                            direction: .negative,
+                            delta: 0.12,
+                            title: "任务完成但价值偏低",
+                            reason: "次日验证显示任务实际价值低，需要重新判断优先级。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                case .uncertain:
+                    contributions.append(
+                        MetricContribution(
+                            snapshotId: snapshotID,
+                            metric: .calibration,
+                            direction: .negative,
+                            delta: 0.06,
+                            title: "任务价值仍不确定",
+                            reason: "次日验证无法判断实际价值，需要更清晰的结果证据。",
+                            sourceType: .verification,
+                            sourceId: verification.id.uuidString,
+                            sourceDailyEntryId: record.draft.id,
+                            candidateStatus: .accepted
+                        )
+                    )
+                }
+            }
+
+            if let lensSession = record.lensSession,
+               lensSession.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                contributions.append(
+                    MetricContribution(
+                        snapshotId: snapshotID,
+                        metric: .reflectionDepth,
+                        direction: .positive,
+                        delta: 0.07,
+                        title: "完成透镜追问",
+                        reason: "用户回答了透镜问题，形成了可追溯的思考过程。",
+                        sourceType: .dailyEntry,
+                        sourceId: record.draft.id.uuidString,
+                        sourceDailyEntryId: record.draft.id,
+                        candidateStatus: .accepted
+                    )
+                )
+            }
+        }
+
+        return contributions
+    }
+
+    private func growthScores(from contributions: [MetricContribution]) -> [GrowthMetric: Double] {
+        var scores = Dictionary(uniqueKeysWithValues: GrowthMetric.allCases.map { ($0, 3.0) })
+        for contribution in contributions {
+            let signedDelta = contribution.direction == .positive ? contribution.delta : -contribution.delta
+            scores[contribution.metric] = min(5.0, max(1.0, (scores[contribution.metric] ?? 3.0) + signedDelta))
+        }
+        return scores
+    }
+
+    private func growthReasons(from contributions: [MetricContribution]) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: GrowthMetric.allCases.map { metric in
+            let metricContributions = contributions.filter { $0.metric == metric }
+            let positive = metricContributions.filter { $0.direction == .positive }.count
+            let negative = metricContributions.filter { $0.direction == .negative }.count
+            let reason: String
+            if metricContributions.isEmpty {
+                reason = "本期还没有足够证据解释该指标。"
+            } else {
+                reason = "来自 \(positive) 条正向证据和 \(negative) 条负向证据。"
+            }
+            return (metric.rawValue, reason)
+        })
+    }
+
+    private func localGrowthSummary(
+        completeLoopCount: Int,
+        positiveCount: Int,
+        negativeCount: Int
+    ) -> String {
+        "已基于 \(completeLoopCount) 次完整复盘生成本地成长快照：\(positiveCount) 条正向证据，\(negativeCount) 条负向证据。"
+    }
+
+    private func hasProjectLink(forSourceId sourceId: String) -> Bool {
+        historyRecords.contains { record in
+            record.projectLinks.contains { $0.sourceId == sourceId }
+        }
+    }
+
+    private func hasExistingProjectLink(forSourceId sourceId: String) async -> Bool {
+        if hasProjectLink(forSourceId: sourceId) { return true }
+        guard let links = try? await projectLinkRepository?.links(forSourceIds: [sourceId]) else {
+            return false
+        }
+        return !links.isEmpty
+    }
+
+    private func appendVisibleProjectLink(_ link: ProjectLink, dailyEntryId: UUID) {
+        guard !hasProjectLink(forSourceId: link.sourceId) else { return }
+        if let index = historyRecords.firstIndex(where: { $0.draft.id == dailyEntryId }) {
+            historyRecords[index].projectLinks.append(link)
+            return
+        }
+        guard dailyEntryId == todayDraft.id else { return }
+        var record = currentHistoryRecord
+        record.projectLinks = [link]
+        historyRecords = [record] + historyRecords.filter { $0.id != record.id }
+    }
+
+    private static func projectName(from quest: Quest) -> String {
+        let title = quest.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return "未命名长期议题" }
+        if title.count <= 18 { return title }
+        return String(title.prefix(18)) + "..."
+    }
+
+    private static func projectGoal(from quest: Quest) -> String {
+        nonEmpty(quest.whyItMatters) ?? "持续推进：\(projectName(from: quest))"
+    }
+
+    private static func projectSuccessCriteria(from quest: Quest) -> String {
+        nonEmpty(quest.completionCriteria) ?? "后续复盘中能看到明确进展证据。"
+    }
+
+    private static func projectName(from principle: PrincipleAsset) -> String {
+        let title = principle.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return "未命名长期议题" }
+        if title.count <= 18 { return title }
+        return String(title.prefix(18)) + "..."
+    }
+
+    private static func projectGoal(from principle: PrincipleAsset) -> String {
+        nonEmpty(principle.summary) ?? "持续训练：\(projectName(from: principle))"
+    }
+
+    private static func projectSuccessCriteria(from principle: PrincipleAsset) -> String {
+        nonEmpty(principle.successCriteria) ?? "后续复盘中能看到这条原则被实际使用。"
+    }
+
+    private static func nonEmpty(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func actions(from text: String) -> [String] {
+        let actions = text
+            .split(whereSeparator: \.isNewline)
+            .map { line in
+                line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "-*•0123456789.、 "))
+            }
+            .filter { !$0.isEmpty }
+        let fallback = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return actions.isEmpty && !fallback.isEmpty ? [fallback] : actions
+    }
+
+    func navigateToHistoryDeepLink(_ link: HistoryDeepLink) {
+        historyDeepLink = link
+        selectedTab = .history
+    }
+
+    func createProjectFromCurrentFocus() async {
+        guard let mainQuest else {
+            todayLoopMessage = "请先生成一条明日主线任务，再创建长期议题。"
+            return
+        }
+        await createProjectFromQuest(mainQuest, dailyEntryId: todayDraft.id)
+    }
+
+    func createProjectFromQuest(_ quest: Quest, dailyEntryId: UUID) async {
+        await createProject(
+            name: Self.projectName(from: quest),
+            goal: Self.projectGoal(from: quest),
+            successCriteria: Self.projectSuccessCriteria(from: quest),
+            currentBottleneck: Self.nonEmpty(quest.expectedResistance),
+            openQuestions: Self.nonEmpty(quest.reflectionQuestion).map { [$0] } ?? [],
+            sourceType: .quest,
+            sourceId: quest.id.uuidString,
+            linkType: .task,
+            dailyEntryId: dailyEntryId,
+            createdFrom: "quest"
+        )
+    }
+
+    func createProjectFromPrinciple(_ principle: PrincipleAsset, dailyEntryId: UUID) async {
+        await createProject(
+            name: Self.projectName(from: principle),
+            goal: Self.projectGoal(from: principle),
+            successCriteria: Self.projectSuccessCriteria(from: principle),
+            currentBottleneck: Self.nonEmpty(principle.triggerContext),
+            openQuestions: principle.actions
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty },
+            sourceType: .principle,
+            sourceId: principle.id.uuidString,
+            linkType: .principle,
+            dailyEntryId: dailyEntryId,
+            createdFrom: "principle"
+        )
+    }
+
+    private func createProject(
+        name: String,
+        goal: String,
+        successCriteria: String,
+        currentBottleneck: String?,
+        openQuestions: [String],
+        sourceType: ProjectSourceType,
+        sourceId: String,
+        linkType: ProjectLinkType,
+        dailyEntryId: UUID,
+        createdFrom: String
+    ) async {
+        guard let projectRepository, let projectLinkRepository else {
+            todayLoopMessage = "本地项目存储暂不可用。"
+            return
+        }
+
+        let trimmedSourceId = sourceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSourceId.isEmpty else {
+            todayLoopMessage = "这条证据缺少来源，不能保存为长期议题。"
+            return
+        }
+        guard !(await hasExistingProjectLink(forSourceId: trimmedSourceId)) else {
+            todayLoopMessage = "这条证据已经关联到长期议题。"
+            return
+        }
+
+        let project = Project(
+            name: name,
+            goal: goal,
+            successCriteria: successCriteria,
+            currentBottleneck: currentBottleneck,
+            openQuestions: openQuestions,
+            status: .active,
+            createdBy: .user,
+            confidence: 1,
+            fieldRevisions: [
+                "created_from": "\(createdFrom):\(trimmedSourceId)"
+            ]
+        )
+        let link = ProjectLink(
+            projectId: project.id,
+            sourceType: sourceType,
+            sourceId: trimmedSourceId,
+            linkType: linkType,
+            confidence: 1,
+            isUserConfirmed: true
+        )
+
+        do {
+            try await projectRepository.saveProject(project)
+            try await projectLinkRepository.saveLink(link)
+            projectNames[project.id] = project.name
+            projectsById[project.id] = project
+            if dailyEntryRepository != nil {
+                await loadHistoryRecords()
+            }
+            appendVisibleProjectLink(link, dailyEntryId: dailyEntryId)
+            todayLoopMessage = "已保存为长期议题：\(project.name)。"
+        } catch {
+            todayLoopMessage = "长期议题保存失败，已保留当前任务。"
+        }
+    }
+
+    func acceptedContributions(for metric: GrowthMetric) -> [MetricContribution] {
+        metricContributions.filter { contribution in
+            contribution.metric == metric &&
+            contribution.candidateStatus == .accepted &&
+            contribution.userFeedback != .inaccurate &&
+            contribution.userFeedback != .dismissed &&
+            !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    func acceptedReportReviewContributions(for metric: GrowthMetric) -> [MetricContribution] {
+        growthReportReviewContributions.filter { contribution in
+            contribution.metric == metric &&
+            contribution.isAcceptedForTrend &&
+            !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     func submitTodayStep() {
@@ -279,6 +1151,114 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func retryCurrentAIStep() {
+        let draftID = todayDraft.id
+        switch todayDraft.state {
+        case .organizing:
+            let trimmedInput = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedInput.isEmpty else {
+                todayLoopMessage = "请输入内容后再重试整理。"
+                return
+            }
+            todayLoopMessage = "正在重试 AI 整理。"
+            lastAIFailureMessage = nil
+            canRetryCurrentAI = false
+            Task {
+                await generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID, allowsFallback: false)
+            }
+        case .answerQuestions:
+            guard todayDraft.selectedLens != nil else {
+                todayLoopMessage = "请选择透镜后再重试追问。"
+                return
+            }
+            todayLoopMessage = "正在重试 AI 追问。"
+            lastAIFailureMessage = nil
+            canRetryCurrentAI = false
+            Task {
+                await generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        case .reviewQuests:
+            guard hasAnsweredReflectionQuestion else {
+                todayLoopMessage = "至少回答一个问题后再重试生成任务。"
+                return
+            }
+            todayLoopMessage = "正在重试 AI 任务。"
+            lastAIFailureMessage = nil
+            canRetryCurrentAI = false
+            Task {
+                await generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        case .extractPrinciple:
+            todayLoopMessage = "正在重试 AI 原则沉淀。"
+            lastAIFailureMessage = nil
+            canRetryCurrentAI = false
+            Task {
+                await generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        default:
+            todayLoopMessage = "当前步骤没有可重试的 AI 调用。"
+        }
+    }
+
+    func retryPendingAIRepairs() {
+        guard pendingAIRepairCount > 0 else { return }
+        let draftID = todayDraft.id
+        let currentState = todayDraft.state
+        let promptsToRepair = pendingAIRepairPrompts
+        let canRepairCards = canRunBackgroundCardRepair
+        todayLoopMessage = "正在后台重试 AI 补全。"
+        Task {
+            if promptsToRepair.contains(.organizeCards),
+               canRepairCards,
+               !todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                await generateCardsWithAIOrFallback(from: todayDraft.rawText, draftID: draftID, allowsFallback: false)
+            } else if promptsToRepair.contains(.organizeCards) {
+                pendingAIRepairPrompts.remove(.organizeCards)
+            }
+
+            if promptsToRepair.contains(.generateQuestions),
+               todayDraft.selectedLens != nil {
+                await generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+
+            if promptsToRepair.contains(.generateQuests),
+               hasAnsweredReflectionQuestion {
+                await generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+
+            if promptsToRepair.contains(.extractPrinciple),
+               !quests.isEmpty {
+                await generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+
+            if todayDraft.id == draftID {
+                todayDraft.state = currentState
+                persistDraft()
+            }
+        }
+    }
+
+    func dismissPendingAIRepairs() {
+        pendingAIRepairPrompts = []
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        clearTodayLoopMessage()
+    }
+
+    func canNavigateTodayLoop(to state: DailyLoopState) -> Bool {
+        guard let targetIndex = DailyLoopState.allCases.firstIndex(of: state),
+              let currentIndex = DailyLoopState.allCases.firstIndex(of: todayDraft.state)
+        else { return false }
+
+        return targetIndex <= currentIndex && state != .organizing && todayDraft.state != .organizing
+    }
+
+    func navigateTodayLoop(to state: DailyLoopState) {
+        guard canNavigateTodayLoop(to: state), state != todayDraft.state else { return }
+        trimDerivedState(after: state)
+        moveTodayLoop(to: state, message: "已回到\(state.title)，后续内容会在确认后重新生成。")
+    }
+
     func selectYesterdayCompletion(_ completion: YesterdayCompletion) {
         todayDraft.yesterdayCompletion = completion
         clearTodayLoopMessage()
@@ -293,13 +1273,31 @@ final class AppStore: ObservableObject {
 
     func updateTodayCapture(_ text: String) {
         todayDraft.rawText = text
+        if todayDraft.state != .capture {
+            trimDerivedState(after: .capture)
+        }
         if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             clearTodayLoopMessage()
         }
         persistDraft()
     }
 
+    func supplementTodayCapture(_ text: String) {
+        let supplement = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !supplement.isEmpty else {
+            todayLoopMessage = "请输入补充材料后再重新整理。"
+            return
+        }
+
+        let existing = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        todayDraft.rawText = existing.isEmpty ? supplement : "\(todayDraft.rawText)\n\(supplement)"
+        trimDerivedState(after: .capture)
+        moveTodayLoop(to: .capture, message: "已加入补充材料，请重新整理成卡片。")
+        persistDraft()
+    }
+
     func confirmCard(_ cardID: ThinkingCard.ID) {
+        trimDerivedState(after: .reviewCards)
         updateCard(cardID) { card in
             card.isConfirmed = true
             card.isExcludedFromModel = false
@@ -307,6 +1305,7 @@ final class AppStore: ObservableObject {
     }
 
     func excludeCard(_ cardID: ThinkingCard.ID) {
+        trimDerivedState(after: .reviewCards)
         updateCard(cardID) { card in
             card.isConfirmed = false
             card.isExcludedFromModel = true
@@ -314,30 +1313,94 @@ final class AppStore: ObservableObject {
     }
 
     func deleteCard(_ cardID: ThinkingCard.ID) {
+        trimDerivedState(after: .reviewCards)
         thinkingCards.removeAll { $0.id == cardID }
         clearTodayLoopMessage()
         persistCards()
     }
 
+    func updateCard(
+        _ cardID: ThinkingCard.ID,
+        type: ThinkingCardType,
+        title: String,
+        body: String,
+        priority: PriorityLevel,
+        sensitivity: SensitivityLevel
+    ) {
+        trimDerivedState(after: .reviewCards)
+        updateCard(cardID) { card in
+            card.type = type
+            card.title = title
+            card.body = body
+            card.priority = priority
+            card.sensitivity = sensitivity
+        }
+    }
+
     func selectTodayMode(_ mode: SessionMode) {
         todayDraft.sessionMode = mode
         todayDraft.hasSelectedSessionMode = true
+        trimDerivedState(after: todayDraft.state == .capture ? .capture : .selectMode)
         clearTodayLoopMessage()
         persistDraft()
     }
 
     func selectThinkingLens(_ lens: ThinkingLens) {
         todayDraft.selectedLens = lens
+        trimDerivedState(after: .selectLens)
+        Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
         clearTodayLoopMessage()
         persistDraft()
+        persistLensSession()
     }
 
     func updateQuestionAnswer(questionID: ReflectionQuestion.ID, answer: String) {
         guard let index = questions.firstIndex(where: { $0.id == questionID }) else { return }
         questions[index].answer = answer
+        trimDerivedState(after: .answerQuestions)
         if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             clearTodayLoopMessage()
         }
+        persistLensSession()
+    }
+
+    func updateQuest(
+        _ questID: Quest.ID,
+        title: String,
+        whyItMatters: String,
+        completionCriteria: String,
+        expectedResistance: String,
+        reflectionQuestion: String
+    ) {
+        guard let index = quests.firstIndex(where: { $0.id == questID }) else { return }
+        quests[index].title = title
+        quests[index].whyItMatters = whyItMatters
+        quests[index].completionCriteria = completionCriteria
+        quests[index].expectedResistance = expectedResistance
+        quests[index].reflectionQuestion = reflectionQuestion
+        trimDerivedState(after: .reviewQuests)
+        clearTodayLoopMessage()
+        persistQuests()
+    }
+
+    func updatePrinciple(
+        _ principleID: PrincipleAsset.ID,
+        title: String,
+        summary: String,
+        triggerContext: String,
+        actionsText: String,
+        successCriteria: String,
+        exceptions: String
+    ) {
+        guard let index = principles.firstIndex(where: { $0.id == principleID }) else { return }
+        principles[index].title = title
+        principles[index].summary = summary
+        principles[index].triggerContext = triggerContext
+        principles[index].actions = Self.actions(from: actionsText)
+        principles[index].successCriteria = successCriteria
+        principles[index].exceptions = exceptions
+        clearTodayLoopMessage()
+        persistPrinciples()
     }
 
     func skipPrinciple() {
@@ -349,16 +1412,29 @@ final class AppStore: ObservableObject {
     func resetTodayLoop() {
         todayDraft = DailyEntryDraft()
         thinkingCards = []
+        streamingCards = []
+        streamingStatusText = ""
         questions = []
-        quests = Self.makePreviewQuests()
+        quests = []
         principles = []
-        hasResumeableLoop = true
+        referencedPrinciples = []
         todayLoopMessage = ""
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        pendingAIRepairPrompts = []
         reminderStatusMessage = "明日 09:00 本地提醒将在保存主线任务后请求授权。"
-        persistDraft()
+
+        Task {
+            await initializeFromLastActiveQuest()
+            persistDraft()
+        }
     }
 
     private func saveYesterdayVerification() {
+        guard let quest = mainQuest else {
+            moveTodayLoop(to: .capture)
+            return
+        }
         guard todayDraft.yesterdayCompletion != nil else {
             todayLoopMessage = "请选择昨天主线任务的完成情况。"
             return
@@ -367,7 +1443,97 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "请选择昨天任务的价值判断。"
             return
         }
-        moveTodayLoop(to: .capture)
+
+        let completion = todayDraft.yesterdayCompletion!
+        let rating = todayDraft.yesterdayValueRating!
+        let draftID = todayDraft.id
+
+        todayLoopMessage = "正在保存昨日验证。"
+        Task {
+            await persistVerification(
+                quest: quest,
+                completion: completion,
+                rating: rating,
+                draftID: draftID
+            )
+            moveTodayLoop(to: .capture)
+        }
+    }
+
+    private func persistVerification(
+        quest: Quest,
+        completion: YesterdayCompletion,
+        rating: YesterdayValueRating,
+        draftID: UUID
+    ) async {
+        var calibrationNote = "本地校准：用户自评完成度 \(completion.title)，价值 \(rating.title)。"
+        var likelyIssue: String?
+        var recommendation: String?
+
+        if let todayAIService {
+            do {
+                let result = try await todayAIService.verifyQuest(
+                    input: VerifyQuestInput(
+                        sourceRecordIDs: [quest.id.uuidString, draftID.uuidString],
+                        questTitle: quest.title,
+                        completionCriteria: quest.completionCriteria,
+                        completion: completion.rawValue,
+                        valueRating: rating.rawValue,
+                        rawText: todayDraft.rawText
+                    ),
+                    sessionMode: todayDraft.sessionMode
+                )
+                calibrationNote = result.calibrationNote
+                likelyIssue = result.likelyIssue
+                recommendation = result.recommendation
+            } catch {
+                calibrationNote = "本地校准（AI 校准失败）：用户自评完成度 \(completion.title)，价值 \(rating.title)。"
+            }
+        }
+
+        let sourceDailyEntryId: UUID
+        do {
+            sourceDailyEntryId = try await questRepository?.sourceDailyEntryId(forQuestId: quest.id) ?? draftID
+        } catch {
+            sourceDailyEntryId = draftID
+        }
+
+        let verification = Verification(
+            questId: quest.id,
+            questTitle: quest.title,
+            sourceDailyEntryId: sourceDailyEntryId,
+            completion: completion,
+            valueRating: rating,
+            calibrationNote: calibrationNote,
+            likelyIssue: likelyIssue,
+            recommendation: recommendation
+        )
+
+        do {
+            try await verificationRepository?.saveVerification(verification)
+            let resolvedStatus = questStatus(for: completion)
+            quests = quests.map { current in
+                guard current.id == quest.id else { return current }
+                var updated = current
+                updated.status = resolvedStatus
+                return updated
+            }
+            try await questRepository?.updateQuestStatus(resolvedStatus, questId: quest.id)
+            await refreshGrowthEvidenceAfterTodayChange()
+        } catch {
+            todayLoopMessage = "校准记录保存失败，但已继续下一步。"
+        }
+    }
+
+    private func questStatus(for completion: YesterdayCompletion) -> QuestStatus {
+        switch completion {
+        case .done:
+            return .completed
+        case .partial:
+            return .partial
+        case .missed:
+            return .failed
+        }
     }
 
     private func organizeCapture() {
@@ -376,9 +1542,21 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "请输入至少一条今天的事实、困惑或行动，再整理成卡片。"
             return
         }
+        guard todayDraft.hasSelectedSessionMode else {
+            todayLoopMessage = "请选择 Quick、Standard 或 Deep，再整理成卡片。"
+            return
+        }
 
         let draftID = todayDraft.id
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
         moveTodayLoop(to: .organizing, message: "正在生成结构化卡片。")
+        guard todayAIService != nil else {
+            generateLocalCards(from: trimmedInput)
+            recordAIFallback(prompt: .organizeCards, reason: "未配置 GLM，已使用本地整理。", canRetry: false)
+            persistCards()
+            return
+        }
         Task {
             await generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID)
         }
@@ -394,10 +1572,10 @@ final class AppStore: ObservableObject {
 
     private func confirmReviewedCards() {
         guard thinkingCards.contains(where: { $0.isConfirmed }) else {
-            todayLoopMessage = "至少确认一张卡片，才能进入训练模式选择。"
+            todayLoopMessage = "至少确认一张卡片，才能进入思考透镜选择。"
             return
         }
-        moveTodayLoop(to: .selectMode)
+        moveTodayLoop(to: .selectLens)
     }
 
     private func confirmSelectedMode() {
@@ -416,6 +1594,14 @@ final class AppStore: ObservableObject {
         if questions.isEmpty {
             let draftID = todayDraft.id
             todayLoopMessage = "正在生成追问。"
+            guard todayAIService != nil else {
+                generateLocalQuestions(from: todayDraft.rawText)
+                Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
+                persistLensSession()
+                moveTodayLoop(to: .answerQuestions)
+                recordAIFallback(prompt: .generateQuestions, reason: "未配置 GLM，已使用本地追问。", canRetry: false)
+                return
+            }
             Task {
                 await generateQuestionsWithAIOrFallback(draftID: draftID)
             }
@@ -431,6 +1617,15 @@ final class AppStore: ObservableObject {
         }
         let draftID = todayDraft.id
         todayLoopMessage = "正在生成明日任务。"
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        guard todayAIService != nil else {
+            generateLocalQuests()
+            Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests) }
+            moveTodayLoop(to: .reviewQuests)
+            recordAIFallback(prompt: .generateQuests, reason: "未配置 GLM，已使用本地任务。", canRetry: false)
+            return
+        }
         Task {
             await generateQuestsWithAIOrFallback(draftID: draftID)
         }
@@ -450,6 +1645,14 @@ final class AppStore: ObservableObject {
         scheduleTomorrowMainQuestReminderIfNeeded(for: mainQuest)
         let draftID = todayDraft.id
         todayLoopMessage = "正在沉淀原则候选。"
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        guard todayAIService != nil else {
+            generateLocalPrinciple()
+            moveTodayLoop(to: .extractPrinciple)
+            recordAIFallback(prompt: .extractPrinciple, reason: "未配置 GLM，已使用本地原则候选。", canRetry: false)
+            return
+        }
         Task {
             await generatePrincipleWithAIOrFallback(draftID: draftID)
         }
@@ -466,13 +1669,252 @@ final class AppStore: ObservableObject {
 
     private func moveTodayLoop(to state: DailyLoopState, message: String = "") {
         todayDraft.state = state
-        hasResumeableLoop = state != .sessionComplete
         todayLoopMessage = message
         persistDraft()
     }
 
     private func completeTodayLoop(message: String) {
         moveTodayLoop(to: .sessionComplete, message: message)
+        Task {
+            await refreshGrowthEvidenceAfterTodayChange()
+        }
+    }
+
+    private func refreshGrowthEvidenceAfterTodayChange() async {
+        await loadHistoryRecords()
+        await loadLatestGrowthSnapshot()
+        await generateLocalGrowthSnapshotFromHistoryIfNeeded()
+    }
+
+    func generateWeeklyGrowthReport() async {
+        guard !isGeneratingGrowthReport else { return }
+        guard let metricSnapshotRepository, let metricContributionRepository else {
+            growthReportMessage = "本地成长存储暂不可用。"
+            return
+        }
+
+        isGeneratingGrowthReport = true
+        growthReportMessage = "正在生成周度校准报告。"
+        defer { isGeneratingGrowthReport = false }
+
+        let completedRecords = historyRecords
+            .filter { $0.draft.state == .sessionComplete }
+            .sorted { $0.draft.date < $1.draft.date }
+
+        let context = buildGrowthReportContext(
+            period: "weekly",
+            completedRecords: completedRecords
+        )
+
+        guard let growthAIService else {
+            growthReportMessage = "AI 成长报告服务暂不可用，已保留当前本地快照。"
+            return
+        }
+
+        do {
+            let result = try await growthAIService.generateWeeklyReport(context: context)
+            try await metricSnapshotRepository.saveSnapshot(result.snapshot)
+            let acceptedContributions = result.contributions.map { contribution in
+                acceptedGrowthContribution(contribution)
+            }
+            for contribution in acceptedContributions {
+                try await metricContributionRepository.saveContribution(contribution)
+            }
+            growthSnapshot = result.snapshot
+            metricContributions = acceptedContributions
+            growthReportReviewContributions = result.snapshot.canDisplayScores ? acceptedContributions : []
+            growthReportMessage = result.snapshot.canDisplayScores
+                ? "周度校准报告已生成。"
+                : "证据不足，已记录周度证据积累状态。"
+        } catch {
+            growthReportMessage = "AI 成长报告生成失败，已保留当前本地快照。"
+        }
+    }
+
+    func generateMonthlyGrowthReport() async {
+        guard !isGeneratingGrowthReport else { return }
+        guard let metricSnapshotRepository, let metricContributionRepository else {
+            growthReportMessage = "本地成长存储暂不可用。"
+            return
+        }
+
+        isGeneratingGrowthReport = true
+        growthReportMessage = "正在生成月度成长报告。"
+        defer { isGeneratingGrowthReport = false }
+
+        let completedRecords = historyRecords
+            .filter { $0.draft.state == .sessionComplete }
+            .sorted { $0.draft.date < $1.draft.date }
+
+        let context = buildGrowthReportContext(
+            period: "monthly",
+            completedRecords: completedRecords
+        )
+
+        guard let growthAIService else {
+            growthReportMessage = "AI 成长报告服务暂不可用，已保留当前本地快照。"
+            return
+        }
+
+        do {
+            let result = try await growthAIService.generateMonthlyReport(context: context)
+            try await metricSnapshotRepository.saveSnapshot(result.snapshot)
+            let acceptedContributions = result.contributions.map { contribution in
+                acceptedGrowthContribution(contribution)
+            }
+            for contribution in acceptedContributions {
+                try await metricContributionRepository.saveContribution(contribution)
+            }
+            growthSnapshot = result.snapshot
+            metricContributions = acceptedContributions
+            growthReportReviewContributions = result.snapshot.canDisplayScores ? acceptedContributions : []
+            growthReportMessage = result.snapshot.canDisplayScores
+                ? "月度成长报告已生成。"
+                : "证据不足，已记录月度证据积累状态。"
+        } catch {
+            growthReportMessage = "AI 成长月报生成失败，已保留当前本地快照。"
+        }
+    }
+
+    private func buildGrowthReportContext(
+        period: String,
+        completedRecords: [HistoryRecord]
+    ) -> GrowthReportContext {
+        let summaries = completedRecords.map { record -> GrowthRecordSummary in
+            GrowthRecordSummary(
+                dailyEntryId: record.draft.id,
+                date: record.draft.date,
+                confirmedCardCount: record.confirmedCards.count,
+                hasMainQuest: record.mainQuest != nil,
+                mainQuestTitle: record.mainQuest?.title,
+                mainQuestCompletionCriteria: record.mainQuest?.completionCriteria,
+                verificationCompletion: record.verification?.completion.rawValue,
+                verificationValueRating: record.verification?.valueRating.rawValue,
+                calibrationNote: record.verification?.calibrationNote,
+                hasLensSessionAnswers: record.lensSession?.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? false,
+                principleTitles: record.principles.map(\.title)
+            )
+        }
+
+        let dismissed = historyRecords.flatMap { record in
+            record.growthContributions.filter { $0.userFeedback == .inaccurate || $0.userFeedback == .dismissed }
+        }.map(\.title)
+
+        return GrowthReportContext(
+            period: period,
+            startDate: completedRecords.first?.draft.date,
+            endDate: completedRecords.last?.draft.date,
+            completeLoopCount: completedRecords.count,
+            historyRecords: summaries,
+            previousSnapshot: growthSnapshot.canDisplayScores ? growthSnapshot : nil,
+            dismissedContributionTitles: dismissed
+        )
+    }
+
+    private func acceptedGrowthContribution(_ contribution: MetricContribution) -> MetricContribution {
+        var accepted = contribution
+        accepted.candidateStatus = .accepted
+        accepted.userFeedback = .none
+        accepted.updatedAt = .now
+        return accepted
+    }
+
+    private func trimDerivedState(after state: DailyLoopState) {
+        switch state {
+        case .verifyYesterday:
+            todayDraft.rawText = ""
+            thinkingCards = []
+            streamingCards = []
+            streamingStatusText = ""
+            todayDraft.hasSelectedSessionMode = false
+            todayDraft.sessionMode = .standard
+            todayDraft.selectedLens = nil
+            questions = []
+            quests = []
+            principles = []
+            referencedPrinciples = []
+        case .capture, .organizing:
+            thinkingCards = []
+            streamingCards = []
+            streamingStatusText = ""
+            todayDraft.selectedLens = nil
+            questions = []
+            quests = []
+            principles = []
+            referencedPrinciples = []
+        case .reviewCards:
+            todayDraft.hasSelectedSessionMode = false
+            todayDraft.sessionMode = .standard
+            todayDraft.selectedLens = nil
+            questions = []
+            quests = []
+            principles = []
+            referencedPrinciples = []
+        case .selectMode:
+            todayDraft.selectedLens = nil
+            questions = []
+            quests = []
+            principles = []
+            referencedPrinciples = []
+        case .selectLens:
+            questions = []
+            quests = []
+            principles = []
+            referencedPrinciples = []
+        case .answerQuestions:
+            quests = []
+            principles = []
+        case .reviewQuests:
+            principles = []
+        case .extractPrinciple, .sessionComplete:
+            break
+        }
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        persistDraft()
+    }
+
+    private func handleAIFailure(
+        prompt: PromptID,
+        error: Error,
+        fallback: () -> Void
+    ) {
+        fallback()
+        recordAIFallback(prompt: prompt, reason: aiFailureMessage(for: error), canRetry: true)
+    }
+
+    private func recordAISuccess(prompt: PromptID? = nil, message: String = "") {
+        if let prompt {
+            pendingAIRepairPrompts.remove(prompt)
+        }
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        todayLoopMessage = message
+    }
+
+    private func recordAIFallback(prompt: PromptID, reason: String, canRetry: Bool) {
+        let message = "AI \(prompt.displayName)失败：\(reason) 已使用本地结果，可继续流程。"
+        lastAIFailureMessage = message
+        canRetryCurrentAI = canRetry
+        if canRetry {
+            pendingAIRepairPrompts.insert(prompt)
+        }
+        todayLoopMessage = message
+    }
+
+    private func recordAIRepairFailure(prompt: PromptID, reason: String) {
+        let message = "AI \(prompt.displayName)重试失败：\(reason) 已保留当前内容，可稍后再试。"
+        lastAIFailureMessage = message
+        canRetryCurrentAI = true
+        pendingAIRepairPrompts.insert(prompt)
+        todayLoopMessage = message
+    }
+
+    private func aiFailureMessage(for error: Error) -> String {
+        if let llmError = error as? LLMClientError {
+            return llmError.userFacingMessage
+        }
+        return error.localizedDescription
     }
 
     private func scheduleTomorrowMainQuestReminderIfNeeded(for quest: Quest) {
@@ -548,81 +1990,160 @@ final class AppStore: ObservableObject {
         persistCards()
     }
 
-    private func generateCardsWithAIOrFallback(from input: String, draftID: DailyEntryDraft.ID) async {
+    private func generateCardsWithAIOrFallback(
+        from input: String,
+        draftID: DailyEntryDraft.ID,
+        allowsFallback: Bool = true
+    ) async {
         guard todayDraft.id == draftID else { return }
 
         if let todayAIService {
             do {
-                thinkingCards = try await todayAIService.organizeCards(for: TodayAIContext(draft: todayDraft))
-                todayLoopMessage = apiKeyConfigured ? "已生成结构化卡片，请查看并确认。" : "未配置 GLM，已使用本地模拟 AI 数据。"
+                streamingCards = []
+                streamingStatusText = "正在连接 GLM 流式整理。"
+                thinkingCards = try await todayAIService.streamOrganizedCards(
+                    for: TodayAIContext(draft: todayDraft),
+                    onUpdate: { [weak self] drafts in
+                        await MainActor.run {
+                            guard let self, self.todayDraft.id == draftID else { return }
+                            self.streamingCards = drafts
+                            let closedCount = drafts.compactMap(\.domainCard).count
+                            if closedCount > 0 {
+                                self.streamingStatusText = "已闭合 \(closedCount) 张候选卡片，继续接收中。"
+                            } else if drafts.isEmpty {
+                                self.streamingStatusText = "等待第一张候选卡片。"
+                            } else {
+                                self.streamingStatusText = "正在生成第 \(drafts.count) 张候选卡片。"
+                            }
+                        }
+                    }
+                )
+                streamingStatusText = "已生成 \(thinkingCards.count) 张候选卡片，请查看并确认。"
+                recordAISuccess(prompt: .organizeCards, message: "已生成结构化卡片，请查看并确认。")
                 persistCards()
                 return
             } catch {
-                generateLocalCards(from: input)
-                todayLoopMessage = fallbackMessage
-                persistCards()
+                if allowsFallback {
+                    handleAIFailure(prompt: .organizeCards, error: error) {
+                        let streamedCards = streamingCards.compactMap(\.domainCard)
+                        if streamedCards.isEmpty {
+                            generateLocalCards(from: input)
+                            streamingStatusText = "流式整理失败，已使用本地 fallback。"
+                        } else {
+                            thinkingCards = streamedCards
+                            streamingStatusText = "流式中断，已保留 \(streamedCards.count) 张闭合卡片。"
+                        }
+                        persistCards()
+                    }
+                } else {
+                    recordAIRepairFailure(prompt: .organizeCards, reason: aiFailureMessage(for: error))
+                }
                 return
             }
         }
 
-        generateLocalCards(from: input)
-        todayLoopMessage = fallbackMessage
-        persistCards()
+        if allowsFallback {
+            generateLocalCards(from: input)
+            recordAIFallback(prompt: .organizeCards, reason: "未配置 GLM，已使用本地整理。", canRetry: false)
+            persistCards()
+        }
     }
 
-    private func generateQuestionsWithAIOrFallback(draftID: DailyEntryDraft.ID) async {
+    private func generateQuestionsWithAIOrFallback(
+        draftID: DailyEntryDraft.ID,
+        allowsFallback: Bool = true
+    ) async {
         guard todayDraft.id == draftID else { return }
         let input = todayDraft.rawText
 
         if let todayAIService {
             do {
+                let contextPrinciples = await contextPrinciplesForAI()
                 questions = try await todayAIService.generateQuestions(
                     for: TodayAIContext(
                         draft: todayDraft,
                         confirmedCards: confirmedCardsForAI,
-                        questions: questions
+                        questions: questions,
+                        principles: contextPrinciples
                     )
                 )
-                moveTodayLoop(to: .answerQuestions, message: apiKeyConfigured ? "" : "未配置 GLM，已使用本地模拟 AI 问题。")
+                refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
+                persistLensSession()
+                moveTodayLoop(to: .answerQuestions)
+                recordAISuccess(prompt: .generateQuestions)
                 return
             } catch {
-                generateLocalQuestions(from: input)
-                moveTodayLoop(to: .answerQuestions, message: fallbackMessage)
+                if allowsFallback {
+                    handleAIFailure(prompt: .generateQuestions, error: error) {
+                        generateLocalQuestions(from: input)
+                        Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
+                        persistLensSession()
+                        moveTodayLoop(to: .answerQuestions)
+                    }
+                } else {
+                    recordAIRepairFailure(prompt: .generateQuestions, reason: aiFailureMessage(for: error))
+                }
                 return
             }
         }
 
-        generateLocalQuestions(from: input)
-        moveTodayLoop(to: .answerQuestions, message: fallbackMessage)
+        if allowsFallback {
+            generateLocalQuestions(from: input)
+            await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions)
+            persistLensSession()
+            moveTodayLoop(to: .answerQuestions)
+            recordAIFallback(prompt: .generateQuestions, reason: "未配置 GLM，已使用本地追问。", canRetry: false)
+        }
     }
 
-    private func generateQuestsWithAIOrFallback(draftID: DailyEntryDraft.ID) async {
+    private func generateQuestsWithAIOrFallback(
+        draftID: DailyEntryDraft.ID,
+        allowsFallback: Bool = true
+    ) async {
         guard todayDraft.id == draftID else { return }
 
         if let todayAIService {
             do {
+                let contextPrinciples = await contextPrinciplesForAI()
                 quests = try await todayAIService.generateQuests(
                     for: TodayAIContext(
                         draft: todayDraft,
                         confirmedCards: confirmedCardsForAI,
-                        questions: questions
+                        questions: questions,
+                        principles: contextPrinciples
                     )
                 )
+                refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
                 persistQuests()
-                moveTodayLoop(to: .reviewQuests, message: apiKeyConfigured ? "" : "未配置 GLM，已使用本地模拟 AI 任务。")
+                moveTodayLoop(to: .reviewQuests)
+                recordAISuccess(prompt: .generateQuests)
                 return
             } catch {
-                generateLocalQuests()
-                moveTodayLoop(to: .reviewQuests, message: fallbackMessage)
+                if allowsFallback {
+                    handleAIFailure(prompt: .generateQuests, error: error) {
+                        generateLocalQuests()
+                        Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests) }
+                        moveTodayLoop(to: .reviewQuests)
+                    }
+                } else {
+                    recordAIRepairFailure(prompt: .generateQuests, reason: aiFailureMessage(for: error))
+                }
                 return
             }
         }
 
-        generateLocalQuests()
-        moveTodayLoop(to: .reviewQuests, message: fallbackMessage)
+        if allowsFallback {
+            generateLocalQuests()
+            await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests)
+            moveTodayLoop(to: .reviewQuests)
+            recordAIFallback(prompt: .generateQuests, reason: "未配置 GLM，已使用本地任务。", canRetry: false)
+        }
     }
 
-    private func generatePrincipleWithAIOrFallback(draftID: DailyEntryDraft.ID) async {
+    private func generatePrincipleWithAIOrFallback(
+        draftID: DailyEntryDraft.ID,
+        allowsFallback: Bool = true
+    ) async {
         guard todayDraft.id == draftID else { return }
 
         if let todayAIService {
@@ -632,22 +2153,33 @@ final class AppStore: ObservableObject {
                         draft: todayDraft,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
-                        quests: quests
+                        quests: quests,
+                        principles: await existingPrinciplesForDedupe()
                     )
                 )
                 persistPrinciples()
                 let message = principles.isEmpty ? "没有足够稳定的原则候选，可以直接跳过。" : ""
-                moveTodayLoop(to: .extractPrinciple, message: apiKeyConfigured ? message : "未配置 GLM，已使用本地模拟 AI 原则。")
+                moveTodayLoop(to: .extractPrinciple, message: message)
+                recordAISuccess(prompt: .extractPrinciple, message: message)
                 return
             } catch {
-                generateLocalPrinciple()
-                moveTodayLoop(to: .extractPrinciple, message: fallbackMessage)
+                if allowsFallback {
+                    handleAIFailure(prompt: .extractPrinciple, error: error) {
+                        generateLocalPrinciple()
+                        moveTodayLoop(to: .extractPrinciple)
+                    }
+                } else {
+                    recordAIRepairFailure(prompt: .extractPrinciple, reason: aiFailureMessage(for: error))
+                }
                 return
             }
         }
 
-        generateLocalPrinciple()
-        moveTodayLoop(to: .extractPrinciple, message: fallbackMessage)
+        if allowsFallback {
+            generateLocalPrinciple()
+            moveTodayLoop(to: .extractPrinciple)
+            recordAIFallback(prompt: .extractPrinciple, reason: "未配置 GLM，已使用本地原则候选。", canRetry: false)
+        }
     }
 
     private func generateLocalCards(from input: String) {
@@ -659,8 +2191,7 @@ final class AppStore: ObservableObject {
                 body: summary,
                 priority: .medium,
                 sensitivity: .normal,
-                confidence: 0.72,
-                isConfirmed: true
+                confidence: 0.72
             ),
             ThinkingCard(
                 type: .problem,
@@ -772,7 +2303,7 @@ final class AppStore: ObservableObject {
 
     private func persistCards() {
         guard let thinkingCardRepository else { return }
-        let cards = thinkingCards
+        let cards = thinkingCards.filter { $0.isConfirmed || $0.isExcludedFromModel }
         let draftID = todayDraft.id
         Task {
             do {
@@ -783,6 +2314,13 @@ final class AppStore: ObservableObject {
                 }
             }
         }
+    }
+
+    private var canRunBackgroundCardRepair: Bool {
+        thinkingCards.isEmpty &&
+        questions.isEmpty &&
+        quests.isEmpty &&
+        principles.isEmpty
     }
 
     private func persistQuests() {
@@ -815,6 +2353,26 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func persistLensSession() {
+        guard let lensSessionRepository, let lens = todayDraft.selectedLens else { return }
+        let draftID = todayDraft.id
+        let currentQuestions = questions
+        Task {
+            let session = LensSession(
+                dailyEntryId: draftID,
+                selectedLens: lens,
+                questions: currentQuestions
+            )
+            do {
+                try await lensSessionRepository.saveLensSession(session)
+            } catch {
+                await MainActor.run {
+                    todayLoopMessage = "保存透镜会话失败。"
+                }
+            }
+        }
+    }
+
     private func inputSummary(from input: String) -> String {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 90 else { return trimmed }
@@ -834,31 +2392,132 @@ final class AppStore: ObservableObject {
         thinkingCards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
     }
 
-    private var fallbackMessage: String {
-        "AI 生成失败，已使用本地 fallback 数据。"
+    private func contextPrinciplesForAI() async -> [PrincipleAsset] {
+        do {
+            if let activePrinciples = try await principleRepository?.activePrinciples() {
+                return activePrinciples
+            }
+        } catch {
+            todayLoopMessage = "读取历史原则失败，已继续当前流程。"
+        }
+        return principles.filter { $0.status == .active }
     }
 
-    private static func makeTodayAIService(apiKeyStore: KeychainAPIKeyStore) -> TodayAIService {
-        let key = (try? apiKeyStore.loadAPIKey())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let client: LLMClient
-        if key.isEmpty {
-            client = MockLLMClient()
-        } else {
-            var config = GLMClientConfiguration()
-            if let customURL = (try? apiKeyStore.loadBaseURL())?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !customURL.isEmpty, let url = URL(string: customURL) {
-                config = GLMClientConfiguration(endpoint: url)
-            }
-            client = DirectGLMClient(apiKey: key, configuration: config)
+    private func existingPrinciplesForDedupe() async -> [PrincipleAsset] {
+        var merged: [PrincipleAsset.ID: PrincipleAsset] = Dictionary(uniqueKeysWithValues: principles.map { ($0.id, $0) })
+        for principle in await contextPrinciplesForAI() {
+            merged[principle.id] = principle
         }
-        return TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        return Array(merged.values).sorted { $0.title < $1.title }
+    }
+
+    private func refreshReferencedPrinciplesForCurrentContext(promptID: PromptID) async {
+        let contextPrinciples = await contextPrinciplesForAI()
+        refreshReferencedPrinciples(promptID: promptID, from: contextPrinciples)
+    }
+
+    private func refreshReferencedPrinciples(promptID: PromptID, from contextPrinciples: [PrincipleAsset]) {
+        let context = TodayAIContext(
+            draft: todayDraft,
+            confirmedCards: confirmedCardsForAI,
+            questions: questions,
+            quests: quests,
+            principles: contextPrinciples
+        )
+        referencedPrinciples = LocalPrincipleRetriever().relevantPrinciples(
+            for: context,
+            promptID: promptID,
+            limit: 3
+        )
+    }
+
+    private var currentHistoryRecord: HistoryRecord {
+        HistoryRecord(
+            draft: todayDraft,
+            cards: thinkingCards,
+            quests: quests,
+            principles: principles,
+            verification: nil,
+            lensSession: todayDraft.selectedLens.map { lens in
+                LensSession(dailyEntryId: todayDraft.id, selectedLens: lens, questions: questions)
+            }
+        )
+    }
+
+    private static func makeTodayAIService(
+        apiKeyStore: KeychainAPIKeyStore,
+        promptRunRepository: PromptRunRepository?
+    ) -> TodayAIService {
+        TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        )
+    }
+
+    private static func makeLLMClient(
+        apiKeyStore: KeychainAPIKeyStore,
+        promptRunRepository: PromptRunRepository?
+    ) -> LLMClient {
+        let key = (try? apiKeyStore.loadAPIKey())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !key.isEmpty else {
+            let missingKeyClient = MissingAPIKeyLLMClient()
+            guard let promptRunRepository else { return missingKeyClient }
+            return PromptTracingLLMClient(
+                base: missingKeyClient,
+                repository: promptRunRepository,
+                modelProvider: "GLM",
+                modelName: "missing-api-key"
+            )
+        }
+
+        var config = GLMClientConfiguration()
+        if let customURL = (try? apiKeyStore.loadBaseURL())?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !customURL.isEmpty, let url = URL(string: customURL) {
+            config = GLMClientConfiguration(
+                baseURL: GLMClientConfiguration.normalizeBaseURL(url),
+                model: config.model,
+                temperature: config.temperature,
+                requestTimeout: config.requestTimeout,
+                protocolKind: config.protocolKind,
+                usesJSONResponseFormat: config.usesJSONResponseFormat
+            )
+        }
+
+        if let modelName = (try? apiKeyStore.loadModelName())?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !modelName.isEmpty {
+            config = GLMClientConfiguration(
+                baseURL: config.baseURL,
+                model: modelName,
+                temperature: config.temperature,
+                requestTimeout: config.requestTimeout,
+                protocolKind: config.protocolKind,
+                usesJSONResponseFormat: config.usesJSONResponseFormat
+            )
+        }
+
+        let directClient = DirectGLMClient(apiKey: key, configuration: config)
+        guard let promptRunRepository else { return directClient }
+        return PromptTracingLLMClient(
+            base: directClient,
+            repository: promptRunRepository,
+            modelProvider: "GLM",
+            modelName: config.model
+        )
+    }
+
+    private func refreshAIServiceFromKeychainIfNeeded() {
+        guard refreshesAIServiceFromKeychain else { return }
+        todayAIService = Self.makeTodayAIService(
+            apiKeyStore: apiKeyStore,
+            promptRunRepository: promptRunRepository
+        )
     }
 
     func refreshAPIKeyStatus() {
         do {
             let key = try apiKeyStore.loadAPIKey()
             apiKeyConfigured = key?.isEmpty == false
-            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            refreshAIServiceFromKeychainIfNeeded()
             apiKeyStatusMessage = apiKeyConfigured ? "GLM API Key 已配置。" : "尚未配置 GLM API Key。"
         } catch {
             apiKeyConfigured = false
@@ -877,8 +2536,9 @@ final class AppStore: ObservableObject {
         do {
             try apiKeyStore.saveAPIKey(trimmed)
             apiKeyConfigured = true
-            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            refreshAIServiceFromKeychainIfNeeded()
             apiKeyStatusMessage = "GLM API Key 已保存到 Keychain。"
+            testGLMConnection()
         } catch {
             apiKeyConfigured = false
             apiKeyStatusMessage = "保存 Keychain 失败。"
@@ -890,8 +2550,9 @@ final class AppStore: ObservableObject {
         do {
             try apiKeyStore.deleteAPIKey()
             apiKeyConfigured = false
-            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            refreshAIServiceFromKeychainIfNeeded()
             apiKeyStatusMessage = "GLM API Key 已清除。"
+            glmConnectionMessage = ""
         } catch {
             apiKeyStatusMessage = "清除 Keychain 失败。"
         }
@@ -900,6 +2561,10 @@ final class AppStore: ObservableObject {
 
     var currentBaseURL: String {
         (try? apiKeyStore.loadBaseURL()) ?? ""
+    }
+
+    var currentModelName: String {
+        (try? apiKeyStore.loadModelName()) ?? ""
     }
 
     func saveGLMBaseURL(_ url: String) {
@@ -914,10 +2579,12 @@ final class AppStore: ObservableObject {
                     updateSettingsMessage()
                     return
                 }
-                try apiKeyStore.saveBaseURL(trimmed)
+                let normalized = GLMClientConfiguration.normalizeBaseURL(URL(string: trimmed)!).absoluteString
+                try apiKeyStore.saveBaseURL(normalized)
                 apiKeyStatusMessage = "API Base URL 已保存。"
             }
-            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            refreshAIServiceFromKeychainIfNeeded()
+            testGLMConnection()
         } catch {
             apiKeyStatusMessage = "保存 Base URL 失败。"
         }
@@ -927,12 +2594,101 @@ final class AppStore: ObservableObject {
     func clearGLMBaseURL() {
         do {
             try apiKeyStore.deleteBaseURL()
-            todayAIService = Self.makeTodayAIService(apiKeyStore: apiKeyStore)
+            refreshAIServiceFromKeychainIfNeeded()
             apiKeyStatusMessage = "已恢复默认 API 地址。"
+            testGLMConnection()
         } catch {
             apiKeyStatusMessage = "清除 Base URL 失败。"
         }
         updateSettingsMessage()
+    }
+
+    func saveGLMModelName(_ modelName: String) {
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if trimmed.isEmpty {
+                try apiKeyStore.deleteModelName()
+                apiKeyStatusMessage = "已恢复默认模型。"
+            } else {
+                try apiKeyStore.saveModelName(trimmed)
+                apiKeyStatusMessage = "模型名已保存。"
+            }
+            refreshAIServiceFromKeychainIfNeeded()
+            testGLMConnection()
+        } catch {
+            apiKeyStatusMessage = "保存模型名失败。"
+        }
+        updateSettingsMessage()
+    }
+
+    func saveGLMEndpointConfiguration(baseURL: String, modelName: String) {
+        let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            if trimmedURL.isEmpty {
+                try apiKeyStore.deleteBaseURL()
+            } else {
+                guard let url = URL(string: trimmedURL) else {
+                    apiKeyStatusMessage = "URL 格式不正确。"
+                    updateSettingsMessage()
+                    return
+                }
+                let normalized = GLMClientConfiguration.normalizeBaseURL(url).absoluteString
+                try apiKeyStore.saveBaseURL(normalized)
+            }
+
+            if trimmedModel.isEmpty {
+                try apiKeyStore.deleteModelName()
+            } else {
+                try apiKeyStore.saveModelName(trimmedModel)
+            }
+
+            refreshAIServiceFromKeychainIfNeeded()
+            apiKeyStatusMessage = "GLM 地址和模型配置已保存。"
+            testGLMConnection()
+        } catch {
+            apiKeyStatusMessage = "保存 GLM 配置失败。"
+            updateSettingsMessage()
+        }
+    }
+
+    func testGLMConnection() {
+        guard apiKeyConfigured else {
+            glmConnectionMessage = "未配置 API Key，暂不测试连接。"
+            updateSettingsMessage()
+            return
+        }
+
+        isTestingGLMConnection = true
+        glmConnectionMessage = "正在测试 GLM 连接..."
+        updateSettingsMessage()
+
+        let client = Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .organizeCards,
+                version: "connection-test",
+                systemText: "Return valid JSON only.",
+                userText: "Reply with {\"ok\":true}.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "connection test",
+            jsonPayload: ["purpose": "test"]
+        )
+
+        Task {
+            do {
+                _ = try await client.complete(request)
+                glmConnectionMessage = "GLM 连接测试通过。"
+            } catch let error as LLMClientError {
+                glmConnectionMessage = "GLM 连接测试失败：\(error.userFacingMessage)"
+            } catch {
+                glmConnectionMessage = "GLM 连接测试失败：\(error.localizedDescription)"
+            }
+            isTestingGLMConnection = false
+            updateSettingsMessage()
+        }
     }
 
     private func updateSettingsMessage() {
@@ -942,6 +2698,652 @@ final class AppStore: ObservableObject {
         } else {
             baseMessage = apiKeyStatusMessage
         }
-        settingsMessage = "\(baseMessage)\n\(reminderStatusMessage)"
+        let connection = glmConnectionMessage.isEmpty ? "" : "\n\(glmConnectionMessage)"
+        settingsMessage = "\(baseMessage)\(connection)\n\(reminderStatusMessage)"
+    }
+
+    // MARK: - Project AI Candidate Review
+
+    var pendingProjectCandidateCount: Int {
+        projectCandidates.filter { $0.status == .pending }.count
+    }
+
+    var hasEnoughEvidenceForProjectSuggestions: Bool {
+        let confirmedCards = thinkingCards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        return confirmedCards.count >= 2
+    }
+
+    func suggestProjectsForToday(projectAIService: ProjectAIService? = nil) async {
+        guard let projectCandidateRepository else {
+            projectSuggestionMessage = "本地候选存储暂不可用。"
+            return
+        }
+
+        isGeneratingProjectSuggestions = true
+        projectSuggestionMessage = "正在生成项目建议。"
+
+        let service = projectAIService ?? self.projectAIService
+        guard let service else {
+            isGeneratingProjectSuggestions = false
+            projectSuggestionMessage = "AI 项目建议服务暂不可用。"
+            return
+        }
+
+        let context = buildProjectSuggestionContext()
+        do {
+            let result = try await service.suggestProjectLinks(context: context)
+
+            var savedCandidates: [ProjectCandidate] = []
+            for candidate in result.newProjectCandidates {
+                guard !candidate.sourceRefs.isEmpty else { continue }
+                try await projectCandidateRepository.saveCandidate(candidate)
+                savedCandidates.append(candidate)
+            }
+
+            projectLinkCandidates = result.linkCandidates
+            projectCandidates = savedCandidates
+            isGeneratingProjectSuggestions = false
+            projectSuggestionMessage = savedCandidates.isEmpty && result.linkCandidates.isEmpty
+                ? "暂无足够的项目建议。"
+                : ""
+        } catch {
+            isGeneratingProjectSuggestions = false
+            projectSuggestionMessage = "项目建议生成失败：\(error.localizedDescription)"
+        }
+    }
+
+    func acceptProjectCandidate(_ candidate: ProjectCandidate) async {
+        guard let projectRepository, let projectLinkRepository, let projectCandidateRepository else {
+            projectSuggestionMessage = "本地存储暂不可用。"
+            return
+        }
+
+        let project = Project(
+            name: candidate.suggestedName,
+            goal: candidate.suggestedGoal ?? "持续推进：\(candidate.suggestedName)",
+            successCriteria: candidate.suggestedSuccessCriteria ?? "后续复盘中能看到明确进展证据。",
+            currentBottleneck: candidate.suggestedBottleneck,
+            status: .active,
+            createdBy: .aiSuggested,
+            confidence: candidate.confidence
+        )
+
+        guard let sourceId = candidate.sourceRefs.first else {
+            projectSuggestionMessage = "候选缺少来源证据，无法创建项目。"
+            return
+        }
+
+        let link = ProjectLink(
+            projectId: project.id,
+            sourceType: projectSourceType(for: sourceId),
+            sourceId: sourceId,
+            linkType: .evidence,
+            confidence: candidate.confidence,
+            isUserConfirmed: true
+        )
+
+        do {
+            try await projectRepository.saveProject(project)
+            try await projectLinkRepository.saveLink(link)
+            var acceptedCandidate = candidate
+            acceptedCandidate.status = .accepted
+            acceptedCandidate.acceptedProjectId = project.id
+            acceptedCandidate.updatedAt = .now
+            try await projectCandidateRepository.saveCandidate(acceptedCandidate)
+
+            projectNames[project.id] = project.name
+            projectsById[project.id] = project
+            projectCandidates = projectCandidates.map { c in
+                guard c.id == candidate.id else { return c }
+                return acceptedCandidate
+            }
+
+            if dailyEntryRepository != nil {
+                await loadHistoryRecords()
+            }
+            projectSuggestionMessage = "已创建长期议题：\(project.name)。"
+        } catch {
+            projectSuggestionMessage = "项目创建失败，请稍后重试。"
+        }
+    }
+
+    func dismissProjectCandidate(_ candidate: ProjectCandidate) async {
+        guard let projectCandidateRepository else {
+            projectSuggestionMessage = "本地存储暂不可用。"
+            return
+        }
+
+        do {
+            try await projectCandidateRepository.updateCandidateStatus(.dismissed, candidateId: candidate.id)
+            projectCandidates = projectCandidates.map { c in
+                guard c.id == candidate.id else { return c }
+                var updated = c
+                updated.status = .dismissed
+                return updated
+            }
+        } catch {
+            projectSuggestionMessage = "候选状态更新失败。"
+        }
+    }
+
+    func acceptProjectLinkCandidate(_ linkCandidate: ProjectLinkCandidate) async {
+        guard let projectLinkRepository else {
+            projectSuggestionMessage = "本地存储暂不可用。"
+            return
+        }
+
+        guard let projectId = linkCandidate.projectId else {
+            projectSuggestionMessage = "关联候选缺少目标项目。"
+            return
+        }
+
+        let link = ProjectLink(
+            projectId: projectId,
+            sourceType: linkCandidate.sourceType,
+            sourceId: linkCandidate.sourceId,
+            linkType: linkCandidate.linkType,
+            confidence: linkCandidate.confidence,
+            isUserConfirmed: true
+        )
+
+        do {
+            try await projectLinkRepository.saveLink(link)
+            projectLinkCandidates = projectLinkCandidates.filter { $0.id != linkCandidate.id }
+
+            if dailyEntryRepository != nil {
+                await loadHistoryRecords()
+            }
+            let projectName = projectNames[projectId] ?? "长期议题"
+            projectSuggestionMessage = "已关联到：\(projectName)。"
+        } catch {
+            projectSuggestionMessage = "关联保存失败，请稍后重试。"
+        }
+    }
+
+    func dismissProjectLinkCandidate(_ linkCandidate: ProjectLinkCandidate) {
+        projectLinkCandidates = projectLinkCandidates.filter { $0.id != linkCandidate.id }
+    }
+
+    private func buildProjectSuggestionContext() -> ProjectSuggestionContext {
+        let confirmedCards = thinkingCards
+            .filter { $0.isConfirmed && !$0.isExcludedFromModel }
+            .map { card in
+                ProjectSuggestionCardContext(
+                    id: card.id.uuidString,
+                    type: card.type.rawValue,
+                    title: card.title,
+                    body: card.body
+                )
+            }
+
+        let questsContext = quests.map { quest in
+            ProjectSuggestionQuestContext(
+                id: quest.id.uuidString,
+                type: quest.type.rawValue,
+                title: quest.title,
+                completionCriteria: quest.completionCriteria
+            )
+        }
+
+        let activeProjects = projectsById.values
+            .filter { $0.status == .active }
+            .map { project in
+                ProjectSuggestionProjectContext(
+                    id: project.id.uuidString,
+                    name: project.name
+                )
+            }
+
+        let existingLinkSourceIds = historyRecords.flatMap { record in
+            record.projectLinks.map(\.sourceId)
+        }
+
+        return ProjectSuggestionContext(
+            dailyEntryId: todayDraft.id,
+            confirmedCards: confirmedCards,
+            quests: questsContext,
+            activeProjects: activeProjects,
+            existingLinkSourceIds: existingLinkSourceIds
+        )
+    }
+
+    private func projectSourceType(for sourceId: String) -> ProjectSourceType {
+        if sourceId == todayDraft.id.uuidString { return .dailyEntry }
+        if thinkingCards.contains(where: { $0.id.uuidString == sourceId }) { return .thinkingCard }
+        if quests.contains(where: { $0.id.uuidString == sourceId }) { return .quest }
+        if principles.contains(where: { $0.id.uuidString == sourceId }) { return .principle }
+
+        for record in historyRecords {
+            if record.draft.id.uuidString == sourceId { return .dailyEntry }
+            if record.cards.contains(where: { $0.id.uuidString == sourceId }) { return .thinkingCard }
+            if record.quests.contains(where: { $0.id.uuidString == sourceId }) { return .quest }
+            if record.principles.contains(where: { $0.id.uuidString == sourceId }) { return .principle }
+            if record.verification?.id.uuidString == sourceId { return .verification }
+        }
+
+        return .dailyEntry
+    }
+
+    func generateProjectInsights(for projectId: UUID, projectAIService: ProjectAIService? = nil) async {
+        guard let projectInsightRepository else {
+            projectInsightGenerationMessage = "本地洞察存储暂不可用。"
+            return
+        }
+
+        guard let projectRepository, let projectLinkRepository else {
+            projectInsightGenerationMessage = "项目数据暂不可用。"
+            return
+        }
+
+        isGeneratingProjectInsights = true
+        projectInsightGenerationMessage = "正在根据历史证据生成洞察。"
+
+        let service = projectAIService ?? self.projectAIService
+        guard let service else {
+            isGeneratingProjectInsights = false
+            projectInsightGenerationMessage = "AI 项目洞察服务暂不可用。"
+            return
+        }
+
+        do {
+            guard let project = try await projectRepository.project(id: projectId) else {
+                isGeneratingProjectInsights = false
+                projectInsightGenerationMessage = "项目不存在。"
+                return
+            }
+
+            let links = try await projectLinkRepository.links(for: projectId)
+            let confirmedLinks = links.filter { $0.isUserConfirmed }
+
+            guard !confirmedLinks.isEmpty else {
+                isGeneratingProjectInsights = false
+                projectInsightGenerationMessage = "该项目暂无确认证据，无法生成洞察。"
+                return
+            }
+
+            var evidence: [ProjectInsightEvidenceContext] = []
+            for link in confirmedLinks {
+                let evidenceItem = await buildProjectInsightEvidence(from: link.sourceId, sourceType: link.sourceType)
+                if let item = evidenceItem {
+                    evidence.append(item)
+                }
+            }
+
+            guard !evidence.isEmpty else {
+                isGeneratingProjectInsights = false
+                projectInsightGenerationMessage = "项目证据还没有加载到历史中，无法生成洞察。"
+                return
+            }
+
+            let acceptedInsights = try await projectInsightRepository.insights(for: projectId)
+                .filter { $0.userFeedback == .accepted }
+
+            let context = ProjectInsightsContext(
+                projectId: projectId,
+                projectName: project.name,
+                projectGoal: project.goal,
+                projectSuccessCriteria: project.successCriteria,
+                confirmedEvidence: evidence,
+                acceptedInsightCount: acceptedInsights.count
+            )
+
+            let result = try await service.generateProjectInsights(context: context)
+
+            if let reason = result.insufficientEvidenceReason {
+                isGeneratingProjectInsights = false
+                projectInsightGenerationMessage = reason
+                return
+            }
+
+            for insight in result.insights {
+                guard insight.projectId == projectId,
+                      !insight.sourceRefs.isEmpty,
+                      Set(insight.sourceRefs).isSubset(of: Set(evidence.map(\.id)))
+                else { continue }
+                try await projectInsightRepository.saveInsight(insight)
+            }
+
+            await loadProjectInsights(for: projectId)
+
+            isGeneratingProjectInsights = false
+            projectInsightGenerationMessage = ""
+
+        } catch {
+            isGeneratingProjectInsights = false
+            projectInsightGenerationMessage = "生成洞察失败: \(error.localizedDescription)"
+        }
+    }
+
+    func loadProjectInsights(for projectId: UUID) async {
+        guard let projectInsightRepository else { return }
+
+        do {
+            let insights = try await projectInsightRepository.insights(for: projectId)
+            pendingProjectInsights = insights.filter { $0.userFeedback == .none }
+            acceptedProjectInsights = insights.filter { $0.userFeedback == .accepted }
+        } catch {
+            pendingProjectInsights = []
+            acceptedProjectInsights = []
+        }
+    }
+
+    func submitProjectInsightFeedback(_ feedback: ProjectFeedback, for insightId: UUID) async {
+        guard let projectInsightRepository else { return }
+
+        do {
+            let projectId = pendingProjectInsights.first(where: { $0.id == insightId })?.projectId
+                ?? acceptedProjectInsights.first(where: { $0.id == insightId })?.projectId
+
+            guard let projectId = projectId else { return }
+
+            let allInsights = try await projectInsightRepository.insights(for: projectId)
+            guard let insight = allInsights.first(where: { $0.id == insightId }) else { return }
+
+            var updated = insight
+            updated.userFeedback = feedback
+            updated.updatedAt = Date.now
+
+            try await projectInsightRepository.saveInsight(updated)
+
+            await loadProjectInsights(for: projectId)
+
+        } catch {
+        }
+    }
+
+    private func buildProjectInsightEvidence(from sourceId: String, sourceType: ProjectSourceType) async -> ProjectInsightEvidenceContext? {
+        switch sourceType {
+        case .thinkingCard:
+            guard let card = thinkingCards.first(where: { $0.id.uuidString == sourceId }) else {
+                for record in historyRecords {
+                    if let card = record.cards.first(where: { $0.id.uuidString == sourceId }) {
+                        return .init(id: card.id.uuidString, type: "thinking_card", title: card.title, body: card.body)
+                    }
+                }
+                return nil
+            }
+            return .init(id: card.id.uuidString, type: "thinking_card", title: card.title, body: card.body)
+
+        case .quest:
+            guard let quest = quests.first(where: { $0.id.uuidString == sourceId }) else {
+                for record in historyRecords {
+                    if let quest = record.quests.first(where: { $0.id.uuidString == sourceId }) {
+                        return .init(id: quest.id.uuidString, type: "quest", title: quest.title, body: quest.completionCriteria)
+                    }
+                }
+                return nil
+            }
+            return .init(id: quest.id.uuidString, type: "quest", title: quest.title, body: quest.completionCriteria)
+
+        case .verification:
+            for record in historyRecords {
+                if let verification = record.verification, verification.id.uuidString == sourceId {
+                    return .init(id: verification.id.uuidString, type: "verification", title: "任务验证", body: verification.calibrationNote)
+                }
+            }
+            return nil
+
+        case .principle:
+            guard let principle = principles.first(where: { $0.id.uuidString == sourceId }) else {
+                for record in historyRecords {
+                    if let principle = record.principles.first(where: { $0.id.uuidString == sourceId }) {
+                        return .init(id: principle.id.uuidString, type: "principle", title: principle.title, body: principle.summary)
+                    }
+                }
+                return nil
+            }
+            return .init(id: principle.id.uuidString, type: "principle", title: principle.title, body: principle.summary)
+
+        case .dailyEntry:
+            if todayDraft.id.uuidString == sourceId {
+                return .init(id: todayDraft.id.uuidString, type: "daily_entry", title: "当日复盘", body: todayDraft.rawText)
+            }
+            for record in historyRecords where record.draft.id.uuidString == sourceId {
+                return .init(id: record.draft.id.uuidString, type: "daily_entry", title: "历史复盘", body: record.draft.rawText)
+            }
+            return nil
+        }
+    }
+
+    private var projectAIService: ProjectAIService? {
+        guard let apiKey = try? apiKeyStore.loadAPIKey(),
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+
+        return ProjectAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        )
+    }
+
+    func loadPendingProjectMergeCandidates() async {
+        guard let projectMergeCandidateRepository else { return }
+
+        do {
+            let candidates = try await projectMergeCandidateRepository.pendingMergeCandidates()
+            pendingProjectMergeCandidates = candidates
+        } catch {
+            pendingProjectMergeCandidates = []
+        }
+    }
+
+    func updateProjectDetails(
+        projectId: UUID,
+        name: String,
+        goal: String,
+        successCriteria: String,
+        currentBottleneck: String?,
+        openQuestions: [String]
+    ) async {
+        guard let projectRepository else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            projectSuggestionMessage = "项目名称不能为空。"
+            return
+        }
+
+        do {
+            guard var project = try await projectRepository.project(id: projectId) ?? projectsById[projectId] else {
+                projectSuggestionMessage = "没有找到这个长期议题。"
+                return
+            }
+
+            let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedSuccessCriteria = successCriteria.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedBottleneck = currentBottleneck?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedBottleneck = trimmedBottleneck?.isEmpty == true ? nil : trimmedBottleneck
+            let normalizedQuestions = openQuestions
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            recordProjectRevision(&project, field: "name", oldValue: project.name, newValue: trimmedName)
+            recordProjectRevision(&project, field: "goal", oldValue: project.goal, newValue: trimmedGoal)
+            recordProjectRevision(&project, field: "successCriteria", oldValue: project.successCriteria, newValue: trimmedSuccessCriteria)
+            recordProjectRevision(&project, field: "currentBottleneck", oldValue: project.currentBottleneck ?? "", newValue: normalizedBottleneck ?? "")
+            recordProjectRevision(&project, field: "openQuestions", oldValue: project.openQuestions.joined(separator: "\n"), newValue: normalizedQuestions.joined(separator: "\n"))
+
+            project.name = trimmedName
+            project.goal = trimmedGoal
+            project.successCriteria = trimmedSuccessCriteria
+            project.currentBottleneck = normalizedBottleneck
+            project.openQuestions = normalizedQuestions
+            project.updatedAt = .now
+
+            try await projectRepository.saveProject(project)
+            projectNames[project.id] = project.name
+            projectsById[project.id] = project
+            projectSuggestionMessage = "长期议题已更新。"
+        } catch {
+            projectSuggestionMessage = "更新长期议题失败: \(error.localizedDescription)"
+        }
+    }
+
+    func archiveProject(_ projectId: UUID) async {
+        await updateProjectStatus(projectId, status: .archived, message: "长期议题已归档。")
+    }
+
+    func restoreProject(_ projectId: UUID) async {
+        await updateProjectStatus(projectId, status: .active, message: "长期议题已恢复为 active。")
+    }
+
+    private func updateProjectStatus(_ projectId: UUID, status: ProjectStatus, message: String) async {
+        guard let projectRepository else { return }
+
+        do {
+            guard var project = try await projectRepository.project(id: projectId) ?? projectsById[projectId] else {
+                projectSuggestionMessage = "没有找到这个长期议题。"
+                return
+            }
+            recordProjectRevision(&project, field: "status", oldValue: project.status.rawValue, newValue: status.rawValue)
+            project.status = status
+            project.updatedAt = .now
+            try await projectRepository.saveProject(project)
+            projectNames[project.id] = project.name
+            projectsById[project.id] = project
+            projectSuggestionMessage = message
+        } catch {
+            projectSuggestionMessage = "更新长期议题失败: \(error.localizedDescription)"
+        }
+    }
+
+    private func recordProjectRevision(_ project: inout Project, field: String, oldValue: String, newValue: String) {
+        guard oldValue != newValue else { return }
+        project.fieldRevisions[field] = "\(oldValue) -> \(newValue)"
+    }
+
+    func suggestProjectMerges(_ projectAIService: ProjectAIService? = nil) async {
+        guard let projectMergeCandidateRepository else {
+            projectMergeMessage = "本地合并候选拟暂不可用。"
+            return
+        }
+
+        guard let projectRepository, let projectLinkRepository else {
+            projectMergeMessage = "项目数据暂不可用。"
+            return
+        }
+
+        let service = projectAIService ?? self.projectAIService
+        guard let service else {
+            projectMergeMessage = "AI 项目合并服务暂不可用。"
+            return
+        }
+
+        isGeneratingProjectMerges = true
+        projectMergeMessage = "正在检查可合并议题。"
+
+        do {
+            let activeProjects = try await projectRepository.activeProjects()
+            guard activeProjects.count >= 2 else {
+                isGeneratingProjectMerges = false
+                projectMergeMessage = "需要至少2个活跃议题才能检查合并。"
+                return
+            }
+
+            var confirmedLinks: [ProjectLink] = []
+            for project in activeProjects {
+                let links = try await projectLinkRepository.links(for: project.id)
+                confirmedLinks.append(contentsOf: links.filter { $0.isUserConfirmed })
+            }
+
+            let context = ProjectMergeSuggestionContext(
+                activeProjects: activeProjects.map { project in
+                    .init(
+                        id: project.id.uuidString,
+                        name: project.name,
+                        goal: project.goal,
+                        successCriteria: project.successCriteria,
+                        status: project.status.rawValue
+                    )
+                },
+                confirmedProjectLinks: confirmedLinks.map { link in
+                    .init(
+                        projectId: link.projectId.uuidString,
+                        sourceId: link.sourceId,
+                        sourceType: link.sourceType.rawValue,
+                        linkType: link.linkType.rawValue
+                    )
+                }
+            )
+
+            let result = try await service.suggestProjectMerges(context: context)
+
+            for candidate in result.candidates {
+                let sourceProject = activeProjects.first { $0.id == candidate.sourceProjectId }
+                let targetProject = activeProjects.first { $0.id == candidate.targetProjectId }
+
+                guard sourceProject != nil, targetProject != nil,
+                      candidate.sourceProjectId != candidate.targetProjectId,
+                      Set(candidate.overlappingEvidenceRefs).isSubset(of: Set(confirmedLinks.map(\.sourceId)))
+                else { continue }
+
+                try await projectMergeCandidateRepository.saveMergeCandidate(candidate)
+            }
+
+            await loadPendingProjectMergeCandidates()
+
+            isGeneratingProjectMerges = false
+            projectMergeMessage = pendingProjectMergeCandidates.isEmpty ? "未发现可合并议题。" : ""
+
+        } catch {
+            isGeneratingProjectMerges = false
+            projectMergeMessage = "检查合并失败: \(error.localizedDescription)"
+        }
+    }
+
+    func acceptProjectMergeCandidate(_ candidateId: UUID) async {
+        guard let projectMergeCandidateRepository, let projectRepository else { return }
+
+        do {
+            guard let candidate = try await projectMergeCandidateRepository.mergeCandidate(id: candidateId) else { return }
+
+            let sourceProject = try await projectRepository.project(id: candidate.sourceProjectId)
+            let targetProject = try await projectRepository.project(id: candidate.targetProjectId)
+
+            guard var source = sourceProject, var target = targetProject else { return }
+
+            source.status = ProjectStatus.archived
+            try await projectRepository.saveProject(source)
+
+            let auditLine = """
+            合并了: \(source.name)
+            来源项目: \(candidate.sourceProjectId.uuidString)
+            原因: \(candidate.reason)
+            证据: \(candidate.overlappingEvidenceRefs.joined(separator: ", "))
+            """
+
+            target.mergeHistory.append(auditLine)
+            try await projectRepository.saveProject(target)
+
+            try await projectMergeCandidateRepository.updateMergeCandidateStatus(.accepted, candidateId: candidateId)
+
+            projectsById[source.id] = source
+            projectsById[target.id] = target
+            projectNames[source.id] = source.name
+            projectNames[target.id] = target.name
+
+            await loadPendingProjectMergeCandidates()
+
+        } catch {
+        }
+    }
+
+    func rejectProjectMergeCandidate(_ candidateId: UUID) async {
+        guard let projectMergeCandidateRepository else { return }
+
+        do {
+            try await projectMergeCandidateRepository.updateMergeCandidateStatus(.rejected, candidateId: candidateId)
+            await loadPendingProjectMergeCandidates()
+        } catch {
+        }
+    }
+
+    func dismissProjectMergeCandidate(_ candidateId: UUID) async {
+        guard let projectMergeCandidateRepository else { return }
+
+        do {
+            try await projectMergeCandidateRepository.updateMergeCandidateStatus(.dismissed, candidateId: candidateId)
+            await loadPendingProjectMergeCandidates()
+        } catch {
+        }
     }
 }

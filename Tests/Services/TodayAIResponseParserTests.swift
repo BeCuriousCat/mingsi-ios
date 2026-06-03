@@ -484,6 +484,408 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(principles[0].exceptions, "低风险场景可简化。")
     }
 
+    // MARK: - parseVerification
+
+    func testParseVerification_validJSON_returnsCalibrationResult() throws {
+        let json = """
+        {
+          "calibration_note": "The quest was useful but the completion evidence was weak.",
+          "likely_issue": "unclear_criteria",
+          "recommendation": "Define one visible artifact before starting tomorrow."
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseVerification(from: data)
+
+        XCTAssertEqual(result.calibrationNote, "The quest was useful but the completion evidence was weak.")
+        XCTAssertEqual(result.likelyIssue, "unclear_criteria")
+        XCTAssertEqual(result.recommendation, "Define one visible artifact before starting tomorrow.")
+    }
+
+    func testParseVerification_emptyNote_throwsEmptyResult() {
+        let json = """
+        {
+          "calibration_note": "",
+          "likely_issue": "none",
+          "recommendation": "Keep going."
+        }
+        """
+        let data = Data(json.utf8)
+
+        XCTAssertThrowsError(try parser.parseVerification(from: data)) { error in
+            XCTAssertEqual(error as? TodayAIParsingError, .emptyResult)
+        }
+    }
+
+    // MARK: - parseProjectSuggestions
+
+    func testParseProjectSuggestions_existingLinkAndNewCandidate_returnsEvidenceBackedResults() throws {
+        let projectId = UUID()
+        let json = """
+        {
+          "project_link_candidates": [
+            {
+              "project_id": "\(projectId.uuidString)",
+              "candidate_project_name": null,
+              "link_type": "blocker",
+              "source_type": "thinking_card",
+              "source_id": "card-123",
+              "reason": "The blocker matches an active project.",
+              "confidence": "high",
+              "requires_user_confirmation": true
+            }
+          ],
+          "new_project_candidates": [
+            {
+              "candidate_project_name": "Cross-team ownership clarity",
+              "goal": "Make ownership explicit before implementation work starts.",
+              "current_bottleneck": "Responsibility boundaries keep surfacing after meetings.",
+              "success_criteria": "Every cross-team decision has one owner and visible acceptance criteria.",
+              "why_this_is_long_running": "The same ownership ambiguity appears across multiple planning loops.",
+              "source_refs": [
+                {
+                  "source_type": "thinking_card",
+                  "source_id": "card-456"
+                },
+                {
+                  "source_type": "quest",
+                  "source_id": "quest-789"
+                }
+              ],
+              "privacy_safe_name_required": true,
+              "confidence": "medium"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectSuggestions(from: data)
+
+        XCTAssertEqual(result.projectLinks.count, 1)
+        XCTAssertEqual(result.projectLinks[0].projectId, projectId)
+        XCTAssertEqual(result.projectLinks[0].sourceType, .thinkingCard)
+        XCTAssertEqual(result.projectLinks[0].sourceId, "card-123")
+        XCTAssertEqual(result.projectLinks[0].linkType, .blocker)
+        XCTAssertEqual(result.projectLinks[0].confidence, 0.86, accuracy: 0.01)
+        XCTAssertFalse(result.projectLinks[0].isUserConfirmed)
+
+        XCTAssertEqual(result.projectCandidates.count, 1)
+        XCTAssertEqual(result.projectCandidates[0].suggestedName, "Cross-team ownership clarity")
+        XCTAssertEqual(result.projectCandidates[0].suggestedGoal, "Make ownership explicit before implementation work starts.")
+        XCTAssertEqual(result.projectCandidates[0].suggestedBottleneck, "Responsibility boundaries keep surfacing after meetings.")
+        XCTAssertEqual(result.projectCandidates[0].suggestedSuccessCriteria, "Every cross-team decision has one owner and visible acceptance criteria.")
+        XCTAssertEqual(result.projectCandidates[0].reason, "The same ownership ambiguity appears across multiple planning loops.")
+        XCTAssertEqual(result.projectCandidates[0].sourceRefs, ["card-456", "quest-789"])
+        XCTAssertEqual(result.projectCandidates[0].status, .pending)
+        XCTAssertEqual(result.projectCandidates[0].createdBy, .aiSuggested)
+        XCTAssertEqual(result.projectCandidates[0].confidence, 0.72, accuracy: 0.01)
+    }
+
+    func testParseProjectSuggestions_missingEvidence_skipsProjectOutputs() throws {
+        let projectId = UUID()
+        let json = """
+        {
+          "project_link_candidates": [
+            {
+              "project_id": "\(projectId.uuidString)",
+              "candidate_project_name": null,
+              "link_type": "evidence",
+              "source_type": "thinking_card",
+              "source_id": "",
+              "reason": "No source id should make this unusable.",
+              "confidence": "high",
+              "requires_user_confirmation": true
+            },
+            {
+              "project_id": "\(projectId.uuidString)",
+              "candidate_project_name": null,
+              "link_type": "decision",
+              "source_type": "quest",
+              "source_id": "quest-valid",
+              "reason": "A concrete source exists.",
+              "confidence": "medium",
+              "requires_user_confirmation": true
+            }
+          ],
+          "new_project_candidates": [
+            {
+              "candidate_project_name": "No evidence project",
+              "goal": "Should not be created.",
+              "current_bottleneck": "Missing evidence.",
+              "success_criteria": "N/A",
+              "why_this_is_long_running": "Claimed but unsupported.",
+              "source_refs": [],
+              "privacy_safe_name_required": true,
+              "confidence": "high"
+            },
+            {
+              "candidate_project_name": "Supported recurring topic",
+              "goal": "Reduce repeated ambiguity.",
+              "current_bottleneck": "The same question keeps returning.",
+              "success_criteria": "A visible owner is named before handoff.",
+              "why_this_is_long_running": "Multiple confirmed sources point to the same pattern.",
+              "source_refs": [
+                {
+                  "source_type": "daily_entry",
+                  "source_id": "entry-valid"
+                }
+              ],
+              "privacy_safe_name_required": true,
+              "confidence": "low"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectSuggestions(from: data)
+
+        XCTAssertEqual(result.projectLinks.map(\.sourceId), ["quest-valid"])
+        XCTAssertEqual(result.projectCandidates.map(\.suggestedName), ["Supported recurring topic"])
+        XCTAssertEqual(result.projectCandidates[0].sourceRefs, ["entry-valid"])
+    }
+
+    // MARK: - parseProjectInsights
+
+    func testParseProjectInsights_progressInsight_returnsEvidenceBackedInsight() throws {
+        let projectId = UUID()
+        let json = """
+        {
+          "project_insights": [
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "progress",
+              "title": "Decision owner is now explicit",
+              "summary": "The latest quest names the owner before implementation starts.",
+              "before": null,
+              "after": null,
+              "source_refs": ["quest-123"],
+              "confidence": "high"
+            }
+          ],
+          "insufficient_evidence_reason": null
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectInsights(from: data)
+
+        XCTAssertNil(result.insufficientEvidenceReason)
+        XCTAssertEqual(result.insights.count, 1)
+        XCTAssertEqual(result.insights[0].projectId, projectId)
+        XCTAssertEqual(result.insights[0].insightType, .progress)
+        XCTAssertEqual(result.insights[0].title, "Decision owner is now explicit")
+        XCTAssertEqual(result.insights[0].summary, "The latest quest names the owner before implementation starts.")
+        XCTAssertEqual(result.insights[0].sourceRefs, ["quest-123"])
+        XCTAssertEqual(result.insights[0].confidence, 0.86, accuracy: 0.01)
+    }
+
+    func testParseProjectInsights_thinkingChangeMissingBeforeOrAfter_skipsInvalidInsights() throws {
+        let projectId = UUID()
+        let json = """
+        {
+          "project_insights": [
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "thinking_change",
+              "title": "Missing before",
+              "summary": "Should be rejected.",
+              "after": {
+                "text": "Now the concern is ownership.",
+                "source_type": "thinking_card",
+                "source_id": "card-after"
+              },
+              "source_refs": ["card-after"],
+              "confidence": "medium"
+            },
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "thinking_change",
+              "title": "Missing after",
+              "summary": "Should also be rejected.",
+              "before": {
+                "text": "Earlier concern was general speed.",
+                "source_type": "thinking_card",
+                "source_id": "card-before"
+              },
+              "source_refs": ["card-before"],
+              "confidence": "medium"
+            },
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "thinking_change",
+              "title": "Problem framing changed",
+              "summary": "The project shifted from generic speed to explicit ownership.",
+              "before": {
+                "text": "We need to move faster.",
+                "source_type": "thinking_card",
+                "source_id": "card-before-valid"
+              },
+              "after": {
+                "text": "We need one owner before implementation starts.",
+                "source_type": "quest",
+                "source_id": "quest-after-valid"
+              },
+              "source_refs": ["card-before-valid", "quest-after-valid"],
+              "confidence": "medium"
+            }
+          ],
+          "insufficient_evidence_reason": null
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectInsights(from: data)
+
+        XCTAssertEqual(result.insights.count, 1)
+        XCTAssertEqual(result.insights[0].insightType, .thinkingChange)
+        XCTAssertEqual(result.insights[0].title, "Problem framing changed")
+        XCTAssertEqual(result.insights[0].beforeText, "We need to move faster.")
+        XCTAssertEqual(result.insights[0].afterText, "We need one owner before implementation starts.")
+        XCTAssertEqual(result.insights[0].sourceRefs, ["card-before-valid", "quest-after-valid"])
+    }
+
+    func testParseProjectInsights_blockerChangeMissingBeforeOrAfter_skipsInvalidInsights() throws {
+        let projectId = UUID()
+        let json = """
+        {
+          "project_insights": [
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "blocker_change",
+              "title": "Missing transition evidence",
+              "summary": "Should be rejected because blocker changes require before and after.",
+              "source_refs": ["card-blocker"],
+              "confidence": "medium"
+            },
+            {
+              "project_id": "\(projectId.uuidString)",
+              "insight_type": "blocker_change",
+              "title": "Blocker became explicit",
+              "summary": "The bottleneck moved from vague delay to a concrete owner gap.",
+              "before": {
+                "text": "Progress feels slow.",
+                "source_type": "thinking_card",
+                "source_id": "card-before-blocker"
+              },
+              "after": {
+                "text": "The missing owner blocks the next decision.",
+                "source_type": "quest",
+                "source_id": "quest-after-blocker"
+              },
+              "source_refs": ["card-before-blocker", "quest-after-blocker"],
+              "confidence": "medium"
+            }
+          ],
+          "insufficient_evidence_reason": null
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectInsights(from: data)
+
+        XCTAssertEqual(result.insights.count, 1)
+        XCTAssertEqual(result.insights[0].insightType, .blockerChange)
+        XCTAssertEqual(result.insights[0].beforeText, "Progress feels slow.")
+        XCTAssertEqual(result.insights[0].afterText, "The missing owner blocks the next decision.")
+        XCTAssertEqual(result.insights[0].sourceRefs, ["card-before-blocker", "quest-after-blocker"])
+    }
+
+    func testParseProjectInsights_onlyInsufficientEvidenceReason_returnsEmptyInsightsAndReason() throws {
+        let json = """
+        {
+          "project_insights": [],
+          "insufficient_evidence_reason": "Need at least two confirmed project links from different days."
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseProjectInsights(from: data)
+
+        XCTAssertTrue(result.insights.isEmpty)
+        XCTAssertEqual(result.insufficientEvidenceReason, "Need at least two confirmed project links from different days.")
+    }
+
+    // MARK: - parseProjectMergeCandidates
+
+    func testParseProjectMergeCandidates_validUUIDsAndEvidenceRefs_returnsMergeCandidate() throws {
+        let sourceProjectId = UUID()
+        let targetProjectId = UUID()
+        let json = """
+        {
+          "merge_candidates": [
+            {
+              "source_project_id": "\(sourceProjectId.uuidString)",
+              "target_project_id": "\(targetProjectId.uuidString)",
+              "reason": "Both projects track the same repeated ownership ambiguity.",
+              "overlapping_evidence_refs": ["link-1", "verification-2"],
+              "risks_if_merged": ["One narrow context may get hidden."],
+              "risks_if_kept_separate": ["Evidence remains split across duplicate projects."],
+              "confidence": "high"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let candidates = try parser.parseProjectMergeCandidates(from: data)
+
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].sourceProjectId, sourceProjectId)
+        XCTAssertEqual(candidates[0].targetProjectId, targetProjectId)
+        XCTAssertEqual(candidates[0].reason, "Both projects track the same repeated ownership ambiguity.")
+        XCTAssertEqual(candidates[0].overlappingEvidenceRefs, ["link-1", "verification-2"])
+        XCTAssertEqual(candidates[0].status, .pending)
+    }
+
+    func testParseProjectMergeCandidates_missingEvidenceRefsOrInvalidUUID_skipsInvalidCandidates() throws {
+        let sourceProjectId = UUID()
+        let targetProjectId = UUID()
+        let json = """
+        {
+          "merge_candidates": [
+            {
+              "source_project_id": "\(sourceProjectId.uuidString)",
+              "target_project_id": "\(targetProjectId.uuidString)",
+              "reason": "No overlap evidence should reject this.",
+              "overlapping_evidence_refs": [],
+              "risks_if_merged": [],
+              "risks_if_kept_separate": [],
+              "confidence": "medium"
+            },
+            {
+              "source_project_id": "not-a-uuid",
+              "target_project_id": "\(targetProjectId.uuidString)",
+              "reason": "Invalid UUID should reject this.",
+              "overlapping_evidence_refs": ["link-invalid"],
+              "risks_if_merged": [],
+              "risks_if_kept_separate": [],
+              "confidence": "medium"
+            },
+            {
+              "source_project_id": "\(sourceProjectId.uuidString)",
+              "target_project_id": "\(targetProjectId.uuidString)",
+              "reason": "This one has valid project ids and evidence.",
+              "overlapping_evidence_refs": ["link-valid"],
+              "risks_if_merged": [],
+              "risks_if_kept_separate": [],
+              "confidence": "medium"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let candidates = try parser.parseProjectMergeCandidates(from: data)
+
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates[0].sourceProjectId, sourceProjectId)
+        XCTAssertEqual(candidates[0].targetProjectId, targetProjectId)
+        XCTAssertEqual(candidates[0].overlappingEvidenceRefs, ["link-valid"])
+    }
+
     // MARK: - Confidence mapping
 
     func testParseCards_confidenceHigh_returns086() throws {
@@ -514,6 +916,216 @@ final class TodayAIResponseParserTests: XCTestCase {
     func testParseCards_confidenceUnknown_returns064() throws {
         let cards = try parseSingleCard(confidence: "very_high")
         XCTAssertEqual(cards.confidence, 0.64, accuracy: 0.01)
+    }
+
+    // MARK: - parseGrowthReport
+
+    func testParseGrowthReport_validWeeklyReport_returnsSnapshotAndContributions() throws {
+        let entryId1 = UUID()
+        let entryId2 = UUID()
+        let cardId1 = UUID()
+        let questId1 = UUID()
+        let verificationId1 = UUID()
+        let json = """
+        {
+          "insufficient_evidence": false,
+          "summary": "本周对会议类问题的定义更清楚，执行可靠性有提升。",
+          "metrics": {
+            "clarity": {"value": 3.8, "delta": 0.3, "reason": "多次任务完成标准更具体"},
+            "value_judgment": {"value": 3.5, "delta": 0.2, "reason": "高价值任务占比提升"},
+            "execution_reliability": {"value": 3.4, "delta": 0.4, "reason": "主线任务完成率提升"},
+            "calibration": {"value": 3.0, "delta": 0.0, "reason": "校准证据不足"},
+            "reflection_depth": {"value": 3.6, "delta": 0.3, "reason": "透镜追问回答更深入"}
+          },
+          "metric_contributions": [
+            {
+              "metric": "clarity",
+              "direction": "positive",
+              "delta": 0.15,
+              "title": "任务完成标准更具体",
+              "reason": "主线任务包含可验证的完成标准。",
+              "source_type": "quest",
+              "source_id": "\(questId1.uuidString)",
+              "source_daily_entry_id": "\(entryId1.uuidString)"
+            },
+            {
+              "metric": "execution_reliability",
+              "direction": "positive",
+              "delta": 0.14,
+              "title": "主线任务完成",
+              "reason": "次日验证显示主线任务已完成。",
+              "source_type": "verification",
+              "source_id": "\(verificationId1.uuidString)",
+              "source_daily_entry_id": "\(entryId2.uuidString)"
+            }
+          ],
+          "next_training_focus": "继续把明日任务写成可验证结果，并在第二天做价值校准。"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "weekly", completeLoopCount: 5)
+
+        XCTAssertFalse(result.snapshot.hasInsufficientEvidence)
+        XCTAssertTrue(result.snapshot.canDisplayScores)
+        XCTAssertEqual(result.snapshot.period, "weekly")
+        XCTAssertEqual(result.snapshot.clarity, 3.8, accuracy: 0.01)
+        XCTAssertEqual(result.snapshot.valueJudgment, 3.5, accuracy: 0.01)
+        XCTAssertEqual(result.snapshot.completeLoopCount, 5)
+        XCTAssertEqual(result.snapshot.nextTrainingFocus, "继续把明日任务写成可验证结果，并在第二天做价值校准。")
+        XCTAssertEqual(result.snapshot.status, .draftReview)
+        XCTAssertEqual(result.contributions.count, 2)
+        XCTAssertEqual(result.contributions[0].metric, .clarity)
+        XCTAssertEqual(result.contributions[0].direction, .positive)
+        XCTAssertEqual(result.contributions[0].sourceDailyEntryId, entryId1)
+        XCTAssertEqual(result.contributions[1].metric, .executionReliability)
+        XCTAssertEqual(result.contributions[1].sourceDailyEntryId, entryId2)
+        XCTAssertEqual(result.contributions[0].snapshotId, result.snapshot.id)
+        XCTAssertEqual(result.contributions[1].snapshotId, result.snapshot.id)
+    }
+
+    func testParseGrowthReport_insufficientEvidence_returnsInsufficientStatusAndNoContributions() throws {
+        let json = """
+        {
+          "insufficient_evidence": true,
+          "summary": "完成 2 次完整复盘，需要至少 3 次才能生成可解释的成长趋势。",
+          "metrics": {},
+          "metric_contributions": [],
+          "next_training_focus": "先稳定完成输入、卡片确认、明日任务和次日验证。"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "weekly", completeLoopCount: 2)
+
+        XCTAssertTrue(result.snapshot.hasInsufficientEvidence)
+        XCTAssertFalse(result.snapshot.canDisplayScores)
+        XCTAssertEqual(result.snapshot.status, .insufficientEvidence)
+        XCTAssertEqual(result.snapshot.completeLoopCount, 2)
+        XCTAssertTrue(result.contributions.isEmpty)
+    }
+
+    func testParseGrowthReport_contributionMissingSourceFields_rejected() throws {
+        let entryId = UUID()
+        let json = """
+        {
+          "insufficient_evidence": false,
+          "summary": "Valid summary.",
+          "metrics": {
+            "clarity": {"value": 3.5, "delta": 0.2, "reason": "test"}
+          },
+          "metric_contributions": [
+            {
+              "metric": "clarity",
+              "direction": "positive",
+              "delta": 0.15,
+              "title": "No source entry",
+              "reason": "Missing sourceDailyEntryId.",
+              "source_type": "quest",
+              "source_id": "some-id",
+              "source_daily_entry_id": ""
+            },
+            {
+              "metric": "clarity",
+              "direction": "positive",
+              "delta": 0.10,
+              "title": "No source type",
+              "reason": "Missing sourceType.",
+              "source_type": "",
+              "source_id": "some-id",
+              "source_daily_entry_id": "\(entryId.uuidString)"
+            },
+            {
+              "metric": "clarity",
+              "direction": "positive",
+              "delta": 0.12,
+              "title": "Valid contribution",
+              "reason": "All fields present.",
+              "source_type": "quest",
+              "source_id": "quest-123",
+              "source_daily_entry_id": "\(entryId.uuidString)"
+            }
+          ],
+          "next_training_focus": "test"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "weekly", completeLoopCount: 4)
+
+        XCTAssertEqual(result.contributions.count, 1)
+        XCTAssertEqual(result.contributions[0].title, "Valid contribution")
+        XCTAssertEqual(result.contributions[0].sourceDailyEntryId, entryId)
+    }
+
+    func testParseGrowthReport_deltaClamped_remainsExplainable() throws {
+        let entryId = UUID()
+        let json = """
+        {
+          "insufficient_evidence": false,
+          "summary": "Large delta test.",
+          "metrics": {
+            "clarity": {"value": 4.5, "delta": 0.8, "reason": "test"}
+          },
+          "metric_contributions": [
+            {
+              "metric": "clarity",
+              "direction": "positive",
+              "delta": 0.99,
+              "title": "Excessive delta",
+              "reason": "Should be clamped to 0.30.",
+              "source_type": "quest",
+              "source_id": "quest-1",
+              "source_daily_entry_id": "\(entryId.uuidString)"
+            }
+          ],
+          "next_training_focus": "test"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "weekly", completeLoopCount: 5)
+
+        XCTAssertEqual(result.contributions.count, 1)
+        XCTAssertLessThanOrEqual(result.contributions[0].delta, 0.30)
+        XCTAssertGreaterThanOrEqual(result.contributions[0].delta, 0.01)
+    }
+
+    func testParseGrowthReport_missingInsufficientFlag_defaultsToDraft() throws {
+        let json = """
+        {
+          "summary": "No insufficient flag.",
+          "metrics": {
+            "clarity": {"value": 3.5, "delta": 0.2, "reason": "test"}
+          },
+          "metric_contributions": [],
+          "next_training_focus": "test"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "monthly", completeLoopCount: 6)
+
+        XCTAssertEqual(result.snapshot.status, .draftReview)
+        XCTAssertEqual(result.snapshot.period, "monthly")
+    }
+
+    func testParseGrowthReport_emptyMetrics_usesBaselineScores() throws {
+        let json = """
+        {
+          "insufficient_evidence": false,
+          "summary": "Empty metrics.",
+          "metrics": {},
+          "metric_contributions": [],
+          "next_training_focus": "test"
+        }
+        """
+        let data = Data(json.utf8)
+
+        let result = try parser.parseGrowthReport(from: data, period: "weekly", completeLoopCount: 5)
+
+        XCTAssertEqual(result.snapshot.clarity, 3.0, accuracy: 0.01)
+        XCTAssertEqual(result.snapshot.valueJudgment, 3.0, accuracy: 0.01)
     }
 
     // MARK: - Helper

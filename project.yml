@@ -23,6 +23,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi
         INFOPLIST_KEY_CFBundleDisplayName: 明思
+        INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: ""
   MingSiTests:

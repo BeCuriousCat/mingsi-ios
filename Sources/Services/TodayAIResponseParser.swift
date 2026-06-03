@@ -6,6 +6,11 @@ enum TodayAIParsingError: Error {
     case emptyResult
 }
 
+struct GrowthReportResult: Hashable {
+    let snapshot: MetricSnapshot
+    let contributions: [MetricContribution]
+}
+
 struct TodayAIResponseParser {
     private let decoder: JSONDecoder
 
@@ -72,6 +77,126 @@ struct TodayAIResponseParser {
         guard let candidate = response.principleCandidate else { return [] }
         guard let principle = candidate.domainPrinciple else { return [] }
         return [principle]
+    }
+
+    func parseVerification(from data: Data) throws -> VerifyQuestResult {
+        let dto = try decoder.decode(VerificationResponseDTO.self, from: normalizedPayloadData(from: data))
+        let note = dto.calibrationNote.trimmed
+        guard !note.isEmpty else {
+            throw TodayAIParsingError.emptyResult
+        }
+        return VerifyQuestResult(
+            calibrationNote: note,
+            likelyIssue: dto.likelyIssue.trimmed.ifEmpty(nil),
+            recommendation: dto.recommendation.trimmed.ifEmpty(nil)
+        )
+    }
+
+    func parseMetricContributions(from data: Data, snapshotId: UUID) throws -> [MetricContribution] {
+        let response = try decoder.decode(MetricContributionsResponseDTO.self, from: normalizedPayloadData(from: data))
+        let contributions = response.metricContributions.compactMap { $0.domainContribution(snapshotId: snapshotId) }
+
+        guard !contributions.isEmpty else { throw TodayAIParsingError.emptyResult }
+        return contributions
+    }
+
+    func parseGrowthReport(
+        from data: Data,
+        period: String,
+        completeLoopCount: Int
+    ) throws -> GrowthReportResult {
+        let payload = try normalizedPayloadData(from: data)
+        let dto = try decoder.decode(GrowthReportResponseDTO.self, from: payload)
+
+        let isInsufficient = dto.insufficientEvidence
+        let summary = dto.summary.trimmed.ifEmpty("成长报告生成中。")
+        let focus = dto.nextTrainingFocus.trimmed.ifEmpty(nil)
+
+        let clarity = dto.metrics.clarity?.value ?? 3.0
+        let valueJudgment = dto.metrics.valueJudgment?.value ?? 3.0
+        let executionReliability = dto.metrics.executionReliability?.value ?? 3.0
+        let calibration = dto.metrics.calibration?.value ?? 3.0
+        let reflectionDepth = dto.metrics.reflectionDepth?.value ?? 3.0
+
+        let clarityDelta = dto.metrics.clarity?.delta
+        let valueJudgmentDelta = dto.metrics.valueJudgment?.delta
+        let executionReliabilityDelta = dto.metrics.executionReliability?.delta
+        let calibrationDelta = dto.metrics.calibration?.delta
+        let reflectionDepthDelta = dto.metrics.reflectionDepth?.delta
+
+        var metricReasons: [String: String] = [:]
+        if let reason = dto.metrics.clarity?.reason, !reason.trimmed.isEmpty {
+            metricReasons[GrowthMetric.clarity.rawValue] = reason.trimmed
+        }
+        if let reason = dto.metrics.valueJudgment?.reason, !reason.trimmed.isEmpty {
+            metricReasons[GrowthMetric.valueJudgment.rawValue] = reason.trimmed
+        }
+        if let reason = dto.metrics.executionReliability?.reason, !reason.trimmed.isEmpty {
+            metricReasons[GrowthMetric.executionReliability.rawValue] = reason.trimmed
+        }
+        if let reason = dto.metrics.calibration?.reason, !reason.trimmed.isEmpty {
+            metricReasons[GrowthMetric.calibration.rawValue] = reason.trimmed
+        }
+        if let reason = dto.metrics.reflectionDepth?.reason, !reason.trimmed.isEmpty {
+            metricReasons[GrowthMetric.reflectionDepth.rawValue] = reason.trimmed
+        }
+
+        let snapshotId = UUID()
+        let contributions = dto.metricContributions.compactMap { $0.domainContribution(snapshotId: snapshotId) }
+
+        let positiveRefs = contributions
+            .filter { $0.direction == .positive }
+            .map { $0.id.uuidString }
+        let negativeRefs = contributions
+            .filter { $0.direction == .negative }
+            .map { $0.id.uuidString }
+
+        let snapshot = MetricSnapshot(
+            id: snapshotId,
+            period: period,
+            clarity: clarity,
+            valueJudgment: valueJudgment,
+            executionReliability: executionReliability,
+            calibration: calibration,
+            reflectionDepth: reflectionDepth,
+            clarityDelta: clarityDelta,
+            valueJudgmentDelta: valueJudgmentDelta,
+            executionReliabilityDelta: executionReliabilityDelta,
+            calibrationDelta: calibrationDelta,
+            reflectionDepthDelta: reflectionDepthDelta,
+            summary: summary,
+            metricReasons: metricReasons,
+            positiveContributionRefs: positiveRefs,
+            negativeContributionRefs: negativeRefs,
+            status: isInsufficient ? .insufficientEvidence : .draftReview,
+            completeLoopCount: completeLoopCount,
+            nextTrainingFocus: focus
+        )
+
+        return GrowthReportResult(snapshot: snapshot, contributions: contributions)
+    }
+
+    func parseProjectSuggestions(from data: Data) throws -> ProjectSuggestionResult {
+        let response = try decoder.decode(ProjectSuggestionsResponseDTO.self, from: normalizedPayloadData(from: data))
+        return ProjectSuggestionResult(
+            linkCandidates: response.projectLinkCandidates.compactMap(\.domainCandidate),
+            newProjectCandidates: response.newProjectCandidates.compactMap(\.domainCandidate)
+        )
+    }
+
+    func parseProjectInsights(from data: Data) throws -> ProjectInsightsResult {
+        let response = try decoder.decode(ProjectInsightsResponseDTO.self, from: normalizedPayloadData(from: data))
+        let insights = response.projectInsights.compactMap(\.domainInsight)
+        let reason = response.insufficientEvidenceReason.trimmed.ifEmpty(nil)
+        guard !insights.isEmpty || reason != nil else { throw TodayAIParsingError.emptyResult }
+        return ProjectInsightsResult(insights: insights, insufficientEvidenceReason: reason)
+    }
+
+    func parseProjectMergeCandidates(from data: Data) throws -> [ProjectMergeCandidate] {
+        let response = try decoder.decode(ProjectMergeCandidatesResponseDTO.self, from: normalizedPayloadData(from: data))
+        let candidates = response.mergeCandidates.compactMap(\.domainCandidate)
+        guard !candidates.isEmpty else { throw TodayAIParsingError.emptyResult }
+        return candidates
     }
 
     private func normalizedPayloadData(from data: Data) throws -> Data {
@@ -242,6 +367,512 @@ private struct PrincipleResponseDTO: Decodable {
     let principleCandidate: PrincipleDTO?
 }
 
+private struct VerificationResponseDTO: Decodable {
+    let calibrationNote: String
+    let likelyIssue: String
+    let recommendation: String
+
+    private enum CodingKeys: String, CodingKey {
+        case calibrationNote
+        case likelyIssue
+        case recommendation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        calibrationNote = try container.decodeIfPresent(String.self, forKey: .calibrationNote) ?? ""
+        likelyIssue = try container.decodeIfPresent(String.self, forKey: .likelyIssue) ?? ""
+        recommendation = try container.decodeIfPresent(String.self, forKey: .recommendation) ?? ""
+    }
+}
+
+private struct MetricContributionsResponseDTO: Decodable {
+    let metricContributions: [MetricContributionDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case metricContributions
+        case contributions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        metricContributions = try container.decodeIfPresent([MetricContributionDTO].self, forKey: .metricContributions)
+            ?? container.decodeIfPresent([MetricContributionDTO].self, forKey: .contributions)
+            ?? []
+    }
+}
+
+private struct GrowthReportResponseDTO: Decodable {
+    let insufficientEvidence: Bool
+    let summary: String
+    let metrics: GrowthMetricsDTO
+    let metricContributions: [MetricContributionDTO]
+    let nextTrainingFocus: String
+
+    private enum CodingKeys: String, CodingKey {
+        case insufficientEvidence
+        case summary
+        case metrics
+        case metricContributions
+        case contributions
+        case nextTrainingFocus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        insufficientEvidence = try container.decodeIfPresent(Bool.self, forKey: .insufficientEvidence) ?? false
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        metrics = try container.decodeIfPresent(GrowthMetricsDTO.self, forKey: .metrics) ?? GrowthMetricsDTO()
+        metricContributions = try container.decodeIfPresent([MetricContributionDTO].self, forKey: .metricContributions)
+            ?? container.decodeIfPresent([MetricContributionDTO].self, forKey: .contributions)
+            ?? []
+        nextTrainingFocus = try container.decodeIfPresent(String.self, forKey: .nextTrainingFocus) ?? ""
+    }
+}
+
+private struct GrowthMetricsDTO: Decodable {
+    let clarity: GrowthMetricValueDTO?
+    let valueJudgment: GrowthMetricValueDTO?
+    let executionReliability: GrowthMetricValueDTO?
+    let calibration: GrowthMetricValueDTO?
+    let reflectionDepth: GrowthMetricValueDTO?
+
+    init(
+        clarity: GrowthMetricValueDTO? = nil,
+        valueJudgment: GrowthMetricValueDTO? = nil,
+        executionReliability: GrowthMetricValueDTO? = nil,
+        calibration: GrowthMetricValueDTO? = nil,
+        reflectionDepth: GrowthMetricValueDTO? = nil
+    ) {
+        self.clarity = clarity
+        self.valueJudgment = valueJudgment
+        self.executionReliability = executionReliability
+        self.calibration = calibration
+        self.reflectionDepth = reflectionDepth
+    }
+}
+
+private struct GrowthMetricValueDTO: Decodable {
+    let value: Double
+    let delta: Double?
+    let reason: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case value
+        case delta
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = try container.decodeIfPresent(Double.self, forKey: .value) ?? 3.0
+        delta = try container.decodeIfPresent(Double.self, forKey: .delta)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+    }
+}
+
+private struct MetricContributionDTO: Decodable {
+    let metric: String
+    let direction: String
+    let delta: Double
+    let title: String
+    let reason: String
+    let sourceType: String
+    let sourceId: String
+    let sourceDailyEntryId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case metric
+        case direction
+        case delta
+        case title
+        case reason
+        case sourceType
+        case sourceId
+        case sourceDailyEntryId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        metric = try container.decodeIfPresent(String.self, forKey: .metric) ?? ""
+        direction = try container.decodeIfPresent(String.self, forKey: .direction) ?? ""
+        delta = try container.decodeIfPresent(Double.self, forKey: .delta) ?? 0
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        sourceType = try container.decodeIfPresent(String.self, forKey: .sourceType) ?? ""
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId) ?? ""
+        sourceDailyEntryId = try container.decodeIfPresent(String.self, forKey: .sourceDailyEntryId) ?? ""
+    }
+
+    func domainContribution(snapshotId: UUID) -> MetricContribution? {
+        guard
+            let metric = GrowthMetric(aiRawValue: metric),
+            let direction = MetricContributionDirection(aiRawValue: direction),
+            let sourceType = MetricContributionSourceType(aiRawValue: sourceType),
+            let sourceDailyEntryId = UUID(uuidString: sourceDailyEntryId)
+        else {
+            return nil
+        }
+
+        let title = title.trimmed
+        let reason = reason.trimmed
+        let sourceId = sourceId.trimmed
+        guard !title.isEmpty, !reason.isEmpty, !sourceId.isEmpty else { return nil }
+
+        return MetricContribution(
+            snapshotId: snapshotId,
+            metric: metric,
+            direction: direction,
+            delta: min(max(abs(delta), 0.01), 0.30),
+            title: title,
+            reason: reason,
+            sourceType: sourceType,
+            sourceId: sourceId,
+            sourceDailyEntryId: sourceDailyEntryId,
+            candidateStatus: .candidate
+        )
+    }
+}
+
+private struct ProjectSuggestionsResponseDTO: Decodable {
+    let projectLinkCandidates: [ProjectLinkCandidateDTO]
+    let newProjectCandidates: [ProjectCandidateDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case projectLinkCandidates
+        case linkCandidates
+        case newProjectCandidates
+        case projectCandidates
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projectLinkCandidates = try container.decodeIfPresent([ProjectLinkCandidateDTO].self, forKey: .projectLinkCandidates)
+            ?? container.decodeIfPresent([ProjectLinkCandidateDTO].self, forKey: .linkCandidates)
+            ?? []
+        newProjectCandidates = try container.decodeIfPresent([ProjectCandidateDTO].self, forKey: .newProjectCandidates)
+            ?? container.decodeIfPresent([ProjectCandidateDTO].self, forKey: .projectCandidates)
+            ?? []
+    }
+}
+
+private struct ProjectLinkCandidateDTO: Decodable {
+    let projectId: String?
+    let candidateProjectName: String?
+    let linkType: String
+    let sourceType: String
+    let sourceId: String
+    let reason: String
+    let confidence: FlexibleString
+    let requiresUserConfirmation: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId
+        case candidateProjectName
+        case linkType
+        case sourceType
+        case sourceId
+        case reason
+        case confidence
+        case requiresUserConfirmation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
+        candidateProjectName = try container.decodeIfPresent(String.self, forKey: .candidateProjectName)
+        linkType = try container.decodeIfPresent(String.self, forKey: .linkType) ?? ""
+        sourceType = try container.decodeIfPresent(String.self, forKey: .sourceType) ?? ""
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        confidence = try container.decodeIfPresent(FlexibleString.self, forKey: .confidence) ?? FlexibleString("")
+        requiresUserConfirmation = try container.decodeIfPresent(Bool.self, forKey: .requiresUserConfirmation) ?? false
+    }
+
+    var domainCandidate: ProjectLinkCandidate? {
+        guard
+            requiresUserConfirmation,
+            let sourceType = ProjectSourceType(aiRawValue: sourceType),
+            let linkType = ProjectLinkType(aiRawValue: linkType)
+        else {
+            return nil
+        }
+
+        let sourceId = sourceId.trimmed
+        let reason = reason.trimmed
+        let candidateProjectName = candidateProjectName?.trimmed.ifEmpty(nil)
+        let projectId = projectId?.trimmed.ifEmpty(nil).flatMap(UUID.init(uuidString:))
+        guard !sourceId.isEmpty, !reason.isEmpty, projectId != nil || candidateProjectName != nil else { return nil }
+
+        return ProjectLinkCandidate(
+            projectId: projectId,
+            candidateProjectName: candidateProjectName,
+            sourceType: sourceType,
+            sourceId: sourceId,
+            linkType: linkType,
+            reason: reason,
+            confidence: ConfidenceMapper.score(from: confidence.value),
+            requiresUserConfirmation: true
+        )
+    }
+}
+
+private struct ProjectCandidateDTO: Decodable {
+    let candidateProjectName: String
+    let name: String
+    let goal: String
+    let currentBottleneck: String
+    let successCriteria: String
+    let whyThisIsLongRunning: String
+    let reason: String
+    let sourceRefs: [ProjectSourceRefDTO]
+    let sourceIds: [String]
+    let privacySafeNameRequired: Bool
+    let confidence: FlexibleString
+
+    private enum CodingKeys: String, CodingKey {
+        case candidateProjectName
+        case name
+        case goal
+        case currentBottleneck
+        case successCriteria
+        case whyThisIsLongRunning
+        case reason
+        case sourceRefs
+        case sourceIds
+        case privacySafeNameRequired
+        case confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        candidateProjectName = try container.decodeIfPresent(String.self, forKey: .candidateProjectName) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        goal = try container.decodeIfPresent(String.self, forKey: .goal) ?? ""
+        currentBottleneck = try container.decodeIfPresent(String.self, forKey: .currentBottleneck) ?? ""
+        successCriteria = try container.decodeIfPresent(String.self, forKey: .successCriteria) ?? ""
+        whyThisIsLongRunning = try container.decodeIfPresent(String.self, forKey: .whyThisIsLongRunning) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        sourceRefs = try container.decodeIfPresent([ProjectSourceRefDTO].self, forKey: .sourceRefs) ?? []
+        sourceIds = try container.decodeIfPresent([String].self, forKey: .sourceIds) ?? []
+        privacySafeNameRequired = try container.decodeIfPresent(Bool.self, forKey: .privacySafeNameRequired) ?? false
+        confidence = try container.decodeIfPresent(FlexibleString.self, forKey: .confidence) ?? FlexibleString("")
+    }
+
+    var domainCandidate: ProjectCandidate? {
+        let suggestedName = candidateProjectName.trimmed.ifEmpty(name.trimmed)
+        let sourceRefs = (sourceRefs.compactMap(\.validSourceId) + sourceIds)
+            .map(\.trimmed)
+            .filter { !$0.isEmpty }
+        let reason = whyThisIsLongRunning.trimmed.ifEmpty(reason.trimmed)
+
+        guard !suggestedName.isEmpty, !sourceRefs.isEmpty, !reason.isEmpty else { return nil }
+
+        return ProjectCandidate(
+            suggestedName: suggestedName,
+            suggestedGoal: goal.trimmed.ifEmpty(nil),
+            suggestedBottleneck: currentBottleneck.trimmed.ifEmpty(nil),
+            suggestedSuccessCriteria: successCriteria.trimmed.ifEmpty(nil),
+            reason: reason,
+            sourceRefs: Array(Set(sourceRefs)).sorted(),
+            privacyReviewNote: privacySafeNameRequired ? "需要用户确认抽象命名，避免泄露敏感名称。" : nil,
+            confidence: ConfidenceMapper.score(from: confidence.value)
+        )
+    }
+}
+
+private struct ProjectInsightsResponseDTO: Decodable {
+    let projectInsights: [ProjectInsightDTO]
+    let insufficientEvidenceReason: String
+
+    private enum CodingKeys: String, CodingKey {
+        case projectInsights
+        case insights
+        case insufficientEvidenceReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projectInsights = try container.decodeIfPresent([ProjectInsightDTO].self, forKey: .projectInsights)
+            ?? container.decodeIfPresent([ProjectInsightDTO].self, forKey: .insights)
+            ?? []
+        insufficientEvidenceReason = try container.decodeIfPresent(String.self, forKey: .insufficientEvidenceReason) ?? ""
+    }
+}
+
+private struct ProjectInsightDTO: Decodable {
+    let projectId: String
+    let insightType: String
+    let title: String
+    let summary: String
+    let before: ProjectEvidenceTextDTO?
+    let after: ProjectEvidenceTextDTO?
+    let sourceRefs: [String]
+    let confidence: FlexibleString
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId
+        case insightType
+        case title
+        case summary
+        case before
+        case after
+        case sourceRefs
+        case confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId) ?? ""
+        insightType = try container.decodeIfPresent(String.self, forKey: .insightType) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        before = try container.decodeIfPresent(ProjectEvidenceTextDTO.self, forKey: .before)
+        after = try container.decodeIfPresent(ProjectEvidenceTextDTO.self, forKey: .after)
+        sourceRefs = try container.decodeIfPresent([String].self, forKey: .sourceRefs) ?? []
+        confidence = try container.decodeIfPresent(FlexibleString.self, forKey: .confidence) ?? FlexibleString("")
+    }
+
+    var domainInsight: ProjectInsight? {
+        guard
+            let projectId = UUID(uuidString: projectId.trimmed),
+            let insightType = ProjectInsightType(aiRawValue: insightType)
+        else {
+            return nil
+        }
+
+        let title = title.trimmed
+        let summary = summary.trimmed
+        var refs = sourceRefs.map(\.trimmed).filter { !$0.isEmpty }
+        let beforeEvidence = before?.validEvidence
+        let afterEvidence = after?.validEvidence
+
+        if insightType.requiresBeforeAfterEvidence {
+            guard let beforeEvidence, let afterEvidence else { return nil }
+            refs.append(beforeEvidence.sourceId)
+            refs.append(afterEvidence.sourceId)
+        } else if refs.isEmpty {
+            return nil
+        }
+
+        guard !title.isEmpty, !summary.isEmpty, !refs.isEmpty else { return nil }
+
+        return ProjectInsight(
+            projectId: projectId,
+            insightType: insightType,
+            title: title,
+            summary: summary,
+            beforeText: beforeEvidence?.text,
+            afterText: afterEvidence?.text,
+            sourceRefs: Array(Set(refs)).sorted(),
+            confidence: ConfidenceMapper.score(from: confidence.value)
+        )
+    }
+}
+
+private struct ProjectEvidenceTextDTO: Decodable {
+    let text: String
+    let sourceType: String
+    let sourceId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case sourceType
+        case sourceId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        sourceType = try container.decodeIfPresent(String.self, forKey: .sourceType) ?? ""
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId) ?? ""
+    }
+
+    var validEvidence: (text: String, sourceId: String)? {
+        guard ProjectSourceType(aiRawValue: sourceType) != nil else { return nil }
+        let text = text.trimmed
+        let sourceId = sourceId.trimmed
+        guard !text.isEmpty, !sourceId.isEmpty else { return nil }
+        return (text, sourceId)
+    }
+}
+
+private struct ProjectMergeCandidatesResponseDTO: Decodable {
+    let mergeCandidates: [ProjectMergeCandidateDTO]
+
+    private enum CodingKeys: String, CodingKey {
+        case mergeCandidates
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mergeCandidates = try container.decodeIfPresent([ProjectMergeCandidateDTO].self, forKey: .mergeCandidates) ?? []
+    }
+}
+
+private struct ProjectMergeCandidateDTO: Decodable {
+    let sourceProjectId: String
+    let targetProjectId: String
+    let reason: String
+    let overlappingEvidenceRefs: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceProjectId
+        case targetProjectId
+        case reason
+        case overlappingEvidenceRefs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceProjectId = try container.decodeIfPresent(String.self, forKey: .sourceProjectId) ?? ""
+        targetProjectId = try container.decodeIfPresent(String.self, forKey: .targetProjectId) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        overlappingEvidenceRefs = try container.decodeIfPresent([String].self, forKey: .overlappingEvidenceRefs) ?? []
+    }
+
+    var domainCandidate: ProjectMergeCandidate? {
+        let refs = overlappingEvidenceRefs.map(\.trimmed).filter { !$0.isEmpty }
+        guard
+            let sourceProjectId = UUID(uuidString: sourceProjectId.trimmed),
+            let targetProjectId = UUID(uuidString: targetProjectId.trimmed),
+            sourceProjectId != targetProjectId,
+            !reason.trimmed.isEmpty,
+            !refs.isEmpty
+        else {
+            return nil
+        }
+
+        return ProjectMergeCandidate(
+            sourceProjectId: sourceProjectId,
+            targetProjectId: targetProjectId,
+            reason: reason.trimmed,
+            overlappingEvidenceRefs: Array(Set(refs)).sorted()
+        )
+    }
+}
+
+private struct ProjectSourceRefDTO: Decodable {
+    let sourceType: String
+    let sourceId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceType
+        case sourceId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceType = try container.decodeIfPresent(String.self, forKey: .sourceType) ?? ""
+        sourceId = try container.decodeIfPresent(String.self, forKey: .sourceId) ?? ""
+    }
+
+    var validSourceId: String? {
+        guard ProjectSourceType(aiRawValue: sourceType) != nil else { return nil }
+        return sourceId.trimmed.ifEmpty(nil)
+    }
+}
+
 private struct PrincipleDTO: Decodable {
     let title: String
     let summary: String
@@ -351,6 +982,51 @@ private extension SensitivityLevel {
     }
 }
 
+private extension GrowthMetric {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+}
+
+private extension MetricContributionDirection {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+}
+
+private extension MetricContributionSourceType {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+}
+
+private extension ProjectSourceType {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+}
+
+private extension ProjectLinkType {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+}
+
+private extension ProjectInsightType {
+    init?(aiRawValue: String) {
+        self.init(rawValue: aiRawValue.normalizedAIRawValue)
+    }
+
+    var requiresBeforeAfterEvidence: Bool {
+        switch self {
+        case .thinkingChange, .blockerChange:
+            return true
+        case .progress, .openQuestionClosed, .principlePracticed, .nextBet:
+            return false
+        }
+    }
+}
+
 private extension QuestType {
     init?(aiRawValue: String) {
         self.init(rawValue: aiRawValue.normalizedAIRawValue)
@@ -370,6 +1046,10 @@ private extension String {
     }
 
     func ifEmpty(_ fallback: String) -> String {
+        isEmpty ? fallback : self
+    }
+
+    func ifEmpty(_ fallback: String?) -> String? {
         isEmpty ? fallback : self
     }
 }
