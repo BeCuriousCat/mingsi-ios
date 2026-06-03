@@ -889,6 +889,44 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.canRetryCurrentAI)
     }
 
+    func testAIGenerationBusyStateBlocksDuplicateRetryRequests() async throws {
+        let llmClient = SuspendingLLMClient(response: Self.cardsResponse(title: "Slow AI card"))
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("Today I need to avoid duplicate model calls.")
+        store.submitTodayStep()
+
+        try await waitUntil(
+            store.isAIRunning,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected AI busy state while request is in flight"
+        ) {
+            store.isAIRunning
+        }
+        XCTAssertEqual(llmClient.completeCallCount, 1)
+
+        store.retryCurrentAIStep()
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(llmClient.completeCallCount, 1)
+        XCTAssertTrue(store.todayLoopMessage.contains("AI 正在运行"))
+
+        llmClient.release()
+        try await waitForGeneratedCards()
+        XCTAssertFalse(store.isAIRunning)
+        XCTAssertEqual(store.thinkingCards.first?.title, "Slow AI card")
+    }
+
     func testNavigateBackToEarlierCompletedStep_trimsDownstreamGeneratedState() async throws {
         try await advanceTo(.reviewQuests)
         store.principles = [
@@ -3297,6 +3335,31 @@ private final class SequencedLLMClient: LLMClient {
             return data
         case .failure(let error):
             throw error
+        }
+    }
+}
+
+private final class SuspendingLLMClient: LLMClient {
+    private let response: Data
+    private var continuations: [CheckedContinuation<Data, Error>] = []
+    private(set) var completeCallCount = 0
+
+    init(response: Data) {
+        self.response = response
+    }
+
+    func complete(_ request: LLMRequest) async throws -> Data {
+        completeCallCount += 1
+        return try await withCheckedThrowingContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func release() {
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume(returning: response)
         }
     }
 }

@@ -52,6 +52,69 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertEqual(configuration.requestTimeout, 180)
     }
 
+    func testComplete_retriesRecoverableRateLimitStatus() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 529,
+                body: #"{"error":"temporarily overloaded"}"#
+            ),
+            StubbedHTTPResponse(
+                statusCode: 429,
+                body: #"{"error":"rate limit"}"#
+            ),
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: #"{"choices":[{"message":{"content":"{\"ok\":true}"}}]}"#
+            )
+        ]
+
+        let client = makeClient(
+            configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
+                retryBaseDelay: 0
+            )
+        )
+
+        _ = try await client.complete(makeRequest())
+
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 3)
+    }
+
+    func testStream_retriesRecoverableRateLimitStatusBeforeYieldingTokens() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 529,
+                body: #"{"error":"temporarily overloaded"}"#
+            ),
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: """
+                data: {"choices":[{"delta":{"content":"<CARD>"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        ]
+
+        let client = makeClient(
+            configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
+                retryBaseDelay: 0
+            )
+        )
+        var tokens: [String] = []
+
+        for try await event in client.stream(makeRequest()) {
+            if case .token(let token) = event {
+                tokens.append(token)
+            }
+        }
+
+        XCTAssertEqual(tokens, ["<CARD>"])
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 2)
+    }
+
     func testStream_sendsStreamTrueAndYieldsDeltaContent() async throws {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
@@ -102,13 +165,17 @@ final class DirectGLMClientTests: XCTestCase {
         }
     }
 
-    private func makeClient() -> DirectGLMClient {
+    private func makeClient(
+        configuration clientConfiguration: GLMClientConfiguration = GLMClientConfiguration(
+            baseURL: URL(string: "https://glm.test/api/paas/v4")!
+        )
+    ) -> DirectGLMClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GLMStubURLProtocol.self]
 
         return DirectGLMClient(
             apiKey: "test-key",
-            configuration: GLMClientConfiguration(baseURL: URL(string: "https://glm.test/api/paas/v4")!),
+            configuration: clientConfiguration,
             session: URLSession(configuration: configuration)
         )
     }

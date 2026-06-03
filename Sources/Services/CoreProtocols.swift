@@ -498,6 +498,7 @@ final class LocalPromptProvider: PromptProvider {
         Separate facts, interpretations, assumptions, risks, and validation needs.
         Do not encourage the user to share confidential company information, code, customer data, or internal documents.
         Be concise, concrete, and non-performative.
+        Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
         Session mode: \(mode.rawValue). Quick is shortest path, standard is the default full loop, and deep uses more scrutiny.
         Return valid JSON only, matching the requested schema.
         """
@@ -510,6 +511,7 @@ final class LocalPromptProvider: PromptProvider {
         Do not decide for the user.
         Do not replace the user's thinking.
         Do not encourage the user to share confidential company information, code, customer data, or internal documents.
+        Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
         Session mode: \(mode.rawValue). Quick is shortest path, standard is the default full loop, and deep uses more scrutiny.
         Return only MINGSI_STREAM_V1 XML-like tags. Do not return JSON, Markdown, comments, or explanations outside the allowed tags.
         """

@@ -18,6 +18,8 @@ final class LocalPromptProviderTests: XCTestCase {
             XCTAssertTrue(combined.contains("Do not decide for the user"), "\(promptID.rawValue) must not decide for the user")
             XCTAssertTrue(combined.contains("Do not replace the user's thinking"), "\(promptID.rawValue) must preserve user agency")
             XCTAssertTrue(combined.contains("confidential"), "\(promptID.rawValue) must include confidentiality guardrails")
+            XCTAssertTrue(combined.contains("默认使用简体中文"), "\(promptID.rawValue) must default to Simplified Chinese output")
+            XCTAssertTrue(combined.contains("follow the user's input language"), "\(promptID.rawValue) must follow the user's input language")
             XCTAssertGreaterThan(template.outputSchemaVersion, 0)
         }
     }

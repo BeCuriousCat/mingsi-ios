@@ -1,6 +1,6 @@
 # Subtask 027 Progress: History Repair UI
 
-Status: NOT_STARTED
+Status: CODEX_PARTIAL_HELPERS
 
 ## Checkpoints
 
@@ -37,4 +37,10 @@ At HANDOFF, include one final status token:
 
 ## Event Log
 
-No events yet.
+- 2026-06-03 Codex manager added and verified local helper coverage only:
+  - `HistoryRepairCardPreview.decode(from:)`
+  - `HistoricalRetryCandidateStatus.historyRepairTitle`
+  - `HistoryRepairPromptSupport.canStartHistoricalRetry(promptId:)`
+- This was done to recover the current worktree from RED test compile failures and does not complete the Subtask 027 History repair UI.
+- Verified helper tests as part of:
+  - `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test`

@@ -54,6 +54,8 @@ final class AppStore: ObservableObject {
     @Published var todayLoopMessage: String = ""
     @Published var lastAIFailureMessage: String?
     @Published var canRetryCurrentAI: Bool = false
+    @Published private(set) var isAIRunning: Bool = false
+    @Published private(set) var aiActivityMessage: String = ""
     @Published var streamingCards: [StreamingCardDraft] = []
     @Published var streamingStatusText: String = ""
     @Published var recentPromptRuns: [PromptRun] = []
@@ -103,6 +105,7 @@ final class AppStore: ObservableObject {
             pendingAIRepairCount = pendingAIRepairPrompts.count
         }
     }
+    private var activeAIRequestCount: Int = 0
 
     init(
         todayDraft: DailyEntryDraft? = nil,
@@ -1317,6 +1320,11 @@ final class AppStore: ObservableObject {
     }
 
     func retryCurrentAIStep() {
+        guard !isAIRunning else {
+            todayLoopMessage = "AI 正在运行，请等待当前请求完成。"
+            return
+        }
+
         let draftID = todayDraft.id
         switch todayDraft.state {
         case .organizing:
@@ -1367,6 +1375,10 @@ final class AppStore: ObservableObject {
 
     func retryPendingAIRepairs() {
         guard pendingAIRepairCount > 0 else { return }
+        guard !isAIRunning else {
+            todayLoopMessage = "AI 正在运行，请等待当前补跑完成。"
+            return
+        }
         let draftID = todayDraft.id
         let currentState = todayDraft.state
         let promptsToRepair = pendingAIRepairPrompts
@@ -1702,6 +1714,11 @@ final class AppStore: ObservableObject {
     }
 
     private func organizeCapture() {
+        guard !isAIRunning else {
+            todayLoopMessage = "AI 正在运行，请等待当前请求完成。"
+            return
+        }
+
         let trimmedInput = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInput.isEmpty else {
             todayLoopMessage = "请输入至少一条今天的事实、困惑或行动，再整理成卡片。"
@@ -2082,6 +2099,20 @@ final class AppStore: ObservableObject {
         return error.localizedDescription
     }
 
+    private func beginAIActivity(_ message: String) {
+        activeAIRequestCount += 1
+        isAIRunning = true
+        aiActivityMessage = message
+    }
+
+    private func endAIActivity() {
+        activeAIRequestCount = max(0, activeAIRequestCount - 1)
+        isAIRunning = activeAIRequestCount > 0
+        if !isAIRunning {
+            aiActivityMessage = ""
+        }
+    }
+
     private func markLatestHistoricalRetryFailed(failedPromptRunId: UUID, reason: String) async {
         guard let historicalRetryCandidateRepository,
               let promptRunRepository
@@ -2223,6 +2254,8 @@ final class AppStore: ObservableObject {
         allowsFallback: Bool = true
     ) async {
         guard todayDraft.id == draftID else { return }
+        beginAIActivity("正在整理思考卡片。")
+        defer { endAIActivity() }
 
         if let todayAIService {
             do {
@@ -2281,6 +2314,8 @@ final class AppStore: ObservableObject {
         allowsFallback: Bool = true
     ) async {
         guard todayDraft.id == draftID else { return }
+        beginAIActivity("正在生成追问。")
+        defer { endAIActivity() }
         let input = todayDraft.rawText
 
         if let todayAIService {
@@ -2328,6 +2363,8 @@ final class AppStore: ObservableObject {
         allowsFallback: Bool = true
     ) async {
         guard todayDraft.id == draftID else { return }
+        beginAIActivity("正在生成明日任务。")
+        defer { endAIActivity() }
 
         if let todayAIService {
             do {
@@ -2372,6 +2409,8 @@ final class AppStore: ObservableObject {
         allowsFallback: Bool = true
     ) async {
         guard todayDraft.id == draftID else { return }
+        beginAIActivity("正在沉淀行动准则。")
+        defer { endAIActivity() }
 
         if let todayAIService {
             do {

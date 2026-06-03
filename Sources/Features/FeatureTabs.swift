@@ -4265,6 +4265,67 @@ private struct HistoryPromptRepairRow: View {
     }
 }
 
+struct HistoryRepairCardPreview: Equatable {
+    var type: String
+    var title: String
+    var body: String
+    var priority: String
+    var sensitivity: String
+
+    static func decode(from candidatePayloadJSON: String?) -> [HistoryRepairCardPreview] {
+        guard let candidatePayloadJSON,
+              let data = candidatePayloadJSON.data(using: .utf8)
+        else { return [] }
+
+        do {
+            let payload = try JSONDecoder().decode(Payload.self, from: data)
+            return payload.cards.map {
+                HistoryRepairCardPreview(
+                    type: $0.type,
+                    title: $0.title,
+                    body: $0.body,
+                    priority: $0.priority,
+                    sensitivity: $0.sensitivity
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+
+    private struct Payload: Decodable {
+        var cards: [Card]
+    }
+
+    private struct Card: Decodable {
+        var type: String
+        var title: String
+        var body: String
+        var priority: String
+        var sensitivity: String
+    }
+}
+
+extension HistoricalRetryCandidateStatus {
+    var historyRepairTitle: String {
+        switch self {
+        case .pending: return "待处理"
+        case .retrying: return "生成中"
+        case .candidateReady: return "候选已生成"
+        case .accepted: return "已接受"
+        case .dismissed: return "已忽略"
+        case .blocked: return "已阻断"
+        case .failed: return "重试失败"
+        }
+    }
+}
+
+enum HistoryRepairPromptSupport {
+    static func canStartHistoricalRetry(promptId: String) -> Bool {
+        PromptID(rawValue: promptId) == .organizeCards
+    }
+}
+
 private extension Date {
     var mingsiDisplayDate: String {
         let formatter = DateFormatter()

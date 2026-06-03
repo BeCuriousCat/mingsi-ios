@@ -42,7 +42,7 @@ struct AppRootView: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.caution)
-                    Text("有 \(store.pendingAIRepairCount) 个 AI 结果待补跑")
+                    Text(store.isAIRunning ? "AI 正在补跑，请等待结果" : "有 \(store.pendingAIRepairCount) 个 AI 结果待补跑")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
@@ -52,6 +52,7 @@ struct AppRootView: View {
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
+                    .disabled(store.isAIRunning)
                     Button {
                         store.dismissPendingAIRepairs()
                     } label: {

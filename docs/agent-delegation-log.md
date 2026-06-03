@@ -2,6 +2,50 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Codex Direct Implementation - AI Language, Busy State, And Recoverable GLM Retry
+
+Reason:
+
+- The user reported live-use bugs: unexpected English output despite Chinese input/client, missing card-generation loading feedback, duplicate clicks causing 429 concurrency errors, unclear background repair progress, and 529 failures ending without retry.
+- The slice touches Prompt language policy, `DirectGLMClient` retry behavior, AppStore state-machine ownership, and final interaction semantics.
+- `claude-code-managed-delegation` marks prompt/context strategy and AppStore orchestration as Codex-owned, so this was not delegated.
+
+Delegation decision:
+
+- Claude Code was not delegated.
+- Codex implemented the fix directly with TDD.
+
+Accepted behavior:
+
+- Local prompt templates now include a language contract: default to Simplified Chinese and follow the user's input language if clearly different.
+- `DirectGLMClient` retries recoverable HTTP 429, 529, 500, 502, 503, and 504 responses for both non-streaming and SSE streaming calls.
+- `AppStore` exposes `isAIRunning` and `aiActivityMessage`.
+- Today and the global AI repair banner disable duplicate AI actions while a request is running.
+- Subtask 027 helper tests were also brought to green by adding local candidate-preview/status/support helpers; full History repair UI remains incomplete.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LocalPromptProviderTests/testEveryPromptTemplate_hasCommonThinkingCoachGuardrails -only-testing:MingSiTests/DirectGLMClientTests/testComplete_retriesRecoverableRateLimitStatus -only-testing:MingSiTests/DirectGLMClientTests/testStream_retriesRecoverableRateLimitStatusBeforeYieldingTokens -only-testing:MingSiTests/AppStoreStateMachineTests/testAIGenerationBusyStateBlocksDuplicateRetryRequests -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairCardPreview_decodesValidCandidatePayload -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairCardPreview_invalidPayloadReturnsEmpty -only-testing:MingSiTests/HistoryFeatureTests/testHistoricalRetryCandidateStatus_historyRepairTitleCoversReviewStates -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairPromptSupport_onlyOrganizeCardsCanStartHistoricalRetry test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/DirectGLMClientTests -only-testing:MingSiTests/LocalPromptProviderTests -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Targeted RED/GREEN tests passed: 8 tests, 0 failures.
+- DirectGLMClientTests + LocalPromptProviderTests + HistoryFeatureTests passed: 41 tests, 0 failures.
+- AppStoreStateMachineTests passed: 95 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Residual risk:
+
+- This improves retry and busy feedback but does not yet add detailed per-run progress/result presentation for every historical/background repair item.
+- Live GLM 529 behavior still depends on provider-side recovery; the client now retries boundedly rather than waiting indefinitely.
+
 ## 2026-06-03: Claude Code Delegation Prepared - Subtask 027 History Repair UI
 
 Reason:

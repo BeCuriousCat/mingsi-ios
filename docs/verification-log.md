@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-03: AI Language, Busy State, Recoverable GLM Retry, And History Repair Helpers
+
+Scope:
+
+- Enforce Chinese-first prompt language behavior while preserving input-language following.
+- Add bounded retry for recoverable GLM 429/529/5xx responses in normal and SSE streaming calls.
+- Expose AppStore AI busy state and disable duplicate Today/background retry actions while a request is running.
+- Bring Subtask 027 local History repair helper tests to green so the worktree is testable again.
+
+Changed areas:
+
+- `Sources/Services/CoreProtocols.swift`
+- `Sources/Services/DirectGLMClient.swift`
+- `Sources/App/AppStore.swift`
+- `Sources/App/AppRootView.swift`
+- `Sources/Features/Today/TodayView.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Services/LocalPromptProviderTests.swift`
+- `Tests/Services/DirectGLMClientTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LocalPromptProviderTests/testEveryPromptTemplate_hasCommonThinkingCoachGuardrails -only-testing:MingSiTests/DirectGLMClientTests/testComplete_retriesRecoverableRateLimitStatus -only-testing:MingSiTests/DirectGLMClientTests/testStream_retriesRecoverableRateLimitStatusBeforeYieldingTokens -only-testing:MingSiTests/AppStoreStateMachineTests/testAIGenerationBusyStateBlocksDuplicateRetryRequests -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairCardPreview_decodesValidCandidatePayload -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairCardPreview_invalidPayloadReturnsEmpty -only-testing:MingSiTests/HistoryFeatureTests/testHistoricalRetryCandidateStatus_historyRepairTitleCoversReviewStates -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRepairPromptSupport_onlyOrganizeCardsCanStartHistoricalRetry test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/DirectGLMClientTests -only-testing:MingSiTests/LocalPromptProviderTests -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Targeted tests passed: 8 tests, 0 failures.
+- DirectGLMClientTests + LocalPromptProviderTests + HistoryFeatureTests passed: 41 tests, 0 failures.
+- AppStoreStateMachineTests passed: 95 tests, 0 failures.
+- App build succeeded.
+- `git diff --check` passed.
+
+Residual risk:
+
+- Simulator/manual visual QA was not run in this slice.
+- Detailed per-run background repair progress/result presentation remains a follow-up.
+
 ## 2026-06-03: Historical AI Retry AppStore Guard
 
 Scope:

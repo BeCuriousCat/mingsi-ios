@@ -508,6 +508,7 @@ struct TodayView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(DS.accent)
+            .disabled(store.isAIRunning)
 
             HStack(spacing: 18) {
                 if let previousState {
@@ -560,6 +561,10 @@ struct TodayView: View {
     }
 
     private var primaryActionTitle: String {
+        if store.isAIRunning {
+            return store.aiActivityMessage.isEmpty ? "AI 生成中" : store.aiActivityMessage
+        }
+
         switch store.todayDraft.state {
         case .verifyYesterday: return "保存验证"
         case .capture:

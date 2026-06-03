@@ -528,4 +528,45 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertFalse(digest.hasBeforeAfterEvidence)
         XCTAssertTrue(digest.evidenceGapMessage.contains("before / after"))
     }
+
+    // MARK: - Historical AI repair
+
+    func testHistoryRepairCardPreview_decodesValidCandidatePayload() {
+        let payload = """
+        {"cards":[{"id":"card-1","type":"problem","title":"会议目标不清","body":"会前没有列出必须确认的问题。","priority":"high","sensitivity":"normal","confidence":0.86,"isConfirmed":false,"isExcludedFromModel":false,"sourceRefs":[]}]}
+        """
+
+        let previews = HistoryRepairCardPreview.decode(from: payload)
+
+        XCTAssertEqual(previews.count, 1)
+        XCTAssertEqual(previews[0].type, "problem")
+        XCTAssertEqual(previews[0].title, "会议目标不清")
+        XCTAssertEqual(previews[0].body, "会前没有列出必须确认的问题。")
+        XCTAssertEqual(previews[0].priority, "high")
+        XCTAssertEqual(previews[0].sensitivity, "normal")
+    }
+
+    func testHistoryRepairCardPreview_invalidPayloadReturnsEmpty() {
+        XCTAssertTrue(HistoryRepairCardPreview.decode(from: "not-json").isEmpty)
+        XCTAssertTrue(HistoryRepairCardPreview.decode(from: nil).isEmpty)
+    }
+
+    func testHistoricalRetryCandidateStatus_historyRepairTitleCoversReviewStates() {
+        XCTAssertEqual(HistoricalRetryCandidateStatus.pending.historyRepairTitle, "待处理")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.retrying.historyRepairTitle, "生成中")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.candidateReady.historyRepairTitle, "候选已生成")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.accepted.historyRepairTitle, "已接受")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.dismissed.historyRepairTitle, "已忽略")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.blocked.historyRepairTitle, "已阻断")
+        XCTAssertEqual(HistoricalRetryCandidateStatus.failed.historyRepairTitle, "重试失败")
+    }
+
+    func testHistoryRepairPromptSupport_onlyOrganizeCardsCanStartHistoricalRetry() {
+        XCTAssertTrue(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.organizeCards.rawValue))
+        XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.generateQuestions.rawValue))
+        XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.generateQuests.rawValue))
+        XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.extractPrinciple.rawValue))
+        XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.weeklyCalibration.rawValue))
+        XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: "unknownPrompt"))
+    }
 }

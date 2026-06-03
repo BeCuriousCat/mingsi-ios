@@ -11,6 +11,8 @@ struct GLMClientConfiguration: Hashable {
     let requestTimeout: TimeInterval
     let protocolKind: ProtocolKind
     let usesJSONResponseFormat: Bool
+    let maxRetryAttempts: Int
+    let retryBaseDelay: TimeInterval
 
     init(
         baseURL: URL = URL(string: "https://api.z.ai/api/paas/v4")!,
@@ -18,7 +20,9 @@ struct GLMClientConfiguration: Hashable {
         temperature: Double = 0.2,
         requestTimeout: TimeInterval = 180,
         protocolKind: ProtocolKind = .openAICompatible,
-        usesJSONResponseFormat: Bool = true
+        usesJSONResponseFormat: Bool = true,
+        maxRetryAttempts: Int = 2,
+        retryBaseDelay: TimeInterval = 1.5
     ) {
         self.baseURL = baseURL
         self.model = model
@@ -26,6 +30,8 @@ struct GLMClientConfiguration: Hashable {
         self.requestTimeout = requestTimeout
         self.protocolKind = protocolKind
         self.usesJSONResponseFormat = usesJSONResponseFormat
+        self.maxRetryAttempts = max(0, maxRetryAttempts)
+        self.retryBaseDelay = max(0, retryBaseDelay)
     }
 
     init(
@@ -34,7 +40,9 @@ struct GLMClientConfiguration: Hashable {
         temperature: Double = 0.2,
         requestTimeout: TimeInterval = 180,
         protocolKind: ProtocolKind = .openAICompatible,
-        usesJSONResponseFormat: Bool = true
+        usesJSONResponseFormat: Bool = true,
+        maxRetryAttempts: Int = 2,
+        retryBaseDelay: TimeInterval = 1.5
     ) {
         self.init(
             baseURL: Self.baseURL(from: endpoint, protocolKind: protocolKind),
@@ -42,7 +50,9 @@ struct GLMClientConfiguration: Hashable {
             temperature: temperature,
             requestTimeout: requestTimeout,
             protocolKind: protocolKind,
-            usesJSONResponseFormat: usesJSONResponseFormat
+            usesJSONResponseFormat: usesJSONResponseFormat,
+            maxRetryAttempts: maxRetryAttempts,
+            retryBaseDelay: retryBaseDelay
         )
     }
 
@@ -99,6 +109,22 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        var lastError: Error?
+        for attempt in 0...configuration.maxRetryAttempts {
+            do {
+                return try await completeAttempt(request)
+            } catch LLMClientError.httpStatus(let status, let data)
+                where Self.shouldRetryRecoverableStatus(status: status) && attempt < configuration.maxRetryAttempts {
+                lastError = LLMClientError.httpStatus(status, data)
+                try await sleepBeforeRetry(attempt: attempt)
+            } catch {
+                throw error
+            }
+        }
+        throw lastError ?? LLMClientError.invalidResponse
+    }
+
+    private func completeAttempt(_ request: LLMRequest) async throws -> Data {
         do {
             return try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
         } catch LLMClientError.httpStatus(let status, let data)
@@ -138,29 +164,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let urlRequest = try makeURLRequest(
-                        request,
-                        usesJSONResponseFormat: false,
-                        stream: true
-                    )
-                    let (bytes, response) = try await session.bytes(for: urlRequest)
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        throw LLMClientError.invalidResponse
-                    }
-                    guard (200..<300).contains(httpResponse.statusCode) else {
-                        throw LLMClientError.httpStatus(
-                            httpResponse.statusCode,
-                            try await Self.collectStreamErrorBody(from: bytes)
-                        )
-                    }
-
-                    for try await line in bytes.lines {
-                        try Task.checkCancellation()
-                        guard let event = Self.streamEvent(fromSSELine: line) else { continue }
-                        continuation.yield(event)
-                    }
-                    continuation.yield(.completed)
-                    continuation.finish()
+                    try await streamAttemptingRetries(request, continuation: continuation)
                 } catch let error as LLMClientError {
                     continuation.finish(throwing: error)
                 } catch {
@@ -171,6 +175,41 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             continuation.onTermination = { _ in
                 task.cancel()
             }
+        }
+    }
+
+    private func streamAttemptingRetries(
+        _ request: LLMRequest,
+        continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation
+    ) async throws {
+        for attempt in 0...configuration.maxRetryAttempts {
+            let urlRequest = try makeURLRequest(
+                request,
+                usesJSONResponseFormat: false,
+                stream: true
+            )
+            let (bytes, response) = try await session.bytes(for: urlRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw LLMClientError.invalidResponse
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let data = try await Self.collectStreamErrorBody(from: bytes)
+                if Self.shouldRetryRecoverableStatus(status: httpResponse.statusCode),
+                   attempt < configuration.maxRetryAttempts {
+                    try await sleepBeforeRetry(attempt: attempt)
+                    continue
+                }
+                throw LLMClientError.httpStatus(httpResponse.statusCode, data)
+            }
+
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                guard let event = Self.streamEvent(fromSSELine: line) else { continue }
+                continuation.yield(event)
+            }
+            continuation.yield(.completed)
+            continuation.finish()
+            return
         }
     }
 
@@ -213,6 +252,16 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         guard status == 400 || status == 422 else { return false }
         let body = String(decoding: data, as: UTF8.self).lowercased()
         return body.contains("response_format") || body.contains("response format")
+    }
+
+    private static func shouldRetryRecoverableStatus(status: Int) -> Bool {
+        status == 429 || status == 529 || status == 500 || status == 502 || status == 503 || status == 504
+    }
+
+    private func sleepBeforeRetry(attempt: Int) async throws {
+        let delay = configuration.retryBaseDelay * pow(2, Double(attempt))
+        guard delay > 0 else { return }
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
     }
 
     private static func streamEvent(fromSSELine line: String) -> LLMStreamEvent? {
