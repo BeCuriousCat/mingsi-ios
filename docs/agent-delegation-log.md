@@ -2,6 +2,50 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Codex Direct Implementation - Historical AI Retry AppStore Guard
+
+Reason:
+
+- The slice adds AppStore/use-case orchestration for historical AI retry, including prompt-type eligibility, DailyEntry reconstruction, retry failure handling, candidate payload semantics, and acceptance guards.
+- `claude-code-managed-delegation` marks AppStore orchestration, state-machine behavior, and product semantics as Codex-owned.
+- Delegating this before the use-case contract is stable would increase cleanup risk rather than save coordination cost.
+
+Delegation decision:
+
+- Claude Code was not delegated.
+- Codex implemented this slice directly with TDD using the existing tests left in the working tree as RED evidence.
+
+Accepted behavior:
+
+- Historical `organizeCards` retry reconstructs input from the old DailyEntry.
+- Retry output is stored as `HistoricalRetryCandidate.candidatePayloadJSON`.
+- Current-day `thinkingCards` are not mutated by historical retry.
+- Unsupported prompts are rejected with a user-facing message.
+- Candidate acceptance is blocked when confirmed cards already exist.
+- `repairPromptRunId` is attached only when a real traced PromptRun can be discovered; no synthetic audit id is fabricated.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testStartHistoricalOrganizeCardsRetry_createsCandidateWithoutChangingCurrentCards test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testStartHistoricalOrganizeCardsRetry_rejectsUnsupportedPrompt -only-testing:MingSiTests/AppStoreStateMachineTests/testAcceptHistoricalRetryCandidate_blocksWhenConfirmedCardsExist test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- AppStoreStateMachineTests passed: 94 tests, 0 failures.
+- PersistenceCoreTests passed on rerun: 55 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Next delegation opportunity:
+
+- Claude Code can receive a fixed-contract History repair UI slice after Codex defines the view model/state contract and acceptance guard surface.
+
 ## 2026-06-03: Codex Direct Implementation - HistoricalRetryCandidate Migration And Repository
 
 Reason:

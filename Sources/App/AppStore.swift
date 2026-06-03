@@ -1,6 +1,36 @@
 import Foundation
 import SwiftUI
 
+private struct HistoricalRetryCandidatePayload: Codable {
+    var cards: [HistoricalRetryCardPayload]
+}
+
+private struct HistoricalRetryCardPayload: Codable {
+    var id: String
+    var type: String
+    var title: String
+    var body: String
+    var priority: String
+    var sensitivity: String
+    var confidence: Double
+    var isConfirmed: Bool
+    var isExcludedFromModel: Bool
+    var sourceRefs: [String]
+
+    init(card: ThinkingCard) {
+        id = card.id.uuidString
+        type = card.type.rawValue
+        title = card.title
+        body = card.body
+        priority = card.priority.rawValue
+        sensitivity = card.sensitivity.rawValue
+        confidence = card.confidence
+        isConfirmed = card.isConfirmed
+        isExcludedFromModel = card.isExcludedFromModel
+        sourceRefs = card.sourceRefs
+    }
+}
+
 @MainActor
 final class AppStore: ObservableObject {
     @Published var selectedTab: AppTab = .today
@@ -59,6 +89,7 @@ final class AppStore: ObservableObject {
     private let projectMergeCandidateRepository: ProjectMergeCandidateRepository?
     private let projectInsightRepository: ProjectInsightRepository?
     private let promptRunRepository: PromptRunRepository?
+    private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
     private let reminderService: ReminderService?
     private let persistenceUnavailableMessage: String?
     private let refreshesAIServiceFromKeychain: Bool
@@ -96,6 +127,7 @@ final class AppStore: ObservableObject {
         projectMergeCandidateRepository: ProjectMergeCandidateRepository? = nil,
         projectInsightRepository: ProjectInsightRepository? = nil,
         promptRunRepository: PromptRunRepository? = nil,
+        historicalRetryCandidateRepository: HistoricalRetryCandidateRepository? = nil,
         reminderService: ReminderService? = nil,
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
@@ -117,6 +149,7 @@ final class AppStore: ObservableObject {
         self.projectMergeCandidateRepository = projectMergeCandidateRepository
         self.projectInsightRepository = projectInsightRepository
         self.promptRunRepository = promptRunRepository
+        self.historicalRetryCandidateRepository = historicalRetryCandidateRepository
         self.reminderService = reminderService
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
@@ -162,6 +195,7 @@ final class AppStore: ObservableObject {
                 projectMergeCandidateRepository: SQLiteProjectMergeCandidateRepository(database: database),
                 projectInsightRepository: SQLiteProjectInsightRepository(database: database),
                 promptRunRepository: promptRunRepository,
+                historicalRetryCandidateRepository: SQLiteHistoricalRetryCandidateRepository(database: database),
                 reminderService: LocalNotificationReminder(),
                 todayAIService: todayAIService,
                 growthAIService: growthService
@@ -459,6 +493,137 @@ final class AppStore: ObservableObject {
                 }
         } catch {
             return []
+        }
+    }
+
+    func startHistoricalOrganizeCardsRetry(failedPromptRunId: UUID) async {
+        guard let promptRunRepository else {
+            todayLoopMessage = "历史 AI 修复暂不可用。"
+            return
+        }
+
+        do {
+            guard let failedRun = try await promptRunRepository
+                .unresolvedFailures(limit: 200)
+                .first(where: { $0.id == failedPromptRunId })
+            else {
+                todayLoopMessage = "没有找到可重试的历史 AI 失败记录。"
+                return
+            }
+
+            guard PromptID(rawValue: failedRun.promptId) == .organizeCards else {
+                todayLoopMessage = "暂只支持历史卡片整理失败的重试。"
+                return
+            }
+
+            guard let dailyEntryRepository,
+                  let historicalRetryCandidateRepository,
+                  let todayAIService
+            else {
+                todayLoopMessage = "历史 AI 修复暂不可用。"
+                return
+            }
+
+            guard let sourceId = failedRun.sourceRecordIds.compactMap(UUID.init(uuidString:)).first,
+                  let entry = try await dailyEntryRepository
+                    .recentEntries(limit: 240)
+                    .first(where: { $0.id == sourceId })
+            else {
+                todayLoopMessage = "无法从历史记录重建本次 AI 修复输入。"
+                return
+            }
+
+            let candidate = HistoricalRetryCandidate(
+                failedPromptRunId: failedRun.id,
+                promptId: .organizeCards,
+                sourceDailyEntryId: entry.id,
+                status: .retrying,
+                reconstructedInputSummary: Self.historicalRetryInputSummary(from: entry.rawText)
+            )
+            try await historicalRetryCandidateRepository.saveCandidate(candidate)
+
+            let beforeRuns = try await promptRunRepository.recentPromptRuns(limit: 20)
+            let cards = try await todayAIService.streamOrganizedCards(
+                for: TodayAIContext(draft: entry),
+                onUpdate: { _ in }
+            )
+            let payloadJSON = try Self.historicalRetryCandidatePayloadJSON(from: cards)
+            let repairRunId = try await Self.discoverRepairPromptRunId(
+                after: beforeRuns,
+                failedRun: failedRun,
+                promptRunRepository: promptRunRepository
+            )
+
+            if let repairRunId {
+                try await historicalRetryCandidateRepository.attachRepairRun(
+                    repairRunId,
+                    candidatePayloadJSON: payloadJSON,
+                    to: candidate.id
+                )
+            } else {
+                var readyCandidate = candidate
+                readyCandidate.status = .candidateReady
+                readyCandidate.candidatePayloadJSON = payloadJSON
+                readyCandidate.updatedAt = .now
+                try await historicalRetryCandidateRepository.saveCandidate(readyCandidate)
+            }
+
+            todayLoopMessage = "历史卡片候选已生成，等待你审阅。"
+        } catch {
+            await markLatestHistoricalRetryFailed(
+                failedPromptRunId: failedPromptRunId,
+                reason: aiFailureMessage(for: error)
+            )
+        }
+    }
+
+    func acceptHistoricalRetryCandidate(_ candidateId: UUID) async {
+        guard let historicalRetryCandidateRepository else {
+            todayLoopMessage = "历史 AI 修复暂不可用。"
+            return
+        }
+
+        do {
+            guard try await historicalRetryCandidateRepository.candidate(id: candidateId) != nil else {
+                todayLoopMessage = "没有找到这次历史修复候选。"
+                return
+            }
+
+            if thinkingCards.contains(where: \.isConfirmed) {
+                let reason = "blocked by confirmed cards"
+                try await historicalRetryCandidateRepository.updateStatus(
+                    .blocked,
+                    candidateId: candidateId,
+                    blockedReason: reason
+                )
+                todayLoopMessage = "历史修复已阻断：该记录已有确认卡片。"
+                return
+            }
+
+            try await historicalRetryCandidateRepository.updateStatus(
+                .accepted,
+                candidateId: candidateId,
+                error: nil,
+                blockedReason: nil
+            )
+            todayLoopMessage = "历史修复候选已接受。"
+        } catch {
+            todayLoopMessage = "接受历史修复候选失败：\(aiFailureMessage(for: error))"
+        }
+    }
+
+    func dismissHistoricalRetryCandidate(_ candidateId: UUID) async {
+        guard let historicalRetryCandidateRepository else { return }
+        do {
+            try await historicalRetryCandidateRepository.updateStatus(
+                .dismissed,
+                candidateId: candidateId,
+                error: nil,
+                blockedReason: nil
+            )
+            todayLoopMessage = "已忽略本次历史修复结果。"
+        } catch {
+            todayLoopMessage = "忽略历史修复结果失败。"
         }
     }
 
@@ -1915,6 +2080,68 @@ final class AppStore: ObservableObject {
             return llmError.userFacingMessage
         }
         return error.localizedDescription
+    }
+
+    private func markLatestHistoricalRetryFailed(failedPromptRunId: UUID, reason: String) async {
+        guard let historicalRetryCandidateRepository,
+              let promptRunRepository
+        else {
+            todayLoopMessage = "历史 AI 重试失败：\(reason)"
+            return
+        }
+
+        do {
+            let failedRun = try await promptRunRepository
+                .unresolvedFailures(limit: 200)
+                .first { $0.id == failedPromptRunId }
+            guard let sourceId = failedRun?.sourceRecordIds.compactMap(UUID.init(uuidString:)).first else {
+                todayLoopMessage = "历史 AI 重试失败：\(reason)"
+                return
+            }
+            let candidates = try await historicalRetryCandidateRepository.candidates(for: sourceId)
+            if let candidate = candidates.first(where: { $0.failedPromptRunId == failedPromptRunId }) {
+                try await historicalRetryCandidateRepository.updateStatus(
+                    .failed,
+                    candidateId: candidate.id,
+                    error: reason
+                )
+            }
+            todayLoopMessage = "历史 AI 重试失败：\(reason)"
+        } catch {
+            todayLoopMessage = "历史 AI 重试失败：\(reason)"
+        }
+    }
+
+    private static func historicalRetryInputSummary(from rawText: String) -> String {
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 120 else { return trimmed }
+        return String(trimmed.prefix(120)) + "..."
+    }
+
+    private static func historicalRetryCandidatePayloadJSON(from cards: [ThinkingCard]) throws -> String {
+        let payload = HistoricalRetryCandidatePayload(cards: cards.map(HistoricalRetryCardPayload.init(card:)))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(payload)
+        return String(data: data, encoding: .utf8) ?? #"{"cards":[]}"#
+    }
+
+    private static func discoverRepairPromptRunId(
+        after beforeRuns: [PromptRun],
+        failedRun: PromptRun,
+        promptRunRepository: PromptRunRepository
+    ) async throws -> UUID? {
+        let beforeIds = Set(beforeRuns.map(\.id))
+        return try await promptRunRepository
+            .recentPromptRuns(limit: 20)
+            .first { run in
+                !beforeIds.contains(run.id) &&
+                run.promptId == PromptID.organizeCards.rawValue &&
+                run.error == nil &&
+                run.responseJSON != nil &&
+                Set(run.sourceRecordIds) == Set(failedRun.sourceRecordIds)
+            }?
+            .id
     }
 
     private func scheduleTomorrowMainQuestReminderIfNeeded(for quest: Quest) {

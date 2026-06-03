@@ -2,6 +2,54 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-03: Historical AI Retry AppStore Guard
+
+Scope:
+
+- Add AppStore/use-case orchestration for historical `organizeCards` retry.
+- Keep retry output as a reviewable `HistoricalRetryCandidate` payload.
+- Ensure historical retry does not mutate current-day cards.
+- Reject unsupported historical prompt types.
+- Block candidate acceptance when confirmed cards already exist.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+- `docs/agent-delegation-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testStartHistoricalOrganizeCardsRetry_createsCandidateWithoutChangingCurrentCards test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testStartHistoricalOrganizeCardsRetry_rejectsUnsupportedPrompt -only-testing:MingSiTests/AppStoreStateMachineTests/testAcceptHistoricalRetryCandidate_blocksWhenConfirmedCardsExist test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Historical retry success test passed: 1 test, 0 failures.
+- Unsupported prompt and confirmed-card guard tests passed: 2 tests, 0 failures.
+- AppStoreStateMachineTests passed: 94 tests, 0 failures.
+- PersistenceCoreTests passed on rerun: 55 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Notes:
+
+- The first PersistenceCoreTests attempt failed before tests loaded due to a simulator test bundle loading error; rerunning the same command succeeded with 55 tests and 0 failures.
+- `repairPromptRunId` is attached only when a real PromptRun can be discovered from prompt tracing. Tests do not require a fake repair PromptRun id.
+
+Residual risk:
+
+- No History UI entry point or candidate sheet exists yet for this AppStore action.
+- Acceptance guards currently cover confirmed cards only; PRD still requires future checks for lens sessions, questions, quests, principles, project links, project insights, and growth contributions sourced from the entry.
+
 ## 2026-06-03: HistoricalRetryCandidate Migration And Repository
 
 Scope:

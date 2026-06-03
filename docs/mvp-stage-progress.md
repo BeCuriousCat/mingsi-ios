@@ -30,21 +30,22 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed read-only Claude Code audit for historical AI retry. Codex accepted the current-state map but rejected immediate implementation because the proposed new table would require an explicit migration and the retry semantics remain product-sensitive.
 - Added historical AI retry candidate-review PRD and data architecture alignment. Historical retry is now specified as a reviewable candidate flow, starting with `organizeCards` only and requiring explicit migration before durable candidate storage.
 - Added `HistoricalRetryCandidate` domain model, v8 SQLite migration, repository contract, SQLite repository implementation, and persistence tests. This establishes durable candidate storage but does not yet add History UI or AppStore retry orchestration.
+- Added historical AI retry AppStore guard/use-case actions for `organizeCards`. Historical retry now reconstructs the old DailyEntry input, calls the existing Today AI service, stores regenerated cards as a reviewable candidate payload, leaves current-day cards unchanged, rejects unsupported prompts, and blocks candidate acceptance when confirmed cards already exist.
 
 ## Known Remaining Work
 
 1. Visual QA across Today, History, Projects, Growth, Settings on iPhone 17 simulator, including dark mode.
 2. Project overview hierarchy and merge audit display need additional taste and evidence review.
 3. Growth report explanations need continued drilldown polish.
-4. Historical AI retry needs clear user entry points and candidate review behavior for failed old records.
+4. Historical AI retry needs clear History UI entry points, candidate review presentation, and full downstream-evidence acceptance guards beyond confirmed cards.
 5. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
 6. Process files should stay updated after each implementation or delegation slice.
 
 ## Current Recommended Next Slice
 
-After Settings AI audit grouping, the Subtask 025 audit, Subtask 026 PRD, and the candidate repository foundation, the next bounded slice should be:
+After Settings AI audit grouping, the Subtask 025 audit, Subtask 026 PRD, the candidate repository foundation, and the AppStore retry guard, the next bounded slice should be:
 
-- Historical AI retry AppStore guard/use-case layer for `organizeCards`, or a fixed-contract History repair UI slice after the use-case contract is defined.
+- Fixed-contract History repair UI for historical `organizeCards` failures and candidate review, using the new AppStore actions.
 
 Secondary candidates:
 

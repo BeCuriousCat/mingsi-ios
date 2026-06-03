@@ -1123,6 +1123,119 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(repairable.first?.error, "HTTP 504: timeout")
     }
 
+    func testStartHistoricalOrganizeCardsRetry_createsCandidateWithoutChangingCurrentCards() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let candidateRepo = InMemoryHistoricalRetryCandidateRepository()
+        let entry = DailyEntryDraft(
+            rawText: "Historical raw input that failed card organization.",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .capture
+        )
+        let failedRun = PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [entry.id.uuidString],
+            requestSummary: "history card failure",
+            error: "HTTP 504: timeout"
+        )
+        let client = StreamingRecordingLLMClient(tokens: [
+            "<CARD><TYPE>fact</TYPE><TITLE>Historical repair</TITLE><BODY>Recovered from retry.</BODY><IMPORTANCE>high</IMPORTANCE><SENSITIVITY>normal</SENSITIVITY><CONFIDENCE>high</CONFIDENCE></CARD>"
+        ])
+        try await dailyRepo.saveDraft(entry)
+        try await promptRunRepo.savePromptRun(failedRun)
+
+        let auditStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            promptRunRepository: promptRunRepo,
+            historicalRetryCandidateRepository: candidateRepo,
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            refreshesAIServiceFromKeychain: false
+        )
+        auditStore.thinkingCards = [
+            ThinkingCard(type: .fact, title: "Current day card", body: "Should remain untouched.")
+        ]
+
+        await auditStore.startHistoricalOrganizeCardsRetry(failedPromptRunId: failedRun.id)
+
+        let candidates = try await candidateRepo.candidates(for: entry.id)
+        XCTAssertEqual(candidates.count, 1)
+        XCTAssertEqual(candidates.first?.status, .candidateReady)
+        XCTAssertEqual(candidates.first?.failedPromptRunId, failedRun.id)
+        XCTAssertTrue(candidates.first?.candidatePayloadJSON?.contains("Historical repair") == true)
+        XCTAssertEqual(auditStore.thinkingCards.map { $0.title }, ["Current day card"])
+    }
+
+    func testStartHistoricalOrganizeCardsRetry_rejectsUnsupportedPrompt() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let candidateRepo = InMemoryHistoricalRetryCandidateRepository()
+        let entry = DailyEntryDraft(rawText: "Historical input.", state: .capture)
+        let failedRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [entry.id.uuidString],
+            requestSummary: "unsupported historical failure",
+            error: "HTTP 500"
+        )
+        try await dailyRepo.saveDraft(entry)
+        try await promptRunRepo.savePromptRun(failedRun)
+
+        let auditStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            promptRunRepository: promptRunRepo,
+            historicalRetryCandidateRepository: candidateRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await auditStore.startHistoricalOrganizeCardsRetry(failedPromptRunId: failedRun.id)
+
+        let candidates = try await candidateRepo.candidates(for: entry.id)
+        XCTAssertTrue(candidates.isEmpty)
+        XCTAssertTrue(auditStore.todayLoopMessage.contains("暂只支持历史卡片整理"))
+    }
+
+    func testAcceptHistoricalRetryCandidate_blocksWhenConfirmedCardsExist() async throws {
+        let candidateRepo = InMemoryHistoricalRetryCandidateRepository()
+        let entryId = UUID()
+        let candidate = HistoricalRetryCandidate(
+            failedPromptRunId: UUID(),
+            repairPromptRunId: UUID(),
+            promptId: .organizeCards,
+            sourceDailyEntryId: entryId,
+            status: .candidateReady,
+            reconstructedInputSummary: "Historical input",
+            candidatePayloadJSON: #"{"cards":[]}"#
+        )
+        try await candidateRepo.saveCandidate(candidate)
+        let auditStore = AppStore(
+            historicalRetryCandidateRepository: candidateRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        var confirmedCard = ThinkingCard(type: .fact, title: "Confirmed", body: "Existing evidence.")
+        confirmedCard.isConfirmed = true
+        auditStore.thinkingCards = [confirmedCard]
+
+        await auditStore.acceptHistoricalRetryCandidate(candidate.id)
+
+        let loaded = try await candidateRepo.candidate(id: candidate.id)
+        XCTAssertEqual(loaded?.status, .blocked)
+        XCTAssertTrue(loaded?.blockedReason?.contains("confirmed cards") == true)
+    }
+
     func testLoadPersistedState_generatesLocalGrowthSnapshotFromCompletedVerifiedLoops() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
@@ -3317,6 +3430,53 @@ private final class InMemoryProjectCandidateRepository: ProjectCandidateReposito
 
     func updateCandidateStatus(_ status: ProjectCandidateStatus, candidateId: UUID) async throws {
         candidates[candidateId]?.status = status
+    }
+}
+
+private final class InMemoryHistoricalRetryCandidateRepository: HistoricalRetryCandidateRepository {
+    private var candidates: [UUID: HistoricalRetryCandidate] = [:]
+
+    func saveCandidate(_ candidate: HistoricalRetryCandidate) async throws {
+        candidates[candidate.id] = candidate
+    }
+
+    func candidate(id: UUID) async throws -> HistoricalRetryCandidate? {
+        candidates[id]
+    }
+
+    func candidates(for sourceDailyEntryId: UUID) async throws -> [HistoricalRetryCandidate] {
+        candidates.values
+            .filter { $0.sourceDailyEntryId == sourceDailyEntryId }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func attachRepairRun(_ repairPromptRunId: UUID, candidatePayloadJSON: String, to candidateId: UUID) async throws {
+        guard var candidate = candidates[candidateId] else { return }
+        candidate.repairPromptRunId = repairPromptRunId
+        candidate.candidatePayloadJSON = candidatePayloadJSON
+        candidate.status = .candidateReady
+        candidate.error = nil
+        candidate.blockedReason = nil
+        candidate.updatedAt = .now
+        candidates[candidateId] = candidate
+    }
+
+    func updateStatus(
+        _ status: HistoricalRetryCandidateStatus,
+        candidateId: UUID,
+        error: String?,
+        blockedReason: String?
+    ) async throws {
+        guard var candidate = candidates[candidateId] else { return }
+        candidate.status = status
+        candidate.error = error
+        candidate.blockedReason = blockedReason
+        candidate.updatedAt = .now
+        candidates[candidateId] = candidate
+    }
+
+    func softDelete(candidateId: UUID) async throws {
+        candidates.removeValue(forKey: candidateId)
     }
 }
 
