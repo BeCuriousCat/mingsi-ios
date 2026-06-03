@@ -32,6 +32,16 @@ Common reasons to inspect flow logs:
 
 Do not rescue partial worker output as the default path.
 
+Default manager wait cadence:
+
+```text
+check 1: after 3 minutes
+check 2: after 6 more minutes
+check 3: after 9 more minutes
+```
+
+If those checks show no `HANDOFF` and no useful conclusion-progress movement, the manager may intervene. Intervention means classifying the stall first, not immediately editing the worker's partial code.
+
 If the worker stalls before `HANDOFF`, classify the failure first:
 
 - launch failure
@@ -47,4 +57,3 @@ Then choose one:
 - split the task
 - keep the task with Codex
 - reject the worker result
-

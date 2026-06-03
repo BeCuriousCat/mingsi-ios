@@ -24,6 +24,60 @@ Current decision:
 - Claude Code remains suitable for bounded implementation dogfood tasks.
 - The next MingSi business task, manual Principle creation, should be used to validate the framework without baking MingSi semantics into the framework itself.
 
+## 2026-06-04: Prepared Manual Principle Creation Dogfood - Subtask 034
+
+Reason:
+
+- The user reported that direct manual Principle creation is still missing.
+- This is a user-facing alpha usability gap in the MingSi business thread.
+- It is also a suitable dogfood slice for the reusable delegation framework: bounded AppStore/UI/test work, no migration, no prompt/LLM/Keychain/parser changes, and clear acceptance tests.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/034-manual-principle-creation-prd.md`
+- Progress: `docs/subtasks/034-manual-principle-creation-progress.md`
+- Prompt: `docs/subtasks/034-manual-principle-creation-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/034-manual-principle-creation-events.jsonl`
+  - `docs/subtasks/logs/034-manual-principle-creation-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the business slice.
+
+Delegation state:
+
+- Completed and Codex-accepted with manager fix.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker ran the full `AppStoreStateMachineTests` in its worktree and reported success.
+- Worker handoff exposed a real acceptance concern: Growth used `store.principles`, which is cleared by Today reset.
+
+Codex acceptance:
+
+- Accepted the worker's TDD direction, AppStore action shape, and Growth UI entry.
+- Fixed the principle lifetime issue by adding `activePrinciples` as independent long-lived UI state.
+- Added a manager regression test proving `resetTodayLoop()` clears today's `principles` but keeps `activePrinciples`.
+- Rejected the worker's direct use of `store.principles` as the Growth principle asset source.
+
+Verification:
+
+- Focused manual principle tests passed: 3 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 98 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Delegation framework lesson:
+
+- Conclusion-first monitoring worked: the worker's handoff concerns surfaced the main product risk before Codex consumed raw flow logs.
+- The wait policy should use dynamic backoff by default: 3 minutes, then 6 minutes, then 9 minutes before manager intervention if conclusion progress does not move.
+
 ## 2026-06-04: Prepared Claude Code Conclusion-First Log Smoke - Subtask 033
 
 Reason:

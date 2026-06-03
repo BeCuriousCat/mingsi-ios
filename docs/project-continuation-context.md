@@ -145,7 +145,11 @@ Do not touch prompt, persistence, parser, migration, GLM, Keychain, or AppStore 
 
 Preferred next move:
 
-1. Treat the next MingSi business slice, manual Principle creation, as the first dogfood task for the generalized delegation framework.
+1. Subtask 034 manual Principle creation is complete and Codex-accepted with a manager fix.
+   - Growth has a direct `添加原则` entry.
+   - Manual principles persist through `PrincipleRepository.savePrinciple`.
+   - Long-lived `activePrinciples` are not cleared by Today reset.
+   - The dogfood run proved conclusion-first monitoring can expose worker concerns without raw-log consumption.
 2. Keep the delegation framework generic:
    - Boundary doc: `docs/delegation-framework-boundary.md`
    - Skill prototype: `delegation-framework/claude-code-managed-delegation/SKILL.md`

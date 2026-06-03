@@ -84,6 +84,7 @@ A compatible wrapper should support:
 - isolated worktree per task
 - worker progress copied or available inside the worktree
 - `status` and `wait` commands that prefer conclusion progress
+- dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
 - an opt-in flag to inspect flow logs
 
 For this repo prototype, use:
@@ -100,6 +101,7 @@ Set these for non-default projects:
 ```bash
 CLAUDE_DELEGATE_TASK_ROOT=<path>
 CLAUDE_DELEGATE_LOG_DIR=<path>
+CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540
 ```
 
 ## Manager Workflow
@@ -128,4 +130,3 @@ The worker prompt must say:
 
 - `references/task-contract.md`
 - `references/conclusion-first-monitoring.md`
-

@@ -1423,6 +1423,7 @@ struct ProjectsView: View {
 struct GrowthView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedMetric: GrowthMetric?
+    @State private var isPresentingAddPrinciple = false
 
     var body: some View {
         FeatureContainer(title: "成长", subtitle: "用趋势和证据看见自己的变化。") {
@@ -1477,15 +1478,7 @@ struct GrowthView: View {
                     }
                 }
 
-                if let principle = store.principles.first {
-                    GrowthEvidencePanel(
-                        title: "本周值得保留的一条规则",
-                        text: principle.summary,
-                        footnote: principle.successCriteria
-                    )
-                } else if !store.growthSnapshot.canDisplayScores {
-                    EmptyStateLine(text: "当某个行为规则足够稳定时，会被沉淀为原则资产。")
-                }
+                GrowthPrincipleAssetSection(isPresentingAddPrinciple: $isPresentingAddPrinciple)
             }
         }
         .sheet(item: $selectedMetric) { metric in
@@ -1525,6 +1518,130 @@ struct GrowthView: View {
         }
         .task {
             await store.loadGrowthReportReviewContributions()
+        }
+        .sheet(isPresented: $isPresentingAddPrinciple) {
+            ManualPrincipleFormSheet()
+        }
+    }
+}
+
+private struct GrowthPrincipleAssetSection: View {
+    @EnvironmentObject private var store: AppStore
+    @Binding var isPresentingAddPrinciple: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel("原则资产")
+                Spacer()
+                Button {
+                    isPresentingAddPrinciple = true
+                } label: {
+                    Label("添加原则", systemImage: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(DS.accent)
+            }
+
+            if store.activePrinciples.isEmpty {
+                EmptyStateLine(text: "还没有原则资产。可以手工保存一条可复用的行为规则。")
+            } else {
+                ForEach(store.activePrinciples) { principle in
+                    PrincipleArchiveRow(principle: principle)
+                }
+            }
+        }
+    }
+}
+
+private struct ManualPrincipleFormSheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var summary = ""
+    @State private var triggerContext = ""
+    @State private var actionsText = ""
+    @State private var successCriteria = ""
+    @State private var exceptions = ""
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("必填") {
+                    TextField("标题", text: $title)
+                    TextField("摘要", text: $summary, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+
+                Section("适用方式") {
+                    TextField("触发场景", text: $triggerContext, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("行动步骤（每行一个）", text: $actionsText, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("成功标准", text: $successCriteria, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("例外情况", text: $exceptions, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(DS.caution)
+                }
+            }
+            .navigationTitle("添加原则")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "保存中" : "保存") {
+                        Task {
+                            await save()
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func save() async {
+        isSaving = true
+        errorMessage = nil
+        let actions = actionsText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let didSave = await store.addManualPrinciple(
+            title: title,
+            summary: summary,
+            triggerContext: triggerContext,
+            actions: actions,
+            successCriteria: successCriteria,
+            exceptions: exceptions
+        )
+        isSaving = false
+        if didSave {
+            dismiss()
+        } else {
+            errorMessage = store.todayLoopMessage
         }
     }
 }

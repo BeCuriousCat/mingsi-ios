@@ -39,6 +39,7 @@ final class AppStore: ObservableObject {
     @Published var questions: [ReflectionQuestion]
     @Published var quests: [Quest]
     @Published var principles: [PrincipleAsset]
+    @Published private(set) var activePrinciples: [PrincipleAsset]
     @Published private(set) var referencedPrinciples: [PrincipleAsset] = []
     @Published var historyRecords: [HistoryRecord] = []
     @Published var projectNames: [UUID: String] = [:]
@@ -163,6 +164,7 @@ final class AppStore: ObservableObject {
         self.questions = questions ?? []
         self.quests = quests ?? []
         self.principles = principles ?? []
+        self.activePrinciples = principles?.filter { $0.status == .active } ?? []
         self.historyRecords = historyRecords ?? []
         self.growthSnapshot = growthSnapshot ?? Self.makeEmptyGrowth()
         refreshAPIKeyStatus()
@@ -391,6 +393,7 @@ final class AppStore: ObservableObject {
                 pendingAIRepairPrompts = []
                 await initializeFromLastActiveQuest()
                 persistDraft()
+                await loadActivePrinciples()
                 await loadPendingProjectCandidates()
                 await loadPendingProjectMergeCandidates()
                 await loadLatestGrowthSnapshot()
@@ -408,6 +411,7 @@ final class AppStore: ObservableObject {
                 await initializeFromLastActiveQuest()
                 persistDraft()
                 await loadHistoryRecords()
+                await loadActivePrinciples()
                 await loadPendingProjectCandidates()
                 await loadPendingProjectMergeCandidates()
                 await loadLatestGrowthSnapshot()
@@ -425,6 +429,7 @@ final class AppStore: ObservableObject {
             if let storedPrinciples = try await principleRepository?.principles(for: draft.id) {
                 principles = storedPrinciples
             }
+            await loadActivePrinciples()
             referencedPrinciples = []
             if let session = try await lensSessionRepository?.lensSession(for: draft.id) {
                 questions = session.questions
@@ -1589,6 +1594,51 @@ final class AppStore: ObservableObject {
         persistPrinciples()
     }
 
+    @discardableResult
+    func addManualPrinciple(
+        title: String,
+        summary: String,
+        triggerContext: String,
+        actions: [String],
+        successCriteria: String,
+        exceptions: String
+    ) async -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedSummary.isEmpty else {
+            todayLoopMessage = "原则标题和摘要不能为空。"
+            return false
+        }
+
+        let principle = PrincipleAsset(
+            title: trimmedTitle,
+            summary: trimmedSummary,
+            triggerContext: triggerContext.trimmingCharacters(in: .whitespacesAndNewlines),
+            actions: actions
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty },
+            successCriteria: successCriteria.trimmingCharacters(in: .whitespacesAndNewlines),
+            exceptions: exceptions.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: .active
+        )
+
+        do {
+            if let dailyEntryRepository {
+                try await dailyEntryRepository.saveDraft(todayDraft)
+            }
+            if let principleRepository {
+                try await principleRepository.savePrinciple(principle, sourceDailyEntryId: todayDraft.id)
+            }
+        } catch {
+            todayLoopMessage = "保存原则资产失败。"
+            return false
+        }
+
+        upsertManualPrincipleInMemory(principle)
+        todayLoopMessage = principleRepository == nil ? "原则已添加到当前会话（当前未启用持久化）。" : "原则已保存。"
+        return true
+    }
+
     func skipPrinciple() {
         principles = []
         persistPrinciples()
@@ -2675,7 +2725,33 @@ final class AppStore: ObservableObject {
         } catch {
             todayLoopMessage = "读取历史原则失败，已继续当前流程。"
         }
-        return principles.filter { $0.status == .active }
+        return activePrinciples
+    }
+
+    private func loadActivePrinciples() async {
+        do {
+            if let storedPrinciples = try await principleRepository?.activePrinciples() {
+                activePrinciples = storedPrinciples
+            } else {
+                activePrinciples = principles.filter { $0.status == .active }
+            }
+        } catch {
+            activePrinciples = principles.filter { $0.status == .active }
+            todayLoopMessage = "读取历史原则失败，已继续当前流程。"
+        }
+    }
+
+    private func upsertManualPrincipleInMemory(_ principle: PrincipleAsset) {
+        if let todayIndex = principles.firstIndex(where: { $0.id == principle.id }) {
+            principles[todayIndex] = principle
+        } else {
+            principles.append(principle)
+        }
+        if let activeIndex = activePrinciples.firstIndex(where: { $0.id == principle.id }) {
+            activePrinciples[activeIndex] = principle
+        } else {
+            activePrinciples.insert(principle, at: 0)
+        }
     }
 
     private func existingPrinciplesForDedupe() async -> [PrincipleAsset] {

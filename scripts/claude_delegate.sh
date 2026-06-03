@@ -7,7 +7,7 @@ usage:
   scripts/claude_delegate.sh prepare <subtask-id-topic> [progress-file]
   scripts/claude_delegate.sh launch <subtask-id-topic> <prompt-file> [progress-file]
   scripts/claude_delegate.sh status <subtask-id-topic> [progress-file]
-  scripts/claude_delegate.sh wait <subtask-id-topic> [progress-file] [interval-seconds] [max-checks]
+  scripts/claude_delegate.sh wait <subtask-id-topic> [progress-file] [interval-seconds|auto] [max-checks]
 
 environment overrides:
   CLAUDE_DELEGATE_MODEL=glm-5.1
@@ -23,6 +23,7 @@ environment overrides:
   CLAUDE_DELEGATE_SHOW_FLOW_LOGS=0     # set 1 only for diagnostics / failed acceptance
   CLAUDE_DELEGATE_TASK_ROOT=docs/subtasks
   CLAUDE_DELEGATE_LOG_DIR=$CLAUDE_DELEGATE_TASK_ROOT/logs
+  CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540 # auto wait backoff in seconds
 
 notes:
   In non-interactive shells, tmux launch falls back to print mode.
@@ -158,6 +159,15 @@ handoff_reached() {
   local progress_file="$1"
   [[ -f "$progress_file" ]] || return 1
   rg -q '^(Status:[[:space:]]*(HANDOFF|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(reached|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|###[[:space:]]+HANDOFF\b)' "$progress_file"
+}
+
+progress_fingerprint() {
+  local progress_file="$1"
+  if [[ -f "$progress_file" ]]; then
+    cksum "$progress_file" | awk '{print $1 ":" $2}'
+  else
+    printf 'missing\n'
+  fi
 }
 
 ensure_worker_worktree() {
@@ -390,8 +400,19 @@ case "$cmd" in
 
   wait)
     progress_file="$(progress_file_for "${1:-}")"
-    interval="${2:-300}"
-    max_checks="${3:-5}"
+    interval="${2:-auto}"
+    max_checks="${3:-}"
+    if [[ "$interval" == "auto" ]]; then
+      IFS=',' read -r -a wait_schedule <<< "${CLAUDE_DELEGATE_WAIT_SCHEDULE:-180,360,540}"
+      if [[ -z "$max_checks" ]]; then
+        max_checks="${#wait_schedule[@]}"
+      fi
+    else
+      if [[ -z "$max_checks" ]]; then
+        max_checks="5"
+      fi
+    fi
+    last_fingerprint=""
     for ((check = 1; check <= max_checks; check++)); do
       echo "check $check/$max_checks at $(timestamp)"
       active_progress="$(current_progress_path "$progress_file")"
@@ -399,11 +420,26 @@ case "$cmd" in
         echo "HANDOFF found in $active_progress"
         exit 0
       fi
+      fingerprint="$(progress_fingerprint "$active_progress")"
+      if [[ -n "$last_fingerprint" && "$fingerprint" == "$last_fingerprint" ]]; then
+        echo "no new conclusion progress since previous check"
+      fi
+      last_fingerprint="$fingerprint"
       echo "no HANDOFF yet; conclusion source: $active_progress"
       if [[ "$show_flow_logs" == "1" && -f "$event_log" ]]; then
         tail -n 5 "$event_log"
       fi
-      sleep "$interval"
+      if [[ "$check" -lt "$max_checks" ]]; then
+        if [[ "$interval" == "auto" ]]; then
+          schedule_index=$((check - 1))
+          last_schedule_index=$((${#wait_schedule[@]} - 1))
+          sleep_for="${wait_schedule[$schedule_index]:-${wait_schedule[$last_schedule_index]}}"
+        else
+          sleep_for="$interval"
+        fi
+        echo "next check in ${sleep_for}s"
+        sleep "$sleep_for"
+      fi
     done
     echo "no HANDOFF after $max_checks checks; classify the stall before taking over; inspect flow logs only if needed" >&2
     exit 75

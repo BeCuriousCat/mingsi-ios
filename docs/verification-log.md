@@ -2,6 +2,57 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Manual Principle Creation And Delegation Dogfood
+
+Scope:
+
+- Add direct manual Principle creation from Growth.
+- Dogfood the reusable Codex-to-Claude Code delegation framework on a real MingSi business slice.
+- Preserve long-lived active principles separately from Today's resettable principle candidates.
+- Add dynamic delegation wait backoff to the wrapper and generic skill prototype.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- `delegation-framework/claude-code-managed-delegation/references/conclusion-first-monitoring.md`
+- `docs/subtasks/034-manual-principle-creation-*`
+- `docs/subtasks/logs/034-manual-principle-creation-*`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 034-manual-principle-creation docs/subtasks/034-manual-principle-creation-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 034-manual-principle-creation docs/subtasks/034-manual-principle-creation-claude-prompt.md docs/subtasks/034-manual-principle-creation-progress.md
+scripts/claude_delegate.sh status 034-manual-principle-creation docs/subtasks/034-manual-principle-creation-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testAddManualPrinciple_persistsActivePrincipleAndLinksToToday -only-testing:MingSiTests/AppStoreStateMachineTests/testAddManualPrinciple_rejectsMissingRequiredText -only-testing:MingSiTests/AppStoreStateMachineTests/testResetTodayLoop_keepsActiveManualPrinciplesVisibleInGrowthState test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/034-manual-principle-creation/02-launch-after-wait.png
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE`.
+- Codex accepted the worker direction but fixed the long-lived principle source after the worker flagged it as a concern.
+- Focused manual principle tests passed: 3 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 98 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- App installed/launched on the booted iPhone 17 simulator and a nonblank launch screenshot was captured:
+  - `docs/subtasks/screenshots/034-manual-principle-creation/02-launch-after-wait.png`
+
+Residual risk:
+
+- Growth manual principle sheet has build/test coverage and app launch verification, but still needs a direct Growth-tab interaction screenshot in a later visual QA pass.
+- Flow logs for this dogfood run are stored as evidence and should not be routinely consumed.
+
 ## 2026-06-04: Claude Conclusion-First Delegation Pipeline And Settings Audit Visual Check
 
 Scope:

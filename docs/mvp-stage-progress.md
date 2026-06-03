@@ -40,6 +40,9 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Fixed Settings AI audit group expand/collapse flicker at the SwiftUI view level by removing group-wide animation and row transition while keeping chevron-only feedback.
 - Codex began direct Subtask 029 safe-area/floating-tab source work and passed build verification, but full light/dark simulator screenshot acceptance is still incomplete.
 - Completed Subtasks 032 and 033 Claude Code utilization smokes. The wrapper now runs non-interactive print fallback inside the isolated worker worktree, uses worker progress as the manager-facing conclusion source, retains event/raw logs as flow logs, keeps flow-log tails hidden by default, and syncs delegation scripts into worker worktrees for local read-only inspection.
+- Separated the reusable Codex-to-Claude Code delegation framework thread from MingSi product hardening. Added a generic skill prototype and parameterized the wrapper task/log roots so future projects are not tied to MingSi `docs/subtasks`.
+- Completed Subtask 034 manual Principle creation via Claude Code dogfood plus Codex acceptance fix. Growth now has a direct `添加原则` entry, manual principles persist through the existing repository as active `PrincipleAsset` records linked to today's DailyEntry, and long-lived `activePrinciples` are not cleared by Today reset.
+- Added dynamic delegation wait backoff guidance and wrapper support: default `wait` can use 3/6/9 minute checks before manager intervention.
 
 ## Known Remaining Work
 
@@ -53,16 +56,16 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 8. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
 9. Process files should stay updated after each implementation or delegation slice.
 10. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
+11. Growth manual Principle creation is build/test verified, but still needs simulator interaction screenshots in the next visual QA pass.
 
 ## Current Recommended Next Slice
 
-After Subtask 030 pipeline hardening and the partial Subtask 029 source work, the next bounded slice should be:
+After Subtask 034 manual Principle creation, the next bounded slice should be:
 
 - Complete Subtask 029 simulator screenshot verification, especially Settings/Growth bottom content around the floating Tab bar and History top content around the Dynamic Island.
 
 Secondary candidates:
 
-- Run the new Claude Code delegation wrapper on the next genuinely bounded worker slice and measure whether it saves manager effort.
 - Prompt inspector read-only view.
 - Project overview hierarchy and merge audit display polish.
 

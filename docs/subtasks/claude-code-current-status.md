@@ -18,6 +18,19 @@ Current framework thread:
 
 Current prepared slice:
 
+- Subtask: `034-manual-principle-creation`
+- Owner: Claude Code implementation dogfood candidate.
+- PRD file: `docs/subtasks/034-manual-principle-creation-prd.md`
+- Progress file: `docs/subtasks/034-manual-principle-creation-progress.md`
+- Claude prompt file: `docs/subtasks/034-manual-principle-creation-claude-prompt.md`
+- Expected event log: `docs/subtasks/logs/034-manual-principle-creation-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/034-manual-principle-creation-claude-run.jsonl`
+- Launch state: completed and Codex-accepted with manager fix.
+- Purpose: dogfood the reusable delegation framework on a real MingSi business slice without baking MingSi semantics into the framework.
+- Result: worker reached `HANDOFF/DONE`; Codex accepted the direction but fixed the long-lived principle source so Growth reads `activePrinciples` rather than Today's resettable `principles`.
+
+Previous prepared slice:
+
 - Subtask: `033-claude-code-conclusion-log-smoke`
 - Owner: Claude Code read-only smoke candidate.
 - PRD file: `docs/subtasks/033-claude-code-conclusion-log-smoke-prd.md`

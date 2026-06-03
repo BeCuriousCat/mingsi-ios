@@ -3616,3 +3616,113 @@ private final class InMemoryProjectMergeCandidateRepository: ProjectMergeCandida
         candidates[candidateId]?.status = status
     }
 }
+
+private final class InMemoryPrincipleRepository: PrincipleRepository {
+    private var principlesById: [UUID: PrincipleAsset] = [:]
+    private var entryPrincipleIds: [UUID: [UUID]] = [:]
+
+    func savePrinciple(_ principle: PrincipleAsset, sourceDailyEntryId: UUID) async throws {
+        principlesById[principle.id] = principle
+        var ids = entryPrincipleIds[sourceDailyEntryId] ?? []
+        if !ids.contains(principle.id) {
+            ids.append(principle.id)
+        }
+        entryPrincipleIds[sourceDailyEntryId] = ids
+    }
+
+    func savePrinciples(_ principles: [PrincipleAsset], sourceDailyEntryId: UUID) async throws {
+        entryPrincipleIds[sourceDailyEntryId] = []
+        for principle in principles {
+            try await savePrinciple(principle, sourceDailyEntryId: sourceDailyEntryId)
+        }
+    }
+
+    func activePrinciples() async throws -> [PrincipleAsset] {
+        principlesById.values.filter { $0.status == .active }
+    }
+
+    func principles(for dailyEntryId: UUID) async throws -> [PrincipleAsset] {
+        (entryPrincipleIds[dailyEntryId] ?? []).compactMap { principlesById[$0] }
+    }
+}
+
+// MARK: - Manual Principle Creation
+
+extension AppStoreStateMachineTests {
+
+    func testAddManualPrinciple_persistsActivePrincipleAndLinksToToday() async throws {
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let principleRepo = InMemoryPrincipleRepository()
+        let draft = DailyEntryDraft(rawText: "Manual principle source", state: .capture)
+        let store = AppStore(
+            todayDraft: draft,
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let result = await store.addManualPrinciple(
+            title: "  会前确认负责人  ",
+            summary: "行动前先确认唯一负责人。",
+            triggerContext: "跨团队会议",
+            actions: ["  说清负责人  ", "", "确认验收标准"],
+            successCriteria: "会后没有职责空白",
+            exceptions: "低风险同步可简化"
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(store.principles.count, 1)
+        XCTAssertEqual(store.activePrinciples.count, 1)
+        XCTAssertEqual(store.activePrinciples.first?.title, "会前确认负责人")
+        XCTAssertEqual(store.activePrinciples.first?.actions, ["说清负责人", "确认验收标准"])
+        let persistedTitles = try await principleRepo.principles(for: draft.id).map(\.title)
+        let activeTitles = try await principleRepo.activePrinciples().map(\.title)
+        let latestDraft = try await dailyRepo.latestDraft()
+        XCTAssertEqual(persistedTitles, ["会前确认负责人"])
+        XCTAssertEqual(activeTitles, ["会前确认负责人"])
+        XCTAssertEqual(latestDraft?.id, draft.id)
+    }
+
+    func testAddManualPrinciple_rejectsMissingRequiredText() async throws {
+        let principleRepo = InMemoryPrincipleRepository()
+        let store = AppStore(
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let result = await store.addManualPrinciple(
+            title: " ",
+            summary: "Summary",
+            triggerContext: "Context",
+            actions: ["Act"],
+            successCriteria: "Criteria",
+            exceptions: "None"
+        )
+
+        XCTAssertFalse(result)
+        XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        let activePrinciples = try await principleRepo.activePrinciples()
+        XCTAssertTrue(activePrinciples.isEmpty)
+    }
+
+    func testResetTodayLoop_keepsActiveManualPrinciplesVisibleInGrowthState() async throws {
+        let principle = PrincipleAsset(
+            title: "先确认负责人",
+            summary: "行动前先确认唯一负责人。",
+            triggerContext: "协作任务",
+            actions: ["说清负责人"],
+            successCriteria: "没有职责空白",
+            exceptions: ""
+        )
+        let store = AppStore(
+            principles: [principle],
+            refreshesAIServiceFromKeychain: false
+        )
+
+        store.resetTodayLoop()
+
+        XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertEqual(store.activePrinciples.map(\.title), ["先确认负责人"])
+    }
+}
