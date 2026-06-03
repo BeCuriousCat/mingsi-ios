@@ -44,3 +44,7 @@ At HANDOFF, include one final status token:
 - This was done to recover the current worktree from RED test compile failures and does not complete the Subtask 027 History repair UI.
 - Verified helper tests as part of:
   - `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test`
+- 2026-06-03 Codex manager refreshed the Claude prompt for a second delegation attempt:
+  - Worker should preserve existing helpers.
+  - Remaining target is History UI integration plus the fixed AppStore read-only candidate query if needed.
+  - No schema, prompt, LLM, migration, or persistence changes are allowed.

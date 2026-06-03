@@ -2,6 +2,27 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Claude Code Delegation Relaunch Prepared - Subtask 027 History Repair UI
+
+Reason:
+
+- The previous 027 implementation attempt was rejected before handoff, but the repo now has a clean verified baseline and local helper tests are green.
+- The remaining work is a bounded History UI integration using already-defined AppStore actions and existing `HistoricalRetryCandidate` storage.
+- This fits the delegation readiness gate better than Codex direct implementation because the product semantics, persistence, prompt strategy, and helper contracts are already fixed; Claude Code can implement the local SwiftUI composition and candidate loading path in isolation.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/027-history-repair-ui-prd.md`
+- Progress: `docs/subtasks/027-history-repair-ui-progress.md`
+- Prompt: `docs/subtasks/027-history-repair-ui-claude-prompt.md`
+
+Manager constraints:
+
+- Preserve existing helper tests and helper implementations unless a compile error requires a narrow adjustment.
+- Do not touch migrations, prompt specs, LLM clients, or schema.
+- Use an isolated worktree and copy untracked vendored GRDB test resources if needed before verification.
+- Codex will not inspect or merge partial output before `HANDOFF`.
+
 ## 2026-06-03: Codex Direct Implementation - AI Language, Busy State, And Recoverable GLM Retry
 
 Reason:

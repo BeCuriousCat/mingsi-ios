@@ -32,6 +32,15 @@ Read these files first:
 
 Implement the fixed-contract History repair UI described in `docs/subtasks/027-history-repair-ui-prd.md`.
 
+Important current-state note:
+
+- Codex has already added and verified local helper coverage for:
+  - `HistoryRepairCardPreview.decode(from:)`
+  - `HistoricalRetryCandidateStatus.historyRepairTitle`
+  - `HistoryRepairPromptSupport.canStartHistoricalRetry(promptId:)`
+- Do not delete or rewrite those helpers unless a compile error forces a narrow adjustment.
+- The remaining implementation target is the History UI integration and the AppStore read-only candidate query if it is not already present.
+
 Allowed changes:
 
 - `Sources/Features/FeatureTabs.swift`
@@ -59,12 +68,14 @@ Do not edit migrations, prompt specs, LLM clients, or data schema.
 
 ## Required Tests
 
-Add tests where practical for extracted helpers:
+Existing helper tests already cover:
 
 - candidate JSON decoding returns preview rows;
 - invalid JSON returns empty preview rows;
 - status title mapping covers candidate ready / blocked / failed / dismissed;
 - support helper only enables `organizeCards`.
+
+Add or adjust tests only if the UI integration requires a new local helper. Do not add broad UI snapshot infrastructure in this slice.
 
 Then run:
 
