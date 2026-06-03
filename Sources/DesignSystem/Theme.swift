@@ -42,6 +42,10 @@ enum DS {
     static let sectionSpacing: CGFloat = 18
     static let cardSpacing: CGFloat = 10
     static let cardInnerPadding: CGFloat = 14
+    static let primaryScrollTopPadding: CGFloat = 12
+    static let primaryScrollBottomReserve: CGFloat = 188
+    static let todayScrollBottomReserve: CGFloat = 112
+    static let topSafeAreaScrimExtra: CGFloat = 10
 
     // MARK: - Tab Bar
 
@@ -130,6 +134,10 @@ extension View {
 
     func pageBackground() -> some View {
         background(DS.background)
+    }
+
+    func topSafeAreaScrim() -> some View {
+        modifier(TopSafeAreaScrim())
     }
 
     func thinkingCardSurface(type: ThinkingCardType, isExcluded: Bool) -> some View {
@@ -252,6 +260,20 @@ extension View {
                     RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
                         .stroke(isHighlighted ? strokeColor : DS.caution.opacity(0.18), lineWidth: isHighlighted ? 1.5 : 1)
                 )
+        }
+    }
+}
+
+struct TopSafeAreaScrim: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            GeometryReader { proxy in
+                DS.background
+                    .frame(height: proxy.safeAreaInsets.top + DS.topSafeAreaScrimExtra)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .ignoresSafeArea(edges: .top)
+            }
+            .allowsHitTesting(false)
         }
     }
 }

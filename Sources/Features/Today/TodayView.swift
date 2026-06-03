@@ -42,8 +42,8 @@ struct TodayView: View {
                         }
                     }
                     .padding(.horizontal, DS.pagePadding)
-                    .padding(.top, 12)
-                    .padding(.bottom, 112)
+                    .padding(.top, DS.primaryScrollTopPadding)
+                    .padding(.bottom, DS.todayScrollBottomReserve)
                 }
                 .scrollIndicators(.hidden)
                 .pageBackground()
@@ -52,6 +52,7 @@ struct TodayView: View {
                 }
             }
         }
+        .topSafeAreaScrim()
     }
 
     // MARK: - Header

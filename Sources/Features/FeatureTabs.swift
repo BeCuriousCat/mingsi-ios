@@ -1258,7 +1258,7 @@ struct ProjectsView: View {
                     }
                     .padding(.horizontal, DS.pagePadding)
                     .padding(.top, 18)
-                    .padding(.bottom, 120)
+                    .padding(.bottom, DS.primaryScrollBottomReserve)
                 }
             }
             .scrollIndicators(.hidden)
@@ -1269,6 +1269,7 @@ struct ProjectsView: View {
             }
         }
         .background(DS.background.ignoresSafeArea())
+        .topSafeAreaScrim()
     }
 
     private var projectHeader: some View {
@@ -2034,10 +2035,14 @@ struct SettingsView: View {
     }
 
     private func togglePromptAuditGroup(_ kind: PromptRunAuditGroupKind) {
-        if expandedPromptAuditGroups.contains(kind) {
-            expandedPromptAuditGroups.remove(kind)
-        } else {
-            expandedPromptAuditGroups.insert(kind)
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if expandedPromptAuditGroups.contains(kind) {
+                expandedPromptAuditGroups.remove(kind)
+            } else {
+                expandedPromptAuditGroups.insert(kind)
+            }
         }
     }
 
@@ -2078,10 +2083,23 @@ private struct SettingsTextField: UIViewRepresentable {
     @Binding var text: String
     var isSecure: Bool = false
 
+    private static let fieldBackgroundColor = UIColor { traitCollection in
+        if traitCollection.userInterfaceStyle == .dark {
+            return UIColor(red: 0.060, green: 0.058, blue: 0.052, alpha: 1.000)
+        }
+        return UIColor.secondarySystemBackground
+    }
+
+    private static let placeholderColor = UIColor { traitCollection in
+        if traitCollection.userInterfaceStyle == .dark {
+            return UIColor(red: 0.560, green: 0.548, blue: 0.500, alpha: 1.000)
+        }
+        return UIColor.placeholderText
+    }
+
     func makeUIView(context: Context) -> UITextField {
         let textField = UITextField()
         textField.delegate = context.coordinator
-        textField.placeholder = placeholder
         textField.isSecureTextEntry = isSecure
         textField.borderStyle = .roundedRect
         textField.autocorrectionType = .no
@@ -2092,17 +2110,28 @@ private struct SettingsTextField: UIViewRepresentable {
         textField.font = UIFont.preferredFont(forTextStyle: .subheadline)
         textField.adjustsFontForContentSizeCategory = true
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        applyStyle(to: textField)
         return textField
     }
 
     func updateUIView(_ textField: UITextField, context: Context) {
-        textField.placeholder = placeholder
+        applyStyle(to: textField)
         if textField.isSecureTextEntry != isSecure {
             textField.isSecureTextEntry = isSecure
         }
         if textField.text != text {
             textField.text = text
         }
+    }
+
+    private func applyStyle(to textField: UITextField) {
+        textField.textColor = UIColor.label
+        textField.tintColor = UIColor(DS.accent)
+        textField.backgroundColor = Self.fieldBackgroundColor
+        textField.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: Self.placeholderColor]
+        )
     }
 
     func makeCoordinator() -> Coordinator {
@@ -2159,12 +2188,13 @@ struct FeatureContainer<Content: View>: View {
                     }
                     .padding(.horizontal, DS.pagePadding)
                 }
-                .padding(.top, 12)
-                .padding(.bottom, 120)
+                .padding(.top, DS.primaryScrollTopPadding)
+                .padding(.bottom, DS.primaryScrollBottomReserve)
             }
             .scrollIndicators(.hidden)
             .background(DS.background.ignoresSafeArea())
         }
+        .topSafeAreaScrim()
     }
 }
 
@@ -4333,7 +4363,7 @@ private struct PromptRunAuditGroupSection: View {
     let onToggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
+        VStack(alignment: .leading, spacing: 8) {
             Button(action: onToggle) {
                 HStack(spacing: 8) {
                     Image(systemName: group.kind.systemImage)
@@ -4351,10 +4381,10 @@ private struct PromptRunAuditGroupSection: View {
 
                     Spacer(minLength: 8)
 
-                    Image(systemName: "chevron.down")
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
-                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .frame(width: 12)
                 }
                 .contentShape(Rectangle())
             }
@@ -4366,8 +4396,11 @@ private struct PromptRunAuditGroupSection: View {
                         PromptRunAuditRow(run: run)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
         }
         .padding(10)
         .background(DS.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
@@ -4375,7 +4408,6 @@ private struct PromptRunAuditGroupSection: View {
             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
-        .animation(.easeInOut(duration: 0.16), value: isExpanded)
     }
 }
 
