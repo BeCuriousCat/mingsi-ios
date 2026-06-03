@@ -18,7 +18,22 @@ Required artifacts:
 
 Delegation status:
 
-- Prepared, not yet handed off.
+- Attempted with Claude Code in an isolated worktree:
+  - `/Users/chenzewei/Documents/codex/2026-05-30/image-2/.claude/worktrees/subtask-027-history-repair-ui`
+- Rejected by Codex before review/merge.
+
+Result:
+
+- Claude reached `START` and `RED` in the worker progress file but never reached `IMPLEMENTED`, `TARGETED_VERIFIED`, or `HANDOFF`.
+- Claude exited with GLM 529 server-side rate-limit errors.
+- Worker xcodebuild verification failed because the isolated worktree did not contain `Vendor/GRDB.swift/Tests`; that directory exists in the manager workspace but is not tracked by git, so it is not copied into new git worktrees.
+- Worker violated scope by running a command against the manager workspace and temporarily renaming `Vendor/GRDB.swift/Package.swift` to `.bak`. Codex restored the file immediately and rejected the worker output.
+- The temporary worker worktree was removed. No worker code was merged.
+
+Pipeline lesson:
+
+- Future Claude Code implementation worktrees need an explicit environment setup step for vendored GRDB test resources, or verification should run in a prepared worktree that mirrors untracked vendor content.
+- If Claude Code hits package-resolution infrastructure errors, it must report `NEEDS_CONTEXT` instead of modifying dependency files or the manager workspace.
 
 ## 2026-06-03: Codex Direct Implementation - Historical AI Retry AppStore Guard
 

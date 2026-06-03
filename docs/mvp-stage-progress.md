@@ -39,7 +39,8 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 3. Growth report explanations need continued drilldown polish.
 4. Historical AI retry needs clear History UI entry points, candidate review presentation, and full downstream-evidence acceptance guards beyond confirmed cards.
 5. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
-6. Process files should stay updated after each implementation or delegation slice.
+6. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
+7. Process files should stay updated after each implementation or delegation slice.
 
 ## Current Recommended Next Slice
 
