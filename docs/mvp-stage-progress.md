@@ -33,13 +33,14 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Added historical AI retry AppStore guard/use-case actions for `organizeCards`. Historical retry now reconstructs the old DailyEntry input, calls the existing Today AI service, stores regenerated cards as a reviewable candidate payload, leaves current-day cards unchanged, rejects unsupported prompts, and blocks candidate acceptance when confirmed cards already exist.
 - Hardened live GLM behavior for user-reported AI instability: local prompts now default to Simplified Chinese while following the user's input language, `DirectGLMClient` retries recoverable 429/529/5xx responses for both normal and SSE calls, and AppStore exposes an AI busy state that disables duplicate Today/background retry actions.
 - Added local History repair helper coverage for candidate payload preview decoding, candidate status labels, and `organizeCards`-only historical retry support. This unblocks test compilation for Subtask 027 but does not complete the full History repair UI.
+- Completed Subtask 027 History repair UI via Claude Code delegation plus Codex acceptance fix. History day detail now exposes `历史 AI 修复`, loads unresolved prompt failures and historical retry candidates, lets supported `organizeCards` failures generate candidate cards, shows candidate previews/statuses, and supports accept/dismiss review actions. Codex added a downstream-evidence repair guard so warnings cover confirmed cards, tasks, verification, principles, project links, growth contributions, and lens/session summaries.
 
 ## Known Remaining Work
 
 1. Visual QA across Today, History, Projects, Growth, Settings on iPhone 17 simulator, including dark mode.
 2. Project overview hierarchy and merge audit display need additional taste and evidence review.
 3. Growth report explanations need continued drilldown polish.
-4. Historical AI retry needs clear History UI entry points, candidate review presentation, and full downstream-evidence acceptance guards beyond confirmed cards.
+4. Historical AI retry UI now exists for History day detail, but still needs real simulator visual QA and live GLM failure-path confirmation.
 5. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
 6. AI repair and retry UI still needs clearer per-run completion/failure feedback in History and Settings beyond the global Today/banner message.
 7. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
@@ -47,9 +48,9 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Current Recommended Next Slice
 
-After Settings AI audit grouping, the Subtask 025 audit, Subtask 026 PRD, the candidate repository foundation, and the AppStore retry guard, the next bounded slice should be:
+After Settings AI audit grouping, historical retry persistence/AppStore guard, and Subtask 027 History repair UI, the next bounded slice should be:
 
-- Fixed-contract History repair UI for historical `organizeCards` failures and candidate review, using the new AppStore actions.
+- Real simulator visual QA across Today, History, Projects, Growth, Settings, with special attention to History repair rows, dark mode readability, and long historical candidate lists.
 
 Secondary candidates:
 

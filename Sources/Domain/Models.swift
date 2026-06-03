@@ -807,6 +807,14 @@ struct HistoryRecord: Identifiable, Hashable {
         lensSession != nil || !growthContributions.isEmpty || !projectLinks.isEmpty
     }
 
+    var hasHistoricalRepairBlockingEvidence: Bool {
+        hasCardEvidence ||
+            hasTaskEvidence ||
+            hasVerificationEvidence ||
+            hasPrincipleEvidence ||
+            hasSummaryEvidence
+    }
+
     var sourceIds: [String] {
         var ids: [String] = [draft.id.uuidString]
         ids.append(contentsOf: cards.map { $0.id.uuidString })

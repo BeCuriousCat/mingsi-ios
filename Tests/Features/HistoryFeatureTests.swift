@@ -178,6 +178,52 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertFalse(record.hasCardEvidence)
     }
 
+    func testHistoryRecordRepairBlockingEvidence_includesConfirmedCardsAndDownstreamEvidence() {
+        let draft = DailyEntryDraft(rawText: "Repair guard", state: .sessionComplete)
+
+        let withConfirmedCard = HistoryRecord(
+            draft: draft,
+            cards: [
+                ThinkingCard(type: .fact, title: "Confirmed", body: "Durable evidence", isConfirmed: true)
+            ]
+        )
+        let withQuest = HistoryRecord(
+            draft: draft,
+            quests: [
+                Quest(
+                    type: .main,
+                    title: "Follow up",
+                    whyItMatters: "Downstream task",
+                    completionCriteria: "A visible result exists",
+                    expectedResistance: "Time pressure",
+                    reflectionQuestion: "What will prove this worked?"
+                )
+            ]
+        )
+        let withVerification = HistoryRecord(
+            draft: draft,
+            verification: Verification(
+                questId: UUID(),
+                questTitle: "Follow up",
+                sourceDailyEntryId: draft.id,
+                completion: .done,
+                valueRating: .high,
+                calibrationNote: "Evidence exists"
+            )
+        )
+        let withoutBlockingEvidence = HistoryRecord(
+            draft: draft,
+            cards: [
+                ThinkingCard(type: .fact, title: "Pending", body: "Not confirmed")
+            ]
+        )
+
+        XCTAssertTrue(withConfirmedCard.hasHistoricalRepairBlockingEvidence)
+        XCTAssertTrue(withQuest.hasHistoricalRepairBlockingEvidence)
+        XCTAssertTrue(withVerification.hasHistoricalRepairBlockingEvidence)
+        XCTAssertFalse(withoutBlockingEvidence.hasHistoricalRepairBlockingEvidence)
+    }
+
     // MARK: - History search and filtering
 
     func testHistorySearchQuery_matchesCardBodyText() {

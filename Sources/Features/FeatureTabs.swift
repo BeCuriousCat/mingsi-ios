@@ -46,6 +46,7 @@ struct HistoryView: View {
     @State private var selectedQuestStatusFilter: QuestStatus?
     @State private var repairablePromptRuns: [PromptRun] = []
     @State private var isLoadingRepairablePromptRuns = false
+    @State private var historicalRetryCandidates: [HistoricalRetryCandidate] = []
 
     private var records: [HistoryRecord] {
         if store.historyRecords.isEmpty {
@@ -486,9 +487,12 @@ struct HistoryView: View {
     private func loadRepairablePromptRunsForVisibleRecord() async {
         let dailyEntryId = visibleRecord.draft.id
         isLoadingRepairablePromptRuns = true
-        let runs = await store.repairablePromptRuns(for: dailyEntryId)
+        async let runs = store.repairablePromptRuns(for: dailyEntryId)
+        async let candidates = store.historicalRetryCandidates(for: dailyEntryId)
+        let (loadedRuns, loadedCandidates) = await (runs, candidates)
         if visibleRecord.draft.id == dailyEntryId {
-            repairablePromptRuns = runs
+            repairablePromptRuns = loadedRuns
+            historicalRetryCandidates = loadedCandidates
             isLoadingRepairablePromptRuns = false
         }
     }
@@ -527,6 +531,10 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var aiRepairSection: some View {
+        let unresolvedRuns = repairablePromptRuns.filter { run in
+            !historicalRetryCandidates.contains { $0.failedPromptRunId == run.id }
+        }
+
         if isLoadingRepairablePromptRuns {
             HStack(spacing: 8) {
                 ProgressView()
@@ -537,27 +545,26 @@ struct HistoryView: View {
                 Spacer()
             }
             .summarySurface()
-        } else if !repairablePromptRuns.isEmpty {
+        } else if !repairablePromptRuns.isEmpty || !historicalRetryCandidates.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(DS.caution)
-                    Text("本日有 \(repairablePromptRuns.count) 个 AI 结果可检查")
+                    Text("历史 AI 修复")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
                 }
 
-                Text(historyRepairGuidance)
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
-
                 VStack(spacing: 8) {
-                    ForEach(repairablePromptRuns) { run in
-                        HistoryPromptRepairRow(run: run)
+                    ForEach(unresolvedRuns) { run in
+                        historyRepairableRunRow(run: run)
                     }
+                }
+
+                ForEach(historicalRetryCandidates) { candidate in
+                    historicalCandidateRow(candidate: candidate)
                 }
 
                 if visibleRecord.draft.id == store.todayDraft.id {
@@ -575,11 +582,229 @@ struct HistoryView: View {
         }
     }
 
-    private var historyRepairGuidance: String {
-        if visibleRecord.draft.id == store.todayDraft.id {
-            return "这是当前复盘草稿，可以使用顶部补跑或这里的后台重试。若已有已确认卡片，整理卡片补跑会被保护性跳过，避免覆盖内容。"
+    @ViewBuilder
+    private func historyRepairableRunRow(run: PromptRun) -> some View {
+        let promptName = PromptID(rawValue: run.promptId)?.displayName ?? run.promptId
+        let canRetry = HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: run.promptId)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(promptName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                if canRetry {
+                    Text("可修复")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DS.caution)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(DS.caution.opacity(0.10), in: Capsule())
+                } else {
+                    Text("暂不支持")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DS.mutedInk)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(DS.mutedInk.opacity(0.08), in: Capsule())
+                }
+                Spacer(minLength: 8)
+                Text(run.createdAt.mingsiShortDate)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            Text(run.error?.isEmpty == false ? run.error ?? "" : run.requestSummary)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .lineLimit(2)
+
+            if canRetry {
+                Button {
+                    Task {
+                        await store.startHistoricalOrganizeCardsRetry(failedPromptRunId: run.id)
+                        await loadRepairablePromptRunsForVisibleRecord()
+                    }
+                } label: {
+                    Label("生成候选卡片", systemImage: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(DS.accent)
+            } else {
+                Text("暂不支持此类历史修复")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk.opacity(0.7))
+            }
         }
-        return "这是一条历史记录。当前版本先展示失败原因和可修复类型；为避免覆盖已确认卡片，跨日直接重跑还未开放。需要重新生成时，先把本日原始输入复制到今日补充流程。"
+        .padding(10)
+        .background(DS.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(canRetry ? DS.caution.opacity(0.16) : DS.hairline, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func historicalCandidateRow(candidate: HistoricalRetryCandidate) -> some View {
+        let previews = HistoryRepairCardPreview.decode(from: candidate.candidatePayloadJSON)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(candidate.status.historyRepairTitle)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(candidateStatusColor(candidate.status))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(candidateStatusColor(candidate.status).opacity(0.10), in: Capsule())
+                Text(candidate.promptId.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Spacer(minLength: 8)
+                Text(candidate.createdAt.mingsiShortDate)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            if !candidate.reconstructedInputSummary.isEmpty {
+                Text(candidate.reconstructedInputSummary)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(2)
+            }
+
+            if let error = candidate.error, !error.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(DS.caution)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                }
+            }
+
+            if let blockedReason = candidate.blockedReason, !blockedReason.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                    Text(blockedReason)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                }
+            }
+
+            if !previews.isEmpty {
+                VStack(spacing: 6) {
+                    Text("候选卡片")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                    ForEach(Array(previews.enumerated()), id: \.offset) { _, preview in
+                        candidateCardPreviewRow(preview: preview)
+                    }
+                }
+            }
+
+            if visibleRecord.hasHistoricalRepairBlockingEvidence {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.caption2)
+                        .foregroundStyle(DS.note)
+                    Text("该记录已有已确认卡片或下游证据，接受候选可能被阻断。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
+            }
+
+            if candidate.status == .candidateReady {
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await store.acceptHistoricalRetryCandidate(candidate.id)
+                            await loadRepairablePromptRunsForVisibleRecord()
+                        }
+                    } label: {
+                        Label("接受候选", systemImage: "checkmark.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(DS.accent)
+
+                    Button {
+                        Task {
+                            await store.dismissHistoricalRetryCandidate(candidate.id)
+                            await loadRepairablePromptRunsForVisibleRecord()
+                        }
+                    } label: {
+                        Label("忽略本次结果", systemImage: "xmark.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(10)
+        .background(DS.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(candidateStatusColor(candidate.status).opacity(0.20), lineWidth: 1)
+        )
+    }
+
+    private func candidateCardPreviewRow(preview: HistoryRepairCardPreview) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(DS.mutedInk.opacity(0.30))
+                .frame(width: 3, height: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(preview.type)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(preview.priority)
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk.opacity(0.6))
+                }
+                Text(preview.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text(preview.body)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(8)
+        .background(DS.background, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+
+    private func candidateStatusColor(_ status: HistoricalRetryCandidateStatus) -> Color {
+        switch status {
+        case .pending, .retrying:
+            return DS.mutedInk
+        case .candidateReady:
+            return DS.accent
+        case .accepted:
+            return DS.success
+        case .dismissed:
+            return DS.mutedInk
+        case .blocked:
+            return DS.caution
+        case .failed:
+            return DS.caution
+        }
     }
 
     // MARK: - Raw Input

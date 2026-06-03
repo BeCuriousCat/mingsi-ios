@@ -499,6 +499,15 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func historicalRetryCandidates(for dailyEntryId: UUID) async -> [HistoricalRetryCandidate] {
+        guard let historicalRetryCandidateRepository else { return [] }
+        do {
+            return try await historicalRetryCandidateRepository.candidates(for: dailyEntryId)
+        } catch {
+            return []
+        }
+    }
+
     func startHistoricalOrganizeCardsRetry(failedPromptRunId: UUID) async {
         guard let promptRunRepository else {
             todayLoopMessage = "历史 AI 修复暂不可用。"

@@ -2,6 +2,57 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-03: Claude Code Delegation Accepted - Subtask 027 History Repair UI
+
+Reason:
+
+- Historical repair UI was a bounded SwiftUI integration slice with fixed AppStore actions, fixed repository semantics, and no schema/prompt/LLM changes.
+- Claude Code was used for implementation in an isolated worker worktree while Codex retained manager, reviewer, and verifier ownership.
+
+Worker artifacts:
+
+- Worker path: `/Users/chenzewei/Documents/codex/2026-05-30/image-2/.claude/worktrees/subtask-027-history-repair-ui`
+- Worker progress: `docs/subtasks/027-history-repair-ui-progress.md`
+- Worker log: `docs/subtasks/logs/027-claude-run-escalated.jsonl`
+- Final worker token: `DONE`
+
+Worker result:
+
+- Added `AppStore.historicalRetryCandidates(for:)` as a read-only query.
+- Added History `历史 AI 修复` UI for unresolved failures and historical retry candidates.
+- Candidate rows show status, reconstructed input summary, card previews, error/blocked messages, and accept/dismiss actions.
+- Worker reported 28 HistoryFeatureTests passed, 95 AppStoreStateMachineTests passed, full build succeeded, and `git diff --check` passed.
+
+Codex acceptance decision:
+
+- Accepted the worker implementation after review.
+- Added a Codex manager TDD fix because the worker warning checked only `hasCardEvidence`; the PRD required confirmed cards or downstream evidence.
+- Added `HistoryRecord.hasHistoricalRepairBlockingEvidence` and made History repair candidate warning use it.
+- Added `testHistoryRecordRepairBlockingEvidence_includesConfirmedCardsAndDownstreamEvidence`.
+
+Fresh Codex verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRecordRepairBlockingEvidence_includesConfirmedCardsAndDownstreamEvidence test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- New downstream-evidence guard test passed: 1 test, 0 failures.
+- HistoryFeatureTests passed: 29 tests, 0 failures.
+- AppStoreStateMachineTests passed: 95 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Pipeline lesson:
+
+- Delegation was useful after the task was bounded and the worker worktree was prepared with vendored GRDB test resources.
+- The manager still needed product-contract review; Claude missed one PRD nuance around downstream evidence.
+
 ## 2026-06-03: Claude Code Delegation Relaunch Prepared - Subtask 027 History Repair UI
 
 Reason:
@@ -22,6 +73,21 @@ Manager constraints:
 - Do not touch migrations, prompt specs, LLM clients, or schema.
 - Use an isolated worktree and copy untracked vendored GRDB test resources if needed before verification.
 - Codex will not inspect or merge partial output before `HANDOFF`.
+
+Delegation status:
+
+- Attempted in isolated worktree:
+  - `/Users/chenzewei/Documents/codex/2026-05-30/image-2/.claude/worktrees/subtask-027-history-repair-ui`
+- Codex copied untracked `Vendor/GRDB.swift/Tests` into the worker worktree before launch to avoid the previous package-resolution failure.
+- Claude Code did not reach `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, or `HANDOFF`.
+- Final worker log error: `API Error: Unable to connect to API (FailedToOpenSocket)`.
+- No worker code was accepted or merged.
+
+Manager decision:
+
+- Treat this as an infrastructure/model-connectivity failure, not an implementation result.
+- Keep Subtask 027 open.
+- Next attempt should either run after Claude Code connectivity is healthy or Codex should implement the bounded UI slice directly if repeated delegation startup failures continue.
 
 ## 2026-06-03: Codex Direct Implementation - AI Language, Busy State, And Recoverable GLM Retry
 

@@ -260,6 +260,47 @@ Changed areas:
 Commands run:
 
 ```bash
+## 2026-06-03: Subtask 027 History Repair UI Acceptance
+
+Scope:
+
+- Accept Claude Code worker handoff for fixed-contract History repair UI.
+- Add Codex manager fix so historical repair warnings cover confirmed cards and downstream evidence, not only confirmed cards.
+- Verify the accepted implementation from the manager worktree.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Sources/Domain/Models.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/subtasks/027-history-repair-ui-progress.md`
+- `docs/mvp-stage-progress.md`
+- `docs/agent-delegation-log.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests/testHistoryRecordRepairBlockingEvidence_includesConfirmedCardsAndDownstreamEvidence test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- New RED/GREEN downstream-evidence guard test passed: 1 test, 0 failures.
+- HistoryFeatureTests passed: 29 tests, 0 failures.
+- AppStoreStateMachineTests passed: 95 tests, 0 failures.
+- App build succeeded.
+- Whitespace check passed.
+
+Residual risk:
+
+- This was code/test verified. Manual simulator QA should still inspect History repair presentation, dark mode contrast, and long failed/candidate lists.
+
 xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests/testHistoryFilterChipMetrics_keepAdvancedFilterWidthStable test
 xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
 xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
