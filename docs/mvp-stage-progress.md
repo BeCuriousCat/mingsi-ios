@@ -1,6 +1,6 @@
 # MingSi MVP Stage Progress
 
-Date: 2026-06-03
+Date: 2026-06-05
 
 ## Summary
 
@@ -46,11 +46,13 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 035 Prompt inspector read-only view via Claude Code delegation plus Codex boundary fix. Settings now has a collapsed `Prompt 模板` inspector for current first-party prompt templates, prompt/mode metadata, and selectable System/User text without exposing secrets or sending model requests.
 - Completed Subtask 036 AI repair status feedback polish via Claude Code delegation plus Codex copy fix. History repair rows and Settings PromptRun audit rows now explain whether a run is success evidence, repairable failure, audit-only failure, reviewable candidate, terminal result, blocked, or failed without changing retry semantics.
 - Completed Subtask 037 Project merge audit display via Claude Code delegation. Pending merge rows now explain evidence refs and merge consequences, and Project Detail shows retained `mergeHistory` as a conditional `合并审计` section without changing merge behavior.
+- Completed Subtask 038 Growth report drilldown polish via Claude Code delegation plus Codex acceptance fix. Growth report review rows now show metric title, positive/negative accepted contribution counts, the leading contribution, and stored metric reason or conservative fallback copy; metric detail keeps evidence navigation while showing fallback reason text when accepted contributions exist.
+- Verified the Subtask 038 delegation relaunch-safety follow-up. The wrapper now preserves worker progress on relaunch unless `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1`, recognizes `## HANDOFF`, and keeps `status` / `wait` conclusion-first with raw/event logs retained only for diagnostics.
 
 ## Known Remaining Work
 
 1. Project overview hierarchy still needs additional taste and evidence review; merge audit display has been improved but can receive later visual QA.
-2. Growth report explanations need continued drilldown polish.
+2. Growth report drilldown has Subtask 038 coverage; deeper longitudinal comparison can be added later only with enough evidence.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
 4. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
 5. Process files should stay updated after each implementation or delegation slice.
@@ -61,7 +63,6 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 After Subtask 029 visual acceptance, the next bounded slice should be chosen from:
 
 - Project overview hierarchy polish.
-- Growth report explanation/drilldown polish.
 - Live GLM failure-path confirmation for History repair.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

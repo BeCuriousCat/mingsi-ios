@@ -1772,6 +1772,7 @@ private struct GrowthReportReviewPanel: View {
                         ForEach(groupedContributions, id: \.metric) { group in
                             GrowthReportMetricEvidenceRow(
                                 metric: group.metric,
+                                metricReason: snapshot.metricReasons[group.metric.rawValue],
                                 contributions: group.contributions,
                                 onTap: {
                                     onSelectMetric(group.metric)
@@ -1833,18 +1834,9 @@ private struct GrowthReportLedgerChip: View {
 
 private struct GrowthReportMetricEvidenceRow: View {
     let metric: GrowthMetric
+    let metricReason: String?
     let contributions: [MetricContribution]
     let onTap: () -> Void
-
-    private var metricTitle: String {
-        switch metric {
-        case .clarity: return "清晰度"
-        case .valueJudgment: return "价值判断"
-        case .executionReliability: return "执行可靠性"
-        case .calibration: return "校准"
-        case .reflectionDepth: return "反思深度"
-        }
-    }
 
     private var positiveCount: Int {
         contributions.filter { $0.direction == .positive }.count
@@ -1852,10 +1844,6 @@ private struct GrowthReportMetricEvidenceRow: View {
 
     private var negativeCount: Int {
         contributions.filter { $0.direction == .negative }.count
-    }
-
-    private var leadingContribution: MetricContribution? {
-        contributions.max { abs($0.delta) < abs($1.delta) }
     }
 
     var body: some View {
@@ -1867,17 +1855,24 @@ private struct GrowthReportMetricEvidenceRow: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 8) {
-                        Text(metricTitle)
+                        Text(growthMetricDisplayTitle(metric))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
-                        Text("+\(positiveCount) / -\(negativeCount)")
+                        Text(growthContributionCountSummary(contributions))
                             .font(.caption.monospacedDigit().weight(.semibold))
                             .foregroundStyle(DS.mutedInk)
                     }
 
-                    if let leadingContribution {
-                        Text(leadingContribution.title)
+                    if let leading = growthLeadingContribution(contributions) {
+                        Text(leading.title)
                             .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .lineLimit(2)
+                    }
+
+                    if let reason = growthMetricReasonDisplay(metricReason) ?? growthMetricFallbackReason(reason: metricReason, contributions: contributions) {
+                        Text(reason)
+                            .font(.caption2)
                             .foregroundStyle(DS.mutedInk)
                             .lineLimit(2)
                     }
@@ -4145,13 +4140,7 @@ struct MetricDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var metricTitle: String {
-        switch metric {
-        case .clarity: return "清晰度"
-        case .valueJudgment: return "价值判断"
-        case .executionReliability: return "执行可靠性"
-        case .calibration: return "校准"
-        case .reflectionDepth: return "反思深度"
-        }
+        growthMetricDisplayTitle(metric)
     }
 
     private var metricNote: String {
@@ -4308,12 +4297,21 @@ struct MetricDetailSheet: View {
 
     @ViewBuilder
     private var reasonSection: some View {
-        if let reason, !reason.isEmpty {
+        if let displayReason = growthMetricReasonDisplay(reason) {
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel("判断依据")
-                Text(reason)
+                Text(displayReason)
                     .font(.subheadline)
                     .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .summarySurface()
+        } else if let fallback = growthMetricFallbackReason(reason: reason, contributions: contributions) {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel("判断依据")
+                Text(fallback)
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .summarySurface()
@@ -5028,6 +5026,39 @@ func candidateEvidenceSummary(_ candidate: ProjectMergeCandidate) -> String {
 
 func candidateConsequenceLine() -> String {
     "目标议题保持活跃；源议题归档；已有证据链接保留。"
+}
+
+// MARK: - Growth report drilldown helpers
+
+func growthMetricDisplayTitle(_ metric: GrowthMetric) -> String {
+    switch metric {
+    case .clarity: return "清晰度"
+    case .valueJudgment: return "价值判断"
+    case .executionReliability: return "执行可靠性"
+    case .calibration: return "校准"
+    case .reflectionDepth: return "反思深度"
+    }
+}
+
+func growthContributionCountSummary(_ contributions: [MetricContribution]) -> String {
+    let positive = contributions.filter { $0.direction == .positive }.count
+    let negative = contributions.filter { $0.direction == .negative }.count
+    return "+\(positive) / -\(negative)"
+}
+
+func growthLeadingContribution(_ contributions: [MetricContribution]) -> MetricContribution? {
+    contributions.max { abs($0.delta) < abs($1.delta) }
+}
+
+func growthMetricReasonDisplay(_ reason: String?) -> String? {
+    guard let reason else { return nil }
+    let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+func growthMetricFallbackReason(reason: String?, contributions: [MetricContribution]) -> String? {
+    guard growthMetricReasonDisplay(reason) == nil, !contributions.isEmpty else { return nil }
+    return "根据已接受贡献归因，点击查看来源证据。"
 }
 
 func mergeAuditDisplayLinesIfNonEmpty(from history: [String]) -> [String]? {

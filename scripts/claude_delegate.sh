@@ -24,6 +24,7 @@ environment overrides:
   CLAUDE_DELEGATE_TASK_ROOT=docs/subtasks
   CLAUDE_DELEGATE_LOG_DIR=$CLAUDE_DELEGATE_TASK_ROOT/logs
   CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540 # default auto wait backoff in seconds
+  CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0 # set 1 only to intentionally reset worker progress
 
 notes:
   In non-interactive shells, tmux launch falls back to print mode.
@@ -90,6 +91,7 @@ mode="${CLAUDE_DELEGATE_MODE:-tmux}"
 tmux_style="${CLAUDE_DELEGATE_TMUX_STYLE:-classic}"
 max_budget="${CLAUDE_DELEGATE_MAX_BUDGET_USD:-30.00}"
 show_flow_logs="${CLAUDE_DELEGATE_SHOW_FLOW_LOGS:-0}"
+overwrite_worker_progress="${CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS:-0}"
 effective_mode="$mode"
 
 resolve_effective_mode() {
@@ -161,7 +163,13 @@ current_progress_path() {
 handoff_reached() {
   local progress_file="$1"
   [[ -f "$progress_file" ]] || return 1
-  rg -q '^(Status:[[:space:]]*(HANDOFF|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(reached|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|###[[:space:]]+HANDOFF\b)' "$progress_file"
+  rg -q '^(Status:[[:space:]]*(HANDOFF|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(reached|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|##[[:space:]]+HANDOFF\b)' "$progress_file"
+}
+
+progress_has_checkpoint() {
+  local progress_file="$1"
+  [[ -f "$progress_file" ]] || return 1
+  rg -q '^(Status:[[:space:]]*(START|IN_PROGRESS|RED|IMPLEMENTED|TARGETED_VERIFIED|HANDOFF|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED|CODEX_REVIEWED|CODEX_ACCEPTED)|##[[:space:]]+(START|RED|IMPLEMENTED|TARGETED_VERIFIED|HANDOFF)\b)' "$progress_file"
 }
 
 progress_fingerprint() {
@@ -211,18 +219,37 @@ copy_repo_file_to_worker() {
   cp "$repo_root/$rel_path" "$worker_path/$rel_path"
 }
 
+copy_progress_file_to_worker() {
+  local rel_path
+  local worker_progress
+  rel_path="$(repo_relative_path "$1")"
+  [[ -f "$repo_root/$rel_path" ]] || return
+  worker_progress="$worker_path/$rel_path"
+  mkdir -p "$worker_path/$(dirname "$rel_path")"
+  if [[ "$overwrite_worker_progress" != "1" ]] && progress_has_checkpoint "$worker_progress"; then
+    printf '{"event":"worker_progress_preserved","time":"%s","progress_file":"%s","reason":"existing-worker-checkpoints","overwrite_env":"%s"}\n' \
+      "$(timestamp)" "$rel_path" "$overwrite_worker_progress" >> "$event_log"
+    return
+  fi
+  cp "$repo_root/$rel_path" "$worker_progress"
+}
+
 sync_worker_task_docs() {
   local prompt_file="$1"
   local progress_file="$2"
+  local progress_rel
+  progress_rel="$(repo_relative_path "$progress_file")"
   copy_repo_file_to_worker "scripts/claude_delegate.sh"
   copy_repo_file_to_worker "scripts/claude_event_bridge.sh"
   copy_repo_file_to_worker "$prompt_file"
-  copy_repo_file_to_worker "$progress_file"
+  copy_progress_file_to_worker "$progress_file"
 
   local task_doc
   for task_doc in "$task_root_abs"/"$subtask"*; do
     [[ -f "$task_doc" ]] || continue
-    copy_repo_file_to_worker "${task_doc#$repo_root/}"
+    local task_doc_rel="${task_doc#$repo_root/}"
+    [[ "$task_doc_rel" == "$progress_rel" ]] && continue
+    copy_repo_file_to_worker "$task_doc_rel"
   done
 }
 

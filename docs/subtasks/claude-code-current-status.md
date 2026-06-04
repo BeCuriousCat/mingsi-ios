@@ -1,10 +1,25 @@
 # Claude Code Current Status
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running.
+Status: no active Claude Code worker is running; Subtask 038 is Codex-accepted and verified.
+
+Accepted slice:
+
+- Subtask: `038-growth-report-drilldown-polish`
+- Owner: Claude Code implementation candidate, Codex acceptance.
+- PRD file: `docs/subtasks/038-growth-report-drilldown-polish-prd.md`
+- Progress file: `docs/subtasks/038-growth-report-drilldown-polish-progress.md`
+- Claude prompt file: `docs/subtasks/038-growth-report-drilldown-polish-claude-prompt.md`
+- Expected event log: `docs/subtasks/logs/038-growth-report-drilldown-polish-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/038-growth-report-drilldown-polish-claude-run.jsonl`
+- Launch state: completed with `HANDOFF/DONE_WITH_CONCERNS`; Codex applied a manager acceptance fix and accepted after fresh verification.
+- Purpose: improve display-only Growth report review and metric drilldown clarity without changing AppStore Growth behavior, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, or Project semantics.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Verification: focused `HistoryFeatureTests` passed with 53 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Pipeline follow-up verified: `scripts/claude_delegate.sh` now preserves worker progress on relaunch by default, recognizes `## HANDOFF`, and `wait` found the worker handoff while keeping raw/event logs diagnostic-only.
 
 Current framework thread:
 
@@ -17,6 +32,20 @@ Current framework thread:
 - MingSi continues to use `docs/subtasks` by default, but future projects can use a different task root without changing the wrapper.
 
 Latest delegated product slice:
+
+- Subtask: `038-growth-report-drilldown-polish`
+- Owner: Claude Code implementation, Codex acceptance.
+- PRD file: `docs/subtasks/038-growth-report-drilldown-polish-prd.md`
+- Progress file: `docs/subtasks/038-growth-report-drilldown-polish-progress.md`
+- Claude prompt file: `docs/subtasks/038-growth-report-drilldown-polish-claude-prompt.md`
+- Event log: `docs/subtasks/logs/038-growth-report-drilldown-polish-events.jsonl`
+- Raw log: `docs/subtasks/logs/038-growth-report-drilldown-polish-claude-run.jsonl`
+- Launch state: completed and Codex-accepted with manager fix.
+- Purpose: improve display-only Growth report review and metric drilldown clarity without changing AppStore Growth behavior, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, or Project semantics.
+- Result: worker reached `HANDOFF/DONE_WITH_CONCERNS`; Codex accepted the helper/test direction, fixed report rows to include stored metric reason or conservative fallback copy, and reran focused tests, `git diff --check`, wrapper smoke checks, and iPhone 17 simulator build.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+
+Previous delegated product slice:
 
 - Subtask: `037-project-merge-audit-display`
 - Owner: Claude Code implementation, Codex acceptance.
@@ -151,6 +180,7 @@ Default print-mode budget guard:
 - `CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00` for ordinary bounded Claude Code coding tasks.
 - For large delegated tasks, explicitly raise to `60.00` or higher.
 - Default wait schedule is `CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540`; after those checks, if there is no `HANDOFF` and no conclusion-progress movement, Codex may intervene after classifying the stall.
+- Relaunch safety: `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0` by default; set `1` only when intentionally discarding an existing worker attempt and resetting worker progress.
 
 Do not run another broad `claude -p` implementation attempt for Subtask 029.
 

@@ -2,6 +2,74 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Prepared Growth Report Drilldown Polish - Subtask 038
+
+Reason:
+
+- The current MVP hardening priority includes Growth report explanation and drilldown polish.
+- Growth already has `MetricSnapshot` and accepted `MetricContribution` evidence, but report review rows and metric detail explanation still require too much inference from the user.
+- This is a bounded display/helper/test slice and a suitable Claude Code implementation candidate: no migration, no prompt strategy, no LLM call behavior, no AppStore orchestration, no persistence changes, and focused helper tests can prove the copy rules.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/038-growth-report-drilldown-polish-prd.md`
+- Progress: `docs/subtasks/038-growth-report-drilldown-polish-progress.md`
+- Prompt: `docs/subtasks/038-growth-report-drilldown-polish-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/038-growth-report-drilldown-polish-events.jsonl`
+  - `docs/subtasks/logs/038-growth-report-drilldown-polish-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Worker may not edit AppStore, persistence, migrations, LLM clients, Keychain, parser, prompt provider/text, Project semantics, or Growth attribution behavior.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the slice.
+
+Delegation state:
+
+- Completed and Codex-accepted with manager fix.
+
+Delegation rationale:
+
+- The task has a narrow write set, explicit helper behavior, and focused tests. Codex can stay in manager/reviewer role while Claude Code implements the local UI/helper details.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and eventually `HANDOFF`.
+- Final worker status: `DONE_WITH_CONCERNS`.
+- Worker concern: Bash became non-functional in the worker handoff session, so worker could not run `xcodebuild` or `git diff --check` there.
+- Raw log recorded real `glm-5.1` usage, including 54,504 input tokens and 6,439 output tokens, so the delegation was not a no-op.
+
+Codex review:
+
+- Accepted the worker's helper/test direction.
+- Applied a manager fix so `GrowthReportMetricEvidenceRow` also shows the stored metric reason or conservative fallback, not only counts and leading contribution.
+- Accepted the slice after fresh focused tests, `git diff --check`, wrapper smoke checks, and iPhone 17 simulator build.
+
+Delegation framework lesson:
+
+- 038 exposed a relaunch safety bug: syncing task docs on relaunch can overwrite a worker progress file with stale manager progress.
+- Codex wrote a manager-owned wrapper fix so existing worker checkpoints are preserved by default; `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1` is now required for an intentional reset.
+- Codex also widened `handoff_reached` to recognize `## HANDOFF`.
+- This framework fix was verified with `bash -n`, `--help`, `status`, and `wait`; raw/event flow logs remain diagnostic-only.
+
+Verification:
+
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test`
+- `git diff --check`
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- `scripts/claude_delegate.sh wait 038-growth-report-drilldown-polish docs/subtasks/038-growth-report-drilldown-polish-progress.md auto 1`
+
+Result:
+
+- Focused `HistoryFeatureTests` passed: 53 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- Wrapper `wait` found worker `HANDOFF`.
+
 ## 2026-06-04: Project Merge Audit Display - Subtask 037
 
 Reason:

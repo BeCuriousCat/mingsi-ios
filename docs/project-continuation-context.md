@@ -1,6 +1,6 @@
 # MingSi Project Continuation Context
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## Current Role Contract
 
@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check after commit `df2fa26 Add project merge audit display`, `git status --short` was clean.
+At the last recorded check, Subtask 038 source/docs and the delegation relaunch guard were committed in the latest local commit.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -83,6 +83,14 @@ Subtask 037 proved the wrapper on a Projects display-audit slice:
 - Worker reached `HANDOFF/DONE`.
 - Codex accepted the scoped display-only diff after focused tests, `git diff --check`, and iPhone 17 simulator build.
 
+Subtask 038 proved the wrapper on a Growth display-audit slice and exposed a framework relaunch-safety fix:
+
+- Growth report review rows now show metric title, accepted positive/negative contribution counts, strongest contribution, and stored metric reason or conservative fallback copy.
+- Metric detail keeps evidence navigation and shows fallback reason text when accepted contributions exist but no stored reason is present.
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was worker Bash failure, so Codex reran verification in the manager worktree.
+- Codex accepted after focused `HistoryFeatureTests` passed with 53 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+- The delegation wrapper now preserves worker progress on relaunch unless `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1` and recognizes `## HANDOFF`.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -111,12 +119,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `037-project-merge-audit-display`
-- PRD: `docs/subtasks/037-project-merge-audit-display-prd.md`
-- Progress: `docs/subtasks/037-project-merge-audit-display-progress.md`
-- Claude prompt: `docs/subtasks/037-project-merge-audit-display-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-037-project-merge-audit-display`
-- Result: `HANDOFF/DONE`, Codex accepted the scoped display-only diff.
+- Subtask: `038-growth-report-drilldown-polish`
+- PRD: `docs/subtasks/038-growth-report-drilldown-polish-prd.md`
+- Progress: `docs/subtasks/038-growth-report-drilldown-polish-progress.md`
+- Claude prompt: `docs/subtasks/038-growth-report-drilldown-polish-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-038-growth-report-drilldown-polish`
+- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted with a manager row-reason fix after fresh tests, diff check, wrapper smoke checks, and build.
 
 ## Subtask 029 Claude Attempts
 
@@ -151,7 +159,6 @@ Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
    - Project overview hierarchy polish.
-   - Growth report explanation / drilldown polish.
    - Live GLM failure-path confirmation for History repair.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.

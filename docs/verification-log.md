@@ -2,6 +2,56 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 038 Growth Report Drilldown Polish
+
+Scope:
+
+- Improve display-only Growth report review rows and metric detail explanation.
+- Preserve Growth attribution behavior, AppStore orchestration, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, and Project semantics.
+- Accept Claude Code worker output only after `HANDOFF`, then apply Codex manager fix and fresh verification.
+- Verify the delegation wrapper relaunch-safety follow-up exposed by this slice.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- `delegation-framework/claude-code-managed-delegation/references/conclusion-first-monitoring.md`
+- `docs/subtasks/038-growth-report-drilldown-polish-*`
+- `docs/subtasks/logs/038-growth-report-drilldown-polish-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh --help
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+scripts/claude_delegate.sh status 038-growth-report-drilldown-polish docs/subtasks/038-growth-report-drilldown-polish-progress.md
+scripts/claude_delegate.sh wait 038-growth-report-drilldown-polish docs/subtasks/038-growth-report-drilldown-polish-progress.md auto 1
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Raw log recorded real `glm-5.1` usage, including 54,504 input tokens, 6,439 output tokens, and 1,140,800 cache-read input tokens.
+- Codex accepted the helper/test direction and added a manager fix so report rows show the stored metric reason or conservative fallback copy.
+- Focused `HistoryFeatureTests` passed: 53 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- Wrapper `bash -n`, `--help`, `status`, and `wait` smoke checks passed; `wait` found worker `HANDOFF` while keeping raw/event logs diagnostic-only.
+
+Residual risk:
+
+- No simulator screenshot was captured for this small display text/helper polish; acceptance is based on source review, focused tests, wrapper smoke checks, and simulator build.
+- Worker Bash failed in the handoff session, so worker self-verification remained incomplete; Codex reran the required checks in the manager worktree before acceptance.
+
 ## 2026-06-04: Subtask 037 Project Merge Audit Display
 
 Scope:

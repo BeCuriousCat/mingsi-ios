@@ -84,6 +84,7 @@ A compatible wrapper should support:
 - isolated worktree per task
 - worker progress copied or available inside the worktree
 - `status` and `wait` commands that prefer conclusion progress
+- relaunch-safe progress sync: once worker progress contains checkpoints, do not overwrite it with a stale manager-side progress file unless an explicit reset flag is set
 - dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
 - explicit no-progress classification: after the scheduled checks, intervention is allowed only when no `HANDOFF` arrived and the conclusion progress did not move
 - an opt-in flag to inspect flow logs
@@ -103,9 +104,12 @@ Set these for non-default projects:
 CLAUDE_DELEGATE_TASK_ROOT=<path>
 CLAUDE_DELEGATE_LOG_DIR=<path>
 CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540
+CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0
 ```
 
 Use `status` for immediate inspection after launch. Use `wait` for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled.
+
+Do not reset worker progress during a relaunch just because the manager edited the prompt or PRD. The worker progress file is the conclusion source; overwriting it can erase `START`, `RED`, `IMPLEMENTED`, or `TARGETED_VERIFIED` evidence and force the manager back into flow-log diagnosis. Reset only when the manager intentionally wants to discard the current worker attempt.
 
 ## Manager Workflow
 

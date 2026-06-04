@@ -775,4 +775,102 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertTrue(line.contains("归档"), "should mention source is archived")
         XCTAssertTrue(line.contains("保留"), "should mention evidence links are retained")
     }
+
+    // MARK: - Growth report drilldown helpers
+
+    private func makeGrowthContribution(
+        metric: GrowthMetric = .clarity,
+        direction: MetricContributionDirection,
+        delta: Double,
+        title: String = "test",
+        reason: String = "reason",
+        sourceId: String = "source-id"
+    ) -> MetricContribution {
+        MetricContribution(
+            id: UUID(),
+            snapshotId: UUID(),
+            metric: metric,
+            direction: direction,
+            delta: delta,
+            title: title,
+            reason: reason,
+            sourceType: .dailyEntry,
+            sourceId: sourceId,
+            sourceDailyEntryId: UUID(),
+            userFeedback: .none,
+            candidateStatus: .accepted,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
+    func testGrowthContributionCountSummary_countsPositiveAndNegative() {
+        let contributions = [
+            makeGrowthContribution(direction: .positive, delta: 0.3),
+            makeGrowthContribution(direction: .positive, delta: 0.1),
+            makeGrowthContribution(direction: .negative, delta: -0.2)
+        ]
+
+        XCTAssertEqual(growthContributionCountSummary(contributions), "+2 / -1")
+    }
+
+    func testGrowthContributionCountSummary_emptyContributions() {
+        XCTAssertEqual(growthContributionCountSummary([]), "+0 / -0")
+    }
+
+    func testGrowthLeadingContribution_choosesLargestAbsoluteDelta() {
+        let contributions = [
+            makeGrowthContribution(direction: .positive, delta: 0.2, title: "small"),
+            makeGrowthContribution(direction: .negative, delta: -0.8, title: "large negative"),
+            makeGrowthContribution(direction: .positive, delta: 0.5, title: "medium")
+        ]
+
+        XCTAssertEqual(growthLeadingContribution(contributions)?.title, "large negative")
+    }
+
+    func testGrowthLeadingContribution_emptyReturnsNil() {
+        XCTAssertNil(growthLeadingContribution([]))
+    }
+
+    func testGrowthMetricReasonDisplay_trimsWhitespace() {
+        XCTAssertEqual(growthMetricReasonDisplay("  实际原因  "), "实际原因")
+    }
+
+    func testGrowthMetricReasonDisplay_emptyStringReturnsNil() {
+        XCTAssertNil(growthMetricReasonDisplay("  "))
+    }
+
+    func testGrowthMetricReasonDisplay_nilInputReturnsNil() {
+        XCTAssertNil(growthMetricReasonDisplay(nil))
+    }
+
+    func testGrowthFallbackReason_presentWhenReasonMissingAndContributionsExist() {
+        let contributions = [
+            makeGrowthContribution(direction: .positive, delta: 0.3)
+        ]
+
+        let fallback = growthMetricFallbackReason(reason: nil, contributions: contributions)
+
+        XCTAssertEqual(fallback, "根据已接受贡献归因，点击查看来源证据。")
+    }
+
+    func testGrowthFallbackReason_absentWhenReasonMissingAndNoContributions() {
+        XCTAssertNil(growthMetricFallbackReason(reason: nil, contributions: []))
+    }
+
+    func testGrowthFallbackReason_absentWhenReasonPresent() {
+        let contributions = [
+            makeGrowthContribution(direction: .positive, delta: 0.3)
+        ]
+
+        XCTAssertNil(growthMetricFallbackReason(reason: "有原因", contributions: contributions))
+    }
+
+    func testGrowthMetricDisplayTitle_returnsCorrectTitle() {
+        XCTAssertEqual(growthMetricDisplayTitle(.clarity), "清晰度")
+        XCTAssertEqual(growthMetricDisplayTitle(.valueJudgment), "价值判断")
+        XCTAssertEqual(growthMetricDisplayTitle(.executionReliability), "执行可靠性")
+        XCTAssertEqual(growthMetricDisplayTitle(.calibration), "校准")
+        XCTAssertEqual(growthMetricDisplayTitle(.reflectionDepth), "反思深度")
+    }
 }

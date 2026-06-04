@@ -44,6 +44,20 @@ If those checks show no `HANDOFF` and no useful conclusion-progress movement, th
 
 If conclusion progress moved during those checks, the worker is not considered silent. The manager should read the progress file first and usually allow one more check when the worker is running a named build or test loop.
 
+## Relaunch Safety
+
+Relaunches must preserve the worker-side conclusion file by default.
+
+If the manager updates a prompt after a stalled or incomplete handoff, the wrapper may sync the new prompt and PRD into the worker worktree, but it must not overwrite a worker progress file that already contains `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, or `HANDOFF`.
+
+Only reset worker progress when the manager explicitly intends to discard that attempt, for example with an override such as:
+
+```bash
+CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1
+```
+
+This keeps the conclusion layer authoritative and prevents a relaunch from erasing the very progress evidence the manager is supposed to consume.
+
 If the worker stalls before `HANDOFF`, classify the failure first:
 
 - launch failure
