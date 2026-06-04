@@ -76,6 +76,13 @@ Subtask 036 proved the wrapper on a History/Settings AI repair feedback slice:
 - Codex accepted with a manager copy fix so candidate status text does not overstate current persistence behavior.
 - Commit: `2c023b2 Polish AI repair status feedback`.
 
+Subtask 037 proved the wrapper on a Projects display-audit slice:
+
+- Pending Project merge rows now show clearer evidence refs and merge consequences.
+- Project Detail shows accepted merge history as a conditional `合并审计` section.
+- Worker reached `HANDOFF/DONE`.
+- Codex accepted the scoped display-only diff after focused tests, `git diff --check`, and iPhone 17 simulator build.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -104,12 +111,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `036-ai-repair-status-feedback`
-- PRD: `docs/subtasks/036-ai-repair-status-feedback-prd.md`
-- Progress: `docs/subtasks/036-ai-repair-status-feedback-progress.md`
-- Claude prompt: `docs/subtasks/036-ai-repair-status-feedback-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-036-ai-repair-status-feedback`
-- Result: `HANDOFF/DONE`, Codex accepted with manager copy fix, committed as `2c023b2`.
+- Subtask: `037-project-merge-audit-display`
+- PRD: `docs/subtasks/037-project-merge-audit-display-prd.md`
+- Progress: `docs/subtasks/037-project-merge-audit-display-progress.md`
+- Claude prompt: `docs/subtasks/037-project-merge-audit-display-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-037-project-merge-audit-display`
+- Result: `HANDOFF/DONE`, Codex accepted the scoped display-only diff.
 
 ## Subtask 029 Claude Attempts
 
@@ -143,7 +150,7 @@ These attempts are historical evidence only. Do not reuse the broad 029 prompt p
 Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
-   - Project overview hierarchy and merge audit display polish.
+   - Project overview hierarchy polish.
    - Growth report explanation / drilldown polish.
    - Live GLM failure-path confirmation for History repair.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.

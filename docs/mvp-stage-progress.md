@@ -45,10 +45,11 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Added dynamic delegation wait backoff guidance and wrapper support: default `wait` can use 3/6/9 minute checks before manager intervention, and now reports whether conclusion progress actually moved before allowing stall classification.
 - Completed Subtask 035 Prompt inspector read-only view via Claude Code delegation plus Codex boundary fix. Settings now has a collapsed `Prompt 模板` inspector for current first-party prompt templates, prompt/mode metadata, and selectable System/User text without exposing secrets or sending model requests.
 - Completed Subtask 036 AI repair status feedback polish via Claude Code delegation plus Codex copy fix. History repair rows and Settings PromptRun audit rows now explain whether a run is success evidence, repairable failure, audit-only failure, reviewable candidate, terminal result, blocked, or failed without changing retry semantics.
+- Completed Subtask 037 Project merge audit display via Claude Code delegation. Pending merge rows now explain evidence refs and merge consequences, and Project Detail shows retained `mergeHistory` as a conditional `合并审计` section without changing merge behavior.
 
 ## Known Remaining Work
 
-1. Project overview hierarchy and merge audit display need additional taste and evidence review.
+1. Project overview hierarchy still needs additional taste and evidence review; merge audit display has been improved but can receive later visual QA.
 2. Growth report explanations need continued drilldown polish.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
 4. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
@@ -59,7 +60,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 After Subtask 029 visual acceptance, the next bounded slice should be chosen from:
 
-- Project overview hierarchy and merge audit display polish.
+- Project overview hierarchy polish.
 - Growth report explanation/drilldown polish.
 - Live GLM failure-path confirmation for History repair.
 

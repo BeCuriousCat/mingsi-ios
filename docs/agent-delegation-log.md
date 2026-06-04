@@ -2,6 +2,62 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Project Merge Audit Display - Subtask 037
+
+Reason:
+
+- The current MVP hardening priority includes Project overview hierarchy and merge audit display polish.
+- Project merge generation and acceptance already exist, but the UI does not yet make accepted merge history or pending merge consequences explicit enough for an evidence-backed Project workspace.
+- This is a bounded display/helper/test slice and a suitable Claude Code implementation candidate: no migration, no prompt strategy, no LLM call behavior, no AppStore orchestration, no persistence changes, and focused helper tests can prove the copy rules.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/037-project-merge-audit-display-prd.md`
+- Progress: `docs/subtasks/037-project-merge-audit-display-progress.md`
+- Prompt: `docs/subtasks/037-project-merge-audit-display-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/037-project-merge-audit-display-events.jsonl`
+  - `docs/subtasks/logs/037-project-merge-audit-display-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Worker may not edit AppStore, persistence, migrations, LLM clients, Keychain, parser, prompt provider/text, Growth semantics, or project merge behavior.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the slice.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Delegation rationale:
+
+- The task has a narrow write set, explicit copy/visibility requirements, and focused testable helpers. Codex can stay in manager/reviewer role while Claude Code implements the local UI/helper details.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker updated progress through `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker reported `HANDOFF/DONE`.
+- Worker added Project merge display helpers, a conditional Project Detail `合并审计` section, clearer pending merge consequence/evidence copy, and six focused helper tests.
+
+Codex acceptance:
+
+- Accepted the worker's scoped display-only implementation.
+- Verified no AppStore, persistence, migration, prompt, parser, LLM, Keychain, or Growth semantic changes were included.
+- Noted a process issue: status output showed useful completion progress before a formal `HANDOFF`; Codex waited for the final `## HANDOFF` section before reviewing the source diff.
+
+Verification:
+
+- Focused `HistoryFeatureTests` passed: 42 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Delegation framework lesson:
+
+- `wait` can correctly distinguish "progress moved but no HANDOFF" from a silent worker. The manager should then inspect the progress file first, not raw flow logs or partial source.
+
 ## 2026-06-04: Delegation Wait Policy Refinement
 
 Reason:

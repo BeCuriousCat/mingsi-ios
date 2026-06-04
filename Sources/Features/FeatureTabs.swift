@@ -3291,6 +3291,7 @@ private struct ProjectDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 detailHeader
                 overviewSection
+                mergeAuditSection
                 projectInsightSection
                 progressSignalsSection
                 thinkingChangeSection
@@ -3363,6 +3364,22 @@ private struct ProjectDetailView: View {
             }
         }
         .summarySurface()
+    }
+
+    @ViewBuilder
+    private var mergeAuditSection: some View {
+        if let project, let lines = mergeAuditDisplayLinesIfNonEmpty(from: project.mergeHistory) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("合并审计")
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .summarySurface()
+        }
     }
 
     private var projectInsightSection: some View {
@@ -4995,6 +5012,29 @@ struct ProjectCandidateReviewRow: View {
     }
 }
 
+func mergeAuditDisplayLines(from history: [String]) -> [String] {
+    history.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+}
+
+func candidateEvidenceSummary(_ candidate: ProjectMergeCandidate) -> String {
+    let count = candidate.overlappingEvidenceRefs.count
+    if count == 0 { return "\(count) 条证据" }
+    let preview = candidate.overlappingEvidenceRefs.prefix(3)
+        .map { String($0.prefix(8)) }
+        .joined(separator: ", ")
+    return "\(count) 条证据：\(preview)"
+}
+
+func candidateConsequenceLine() -> String {
+    "目标议题保持活跃；源议题归档；已有证据链接保留。"
+}
+
+func mergeAuditDisplayLinesIfNonEmpty(from history: [String]) -> [String]? {
+    let lines = mergeAuditDisplayLines(from: history)
+    return lines.isEmpty ? nil : lines
+}
+
 struct ProjectMergeCandidateReviewRow: View {
     let candidate: ProjectMergeCandidate
     let sourceName: String
@@ -5021,7 +5061,7 @@ struct ProjectMergeCandidateReviewRow: View {
                     .foregroundStyle(DS.ink)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text("\(candidate.overlappingEvidenceRefs.count) 证据")
+                Text(candidateEvidenceSummary(candidate))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(DS.mutedInk)
             }
@@ -5031,11 +5071,10 @@ struct ProjectMergeCandidateReviewRow: View {
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if !candidate.overlappingEvidenceRefs.isEmpty {
-                Text("重叠证据：\(candidate.overlappingEvidenceRefs.prefix(3).map { String($0.prefix(8)) }.joined(separator: ", "))")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(DS.mutedInk.opacity(0.7))
-            }
+            Text(candidateConsequenceLine())
+                .font(.caption2)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
                 Button("合并") { onAccept() }

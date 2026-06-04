@@ -727,4 +727,52 @@ final class HistoryFeatureTests: XCTestCase {
         )
         XCTAssertNil(summary.summaryLine)
     }
+
+    // MARK: - Project merge audit display helpers
+
+    func testMergeAuditDisplayLines_emptyHistoryProducesNoLines() {
+        let lines = mergeAuditDisplayLines(from: [])
+        XCTAssertTrue(lines.isEmpty, "empty merge history should produce no display lines")
+    }
+
+    func testMergeAuditDisplayLines_whitespaceOnlyHistoryIsIgnored() {
+        let lines = mergeAuditDisplayLines(from: ["  ", "\t", "\n ", ""])
+        XCTAssertTrue(lines.isEmpty, "whitespace-only entries should be filtered out")
+    }
+
+    func testMergeAuditDisplayLines_nonEmptyHistoryIsTrimmedAndPreserved() {
+        let lines = mergeAuditDisplayLines(from: ["  merged from X  ", "archived source Y "])
+        XCTAssertEqual(lines, ["merged from X", "archived source Y"])
+    }
+
+    func testCandidateEvidenceSummary_includesCountAndCompactRefs() {
+        let candidate = ProjectMergeCandidate(
+            sourceProjectId: UUID(),
+            targetProjectId: UUID(),
+            reason: "overlap",
+            overlappingEvidenceRefs: ["abc12345-6789", "def67890-1234", "ghi11111-2222"]
+        )
+        let summary = candidateEvidenceSummary(candidate)
+        XCTAssertTrue(summary.contains("3"), "should contain evidence count")
+        XCTAssertTrue(summary.contains("abc12345"), "should contain compact ref preview")
+    }
+
+    func testCandidateEvidenceSummary_emptyRefsShowsCountOnly() {
+        let candidate = ProjectMergeCandidate(
+            sourceProjectId: UUID(),
+            targetProjectId: UUID(),
+            reason: "overlap",
+            overlappingEvidenceRefs: []
+        )
+        let summary = candidateEvidenceSummary(candidate)
+        XCTAssertTrue(summary.contains("0"), "should show zero count")
+    }
+
+    func testCandidateConsequenceLine_doesNotClaimLinksMovedOrSourceDeleted() {
+        let line = candidateConsequenceLine()
+        XCTAssertFalse(line.contains("删除"), "must not claim source is deleted")
+        XCTAssertFalse(line.contains("移动"), "must not claim links are moved")
+        XCTAssertTrue(line.contains("归档"), "should mention source is archived")
+        XCTAssertTrue(line.contains("保留"), "should mention evidence links are retained")
+    }
 }

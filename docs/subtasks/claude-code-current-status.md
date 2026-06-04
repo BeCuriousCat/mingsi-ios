@@ -18,6 +18,20 @@ Current framework thread:
 
 Latest delegated product slice:
 
+- Subtask: `037-project-merge-audit-display`
+- Owner: Claude Code implementation, Codex acceptance.
+- PRD file: `docs/subtasks/037-project-merge-audit-display-prd.md`
+- Progress file: `docs/subtasks/037-project-merge-audit-display-progress.md`
+- Claude prompt file: `docs/subtasks/037-project-merge-audit-display-claude-prompt.md`
+- Expected event log: `docs/subtasks/logs/037-project-merge-audit-display-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/037-project-merge-audit-display-claude-run.jsonl`
+- Launch state: completed and Codex-accepted.
+- Purpose: improve display-only Project merge review and accepted merge-history audit visibility without changing AppStore merge behavior, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, or Growth semantics.
+- Result: worker reached `HANDOFF/DONE`; Codex accepted the scoped UI/helper/test diff after rerunning focused tests, `git diff --check`, and an iPhone 17 simulator build.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+
+Previous delegated product slice:
+
 - Subtask: `036-ai-repair-status-feedback`
 - Owner: Claude Code implementation, Codex acceptance.
 - PRD file: `docs/subtasks/036-ai-repair-status-feedback-prd.md`

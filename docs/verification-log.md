@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Subtask 037 Project Merge Audit Display
+
+Scope:
+
+- Improve display-only Project merge review and accepted merge-history audit visibility.
+- Preserve AppStore merge behavior, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, and Growth semantics.
+- Accept Claude Code worker output only after `HANDOFF`.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/subtasks/037-project-merge-audit-display-*`
+- `docs/subtasks/logs/037-project-merge-audit-display-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 037-project-merge-audit-display docs/subtasks/037-project-merge-audit-display-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 037-project-merge-audit-display docs/subtasks/037-project-merge-audit-display-claude-prompt.md docs/subtasks/037-project-merge-audit-display-progress.md
+scripts/claude_delegate.sh status 037-project-merge-audit-display docs/subtasks/037-project-merge-audit-display-progress.md
+scripts/claude_delegate.sh wait 037-project-merge-audit-display docs/subtasks/037-project-merge-audit-display-progress.md
+git -C .claude/worktrees/subtask-037-project-merge-audit-display diff -- Sources/Features/FeatureTabs.swift Tests/Features/HistoryFeatureTests.swift | git apply -
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE`.
+- Codex accepted the scoped display-only diff.
+- Focused `HistoryFeatureTests` passed: 42 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- No simulator screenshot was captured for this small display text/section polish; acceptance is based on source review, focused tests, and simulator build.
+- The worker worktree again needed local GRDB test resources restored for its own xcodebuild run; this remains a worker-worktree setup issue.
+
 ## 2026-06-04: Delegation Wait Policy Refinement
 
 Scope:
