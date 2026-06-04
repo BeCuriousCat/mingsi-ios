@@ -615,4 +615,116 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: PromptID.weeklyCalibration.rawValue))
         XCTAssertFalse(HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: "unknownPrompt"))
     }
+
+    // MARK: - HistoricalRetryCandidateStatus detail copy
+
+    func testHistoricalRetryCandidateStatus_historyRepairDetailIsNonEmptyForAllStatuses() {
+        for status in HistoricalRetryCandidateStatus.allCases {
+            XCTAssertFalse(
+                status.historyRepairDetail.isEmpty,
+                "historyRepairDetail should not be empty for \(status.rawValue)"
+            )
+        }
+    }
+
+    func testHistoricalRetryCandidateStatus_historyRepairDetailDoesNotOverstatePersistence() {
+        XCTAssertFalse(HistoricalRetryCandidateStatus.accepted.historyRepairDetail.contains("写入本日记录"))
+        XCTAssertTrue(HistoricalRetryCandidateStatus.accepted.historyRepairDetail.contains("审计"))
+        XCTAssertFalse(HistoricalRetryCandidateStatus.failed.historyRepairDetail.contains("再次尝试"))
+    }
+
+    // MARK: - PromptRun audit outcome
+
+    func testPromptRunAuditOutcome_successfulRun() {
+        let run = PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "1",
+            outputSchemaVersion: 1,
+            modelProvider: "test",
+            modelName: "test",
+            sessionMode: "standard",
+            sourceRecordIds: ["id-1"],
+            contextRecordIds: [],
+            requestSummary: "ok",
+            responseJSON: "{}",
+            error: nil,
+            createdAt: Date()
+        )
+        XCTAssertEqual(
+            run.auditOutcome,
+            PromptRunAuditOutcome.success
+        )
+        XCTAssertTrue(run.auditOutcomeLine.contains("成功"))
+        XCTAssertTrue(run.auditOutcomeLine.contains("审计"))
+    }
+
+    func testPromptRunAuditOutcome_failedOrganizeCardsRepairable() {
+        let run = PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "1",
+            outputSchemaVersion: 1,
+            modelProvider: "test",
+            modelName: "test",
+            sessionMode: "standard",
+            sourceRecordIds: ["id-1", "id-2"],
+            contextRecordIds: [],
+            requestSummary: "failed",
+            responseJSON: nil,
+            error: "timeout",
+            createdAt: Date()
+        )
+        XCTAssertEqual(
+            run.auditOutcome,
+            PromptRunAuditOutcome.repairableFromHistory
+        )
+        XCTAssertTrue(run.auditOutcomeLine.contains("修复"))
+        XCTAssertTrue(run.auditOutcomeLine.contains("历史"))
+    }
+
+    func testPromptRunAuditOutcome_failedUnsupportedPrompt() {
+        let run = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1",
+            outputSchemaVersion: 1,
+            modelProvider: "test",
+            modelName: "test",
+            sessionMode: "standard",
+            sourceRecordIds: ["id-1"],
+            contextRecordIds: [],
+            requestSummary: "failed",
+            responseJSON: nil,
+            error: "timeout",
+            createdAt: Date()
+        )
+        XCTAssertEqual(
+            run.auditOutcome,
+            PromptRunAuditOutcome.auditOnlyFailure
+        )
+        XCTAssertTrue(run.auditOutcomeLine.contains("仅审计"))
+    }
+
+    // MARK: - History repair summary
+
+    func testHistoryRepairSummaryLine_mixedCounts() {
+        let summary = HistoryRepairSummary(
+            unresolvedCount: 2,
+            reviewableCount: 1,
+            completedCount: 1,
+            problemCount: 1
+        )
+        let line = summary.summaryLine
+        XCTAssertNotNil(line)
+        XCTAssertTrue(line!.contains("2"), "should mention unresolved count")
+        XCTAssertTrue(line!.contains("1"), "should mention reviewable or completed count")
+    }
+
+    func testHistoryRepairSummaryLine_emptyIsNil() {
+        let summary = HistoryRepairSummary(
+            unresolvedCount: 0,
+            reviewableCount: 0,
+            completedCount: 0,
+            problemCount: 0
+        )
+        XCTAssertNil(summary.summaryLine)
+    }
 }

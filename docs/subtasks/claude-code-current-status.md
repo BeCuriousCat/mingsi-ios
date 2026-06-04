@@ -18,6 +18,20 @@ Current framework thread:
 
 Latest delegated product slice:
 
+- Subtask: `036-ai-repair-status-feedback`
+- Owner: Claude Code implementation, Codex acceptance.
+- PRD file: `docs/subtasks/036-ai-repair-status-feedback-prd.md`
+- Progress file: `docs/subtasks/036-ai-repair-status-feedback-progress.md`
+- Claude prompt file: `docs/subtasks/036-ai-repair-status-feedback-claude-prompt.md`
+- Event log: `docs/subtasks/logs/036-ai-repair-status-feedback-events.jsonl`
+- Raw log: `docs/subtasks/logs/036-ai-repair-status-feedback-claude-run.jsonl`
+- Launch state: completed and Codex-accepted with manager fix.
+- Purpose: improve per-run/per-candidate AI repair status feedback in History and Settings without changing retry behavior, persistence, PromptProvider, LLM clients, parser, Keychain, or migrations.
+- Result: first launch exited before `START` due an API socket close; relaunch reached `HANDOFF/DONE`. Codex accepted the UI/test direction but fixed candidate status copy so it does not claim accepted candidates are written into the day record.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+
+Previous delegated product slice:
+
 - Subtask: `035-prompt-inspector-readonly`
 - Owner: Claude Code implementation, Codex acceptance.
 - PRD file: `docs/subtasks/035-prompt-inspector-readonly-prd.md`

@@ -2,6 +2,62 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: AI Repair Status Feedback Polish - Subtask 036
+
+Reason:
+
+- The current MVP stop condition requires AI failures to be visible, retryable, and auditable.
+- History repair and Settings audit already expose failed/successful runs and retry candidates, but the per-run status still requires too much inference from raw error text or candidate chips.
+- This is a bounded, testable UI/helper slice and a good Claude Code implementation candidate: no migration, no prompt strategy, no LLM call behavior, no AppStore orchestration, and clear `HistoryFeatureTests` coverage.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/036-ai-repair-status-feedback-prd.md`
+- Progress: `docs/subtasks/036-ai-repair-status-feedback-progress.md`
+- Prompt: `docs/subtasks/036-ai-repair-status-feedback-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/036-ai-repair-status-feedback-events.jsonl`
+  - `docs/subtasks/logs/036-ai-repair-status-feedback-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Worker may not edit AppStore, persistence, migrations, LLM clients, Keychain, parser, prompt provider/text, Project/Growth domain code, or historical retry semantics.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the slice.
+
+Delegation state:
+
+- Completed and Codex-accepted with manager fix.
+
+Observed result:
+
+- Attempt 1 exited before `START` with an API socket close. No source diff was accepted.
+- Codex tightened the prompt so the worker had to write `START` immediately after reading PRD/progress.
+- Attempt 2 reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker reported `HANDOFF/DONE`.
+- Worker added History repair status helpers, Settings PromptRun audit outcome helpers, UI lines, and focused History feature tests.
+
+Codex acceptance:
+
+- Accepted the worker's display-only implementation direction.
+- Rejected one misleading candidate status line that said accepted candidates were written into the day record.
+- Fixed the accepted/failed status detail copy to match current AppStore behavior.
+- Counted dismissed candidates as completed terminal outcomes in the History repair summary.
+- Added a regression test to prevent accepted repair copy from overstating persistence behavior.
+
+Verification:
+
+- Focused `HistoryFeatureTests` passed after Codex fix: 36 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Delegation framework lesson:
+
+- The first launch proved token usage can happen even without progress-file movement when the worker/API disconnects early; progress remains the acceptance source, while raw logs are diagnostic.
+- Tightening the prompt to require `START` before source reads improved worker observability on the relaunch.
+
 ## 2026-06-04: Prompt Inspector Read-Only View - Subtask 035
 
 Reason:

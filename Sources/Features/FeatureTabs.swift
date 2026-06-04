@@ -557,6 +557,17 @@ struct HistoryView: View {
                     Spacer()
                 }
 
+                if let summaryLine = HistoryRepairSummary(
+                    unresolvedCount: unresolvedRuns.count,
+                    reviewableCount: historicalRetryCandidates.filter { $0.status == .candidateReady }.count,
+                    completedCount: historicalRetryCandidates.filter { $0.status == .accepted || $0.status == .dismissed }.count,
+                    problemCount: historicalRetryCandidates.filter { $0.status == .failed || $0.status == .blocked }.count
+                ).summaryLine {
+                    Text(summaryLine)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
+
                 VStack(spacing: 8) {
                     ForEach(unresolvedRuns) { run in
                         historyRepairableRunRow(run: run)
@@ -618,6 +629,10 @@ struct HistoryView: View {
                 .foregroundStyle(DS.mutedInk)
                 .lineLimit(2)
 
+            Text(canRetry ? "待生成候选 · 点击下方按钮开始修复" : "仅审计 · 暂不支持此类历史修复")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk.opacity(0.7))
+
             if canRetry {
                 Button {
                     Task {
@@ -665,6 +680,10 @@ struct HistoryView: View {
                     .font(.caption2)
                     .foregroundStyle(DS.mutedInk)
             }
+
+            Text(candidate.status.historyRepairDetail)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk.opacity(0.7))
 
             if !candidate.reconstructedInputSummary.isEmpty {
                 Text(candidate.reconstructedInputSummary)
@@ -4703,6 +4722,10 @@ private struct PromptRunAuditRow: View {
                     .foregroundStyle(DS.mutedInk)
                     .lineLimit(2)
             }
+
+            Text(run.auditOutcomeLine)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk.opacity(0.7))
         }
         .padding(12)
         .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
@@ -4808,6 +4831,74 @@ extension HistoricalRetryCandidateStatus {
         case .blocked: return "已阻断"
         case .failed: return "重试失败"
         }
+    }
+
+    var historyRepairDetail: String {
+        switch self {
+        case .pending: return "等待后台生成候选卡片"
+        case .retrying: return "正在重新调用 AI 生成候选"
+        case .candidateReady: return "候选已生成，可查看并决定是否接受"
+        case .accepted: return "候选已接受，作为本次历史修复审计结果保留"
+        case .dismissed: return "已忽略本次候选结果"
+        case .blocked: return "因已有确认卡片或下游证据，候选被安全阻断"
+        case .failed: return "本次重试生成失败，失败原因已保留"
+        }
+    }
+}
+
+enum PromptRunAuditOutcome {
+    case success
+    case repairableFromHistory
+    case auditOnlyFailure
+}
+
+extension PromptRun {
+    var auditOutcome: PromptRunAuditOutcome {
+        let hasError = error?.isEmpty == false
+        guard hasError else { return .success }
+        if HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: promptId),
+           !sourceRecordIds.isEmpty {
+            return .repairableFromHistory
+        }
+        return .auditOnlyFailure
+    }
+
+    var auditOutcomeLine: String {
+        switch auditOutcome {
+        case .success:
+            return "调用成功，审计证据已保留"
+        case .repairableFromHistory:
+            return "失败 · 可从对应历史日期修复"
+        case .auditOnlyFailure:
+            return "失败 · 仅审计记录，暂不支持历史修复"
+        }
+    }
+}
+
+struct HistoryRepairSummary {
+    var unresolvedCount: Int
+    var reviewableCount: Int
+    var completedCount: Int
+    var problemCount: Int
+
+    var summaryLine: String? {
+        guard unresolvedCount + reviewableCount + completedCount + problemCount > 0 else {
+            return nil
+        }
+        var parts: [String] = []
+        if unresolvedCount > 0 {
+            parts.append("\(unresolvedCount) 待生成候选")
+        }
+        if reviewableCount > 0 {
+            parts.append("\(reviewableCount) 待审阅")
+        }
+        if completedCount > 0 {
+            parts.append("\(completedCount) 已完成")
+        }
+        if problemCount > 0 {
+            parts.append("\(problemCount) 异常")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

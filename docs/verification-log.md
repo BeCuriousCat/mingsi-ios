@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Subtask 036 AI Repair Status Feedback Polish
+
+Scope:
+
+- Improve display-only per-run/per-candidate AI repair feedback in History and Settings.
+- Preserve retry behavior, persistence, migrations, PromptProvider, LLM clients, parser, Keychain, and AppStore orchestration.
+- Accept Claude Code worker output only after `HANDOFF`, then apply Codex copy fix.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/subtasks/036-ai-repair-status-feedback-*`
+- `docs/subtasks/logs/036-ai-repair-status-feedback-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 036-ai-repair-status-feedback docs/subtasks/036-ai-repair-status-feedback-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 036-ai-repair-status-feedback docs/subtasks/036-ai-repair-status-feedback-claude-prompt.md docs/subtasks/036-ai-repair-status-feedback-progress.md
+scripts/claude_delegate.sh status 036-ai-repair-status-feedback docs/subtasks/036-ai-repair-status-feedback-progress.md
+git -C .claude/worktrees/subtask-036-ai-repair-status-feedback diff -- Sources/Features/FeatureTabs.swift Tests/Features/HistoryFeatureTests.swift | git apply -
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+```
+
+Result:
+
+- Claude Code attempt 1 consumed GLM tokens but exited before `START` due an API socket close; no source diff accepted.
+- Relaunch reached `HANDOFF/DONE`.
+- Codex accepted the worker direction after fixing candidate status copy that overstated persistence behavior.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- Focused `HistoryFeatureTests` passed on sequential rerun: 36 tests, 0 failures.
+
+Residual risk:
+
+- No new simulator screenshot was captured for this UI text polish; acceptance is based on source review, focused tests, and simulator build.
+- A first focused-test attempt failed because it ran concurrently with the build and Xcode locked `build.db`; the sequential rerun passed.
+
 ## 2026-06-04: Subtask 035 Prompt Inspector Read-Only View
 
 Scope:
