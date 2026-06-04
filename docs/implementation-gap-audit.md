@@ -116,8 +116,8 @@ If there are fewer than 3 complete daily loops or no `MetricContribution`, Growt
 
 | Area | Current State | Required State | Severity |
 | --- | --- | --- | --- |
-| Project domain | Models, repositories, migrations, manual creation, AI candidate/link review, ProjectInsight generation/review, merge candidate generation/review, metadata editing, archive/restore, evidence detail, and strict Project prompt output parsers exist | Add richer merge audit display polish later | Low |
-| Project UI | Evidence-backed list/detail, History creation entry, candidate/link review, generated insight review, merge review, edit sheet, and archive/restore controls exist | Polish project overview hierarchy and merge audit display | Medium |
+| Project domain | Models, repositories, migrations, manual creation, AI candidate/link review, ProjectInsight generation/review, merge candidate generation/review, metadata editing, archive/restore, evidence detail, and strict Project prompt output parsers exist | Continue evidence-backed visual/taste polish without changing merge semantics | Low |
+| Project UI | Evidence-backed list/detail, History creation entry, candidate/link review, generated insight review, merge review, edit sheet, archive/restore controls, and accepted merge audit display exist | Polish project overview hierarchy; merge audit display has Subtask 037 coverage and can receive later visual QA | Medium |
 | Growth domain | MetricSnapshot/MetricContribution exist; local attribution, detail feedback, weekly/monthly AI report triggers, and accepted report-review contribution loading exist | Add deeper longitudinal comparison later | Medium |
 | Growth UI | Hides metric scores when evidence is insufficient, exposes weekly/monthly report actions, and shows recent report review from accepted evidence | Continue hardening evidence drilldown and report explanation polish | Medium |
 | Verification | Quest-linked `Verification` fact source exists and History loads it on the original quest day | Add richer verification reason capture later | Low |
@@ -143,7 +143,7 @@ Completed foundation:
 Remaining implementation order:
 
 1. Harden visual QA for Today / History / Projects / Growth on simulator.
-2. Polish Project overview hierarchy and merge audit display.
+2. Polish Project overview hierarchy; keep merge audit display evidence-backed after Subtask 037.
 3. Add deeper Growth longitudinal comparison and report explanation polish.
 4. Extract AppStore orchestration into smaller use cases if complexity continues to grow.
 

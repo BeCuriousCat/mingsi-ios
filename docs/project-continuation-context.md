@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check after commit `2c023b2 Polish AI repair status feedback`, `git status --short` was clean.
+At the last recorded check after commit `df2fa26 Add project merge audit display`, `git status --short` was clean.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
