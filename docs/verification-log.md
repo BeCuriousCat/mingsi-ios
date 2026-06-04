@@ -2,6 +2,40 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Active Goal Recovery Verification
+
+Scope:
+
+- Recover from the temporary `EAGAIN` process-spawn blockage.
+- Re-verify the Claude Code delegation pipeline evidence after the worktree returned to a commandable state.
+- Re-run the iPhone 17 simulator build for the current clean worktree.
+- Accept the user's direct confirmation that the Settings AI audit expand/collapse flicker is fixed, without spending another screenshot/recording pass on the same visual behavior.
+
+Commands run:
+
+```bash
+git status --short
+bash -n scripts/claude_delegate.sh
+bash -n scripts/claude_event_bridge.sh
+CLAUDE_DELEGATE_WAIT_SCHEDULE=0 scripts/claude_delegate.sh wait 034-manual-principle-creation docs/subtasks/034-manual-principle-creation-progress.md auto 1
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- `git status --short` returned clean output.
+- `bash -n` passed for both delegation scripts.
+- `wait ... auto 1` found `HANDOFF` in the 034 worker progress file, proving the conclusion-first worker progress path is still readable.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- User-facing Settings AI audit flicker was manually confirmed fixed by the user in-thread; no additional screenshot/recording was captured in this pass per user instruction.
+
+Residual risk:
+
+- This entry verifies the active goal recovery path, delegation pipeline evidence, and current build state.
+- Full Subtask 029 safe-area visual acceptance remains separate and still requires Today/History/Growth/Settings light/dark simulator screenshots.
+
 ## 2026-06-04: Manual Principle Creation And Delegation Dogfood
 
 Scope:
