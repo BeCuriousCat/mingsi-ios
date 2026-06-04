@@ -77,10 +77,10 @@ Current delegation infrastructure:
 - Launch behavior: wrapper creates/reuses `.claude/worktrees/subtask-<id-topic>`, syncs matching `docs/subtasks/<id-topic>*` files into the worker worktree, and then launches Claude with `--worktree --tmux --agent` when interactive. In non-interactive shells, it falls back to `claude -p` from the isolated worker worktree.
 - Monitoring behavior: `status` and `wait` prefer a worker progress file with real `HANDOFF`, can fall back to a manager progress file with real `HANDOFF` for legacy print-fallback runs, and otherwise prefer the worker copy.
 
-Current MVP slice needing acceptance:
+Latest MVP visual acceptance:
 
 - Subtask: `029-safe-area-floating-tab`
-- Owner: Codex direct implementation after Claude Code non-delivery; Codex manager owns final simulator verification.
+- Owner: Codex direct implementation after Claude Code non-delivery; Codex manager completed final simulator verification.
 - Reason: this is a bounded SwiftUI layout implementation slice with fixed acceptance criteria and no prompt/persistence/product-semantics changes.
 - PRD file: `docs/subtasks/029-safe-area-floating-tab-prd.md`
 - Progress file: `docs/subtasks/029-safe-area-floating-tab-progress.md`
@@ -89,11 +89,11 @@ Current MVP slice needing acceptance:
 - Failed first launch log: `docs/subtasks/logs/029-claude-run-failed-args.jsonl`
 - Stopped no-checkpoint launch log: `docs/subtasks/logs/029-claude-run-no-start.jsonl`
 - Worker path: `.claude/worktrees/subtask-029-safe-area-floating-tab`
-- Current launch state: paused after worker non-delivery
+- Current launch state: closed after worker non-delivery and Codex direct acceptance
 - Failed launch session id: `61459`
 - Stopped no-checkpoint session id: `32727`
 - Stopped focused session id: `20801`
-- Current acceptance state: no Subtask 029 worker code accepted. Codex source changes are build-verified and partially screenshot-verified, but full light/dark visual acceptance remains pending.
+- Current acceptance state: no Subtask 029 worker code accepted. Codex source changes are build-verified and visually accepted with iPhone 17 simulator screenshots covering Today, History, Projects, Growth, and Settings in light/dark modes plus Growth/Settings bottom-scroll evidence.
 
 Current wrapper commands:
 

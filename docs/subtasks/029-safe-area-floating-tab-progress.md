@@ -1,6 +1,6 @@
 # Subtask 029 Progress: Safe Area And Floating Tab Layout Fix
 
-Status: CODEX_PARTIAL_VISUAL_VERIFICATION
+Status: CODEX_VISUAL_ACCEPTED
 Final status token: none; worker did not reach HANDOFF
 
 ## Checkpoints
@@ -8,8 +8,8 @@ Final status token: none; worker did not reach HANDOFF
 - START: observed in focused worker run
 - RED: pending
 - IMPLEMENTED: Codex direct source changes present
-- TARGETED_VERIFIED: build passed; simulator screenshot verification incomplete
-- HANDOFF: pending
+- TARGETED_VERIFIED: Codex build and simulator screenshot verification passed
+- HANDOFF: not applicable for final acceptance; Claude worker did not deliver handoff, Codex direct source changes were accepted by screenshot verification
 
 ## Worker Notes
 
@@ -95,3 +95,31 @@ At `HANDOFF`, include one final status token:
   - `08-settings-audit-toggle-light.mov` plus extracted frames: audit success group expanded without visible overlapping row residue.
   - `09-settings-audit-collapsed-after-toggle-light.png`: post-toggle collapsed-state screenshot.
   - Status remains partial because full Today/History/Growth/Settings light/dark capture is not complete.
+- 2026-06-04 Codex completed final iPhone 17 simulator visual acceptance:
+  - Captured primary tab light screenshots:
+    - `10-today-light-final.png`
+    - `11-history-light-final.png`
+    - `12-projects-light-final.png`
+    - `13-growth-light-final.png`
+    - `14-settings-light-final.png`
+  - Captured primary tab dark screenshots:
+    - `15-today-dark-final.png`
+    - `16-history-dark-final.png`
+    - `17-projects-dark-final.png`
+    - `18-growth-dark-final.png`
+    - `19-settings-dark-final.png`
+  - Captured bottom-scroll evidence:
+    - `20-settings-dark-scrolled-final.png`
+    - `21-growth-dark-scrolled-final.png`
+    - `22-settings-light-scrolled-final.png`
+    - `23-growth-light-scrolled-final.png`
+    - `24-growth-light-drag-scrolled-final.png`
+    - `25-growth-dark-drag-scrolled-final.png`
+    - `26-settings-dark-drag-scrolled-final.png`
+  - Acceptance notes:
+    - History light/dark top content is below the status bar and Dynamic Island.
+    - Today light/dark keeps the bottom action row above the floating Tab bar without an obvious double bottom gap.
+    - Projects light/dark keeps the full-width page background and did not regain side gutters.
+    - Growth light/dark principle content can be dragged above the floating Tab bar; bottom content is not trapped underneath it.
+    - Settings light/dark configuration and AI audit rows can scroll above the floating Tab bar, and dark placeholder/disabled text is readable enough for the alpha visual bar.
+  - The user separately confirmed the Settings AI audit expand/collapse flicker was fixed, so Codex did not repeat that video verification in this pass.

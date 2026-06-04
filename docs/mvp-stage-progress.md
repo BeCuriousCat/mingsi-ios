@@ -38,7 +38,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Prepared Subtask 029 safe-area / floating Tab bar delegation package. Claude Code attempts did not produce a handoff, so no 029 implementation has been accepted.
 - Added Subtask 030 Claude Code delegation pipeline hardening. Future implementation attempts have repo-owned `prepare`, `launch`, `status`, and `wait` commands, task-local hook settings, file-bridge event logs, explicit prompt separation after `--allowedTools`, strict handoff detection, and macOS-compatible timestamps.
 - Fixed Settings AI audit group expand/collapse flicker at the SwiftUI view level by removing group-wide animation and row transition while keeping chevron-only feedback.
-- Codex began direct Subtask 029 safe-area/floating-tab source work and passed build verification, but full light/dark simulator screenshot acceptance is still incomplete.
+- Completed Subtask 029 safe-area/floating-tab visual acceptance after Claude Code non-delivery and Codex direct source work. iPhone 17 simulator screenshots now cover Today, History, Projects, Growth, and Settings in light/dark modes, with extra Growth/Settings bottom-scroll evidence.
 - Completed Subtasks 032 and 033 Claude Code utilization smokes. The wrapper now runs non-interactive print fallback inside the isolated worker worktree, uses worker progress as the manager-facing conclusion source, retains event/raw logs as flow logs, keeps flow-log tails hidden by default, and syncs delegation scripts into worker worktrees for local read-only inspection.
 - Separated the reusable Codex-to-Claude Code delegation framework thread from MingSi product hardening. Added a generic skill prototype and parameterized the wrapper task/log roots so future projects are not tied to MingSi `docs/subtasks`.
 - Completed Subtask 034 manual Principle creation via Claude Code dogfood plus Codex acceptance fix. Growth now has a direct `添加原则` entry, manual principles persist through the existing repository as active `PrincipleAsset` records linked to today's DailyEntry, and long-lived `activePrinciples` are not cleared by Today reset.
@@ -46,27 +46,22 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Known Remaining Work
 
-1. Subtask 029 safe-area and floating Tab bar layout fix remains partially verified after Claude Code non-delivery and Codex direct source changes.
-2. Visual QA must be completed after Subtask 029 across Today, History, Projects, Growth, Settings on iPhone 17 simulator, including dark mode.
-3. Project overview hierarchy and merge audit display need additional taste and evidence review.
-4. Growth report explanations need continued drilldown polish.
-5. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
-6. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
-7. AI repair and retry UI still needs clearer per-run completion/failure feedback in History and Settings beyond the global Today/banner message.
-8. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
-9. Process files should stay updated after each implementation or delegation slice.
-10. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
-11. Growth manual Principle creation is build/test verified, but still needs simulator interaction screenshots in the next visual QA pass.
+1. Project overview hierarchy and merge audit display need additional taste and evidence review.
+2. Growth report explanations need continued drilldown polish.
+3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
+4. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
+5. AI repair and retry UI still needs clearer per-run completion/failure feedback in History and Settings beyond the global Today/banner message.
+6. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
+7. Process files should stay updated after each implementation or delegation slice.
+8. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 
 ## Current Recommended Next Slice
 
-After Subtask 034 manual Principle creation, the next bounded slice should be:
-
-- Complete Subtask 029 simulator screenshot verification, especially Settings/Growth bottom content around the floating Tab bar and History top content around the Dynamic Island.
-
-Secondary candidates:
+After Subtask 029 visual acceptance, the next bounded slice should be chosen from:
 
 - Prompt inspector read-only view.
 - Project overview hierarchy and merge audit display polish.
+- Growth report explanation/drilldown polish.
+- Live GLM failure-path confirmation for History repair.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

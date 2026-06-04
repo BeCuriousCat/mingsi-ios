@@ -2,6 +2,83 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Subtask 029 Safe Area Visual Acceptance
+
+Scope:
+
+- Complete final iPhone 17 simulator visual acceptance for Subtask 029.
+- Verify Today, History, Projects, Growth, and Settings in light/dark modes after the safe-area and floating Tab bar source fix.
+- Use the user's confirmation that Settings AI audit expand/collapse flicker is fixed; do not repeat that video validation in this pass.
+
+Changed areas:
+
+- `docs/subtasks/029-safe-area-floating-tab-progress.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/10-today-light-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/11-history-light-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/12-projects-light-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/13-growth-light-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/14-settings-light-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/15-today-dark-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/16-history-dark-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/17-projects-dark-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/18-growth-dark-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/19-settings-dark-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/20-settings-dark-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/21-growth-dark-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/22-settings-light-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/23-growth-light-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/24-growth-light-drag-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/25-growth-dark-drag-scrolled-final.png`
+- `docs/subtasks/screenshots/029-safe-area-floating-tab/26-settings-dark-drag-scrolled-final.png`
+
+Commands run:
+
+```bash
+git status --short
+xcrun simctl list devices | rg 'iPhone 17|Booted'
+xcrun simctl get_app_container booted com.codex.mingsi app
+xcrun simctl io booted screenshot /tmp/mingsi-current.png
+osascript -e 'tell application "System Events" to tell process "Simulator" to get {position, size} of window 1'
+xcrun simctl ui booted appearance light
+osascript -e 'tell application "System Events" to tell process "Simulator" to click at {...}'
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/10-today-light-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/11-history-light-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/12-projects-light-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/13-growth-light-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/14-settings-light-final.png
+xcrun simctl ui booted appearance dark
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/15-today-dark-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/16-history-dark-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/17-projects-dark-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/18-growth-dark-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/19-settings-dark-final.png
+swift - <<'SWIFT' ... CGEvent drag gesture ... SWIFT
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/24-growth-light-drag-scrolled-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/25-growth-dark-drag-scrolled-final.png
+xcrun simctl io booted screenshot docs/subtasks/screenshots/029-safe-area-floating-tab/26-settings-dark-drag-scrolled-final.png
+```
+
+Result:
+
+- `git status --short` started clean before new screenshot/doc evidence was created.
+- iPhone 17 simulator was booted and the installed MingSi app container was present.
+- Real simulator screenshots were captured for Today, History, Projects, Growth, and Settings in light and dark modes.
+- History top content no longer enters the status bar / Dynamic Island area in light or dark screenshots.
+- Today bottom action row remains above the floating Tab bar without an obvious double bottom gap.
+- Projects keeps full-width background treatment and did not regain left/right gutters.
+- Growth principle asset content can be dragged above the floating Tab bar in light and dark screenshots.
+- Settings AI audit and settings rows can scroll above the floating Tab bar, and dark-mode placeholder/disabled text is readable enough for the current alpha visual bar.
+- No Subtask 029 Claude Code worker implementation was accepted; acceptance is based on Codex source changes plus simulator evidence.
+
+Residual risk:
+
+- This pass is visual smoke acceptance, not exhaustive UI automation.
+- Simulator navigation used macOS `System Events` coordinate clicks because the project currently has no UI test target for screenshot capture.
+- Settings audit flicker was not re-recorded because the user explicitly confirmed it was fixed.
+
 ## 2026-06-04: Active Goal Recovery Verification
 
 Scope:
