@@ -43,23 +43,22 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Separated the reusable Codex-to-Claude Code delegation framework thread from MingSi product hardening. Added a generic skill prototype and parameterized the wrapper task/log roots so future projects are not tied to MingSi `docs/subtasks`.
 - Completed Subtask 034 manual Principle creation via Claude Code dogfood plus Codex acceptance fix. Growth now has a direct `添加原则` entry, manual principles persist through the existing repository as active `PrincipleAsset` records linked to today's DailyEntry, and long-lived `activePrinciples` are not cleared by Today reset.
 - Added dynamic delegation wait backoff guidance and wrapper support: default `wait` can use 3/6/9 minute checks before manager intervention.
+- Completed Subtask 035 Prompt inspector read-only view via Claude Code delegation plus Codex boundary fix. Settings now has a collapsed `Prompt 模板` inspector for current first-party prompt templates, prompt/mode metadata, and selectable System/User text without exposing secrets or sending model requests.
 
 ## Known Remaining Work
 
 1. Project overview hierarchy and merge audit display need additional taste and evidence review.
 2. Growth report explanations need continued drilldown polish.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
-4. Prompt inspector needs a user-visible way to inspect actual prompt composition without exposing secrets.
-5. AI repair and retry UI still needs clearer per-run completion/failure feedback in History and Settings beyond the global Today/banner message.
-6. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
-7. Process files should stay updated after each implementation or delegation slice.
-8. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
+4. AI repair and retry UI still needs clearer per-run completion/failure feedback in History and Settings beyond the global Today/banner message.
+5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
+6. Process files should stay updated after each implementation or delegation slice.
+7. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 
 ## Current Recommended Next Slice
 
 After Subtask 029 visual acceptance, the next bounded slice should be chosen from:
 
-- Prompt inspector read-only view.
 - Project overview hierarchy and merge audit display polish.
 - Growth report explanation/drilldown polish.
 - Live GLM failure-path confirmation for History repair.

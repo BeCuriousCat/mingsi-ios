@@ -94,6 +94,7 @@ final class AppStore: ObservableObject {
     private let promptRunRepository: PromptRunRepository?
     private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
     private let reminderService: ReminderService?
+    private let promptProvider: PromptProvider
     private let persistenceUnavailableMessage: String?
     private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
@@ -133,6 +134,7 @@ final class AppStore: ObservableObject {
         promptRunRepository: PromptRunRepository? = nil,
         historicalRetryCandidateRepository: HistoricalRetryCandidateRepository? = nil,
         reminderService: ReminderService? = nil,
+        promptProvider: PromptProvider = LocalPromptProvider(),
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
         refreshesAIServiceFromKeychain: Bool = true,
@@ -155,6 +157,7 @@ final class AppStore: ObservableObject {
         self.promptRunRepository = promptRunRepository
         self.historicalRetryCandidateRepository = historicalRetryCandidateRepository
         self.reminderService = reminderService
+        self.promptProvider = promptProvider
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
@@ -486,6 +489,10 @@ final class AppStore: ObservableObject {
             recentPromptRuns = []
             promptRunAuditMessage = "读取 AI 调用记录失败。"
         }
+    }
+
+    func promptTemplate(for promptID: PromptID, mode: SessionMode) -> PromptTemplate {
+        promptProvider.template(for: promptID, mode: mode)
     }
 
     func repairablePromptRuns(for dailyEntryId: UUID, limit: Int = 100) async -> [PromptRun] {

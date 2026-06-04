@@ -1893,12 +1893,18 @@ struct SettingsView: View {
     @State private var modelNameInput = ""
     @State private var clipboardMessage = ""
     @State private var expandedPromptAuditGroups: Set<PromptRunAuditGroupKind> = PromptRunAuditSummary.defaultExpandedGroups
+    @State private var promptTemplateExpanded = false
+    @State private var selectedPromptID: PromptID = .organizeCards
+    @State private var selectedSessionMode: SessionMode = .standard
+    @State private var promptSystemTextExpanded = false
+    @State private var promptUserTextExpanded = false
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
             VStack(spacing: DS.cardSpacing) {
                 apiKeyCard
                 promptAuditCard
+                promptTemplateCard
                 SettingRow(title: "GLM API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
                 SettingRow(title: "请求协议", value: "OpenAI-compatible / 自动 JSON 降级")
                 SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.title)
@@ -1913,6 +1919,117 @@ struct SettingsView: View {
                 await store.loadRecentPromptRuns()
             }
         }
+    }
+
+    private var promptTemplateCard: some View {
+        let template = store.promptTemplate(for: selectedPromptID, mode: selectedSessionMode)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Prompt 模板")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text("查看当前本地 Prompt 模板的系统文本和用户文本。只读，不发送请求。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer()
+                Button {
+                    withTransaction(Transaction(animation: nil)) {
+                        promptTemplateExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: promptTemplateExpanded ? "chevron.up" : "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            if promptTemplateExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Prompt", selection: $selectedPromptID) {
+                        ForEach(PromptID.allCases) { id in
+                            Text(id.displayName).tag(id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Picker("模式", selection: $selectedSessionMode) {
+                        ForEach(SessionMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        LabeledContent("模板名称", value: template.id.displayName)
+                        LabeledContent("ID", value: template.id.rawValue)
+                        LabeledContent("版本", value: template.version)
+                        LabeledContent("输出 Schema 版本", value: "\(template.outputSchemaVersion)")
+                        LabeledContent("模式", value: selectedSessionMode.title)
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.ink)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            withTransaction(Transaction(animation: nil)) {
+                                promptSystemTextExpanded.toggle()
+                            }
+                        } label: {
+                            HStack {
+                                Text("System Text")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(DS.ink)
+                                Spacer()
+                                Image(systemName: promptSystemTextExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if promptSystemTextExpanded {
+                            Text(template.systemText)
+                                .font(.caption)
+                                .foregroundStyle(DS.ink)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            withTransaction(Transaction(animation: nil)) {
+                                promptUserTextExpanded.toggle()
+                            }
+                        } label: {
+                            HStack {
+                                Text("User Text")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(DS.ink)
+                                Spacer()
+                                Image(systemName: promptUserTextExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if promptUserTextExpanded {
+                            Text(template.userText)
+                                .font(.caption)
+                                .foregroundStyle(DS.ink)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .cardSurface()
     }
 
     private var apiKeyCard: some View {

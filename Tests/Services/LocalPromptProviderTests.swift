@@ -70,6 +70,18 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("\"source_card_titles\""))
     }
 
+    func testEveryPromptID_everySessionMode_returnsNonEmptyTemplate() {
+        for promptID in PromptID.allCases {
+            for mode in SessionMode.allCases {
+                let template = provider.template(for: promptID, mode: mode)
+                XCTAssertFalse(template.systemText.isEmpty, "\(promptID.rawValue)/\(mode.rawValue) systemText must not be empty")
+                XCTAssertFalse(template.userText.isEmpty, "\(promptID.rawValue)/\(mode.rawValue) userText must not be empty")
+                XCTAssertFalse(template.version.isEmpty, "\(promptID.rawValue)/\(mode.rawValue) version must not be empty")
+                XCTAssertGreaterThan(template.outputSchemaVersion, 0, "\(promptID.rawValue)/\(mode.rawValue) outputSchemaVersion must be positive")
+            }
+        }
+    }
+
     func testModeGuidance_changesBySessionMode() {
         let quick = provider.template(for: .generateQuestions, mode: .quick)
         let standard = provider.template(for: .generateQuestions, mode: .standard)

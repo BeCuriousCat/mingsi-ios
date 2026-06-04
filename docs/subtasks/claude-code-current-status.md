@@ -16,7 +16,21 @@ Current framework thread:
   - `CLAUDE_DELEGATE_LOG_DIR`
 - MingSi continues to use `docs/subtasks` by default, but future projects can use a different task root without changing the wrapper.
 
-Current prepared slice:
+Latest delegated product slice:
+
+- Subtask: `035-prompt-inspector-readonly`
+- Owner: Claude Code implementation, Codex acceptance.
+- PRD file: `docs/subtasks/035-prompt-inspector-readonly-prd.md`
+- Progress file: `docs/subtasks/035-prompt-inspector-readonly-progress.md`
+- Claude prompt file: `docs/subtasks/035-prompt-inspector-readonly-claude-prompt.md`
+- Event log: `docs/subtasks/logs/035-prompt-inspector-readonly-events.jsonl`
+- Raw log: `docs/subtasks/logs/035-prompt-inspector-readonly-claude-run.jsonl`
+- Launch state: completed and Codex-accepted with manager fix.
+- Purpose: add a read-only Settings Prompt inspector that exposes current first-party prompt templates and schema metadata without changing prompt strategy, LLM calls, Keychain, persistence, or retry semantics.
+- Result: worker reached `HANDOFF/DONE`; Codex accepted the UI/test direction but moved template access behind `AppStore.promptTemplate(for:mode:)` so Settings does not construct `LocalPromptProvider` directly.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+
+Previous prepared slice:
 
 - Subtask: `034-manual-principle-creation`
 - Owner: Claude Code implementation dogfood candidate.

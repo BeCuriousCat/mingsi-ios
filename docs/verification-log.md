@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Subtask 035 Prompt Inspector Read-Only View
+
+Scope:
+
+- Add a read-only Settings Prompt inspector for current first-party prompt templates.
+- Preserve PromptProvider / LLM / persistence / Keychain / parser boundaries.
+- Accept Claude Code worker output only after `HANDOFF`, then apply Codex boundary fix.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Services/LocalPromptProviderTests.swift`
+- `docs/subtasks/035-prompt-inspector-readonly-*`
+- `docs/subtasks/logs/035-prompt-inspector-readonly-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 035-prompt-inspector-readonly docs/subtasks/035-prompt-inspector-readonly-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 035-prompt-inspector-readonly docs/subtasks/035-prompt-inspector-readonly-claude-prompt.md docs/subtasks/035-prompt-inspector-readonly-progress.md
+scripts/claude_delegate.sh status 035-prompt-inspector-readonly docs/subtasks/035-prompt-inspector-readonly-progress.md
+git -C .claude/worktrees/subtask-035-prompt-inspector-readonly diff -- Sources/Features/FeatureTabs.swift Tests/Services/LocalPromptProviderTests.swift | git apply -
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LocalPromptProviderTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE`.
+- Codex accepted the worker UI/test direction after moving template access behind `AppStore.promptTemplate(for:mode:)`.
+- Focused `LocalPromptProviderTests` passed: 7 tests, 0 failures.
+- `git diff --check` passed after documentation updates.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- No extra flicker validation is included because the user already confirmed the Settings AI audit flicker fix and asked not to repeat it.
+- No new screenshot was captured for the Prompt inspector in this slice; acceptance is based on source review, focused tests, and simulator build.
+
 ## 2026-06-04: Subtask 029 Safe Area Visual Acceptance
 
 Scope:

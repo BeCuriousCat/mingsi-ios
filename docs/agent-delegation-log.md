@@ -2,6 +2,61 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Prompt Inspector Read-Only View - Subtask 035
+
+Reason:
+
+- The current MVP stop condition requires AI behavior to be visible and auditable.
+- Settings already shows recent `PromptRun` audit rows, but the user cannot inspect current first-party prompt templates, prompt version, schema version, or mode-specific text.
+- This is a bounded, testable Settings UI slice and a good Claude Code implementation candidate: no migration, no prompt-strategy change, no LLM call behavior, and clear `LocalPromptProviderTests` coverage.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/035-prompt-inspector-readonly-prd.md`
+- Progress: `docs/subtasks/035-prompt-inspector-readonly-progress.md`
+- Prompt: `docs/subtasks/035-prompt-inspector-readonly-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/035-prompt-inspector-readonly-events.jsonl`
+  - `docs/subtasks/logs/035-prompt-inspector-readonly-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Worker may not edit prompt text, persistence, migrations, LLM clients, Keychain, parser, or historical retry semantics.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the slice.
+
+Delegation state:
+
+- Completed and Codex-accepted with manager fix.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker reported `HANDOFF/DONE`.
+- Worker added a `LocalPromptProviderTests` inventory test covering all `PromptID` / `SessionMode` template combinations.
+- Worker added a collapsed read-only `Prompt 模板` card in Settings with prompt/mode pickers, metadata, and collapsible System Text / User Text blocks.
+
+Codex acceptance:
+
+- Accepted the worker's Settings UI direction and template inventory coverage.
+- Rejected the worker's direct `LocalPromptProvider()` construction in `SettingsView` as too close to the prompt implementation boundary.
+- Fixed the boundary by storing a `PromptProvider` dependency in `AppStore` and exposing `AppStore.promptTemplate(for:mode:)`.
+- Verified that the worker-only empty `Vendor/GRDB.swift/Tests/` directory did not affect the main worktree; the main tree already has that directory.
+
+Verification:
+
+- Focused `LocalPromptProviderTests` passed: 7 tests, 0 failures.
+- `git diff --check` passed before documentation updates.
+- Final `git diff --check`, focused tests, and iPhone 17 simulator build are required before commit.
+
+Delegation framework lesson:
+
+- This slice used the intended conclusion-first path: Codex consumed the progress/HANDOFF record first, then reviewed final diff.
+- The manager fix was architectural boundary enforcement, not a rescue of partial worker code.
+
 ## 2026-06-04: Separated MingSi Business Thread From Reusable Delegation Framework
 
 Reason:
