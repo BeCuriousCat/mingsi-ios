@@ -42,6 +42,8 @@ check 3: after 9 more minutes
 
 If those checks show no `HANDOFF` and no useful conclusion-progress movement, the manager may intervene. Intervention means classifying the stall first, not immediately editing the worker's partial code.
 
+If conclusion progress moved during those checks, the worker is not considered silent. The manager should read the progress file first and usually allow one more check when the worker is running a named build or test loop.
+
 If the worker stalls before `HANDOFF`, classify the failure first:
 
 - launch failure
@@ -57,3 +59,15 @@ Then choose one:
 - split the task
 - keep the task with Codex
 - reject the worker result
+
+## Flow Log Consumption
+
+Flow logs are not the manager's daily reading queue. They are retained evidence.
+
+Open raw/event logs only when at least one is true:
+
+- the worker never wrote `START`
+- scheduled checks show no conclusion progress
+- the progress file contradicts repository state
+- `HANDOFF` omits changed files or verification evidence
+- Codex acceptance fails and the cause is unclear

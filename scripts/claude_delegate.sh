@@ -7,7 +7,7 @@ usage:
   scripts/claude_delegate.sh prepare <subtask-id-topic> [progress-file]
   scripts/claude_delegate.sh launch <subtask-id-topic> <prompt-file> [progress-file]
   scripts/claude_delegate.sh status <subtask-id-topic> [progress-file]
-  scripts/claude_delegate.sh wait <subtask-id-topic> [progress-file] [interval-seconds|auto] [max-checks]
+  scripts/claude_delegate.sh wait <subtask-id-topic> [progress-file] [auto|interval-seconds] [max-checks]
 
 environment overrides:
   CLAUDE_DELEGATE_MODEL=glm-5.1
@@ -23,7 +23,7 @@ environment overrides:
   CLAUDE_DELEGATE_SHOW_FLOW_LOGS=0     # set 1 only for diagnostics / failed acceptance
   CLAUDE_DELEGATE_TASK_ROOT=docs/subtasks
   CLAUDE_DELEGATE_LOG_DIR=$CLAUDE_DELEGATE_TASK_ROOT/logs
-  CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540 # auto wait backoff in seconds
+  CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540 # default auto wait backoff in seconds
 
 notes:
   In non-interactive shells, tmux launch falls back to print mode.
@@ -31,6 +31,9 @@ notes:
   For large delegated tasks, set CLAUDE_DELEGATE_MAX_BUDGET_USD=60.00 or higher explicitly.
   Event/raw logs are flow logs: retained by default, not consumed during routine manager checks.
   Progress files are the conclusion source: worker checkpoints, findings, concerns, and handoff.
+  Default wait uses auto backoff: 3m, then 6m, then 9m. If those checks show no
+  conclusion-progress movement and no HANDOFF, the manager may intervene after
+  classifying the stall.
 EOF
 }
 
@@ -167,6 +170,23 @@ progress_fingerprint() {
     cksum "$progress_file" | awk '{print $1 ":" $2}'
   else
     printf 'missing\n'
+  fi
+}
+
+print_wait_schedule() {
+  local interval="$1"
+  local max_checks="$2"
+  if [[ "$interval" == "auto" ]]; then
+    local index
+    local last_index
+    last_index=$((${#wait_schedule[@]} - 1))
+    printf 'wait schedule:'
+    for ((index = 0; index < max_checks; index++)); do
+      printf ' %ss' "${wait_schedule[$index]:-${wait_schedule[$last_index]}}"
+    done
+    printf '\n'
+  else
+    echo "wait schedule: ${interval}s repeated $max_checks checks"
   fi
 }
 
@@ -412,7 +432,10 @@ case "$cmd" in
         max_checks="5"
       fi
     fi
+    print_wait_schedule "$interval" "$max_checks"
     last_fingerprint=""
+    initial_fingerprint=""
+    progress_changed="0"
     for ((check = 1; check <= max_checks; check++)); do
       echo "check $check/$max_checks at $(timestamp)"
       active_progress="$(current_progress_path "$progress_file")"
@@ -421,6 +444,11 @@ case "$cmd" in
         exit 0
       fi
       fingerprint="$(progress_fingerprint "$active_progress")"
+      if [[ -z "$initial_fingerprint" ]]; then
+        initial_fingerprint="$fingerprint"
+      elif [[ "$fingerprint" != "$initial_fingerprint" ]]; then
+        progress_changed="1"
+      fi
       if [[ -n "$last_fingerprint" && "$fingerprint" == "$last_fingerprint" ]]; then
         echo "no new conclusion progress since previous check"
       fi
@@ -441,7 +469,12 @@ case "$cmd" in
         sleep "$sleep_for"
       fi
     done
-    echo "no HANDOFF after $max_checks checks; classify the stall before taking over; inspect flow logs only if needed" >&2
+    if [[ "$progress_changed" == "0" ]]; then
+      echo "no HANDOFF after $max_checks checks and no conclusion-progress movement; manager intervention is allowed after stall classification" >&2
+    else
+      echo "no HANDOFF after $max_checks checks, but conclusion progress moved; inspect the progress file first and allow one more check if build/test work is still active" >&2
+    fi
+    echo "flow logs remain diagnostic only; open them only for launch failure, contradiction, missing verification, or failed acceptance" >&2
     exit 75
     ;;
 

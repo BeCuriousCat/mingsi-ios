@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-04: Delegation Wait Policy Refinement
+
+Scope:
+
+- Align the reusable Codex-to-Claude Code delegation framework with the user's requested low-frequency monitoring policy.
+- Keep MingSi product source untouched.
+- Refresh stale process docs after Subtask 036.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- `delegation-framework/claude-code-managed-delegation/references/conclusion-first-monitoring.md`
+- `docs/project-continuation-context.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/subtasks/036-ai-repair-status-feedback-progress.md`
+- `docs/mvp-stage-progress.md`
+- `docs/agent-delegation-log.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh --help
+CLAUDE_DELEGATE_WAIT_SCHEDULE=0 scripts/claude_delegate.sh wait 036-ai-repair-status-feedback docs/subtasks/036-ai-repair-status-feedback-progress.md auto 1
+CLAUDE_DELEGATE_WAIT_SCHEDULE=0,0,0 scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md auto 3
+git diff --check
+```
+
+Result:
+
+- `bash -n` passed.
+- `--help` showed the default 3/6/9-minute auto wait policy.
+- `wait ... 036 ... auto 1` found the accepted `HANDOFF`.
+- `wait ... 029 ... auto 3` exited 75 and reported no conclusion-progress movement before manager intervention, which is expected for the historical non-delivery progress file.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This is a wrapper/process refinement only; no new Claude Code worker was launched.
+- No iPhone simulator build was run because no product source, tests, or app assets changed.
+
 ## 2026-06-04: Subtask 036 AI Repair Status Feedback Polish
 
 Scope:

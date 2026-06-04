@@ -85,6 +85,7 @@ A compatible wrapper should support:
 - worker progress copied or available inside the worktree
 - `status` and `wait` commands that prefer conclusion progress
 - dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
+- explicit no-progress classification: after the scheduled checks, intervention is allowed only when no `HANDOFF` arrived and the conclusion progress did not move
 - an opt-in flag to inspect flow logs
 
 For this repo prototype, use:
@@ -93,7 +94,7 @@ For this repo prototype, use:
 scripts/claude_delegate.sh prepare <task-id> <progress-file>
 scripts/claude_delegate.sh launch <task-id> <prompt-file> <progress-file>
 scripts/claude_delegate.sh status <task-id> <progress-file>
-scripts/claude_delegate.sh wait <task-id> <progress-file> <interval-seconds> <max-checks>
+scripts/claude_delegate.sh wait <task-id> <progress-file>
 ```
 
 Set these for non-default projects:
@@ -104,6 +105,8 @@ CLAUDE_DELEGATE_LOG_DIR=<path>
 CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540
 ```
 
+Use `status` for immediate inspection after launch. Use `wait` for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled.
+
 ## Manager Workflow
 
 1. Write a compact task contract: purpose, allowed files, forbidden files, tests, and acceptance criteria.
@@ -111,8 +114,9 @@ CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540
 3. Launch the worker.
 4. Wait at low frequency on conclusion progress.
 5. If `HANDOFF` arrives, inspect diff and rerun checks.
-6. Accept, reject, or request a new worker attempt.
-7. Capture generalized lessons in the skill; keep project-specific lessons in the project docs.
+6. If the 3/6/9 checks finish with no conclusion progress, classify the stall before opening flow logs or taking over.
+7. Accept, reject, or request a new worker attempt.
+8. Capture generalized lessons in the skill; keep project-specific lessons in the project docs.
 
 ## Worker Prompt Rules
 

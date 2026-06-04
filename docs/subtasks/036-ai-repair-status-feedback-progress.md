@@ -1,7 +1,7 @@
 # Subtask 036 Progress: AI Repair Status Feedback Polish
 
-Status: START
-Final status token: none
+Status: CODEX_ACCEPTED
+Final status token: DONE
 
 Owner: Codex manager
 Delegated implementer: Claude Code

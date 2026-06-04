@@ -129,13 +129,14 @@ Current wrapper commands:
 scripts/claude_delegate.sh prepare <id-topic> docs/subtasks/<id-topic>-progress.md
 scripts/claude_delegate.sh launch <id-topic> docs/subtasks/<id-topic>-claude-prompt.md docs/subtasks/<id-topic>-progress.md
 scripts/claude_delegate.sh status <id-topic> docs/subtasks/<id-topic>-progress.md
-scripts/claude_delegate.sh wait <id-topic> docs/subtasks/<id-topic>-progress.md 300 5
+scripts/claude_delegate.sh wait <id-topic> docs/subtasks/<id-topic>-progress.md
 ```
 
 Default print-mode budget guard:
 
 - `CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00` for ordinary bounded Claude Code coding tasks.
 - For large delegated tasks, explicitly raise to `60.00` or higher.
+- Default wait schedule is `CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540`; after those checks, if there is no `HANDOFF` and no conclusion-progress movement, Codex may intervene after classifying the stall.
 
 Do not run another broad `claude -p` implementation attempt for Subtask 029.
 

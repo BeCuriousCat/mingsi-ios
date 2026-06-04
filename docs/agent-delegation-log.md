@@ -2,6 +2,31 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-04: Delegation Wait Policy Refinement
+
+Reason:
+
+- The user clarified that GLM/Claude worker capacity should be spent generously, but Codex manager tokens should not be spent babysitting raw logs or checking every 30 seconds.
+- The delegation framework must stay generic and open-sourceable, with MingSi as a dogfood project rather than a hard-coded assumption.
+- The manager consumption model is two-layered: conclusion progress is routine input; raw/event flow logs are retained evidence and opened only for diagnosis.
+
+Actions:
+
+- Updated `scripts/claude_delegate.sh wait` so the default `auto` schedule is the normal path and prints the effective 3/6/9-minute schedule.
+- Added wait outcome reporting that distinguishes no conclusion-progress movement from progress that moved but has not reached `HANDOFF`.
+- Updated the reusable skill prototype and monitoring reference to require stall classification before flow-log inspection or manager takeover.
+- Refreshed MingSi continuation/status docs so the latest completed delegated product slice is Subtask 036, not Subtask 035.
+
+Delegation state:
+
+- No Claude Code worker was delegated for this framework refinement.
+- Codex implemented directly because the change is process/architecture ownership, not a bounded product implementation slice.
+
+Framework lesson:
+
+- Token usage is weak telemetry. The manager should judge utilization through conclusion progress, changed files, worker verification, and handoff evidence.
+- Default monitoring should be low-frequency and conclusion-first: `status` for immediate inspection, then `wait` with 3/6/9 backoff before intervention.
+
 ## 2026-06-04: AI Repair Status Feedback Polish - Subtask 036
 
 Reason:

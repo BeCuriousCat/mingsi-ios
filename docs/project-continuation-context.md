@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check after commit `23eef3e Add prompt inspector read-only view`, `git status --short` was clean.
+At the last recorded check after commit `2c023b2 Polish AI repair status feedback`, `git status --short` was clean.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -68,6 +68,13 @@ Subtask 035 proved the wrapper on a Settings auditability slice:
 - Worker reached `HANDOFF/DONE`.
 - Codex accepted with a manager fix so `SettingsView` reads templates through `AppStore.promptTemplate(for:mode:)` and the `PromptProvider` boundary.
 - Commit: `23eef3e Add prompt inspector read-only view`.
+
+Subtask 036 proved the wrapper on a History/Settings AI repair feedback slice:
+
+- History repair rows and Settings PromptRun audit rows now show clearer per-run/per-candidate status.
+- Worker reached `HANDOFF/DONE` after one API-disconnect non-delivery attempt.
+- Codex accepted with a manager copy fix so candidate status text does not overstate current persistence behavior.
+- Commit: `2c023b2 Polish AI repair status feedback`.
 
 ## Latest Completed Product Evidence
 
@@ -97,12 +104,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `035-prompt-inspector-readonly`
-- PRD: `docs/subtasks/035-prompt-inspector-readonly-prd.md`
-- Progress: `docs/subtasks/035-prompt-inspector-readonly-progress.md`
-- Claude prompt: `docs/subtasks/035-prompt-inspector-readonly-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-035-prompt-inspector-readonly`
-- Result: `HANDOFF/DONE`, Codex accepted with manager boundary fix, committed as `23eef3e`.
+- Subtask: `036-ai-repair-status-feedback`
+- PRD: `docs/subtasks/036-ai-repair-status-feedback-prd.md`
+- Progress: `docs/subtasks/036-ai-repair-status-feedback-progress.md`
+- Claude prompt: `docs/subtasks/036-ai-repair-status-feedback-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-036-ai-repair-status-feedback`
+- Result: `HANDOFF/DONE`, Codex accepted with manager copy fix, committed as `2c023b2`.
 
 ## Subtask 029 Claude Attempts
 
@@ -139,7 +146,6 @@ Preferred next move:
    - Project overview hierarchy and merge audit display polish.
    - Growth report explanation / drilldown polish.
    - Live GLM failure-path confirmation for History repair.
-   - Clearer per-run completion/failure feedback in History and Settings AI repair/retry UI.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.
 4. Keep the delegation framework generic:
@@ -150,10 +156,11 @@ Preferred next move:
    - `scripts/claude_delegate.sh prepare <id-topic> docs/subtasks/<id-topic>-progress.md`
    - `scripts/claude_delegate.sh launch <id-topic> docs/subtasks/<id-topic>-claude-prompt.md docs/subtasks/<id-topic>-progress.md`
    - `scripts/claude_delegate.sh status <id-topic> docs/subtasks/<id-topic>-progress.md`
-   - `scripts/claude_delegate.sh wait <id-topic> docs/subtasks/<id-topic>-progress.md 300 5`
+   - `scripts/claude_delegate.sh wait <id-topic> docs/subtasks/<id-topic>-progress.md`
    - On launch, the wrapper syncs matching `docs/subtasks/<id-topic>*` files into the worker worktree.
    - For monitoring, worker progress is authoritative when present; manager progress is only the fallback.
    - Manager review should consume worker progress/HANDOFF first. Event/raw logs are flow logs and should be opened only after a problem, failed acceptance, or non-trivial discrepancy.
+   - Default wait uses `CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540`; after those checks, if there is no `HANDOFF` and no conclusion-progress movement, Codex may intervene after classifying the stall.
 
 Do not launch another broad `claude -p` implementation run for this slice without a stricter wrapper. The focused prompt improved behavior enough to reach `START`, but not enough to produce `HANDOFF`.
 
