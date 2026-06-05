@@ -32,6 +32,16 @@ Latest accepted framework fix:
 - Purpose: prevent wrapper-managed tmux/session launches from hiding immediate launch failure or accumulating stale worker processes under Codex.
 - State: accepted and committed in `2f5c8f5 Fix delegation worker lifecycle cleanup`. Wrapper now observes tmux launch exit status, reports task-scoped worker liveness, exits `wait` early on launch-before-START failure, and has a task-scoped `cleanup` command.
 
+Latest accepted framework fix:
+
+- Subtask: `052-delegation-tmux-flag-compatibility`
+- Owner: Codex direct framework fix.
+- PRD file: `docs/subtasks/052-delegation-tmux-flag-compatibility-prd.md`
+- Progress file: `docs/subtasks/052-delegation-tmux-flag-compatibility-progress.md`
+- Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
+- Purpose: align wrapper tmux flag generation with the current Claude CLI: native is bare `--tmux`, classic is `--tmux=classic`, and non-TTY classic false success must be classified as launch failure.
+- State: accepted after syntax, static flag regression, wrapper help, flow-log preservation, and `git diff --check`. 050 can now be relaunched under bare `--tmux` native mode.
+
 Latest accepted delegated slice:
 
 - Subtask: `048-project-detail-visual-smoke-readiness`

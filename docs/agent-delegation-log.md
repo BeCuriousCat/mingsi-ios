@@ -2,6 +2,32 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Direct Framework Fix - Subtask 052 Delegation Tmux Flag Compatibility
+
+Reason:
+
+- Relaunching Subtask 050 after Subtask 051 showed that `--tmux=classic` can fail in the Codex non-interactive host with `open terminal failed: not a terminal` while returning exit `0`.
+- A trial with `CLAUDE_DELEGATE_TMUX_STYLE=native` showed the current Claude CLI rejects `--tmux=native`; `claude --help` documents native as bare `--tmux` and classic as `--tmux=classic`.
+
+Delegation state:
+
+- Claude Code was not delegated because this is a wrapper/control-plane compatibility fix required before delegating safely.
+
+Changed framework behavior:
+
+- Default tmux style is native.
+- Native emits bare `--tmux`.
+- Classic emits `--tmux=classic`.
+- Wrapper classifies `open terminal failed: not a terminal` as launch failure even if the CLI exits `0`.
+
+Verification:
+
+- `claude --help` confirmed native tmux is bare `--tmux`; classic is `--tmux=classic`.
+- `bash -n scripts/claude_delegate.sh` passed.
+- Static regression confirmed the wrapper no longer emits `--tmux=native`.
+- Wrapper help shows default `CLAUDE_DELEGATE_TMUX_STYLE=native`.
+- `git diff --check` passed.
+
 ## 2026-06-06: Direct Framework Fix - Subtask 051 Delegation Lifecycle Cleanup
 
 Reason:

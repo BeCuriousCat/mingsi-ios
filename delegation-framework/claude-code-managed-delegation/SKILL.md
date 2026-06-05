@@ -97,6 +97,7 @@ A compatible wrapper should support:
 - non-interactive shells should not automatically fall back from tmux/session mode to foreground print mode; print mode is opt-in because foreground Claude processes can leave MCP/caffeinate children attached to Codex-managed shells
 - Claude agent/MCP preflight commands should be opt-in, not default, because they can start extra child processes before the worker actually begins
 - tmux/session launch should observe the Claude CLI launch exit code instead of backgrounding the launcher process and losing its failure status
+- tmux native mode is the bare `--tmux` flag; classic mode is `--tmux=classic` and may fail in non-TTY hosts with `open terminal failed: not a terminal`
 
 For this repo prototype, use:
 

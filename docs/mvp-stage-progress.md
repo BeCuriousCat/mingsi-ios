@@ -60,6 +60,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 048 Project Detail visual-smoke readiness audit via Claude Code after the user restarted Codex and cleared the Codex-owned zombie process buildup. Worker reached `HANDOFF/DONE`; Codex accepted the read-only findings as planning evidence only. The audit identifies 10 Project Detail screenshot states, 6 source-inferred visual risks, and 3 narrow follow-up candidates. No Swift source or test files were modified; real iPhone 17 screenshots are still required before confirming visual risks or implementing follow-ups.
 - Started delegation resource-hygiene hardening after Subtask 048 reproduced residual process-leak risk. `scripts/claude_delegate.sh` now keeps tmux/session mode by default in non-interactive shells, makes Claude agent/MCP preflight opt-in, and blocks prepare/launch/wait when Codex or total zombie counts exceed configured thresholds. The generic skill prototype now treats resource hygiene as part of delegation correctness.
 - Completed Subtask 051 delegation lifecycle cleanup after Subtask 050 exposed a launch-before-START failure. The wrapper now observes tmux/session launch exit status instead of backgrounding the launcher by default, reports task-scoped worker liveness in `status`/`wait`, exits `wait` early when no worker process and no checkpoint exist, and provides task-scoped `cleanup` before relaunch. This is a generic framework fix; no MingSi product source changed.
+- Completed Subtask 052 delegation tmux flag compatibility after 050 relaunch showed Claude CLI flag drift: native tmux is bare `--tmux`, classic is `--tmux=classic`, and classic can falsely exit 0 with `open terminal failed: not a terminal` under Codex non-interactive shells. The wrapper now defaults to native bare `--tmux`, preserves explicit classic mode, and classifies non-TTY classic output as launch failure.
 
 ## Known Remaining Work
 
@@ -70,9 +71,10 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
 6. Delegation wrapper strict handoff detection is fixed in Subtask 046, and Subtask 048 added resource guards for Codex zombie buildup. Future framework work should still validate tmux-mode launches under real delegation load.
 7. Subtask 051 adds launch lifecycle and cleanup handling, but it still cannot reap zombies already owned by Codex if the Codex parent process itself fails to reap children.
-8. Process files should stay updated after each implementation or delegation slice.
-9. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
-10. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
+8. Subtask 052 corrected tmux flag handling, but a fresh 050 relaunch is still required to prove the local Claude CLI can start a real worker from Codex.
+9. Process files should stay updated after each implementation or delegation slice.
+10. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
+11. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
 
 ## Current Recommended Next Slice
 

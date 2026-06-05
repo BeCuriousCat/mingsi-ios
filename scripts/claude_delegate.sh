@@ -19,7 +19,7 @@ environment overrides:
   CLAUDE_DELEGATE_ALLOWED_TOOLS='Skill,Read,Edit,MultiEdit,Write,Bash,Grep,Glob,LS'
   CLAUDE_DELEGATE_SETTING_SOURCES=user,local
   CLAUDE_DELEGATE_MODE=tmux    # tmux or print
-  CLAUDE_DELEGATE_TMUX_STYLE=classic  # classic or native; classic is safer in non-interactive shells
+  CLAUDE_DELEGATE_TMUX_STYLE=native  # native uses bare --tmux; classic uses --tmux=classic
   CLAUDE_DELEGATE_NONINTERACTIVE_FALLBACK=0 # set to print only when tmux cannot be used
   CLAUDE_DELEGATE_AGENT_PREFLIGHT=0 # set 1 to run claude agents --json before launch
   CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 # print mode only; general GLM coding budget guard
@@ -101,7 +101,7 @@ allowed_tools="${CLAUDE_DELEGATE_ALLOWED_TOOLS:-Skill,Read,Edit,MultiEdit,Write,
 tools="${CLAUDE_DELEGATE_TOOLS:-Skill,Read,Edit,MultiEdit,Write,Bash,Grep,Glob,LS}"
 setting_sources="${CLAUDE_DELEGATE_SETTING_SOURCES:-user,local}"
 mode="${CLAUDE_DELEGATE_MODE:-tmux}"
-tmux_style="${CLAUDE_DELEGATE_TMUX_STYLE:-classic}"
+tmux_style="${CLAUDE_DELEGATE_TMUX_STYLE:-native}"
 noninteractive_fallback="${CLAUDE_DELEGATE_NONINTERACTIVE_FALLBACK:-0}"
 agent_preflight="${CLAUDE_DELEGATE_AGENT_PREFLIGHT:-0}"
 max_budget="${CLAUDE_DELEGATE_MAX_BUDGET_USD:-30.00}"
@@ -195,6 +195,16 @@ print_worker_liveness() {
   active_count="$(worker_process_count)"
   zombie_count="$(worker_zombie_count)"
   echo "worker liveness: active_processes=$active_count zombie_processes=$zombie_count worktree=$worker_path"
+}
+
+tmux_cli_args() {
+  if [[ "$tmux_style" == "native" ]]; then
+    printf '%s\n' "--tmux"
+  elif [[ "$tmux_style" == "classic" ]]; then
+    printf '%s\n' "--tmux=classic"
+  else
+    printf '%s\n' "--tmux=$tmux_style"
+  fi
 }
 
 cleanup_worker_processes() {
@@ -571,9 +581,10 @@ case "$cmd" in
       fi
     elif [[ "$effective_mode" == "tmux" ]]; then
       launch_status="0"
+      tmux_arg="$(tmux_cli_args)"
       if claude \
         --worktree "$worktree_name" \
-        --tmux="$tmux_style" \
+        "$tmux_arg" \
         --settings "$settings_file" \
         --setting-sources "$setting_sources" \
         --permission-mode "$permission_mode" \
@@ -587,6 +598,11 @@ case "$cmd" in
         launch_status="0"
       else
         launch_status="$?"
+      fi
+      if [[ "$launch_status" == "0" ]] && rg -q 'open terminal failed: not a terminal' "$raw_log"; then
+        launch_status="75"
+        printf '{"event":"manager_launch_false_success","time":"%s","reason":"non-tty-classic-tmux","raw_log":"%s"}\n' \
+          "$(timestamp)" "$raw_log" >> "$event_log"
       fi
       printf '{"event":"manager_launch_exit","time":"%s","exit_code":%s,"raw_log":"%s","event_log":"%s","mode":"foreground-observed"}\n' \
         "$(timestamp)" "$launch_status" "$raw_log" "$event_log" >> "$event_log"

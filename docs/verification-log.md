@@ -2,6 +2,48 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 052 Delegation Tmux Flag Compatibility
+
+Scope:
+
+- Fix wrapper tmux flag compatibility for the current local Claude CLI.
+- Keep MingSi product source unchanged.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- local installed `claude-code-managed-delegation` skill
+- `docs/subtasks/052-delegation-tmux-flag-compatibility-prd.md`
+- `docs/subtasks/052-delegation-tmux-flag-compatibility-progress.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+claude --help
+bash -n scripts/claude_delegate.sh
+if rg -q -- '--tmux="\$tmux_style"|--tmux=native' scripts/claude_delegate.sh; then echo 'FAIL: invalid native tmux invocation remains'; exit 1; else echo 'PASS: native tmux does not use --tmux=native'; fi
+scripts/claude_delegate.sh --help
+rg -n 'open terminal failed: not a terminal|unknown option' docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-after-051-classic-claude-run.jsonl docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-claude-run.jsonl
+git diff --check
+```
+
+Result:
+
+- `claude --help` confirms native tmux is bare `--tmux`; classic is `--tmux=classic`.
+- Syntax check passed.
+- Static tmux flag regression passed.
+- Wrapper help now shows default `CLAUDE_DELEGATE_TMUX_STYLE=native`.
+- Flow-log evidence was preserved for the classic non-TTY false success and invalid native flag attempt.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This verifies wrapper flag generation and false-success detection; it still needs a fresh 050 relaunch to prove the local Claude CLI can start a real worker from Codex.
+
 ## 2026-06-06: Subtask 051 Delegation Lifecycle Cleanup
 
 Scope:
