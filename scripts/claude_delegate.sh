@@ -8,6 +8,7 @@ usage:
   scripts/claude_delegate.sh launch <subtask-id-topic> <prompt-file> [progress-file]
   scripts/claude_delegate.sh status <subtask-id-topic> [progress-file]
   scripts/claude_delegate.sh wait <subtask-id-topic> [progress-file] [auto|interval-seconds] [max-checks]
+  scripts/claude_delegate.sh cleanup <subtask-id-topic> [progress-file]
 
 environment overrides:
   CLAUDE_DELEGATE_MODEL=glm-5.1
@@ -30,6 +31,8 @@ environment overrides:
   CLAUDE_DELEGATE_RESOURCE_GUARD=1
   CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=20
   CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES=80
+  CLAUDE_DELEGATE_PRELAUNCH_CLEANUP=1
+  CLAUDE_DELEGATE_CLEANUP_ON_STALL=0
 
 notes:
   In non-interactive shells, tmux launch stays in tmux mode by default. Set
@@ -42,6 +45,9 @@ notes:
   Default wait uses auto backoff: 3m, then 6m, then 9m. If those checks show no
   conclusion-progress movement and no HANDOFF, the manager may intervene after
   classifying the stall.
+  cleanup terminates only processes whose command line names this subtask's
+  worker worktree or Claude --worktree target. It does not remove worktrees or
+  inspect raw logs.
 EOF
 }
 
@@ -104,6 +110,8 @@ overwrite_worker_progress="${CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS:-0}"
 resource_guard_enabled="${CLAUDE_DELEGATE_RESOURCE_GUARD:-1}"
 max_codex_zombies="${CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES:-20}"
 max_total_zombies="${CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES:-80}"
+prelaunch_cleanup="${CLAUDE_DELEGATE_PRELAUNCH_CLEANUP:-1}"
+cleanup_on_stall="${CLAUDE_DELEGATE_CLEANUP_ON_STALL:-0}"
 effective_mode="$mode"
 
 resolve_effective_mode() {
@@ -142,6 +150,86 @@ resource_guard() {
     exit 75
   fi
   echo "$message" >&2
+}
+
+worker_process_pids() {
+  ps -axo pid=,ppid=,stat=,command= | awk -v path="$worker_path" -v wt="$worktree_name" '
+    {
+      pid = $1
+      ppid = $2
+      stat = $3
+      $1 = ""; $2 = ""; $3 = ""
+      sub(/^[[:space:]]+/, "")
+      cmd = $0
+      if (stat ~ /^Z/) next
+      if (index(cmd, "ps -axo") > 0 || index(cmd, " awk ") > 0 || cmd ~ /^awk[[:space:]]/) next
+      if (index(cmd, path) > 0 || index(cmd, "--worktree " wt) > 0 || index(cmd, "--worktree=" wt) > 0) {
+        print pid
+      }
+    }
+  '
+}
+
+worker_zombie_count() {
+  ps -axo stat=,command= | awk -v path="$worker_path" -v wt="$worktree_name" '
+    {
+      stat = $1
+      $1 = ""
+      sub(/^[[:space:]]+/, "")
+      cmd = $0
+      if (stat ~ /^Z/ && (index(cmd, path) > 0 || index(cmd, "--worktree " wt) > 0 || index(cmd, "--worktree=" wt) > 0)) {
+        count++
+      }
+    }
+    END { print count + 0 }
+  '
+}
+
+worker_process_count() {
+  worker_process_pids | awk 'END { print NR + 0 }'
+}
+
+print_worker_liveness() {
+  local active_count
+  local zombie_count
+  active_count="$(worker_process_count)"
+  zombie_count="$(worker_zombie_count)"
+  echo "worker liveness: active_processes=$active_count zombie_processes=$zombie_count worktree=$worker_path"
+}
+
+cleanup_worker_processes() {
+  local reason="${1:-manual}"
+  local pids=()
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] && pids+=("$pid")
+  done < <(worker_process_pids)
+  if [[ "${#pids[@]}" -eq 0 ]]; then
+    printf '{"event":"manager_cleanup","time":"%s","reason":"%s","pids":[],"result":"no-active-worker-process"}\n' \
+      "$(timestamp)" "$reason" >> "$event_log"
+    echo "cleanup: no active worker processes for $subtask"
+    return 0
+  fi
+
+  printf '{"event":"manager_cleanup","time":"%s","reason":"%s","pids":"%s","signal":"TERM"}\n' \
+    "$(timestamp)" "$reason" "${pids[*]}" >> "$event_log"
+  kill -TERM "${pids[@]}" 2>/dev/null || true
+  sleep 2
+
+  local remaining=()
+  local pid
+  for pid in "${pids[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      remaining+=("$pid")
+    fi
+  done
+
+  if [[ "${#remaining[@]}" -gt 0 ]]; then
+    printf '{"event":"manager_cleanup","time":"%s","reason":"%s","pids":"%s","signal":"KILL"}\n' \
+      "$(timestamp)" "$reason" "${remaining[*]}" >> "$event_log"
+    kill -KILL "${remaining[@]}" 2>/dev/null || true
+  fi
+
+  echo "cleanup: terminated worker processes for $subtask: ${pids[*]}"
 }
 
 progress_file_for() {
@@ -455,6 +543,9 @@ case "$cmd" in
     preflight
     write_settings
     : > "$event_log"
+    if [[ "$prelaunch_cleanup" == "1" ]]; then
+      cleanup_worker_processes "prelaunch"
+    fi
     ensure_worker_worktree
     sync_worker_task_docs "$prompt_file" "$progress_file"
 
@@ -479,7 +570,8 @@ case "$cmd" in
         run_print_claude > "$raw_log"
       fi
     elif [[ "$effective_mode" == "tmux" ]]; then
-      claude \
+      launch_status="0"
+      if claude \
         --worktree "$worktree_name" \
         --tmux="$tmux_style" \
         --settings "$settings_file" \
@@ -491,11 +583,18 @@ case "$cmd" in
         --tools "$tools" \
         --allowedTools "$allowed_tools" \
         -- \
-        "$prompt" > "$raw_log" 2>&1 &
-      pid="$!"
-      printf '{"event":"manager_launch_pid","time":"%s","pid":%s,"raw_log":"%s","event_log":"%s"}\n' \
-        "$(timestamp)" "$pid" "$raw_log" "$event_log" >> "$event_log"
-      echo "launched claude worker pid=$pid"
+        "$prompt" > "$raw_log" 2>&1; then
+        launch_status="0"
+      else
+        launch_status="$?"
+      fi
+      printf '{"event":"manager_launch_exit","time":"%s","exit_code":%s,"raw_log":"%s","event_log":"%s","mode":"foreground-observed"}\n' \
+        "$(timestamp)" "$launch_status" "$raw_log" "$event_log" >> "$event_log"
+      if [[ "$launch_status" != "0" ]]; then
+        echo "claude tmux launch failed with exit code $launch_status; inspect progress first, then raw log if needed: $raw_log" >&2
+        exit "$launch_status"
+      fi
+      echo "launched claude tmux session request exit=0"
       echo "event log: $event_log"
       echo "raw log: $raw_log"
     else
@@ -537,6 +636,12 @@ case "$cmd" in
       echo "  set CLAUDE_DELEGATE_SHOW_FLOW_LOGS=1 to inspect after a problem or failed acceptance."
     fi
     echo
+    print_worker_liveness
+    active_worker_count="$(worker_process_count)"
+    if ! handoff_reached "$active_progress" && ! progress_has_checkpoint "$active_progress" && [[ "$active_worker_count" == "0" ]]; then
+      echo "worker liveness warning: no active worker process and no conclusion checkpoint; launch likely failed before START"
+    fi
+    echo
     echo "worker git status:"
     [[ -d "$worker_path/.git" || -f "$worker_path/.git" ]] && git -C "$worker_path" status --short || true
     if [[ "$show_flow_logs" == "1" ]]; then
@@ -572,6 +677,7 @@ case "$cmd" in
         echo "HANDOFF found in $active_progress"
         exit 0
       fi
+      print_worker_liveness
       fingerprint="$(progress_fingerprint "$active_progress")"
       if [[ -z "$initial_fingerprint" ]]; then
         initial_fingerprint="$fingerprint"
@@ -583,6 +689,11 @@ case "$cmd" in
       fi
       last_fingerprint="$fingerprint"
       echo "no HANDOFF yet; conclusion source: $active_progress"
+      active_worker_count="$(worker_process_count)"
+      if [[ "$active_worker_count" == "0" ]] && ! progress_has_checkpoint "$active_progress"; then
+        echo "no active worker process and no conclusion checkpoint; launch likely failed before START" >&2
+        exit 75
+      fi
       if [[ "$show_flow_logs" == "1" && -f "$event_log" ]]; then
         tail -n 5 "$event_log"
       fi
@@ -600,11 +711,22 @@ case "$cmd" in
     done
     if [[ "$progress_changed" == "0" ]]; then
       echo "no HANDOFF after $max_checks checks and no conclusion-progress movement; manager intervention is allowed after stall classification" >&2
+      if [[ "$cleanup_on_stall" == "1" ]]; then
+        cleanup_worker_processes "wait-stall"
+      fi
     else
       echo "no HANDOFF after $max_checks checks, but conclusion progress moved; inspect the progress file first and allow one more check if build/test work is still active" >&2
     fi
     echo "flow logs remain diagnostic only; open them only for launch failure, contradiction, missing verification, or failed acceptance" >&2
     exit 75
+    ;;
+
+  cleanup)
+    resource_guard warn
+    progress_file="$(progress_file_for "$@")"
+    mkdir -p "$log_dir"
+    cleanup_worker_processes "manual"
+    print_worker_liveness
     ;;
 
   *)

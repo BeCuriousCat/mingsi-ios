@@ -2,6 +2,42 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Direct Framework Fix - Subtask 051 Delegation Lifecycle Cleanup
+
+Reason:
+
+- The user reported that the delegation skill/wrapper can accumulate stale or zombie child processes under Codex, eventually exhausting macOS user-level process resources.
+- Subtask 050 exposed a concrete lifecycle failure: launch flow logs existed, progress remained `PREPARED`, no `START` checkpoint appeared, and no active worker process was delivering work.
+- The prior resource guard could block new work under zombie pressure, but it did not make launch failure/liveness/cleanup explicit.
+
+Delegation state:
+
+- Claude Code was not delegated for this fix because the bug is in the delegation framework itself.
+- Codex directly implemented the wrapper and skill changes.
+
+Changed framework behavior:
+
+- Tmux/session launch now observes the Claude CLI launch exit code instead of backgrounding the launcher by default.
+- `status` and `wait` report task-scoped worker liveness.
+- `wait` exits early with `75` when there is no active worker process and no conclusion checkpoint.
+- `cleanup` terminates only processes tied to the current subtask worker worktree or `--worktree` target.
+- Prelaunch cleanup is enabled for stale same-subtask processes.
+- The generic skill and local installed skill now document launch-before-START failure handling.
+
+Manager constraints:
+
+- Flow logs remain diagnostic-only.
+- No MingSi Swift product source, persistence, migrations, PromptProvider, parser, LLM client, Keychain, or product tests were changed.
+
+Verification:
+
+- `bash -n scripts/claude_delegate.sh` passed.
+- Static tmux-background regression passed.
+- 050 `status` reports `active_processes=0` and launch-before-START warning.
+- 050 `cleanup` is safe when no active worker remains.
+- 050 `wait 0 1` exits `75` immediately with launch-before-START classification.
+- `git diff --check` passed.
+
 ## 2026-06-06: Prepared Project Detail Visual QA Launch Fixture - Subtask 050
 
 Reason:
@@ -31,7 +67,9 @@ Manager constraints:
 
 Launch state:
 
-- Prepared, not yet launched.
+- Launched before Subtask 051 lifecycle cleanup, but did not reach `START`.
+- Current wrapper status reports no active worker process and no conclusion checkpoint, so Codex classifies this as launch-before-START failure.
+- No worker handoff exists and no 050 implementation has been accepted.
 
 ## 2026-06-05: Prepared Project Detail Visual-Smoke Readiness Audit - Subtask 048
 

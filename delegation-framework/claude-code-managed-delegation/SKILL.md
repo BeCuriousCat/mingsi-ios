@@ -89,10 +89,14 @@ A compatible wrapper should support:
 - relaunch-safe progress sync: once worker progress contains checkpoints, do not overwrite it with a stale manager-side progress file unless an explicit reset flag is set
 - dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
 - explicit no-progress classification: after the scheduled checks, intervention is allowed only when no `HANDOFF` arrived and the conclusion progress did not move
+- worker liveness reporting: `status` and `wait` should say whether a worker process for the task is still active
+- before-START failure detection: if there is no active worker process and no conclusion checkpoint, treat the launch as failed instead of continuing low-frequency polling
+- task-scoped cleanup: a `cleanup` command should terminate only processes tied to that worker worktree or `--worktree` target, without deleting worktrees or reading flow logs
 - an opt-in flag to inspect flow logs
 - resource-health guards before launch/wait: if the Codex parent has too many zombie children, stop launching workers and restart/recover the parent process first
 - non-interactive shells should not automatically fall back from tmux/session mode to foreground print mode; print mode is opt-in because foreground Claude processes can leave MCP/caffeinate children attached to Codex-managed shells
 - Claude agent/MCP preflight commands should be opt-in, not default, because they can start extra child processes before the worker actually begins
+- tmux/session launch should observe the Claude CLI launch exit code instead of backgrounding the launcher process and losing its failure status
 
 For this repo prototype, use:
 
@@ -101,6 +105,7 @@ scripts/claude_delegate.sh prepare <task-id> <progress-file>
 scripts/claude_delegate.sh launch <task-id> <prompt-file> <progress-file>
 scripts/claude_delegate.sh status <task-id> <progress-file>
 scripts/claude_delegate.sh wait <task-id> <progress-file>
+scripts/claude_delegate.sh cleanup <task-id> <progress-file>
 ```
 
 Set these for non-default projects:
@@ -113,9 +118,13 @@ CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0
 CLAUDE_DELEGATE_RESOURCE_GUARD=1
 CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=20
 CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES=80
+CLAUDE_DELEGATE_PRELAUNCH_CLEANUP=1
+CLAUDE_DELEGATE_CLEANUP_ON_STALL=0
 ```
 
 Use `status` for immediate inspection after launch. Use one long-running `wait` invocation for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled. Avoid repeated Codex shell-tool polling, because every manager-side shell invocation is another opportunity for the host app to leak unreaped child processes.
+
+If `status` reports no active worker process and no conclusion checkpoint, do not keep waiting. Classify it as a launch-before-START failure, use `cleanup` for task-scoped process cleanup, then relaunch only after the resource guard is healthy.
 
 Do not reset worker progress during a relaunch just because the manager edited the prompt or PRD. The worker progress file is the conclusion source; overwriting it can erase `START`, `RED`, `IMPLEMENTED`, or `TARGETED_VERIFIED` evidence and force the manager back into flow-log diagnosis. Reset only when the manager intentionally wants to discard the current worker attempt.
 

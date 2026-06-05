@@ -1,12 +1,12 @@
 # Claude Code Current Status
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Current Worker
 
-Status: Subtask 050 is prepared for Claude Code delegation.
+Status: no active Claude Code worker is currently delivering an acceptable handoff.
 
-Active prepared slice:
+Latest attempted delegated slice:
 
 - Subtask: `050-project-detail-visual-qa-launch-fixture`
 - Owner: Claude Code implementation candidate, Codex final acceptance.
@@ -19,6 +19,18 @@ Active prepared slice:
 - Allowed files: `Sources/App/MingSiApp.swift`, `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 050 progress file.
 - Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
 - Delegation rationale: bounded local source/test implementation with explicit acceptance tests; Codex remains final screenshot and taste owner.
+- Launch state: attempted before Subtask 051 lifecycle cleanup, but progress stayed at `PREPARED`, no `START` checkpoint was written, no `HANDOFF` exists, and wrapper liveness now reports no active worker process for the subtask.
+- Codex acceptance: none. 050 remains paused until it is relaunched under the fixed wrapper or replaced by a smaller slice.
+
+Current framework fix in progress:
+
+- Subtask: `051-delegation-lifecycle-cleanup`
+- Owner: Codex direct framework fix.
+- PRD file: `docs/subtasks/051-delegation-lifecycle-cleanup-prd.md`
+- Progress file: `docs/subtasks/051-delegation-lifecycle-cleanup-progress.md`
+- Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
+- Purpose: prevent wrapper-managed tmux/session launches from hiding immediate launch failure or accumulating stale worker processes under Codex.
+- State: implemented and under final verification. Wrapper now observes tmux launch exit status, reports task-scoped worker liveness, exits `wait` early on launch-before-START failure, and has a task-scoped `cleanup` command.
 
 Latest accepted delegated slice:
 
@@ -37,14 +49,6 @@ Latest accepted delegated slice:
 - Launch state: completed after recovery. Three earlier `prepare` attempts failed with local process creation errors (`fork: Resource temporarily unavailable` / `os error 35`) before the user restarted Codex; the fresh launch then reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
 - Worker result: `HANDOFF/DONE`. Findings identify 10 Project Detail screenshot states, 6 source-inferred visual risks, and 3 narrow follow-up candidates. No Swift source or test files were modified.
 - Codex acceptance: accepted as read-only planning evidence only. Real iPhone 17 screenshots are still required before confirming any visual risk or implementing follow-ups.
-
-Current framework fix in progress:
-
-- Subtask: delegation resource hygiene / zombie guard.
-- Owner: Codex direct framework fix.
-- Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
-- Purpose: prevent repeated Codex-side shell/polling and foreground print-mode launches from accumulating unreaped child processes.
-- State: wrapper now keeps non-interactive tmux mode by default, makes `claude agents --json` preflight opt-in, and blocks prepare/launch/wait when zombie thresholds are exceeded.
 
 Previous accepted framework slice:
 

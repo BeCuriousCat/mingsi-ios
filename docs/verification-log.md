@@ -2,6 +2,57 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 051 Delegation Lifecycle Cleanup
+
+Scope:
+
+- Fix the reusable delegation wrapper lifecycle issue reported by the user.
+- Keep MingSi product source unchanged.
+- Preserve conclusion-first monitoring and flow-log separation.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- local installed `claude-code-managed-delegation` skill
+- `docs/subtasks/051-delegation-lifecycle-cleanup-prd.md`
+- `docs/subtasks/051-delegation-lifecycle-cleanup-progress.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+if rg -q '> "\$raw_log" 2>&1 &' scripts/claude_delegate.sh; then echo 'RED: tmux launch still backgrounds claude and cannot observe launch exit'; exit 1; fi
+bash -n scripts/claude_delegate.sh
+if rg -q '> "\$raw_log" 2>&1 &' scripts/claude_delegate.sh; then echo 'FAIL: tmux launch still backgrounds claude'; exit 1; else echo 'PASS: tmux launch no longer backgrounds claude'; fi
+scripts/claude_delegate.sh status 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+scripts/claude_delegate.sh cleanup 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+scripts/claude_delegate.sh wait 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md 0 1
+git diff --check
+ps -axo pid=,ppid=,stat=,command= | awk '$3 ~ /^Z/ {total++; if ($2==77268) codex++} END {printf "codex_zombies=%d total_zombies=%d\n", codex+0, total+0}'
+CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0 scripts/claude_delegate.sh prepare 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+```
+
+Result:
+
+- RED check failed before the fix because tmux launch still backgrounded `claude`.
+- Syntax check passed after the fix.
+- Static tmux-background regression passed after the fix.
+- 050 `status` now reports `active_processes=0` and warns that launch likely failed before `START`.
+- 050 `cleanup` is a safe no-op when no active worker process remains.
+- 050 `wait 0 1` exits `75` immediately with launch-before-START classification.
+- `git diff --check` passed.
+- Resource count after verification: Codex-owned zombies 5, total zombies 7; below the wrapper thresholds of 20/80.
+- Resource guard regression passed: with `CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0`, `prepare` exited `75` and blocked launch.
+
+Residual risk:
+
+- Existing Codex-owned zombies cannot be reaped by a shell wrapper if the Codex parent process does not reap them; the wrapper now reduces new leaks, reports liveness, and blocks/cleans task-scoped stale processes.
+- Subtask 050 still has no accepted worker output and must be relaunched under the fixed wrapper if it remains the next priority.
+
 ## 2026-06-06: Subtask 048 Project Detail Visual-Smoke Readiness and Delegation Resource Guard
 
 Scope:
