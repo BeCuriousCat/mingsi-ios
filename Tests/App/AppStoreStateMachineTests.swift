@@ -4053,4 +4053,232 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(ThinkingLens.opposingView.subtitle, "主动寻找相反证据，避免只证明自己是对的。")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.subtitle, "找出最能改变结果的一步，把精力放在关键处。")
     }
+
+    // MARK: - Visual QA Variant Selector
+
+    func testVariantResolve_knownIds_allExist() {
+        let knownIds: [String] = [
+            "nil_project", "minimal", "normal", "accepted_insight",
+            "pending_insight", "merge_history", "long_timeline",
+            "long_name", "sparse_next_bet", "generating_insight"
+        ]
+        for id in knownIds {
+            let variant = AppStore.resolveVisualQAProjectDetailVariant(
+                environment: ["MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT": id]
+            )
+            XCTAssertEqual(variant.rawValue, id, "Variant id '\(id)' should resolve")
+        }
+    }
+
+    func testVariantResolve_unknownFallsBackToNormal() {
+        let variant = AppStore.resolveVisualQAProjectDetailVariant(
+            environment: ["MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT": "nonexistent_variant"]
+        )
+        XCTAssertEqual(variant, .normal, "Unknown variant should fall back to normal")
+    }
+
+    func testVariantResolve_absentFallsBackToNormal() {
+        let variant = AppStore.resolveVisualQAProjectDetailVariant(
+            environment: [:]
+        )
+        XCTAssertEqual(variant, .normal, "Absent variant should fall back to normal")
+    }
+
+    func testVariantResolve_simctlChildPrefix() {
+        let variant = AppStore.resolveVisualQAProjectDetailVariant(
+            environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT": "minimal"]
+        )
+        XCTAssertEqual(variant, .minimal, "SIMCTL_CHILD_ prefix should resolve")
+    }
+
+    // MARK: - All Variants Common Invariants
+
+    func testAllVariants_startOnProjectsTab() {
+        for variant in AppStore.VisualQAProjectDetailVariant.allCases {
+            let store = AppStore.visualQAProjectDetail(variant: variant)
+            XCTAssertEqual(store.selectedTab, .projects, "Variant \(variant.rawValue) must start on projects tab")
+        }
+    }
+
+    func testAllVariants_haveDirectEntryProjectID() {
+        for variant in AppStore.VisualQAProjectDetailVariant.allCases {
+            let store = AppStore.visualQAProjectDetail(variant: variant)
+            XCTAssertNotNil(
+                store.visualQAProjectDetailDirectEntryProjectID,
+                "Variant \(variant.rawValue) must expose direct-entry project id"
+            )
+        }
+    }
+
+    func testAllVariants_directEntryID_hasBoardItem() {
+        for variant in AppStore.VisualQAProjectDetailVariant.allCases {
+            let store = AppStore.visualQAProjectDetail(variant: variant)
+            let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+            let hasLink = store.historyRecords.contains { record in
+                record.projectLinks.contains { $0.projectId == directEntryID }
+            }
+            XCTAssertTrue(
+                hasLink,
+                "Variant \(variant.rawValue) must have a board item (ProjectLink) for the direct-entry id"
+            )
+        }
+    }
+
+    func testAllVariants_projectLinksResolveToFixtureSources() {
+        for variant in AppStore.VisualQAProjectDetailVariant.allCases {
+            let store = AppStore.visualQAProjectDetail(variant: variant)
+            let unresolvedLinks = store.historyRecords.flatMap { record in
+                record.projectLinks.filter { link in
+                    switch link.sourceType {
+                    case .dailyEntry:
+                        return link.sourceId != record.draft.id.uuidString
+                    case .thinkingCard:
+                        return !record.cards.contains { $0.id.uuidString == link.sourceId }
+                    case .quest:
+                        return !record.quests.contains { $0.id.uuidString == link.sourceId }
+                    case .verification:
+                        return record.verification == nil
+                    case .principle:
+                        return !record.principles.contains { $0.id.uuidString == link.sourceId }
+                    }
+                }
+            }
+            XCTAssertTrue(
+                unresolvedLinks.isEmpty,
+                "Variant \(variant.rawValue) must keep ProjectLink source ids resolvable in History evidence"
+            )
+        }
+    }
+
+    func testAllVariants_optOutOfLoadPersistedState() {
+        for variant in AppStore.VisualQAProjectDetailVariant.allCases {
+            let store = AppStore.visualQAProjectDetail(variant: variant)
+            XCTAssertFalse(
+                store.loadsPersistedStateOnLaunch,
+                "Variant \(variant.rawValue) must opt out of loading persisted state"
+            )
+        }
+    }
+
+    // MARK: - Variant-Specific Shape Tests
+
+    func testVariant_nilProject_hasNoPersistedProject() {
+        let store = AppStore.visualQAProjectDetail(variant: .nil_project)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        XCTAssertNil(
+            store.projectsById[directEntryID],
+            "nil_project must have no persisted Project for the direct-entry id"
+        )
+        XCTAssertNil(
+            store.projectNames[directEntryID],
+            "nil_project must have no project name for the direct-entry id"
+        )
+    }
+
+    func testVariant_minimal_hasAtMostOneConfirmedLink() {
+        let store = AppStore.visualQAProjectDetail(variant: .minimal)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let confirmedLinks = store.historyRecords.flatMap(\.projectLinks).filter {
+            $0.projectId == directEntryID && $0.isUserConfirmed
+        }
+        XCTAssertLessThanOrEqual(
+            confirmedLinks.count, 1,
+            "minimal variant must have 0 or 1 confirmed evidence links"
+        )
+    }
+
+    func testVariant_normal_preservesExistingFixtureBehavior() {
+        let store = AppStore.visualQAProjectDetail(variant: .normal)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        XCTAssertNotNil(store.projectsById[directEntryID])
+        XCTAssertEqual(store.projectNames[directEntryID], "Visual QA - 会议机制优化")
+        XCTAssertFalse(store.acceptedProjectInsights.isEmpty)
+        XCTAssertFalse(store.pendingProjectInsights.isEmpty)
+    }
+
+    func testVariant_acceptedInsight_hasAcceptedInsightRecords() {
+        let store = AppStore.visualQAProjectDetail(variant: .accepted_insight)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let hasAccepted = store.acceptedProjectInsights.contains { $0.projectId == directEntryID }
+        XCTAssertTrue(hasAccepted, "accepted_insight must have accepted ProjectInsight for direct-entry project")
+    }
+
+    func testVariant_pendingInsight_hasPendingInsightRecords() {
+        let store = AppStore.visualQAProjectDetail(variant: .pending_insight)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let hasPending = store.pendingProjectInsights.contains { $0.projectId == directEntryID }
+        XCTAssertTrue(hasPending, "pending_insight must have pending ProjectInsight for direct-entry project")
+    }
+
+    func testVariant_mergeHistory_hasNonEmptyMergeHistory() {
+        let store = AppStore.visualQAProjectDetail(variant: .merge_history)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let project = store.projectsById[directEntryID]
+        XCTAssertNotNil(project)
+        XCTAssertFalse(project!.mergeHistory.isEmpty, "merge_history must have non-empty mergeHistory")
+    }
+
+    func testVariant_longTimeline_hasAtLeast10ConfirmedLinks() {
+        let store = AppStore.visualQAProjectDetail(variant: .long_timeline)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let confirmedLinks = store.historyRecords.flatMap(\.projectLinks).filter {
+            $0.projectId == directEntryID && $0.isUserConfirmed
+        }
+        XCTAssertGreaterThanOrEqual(
+            confirmedLinks.count, 10,
+            "long_timeline must have at least 10 confirmed project links"
+        )
+    }
+
+    func testVariant_longName_hasLongName() {
+        let store = AppStore.visualQAProjectDetail(variant: .long_name)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let name = store.projectNames[directEntryID]
+        XCTAssertNotNil(name)
+        XCTAssertTrue(name!.count > 30, "long_name must use a long project name (got: \(name!.count) chars)")
+    }
+
+    func testVariant_sparseNextBet_hasSparseOverviewAndDerivedNextBet() {
+        let store = AppStore.visualQAProjectDetail(variant: .sparse_next_bet)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID!
+        let project = store.projectsById[directEntryID]
+        XCTAssertNotNil(project)
+        XCTAssertTrue(project!.goal.isEmpty)
+        XCTAssertTrue(project!.successCriteria.isEmpty)
+        XCTAssertNil(project!.currentBottleneck)
+        XCTAssertTrue(project!.openQuestions.isEmpty)
+
+        let evidence = store.historyRecords.flatMap { record in
+            record.projectLinks
+                .filter { $0.projectId == directEntryID }
+                .map { (link: $0, record: record) }
+        }
+        let digest = ProjectEvidenceDigest(projectId: directEntryID, evidence: evidence)
+        XCTAssertNotNil(digest.nextBet, "sparse_next_bet must derive nextBet from fixture evidence")
+    }
+
+    func testVariant_generatingInsight_setsFlag() {
+        let store = AppStore.visualQAProjectDetail(variant: .generating_insight)
+        XCTAssertTrue(
+            store.isGeneratingProjectInsights,
+            "generating_insight must set isGeneratingProjectInsights"
+        )
+    }
+
+    // MARK: - Apply Fixture with Variant
+
+    func testApplyVisualQAProjectDetailFixture_withVariant_preservesDirectEntryID() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+        store.applyVisualQAProjectDetailFixture(variant: .long_name)
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID
+        XCTAssertNotNil(directEntryID, "applyFixture with variant must preserve direct-entry id")
+        let name = store.projectNames[directEntryID!]
+        XCTAssertTrue(name!.count > 30, "applied variant should match long_name shape")
+    }
+
+    func testNormalStore_unaffectedByVariantSelector() {
+        let normalStore = AppStore(refreshesAIServiceFromKeychain: false)
+        XCTAssertNil(normalStore.visualQAProjectDetailDirectEntryProjectID)
+        XCTAssertTrue(normalStore.loadsPersistedStateOnLaunch)
+    }
 }

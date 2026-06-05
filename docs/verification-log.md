@@ -2,6 +2,45 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 057 Project Detail Visual QA Fixture Variants
+
+Scope:
+
+- Accept Claude Code implementation of Debug-only Project Detail visual QA fixture variants for the Subtask 048 screenshot matrix.
+- Keep production persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, Project semantics, and Project Detail visual polish unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/057-project-detail-visual-qa-fixture-variants-*`
+- `docs/subtasks/logs/057-project-detail-visual-qa-fixture-variants-*`
+- `docs/subtasks/049-project-detail-real-simulator-visual-qa-progress.md`
+- `docs/mvp-stage-progress.md`
+- `docs/agent-delegation-log.md`
+- `docs/subtasks/claude-code-current-status.md`
+
+Commands run:
+
+```bash
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE` in the worker progress file.
+- Codex accepted after manager fixes for fixture ProjectLink source resolution and true sparse next-bet derivation.
+- `git diff --check` passed.
+- AppStoreStateMachineTests passed with 153 tests and 0 failures.
+- iPhone 17 Release simulator build passed.
+
+Residual risk:
+
+- This is code/test/build verified. Real iPhone 17 screenshots for the 10 variants are still required before Subtask 049 visual acceptance can close.
+- Delegation framework follow-up: print-mode launch exit reported no handoff while wrapper `status` surfaced worker `HANDOFF/DONE`.
+
 ## 2026-06-06: Subtask 056 Project Detail Debug Direct Entry
 
 Scope:

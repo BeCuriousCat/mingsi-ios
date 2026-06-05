@@ -237,6 +237,28 @@ final class AppStore: ObservableObject {
 #if DEBUG
     nonisolated static let visualQAMarkerFileName = ".visual_qa_project_detail"
 
+    enum VisualQAProjectDetailVariant: String, CaseIterable, Equatable {
+        case nil_project
+        case minimal
+        case normal
+        case accepted_insight
+        case pending_insight
+        case merge_history
+        case long_timeline
+        case long_name
+        case sparse_next_bet
+        case generating_insight
+    }
+
+    static func resolveVisualQAProjectDetailVariant(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> VisualQAProjectDetailVariant {
+        let raw = environment["MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT"]
+            ?? environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT"]
+            ?? ""
+        return VisualQAProjectDetailVariant(rawValue: raw) ?? .normal
+    }
+
     static func isVisualQAProjectDetailLaunch(
         arguments: [String] = ProcessInfo.processInfo.arguments,
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -256,8 +278,37 @@ final class AppStore: ObservableObject {
     }
 
     static func visualQAProjectDetail() -> AppStore {
-        let project = Project(
-            name: "Visual QA - 会议机制优化",
+        visualQAProjectDetail(variant: resolveVisualQAProjectDetailVariant())
+    }
+
+    static func visualQAProjectDetail(variant: VisualQAProjectDetailVariant) -> AppStore {
+        switch variant {
+        case .normal:
+            return makeNormalVariant()
+        case .nil_project:
+            return makeNilProjectVariant()
+        case .minimal:
+            return makeMinimalVariant()
+        case .accepted_insight:
+            return makeAcceptedInsightVariant()
+        case .pending_insight:
+            return makePendingInsightVariant()
+        case .merge_history:
+            return makeMergeHistoryVariant()
+        case .long_timeline:
+            return makeLongTimelineVariant()
+        case .long_name:
+            return makeLongNameVariant()
+        case .sparse_next_bet:
+            return makeSparseNextBetVariant()
+        case .generating_insight:
+            return makeGeneratingInsightVariant()
+        }
+    }
+
+    private static func makeBaseProject(name: String = "Visual QA - 会议机制优化") -> Project {
+        Project(
+            name: name,
             goal: "减少会议后的返工和模糊结论",
             successCriteria: "每次会议结束时有明确负责人、行动项和验收标准",
             currentBottleneck: "会前没有列出必须确认的问题",
@@ -265,7 +316,88 @@ final class AppStore: ObservableObject {
             status: .active,
             mergeHistory: ["合并了: Visual QA - 接口归属确认\n来源项目: fixture\n原因: 视觉验证用例\n证据: fixture-evidence"]
         )
+    }
 
+    private static func makeConfirmedLink(projectId: UUID, sourceId: UUID) -> ProjectLink {
+        ProjectLink(
+            projectId: projectId,
+            sourceType: .thinkingCard,
+            sourceId: sourceId.uuidString,
+            linkType: .evidence,
+            isUserConfirmed: true
+        )
+    }
+
+    private static func makeHistoryRecord(projectId: UUID, links: [ProjectLink]) -> HistoryRecord {
+        let draft = DailyEntryDraft(
+            rawText: "Visual QA: 会议讨论了接口归属问题",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .sessionComplete
+        )
+        let cards = links.enumerated().compactMap { offset, link -> ThinkingCard? in
+            guard link.sourceType == .thinkingCard,
+                  let sourceId = UUID(uuidString: link.sourceId) else { return nil }
+            return ThinkingCard(
+                id: sourceId,
+                type: .problem,
+                title: "Visual QA - 会议目标不清 \(offset + 1)",
+                body: "会议讨论了多个议题，但没有逐项确认负责人。",
+                isConfirmed: true
+            )
+        }
+        let quests = links.enumerated().compactMap { offset, link -> Quest? in
+            guard link.sourceType == .quest,
+                  let sourceId = UUID(uuidString: link.sourceId) else { return nil }
+            return Quest(
+                id: sourceId,
+                type: .main,
+                title: "Visual QA - 下一步验证 \(offset + 1)",
+                whyItMatters: "验证下一步押注是否降低返工",
+                completionCriteria: "完成一次带负责人和验收标准的会议确认",
+                expectedResistance: "跨角色沟通",
+                reflectionQuestion: "哪一个确认动作减少了返工？",
+                status: .active
+            )
+        }
+        return HistoryRecord(
+            draft: draft,
+            cards: cards,
+            quests: quests,
+            principles: [],
+            verification: nil,
+            lensSession: nil,
+            projectLinks: links,
+            growthContributions: []
+        )
+    }
+
+    private static func makeAcceptedInsight(projectId: UUID, sourceId: UUID) -> ProjectInsight {
+        ProjectInsight(
+            projectId: projectId,
+            insightType: .progress,
+            title: "Visual QA - 进展信号",
+            summary: "从依赖会议讨论到主动会前准备，接口归属逐步明确。",
+            sourceRefs: [sourceId.uuidString],
+            userFeedback: .accepted
+        )
+    }
+
+    private static func makePendingInsight(projectId: UUID, sourceId: UUID) -> ProjectInsight {
+        ProjectInsight(
+            projectId: projectId,
+            insightType: .thinkingChange,
+            title: "Visual QA - 思考转变",
+            summary: "从被动等待会议结论到会前列出必须确认的问题。",
+            beforeText: "之前依赖会议讨论决定归属",
+            afterText: "现在会前列出必须确认的问题",
+            sourceRefs: [sourceId.uuidString],
+            userFeedback: .none
+        )
+    }
+
+    private static func makeNormalVariant() -> AppStore {
+        let project = makeBaseProject()
         let cardID = UUID()
         let questID = UUID()
         let draft = DailyEntryDraft(
@@ -318,24 +450,8 @@ final class AppStore: ObservableObject {
             growthContributions: []
         )
 
-        let acceptedInsight = ProjectInsight(
-            projectId: project.id,
-            insightType: .progress,
-            title: "Visual QA - 进展信号",
-            summary: "从依赖会议讨论到主动会前准备，接口归属逐步明确。",
-            sourceRefs: [cardID.uuidString],
-            userFeedback: .accepted
-        )
-        let pendingInsight = ProjectInsight(
-            projectId: project.id,
-            insightType: .thinkingChange,
-            title: "Visual QA - 思考转变",
-            summary: "从被动等待会议结论到会前列出必须确认的问题。",
-            beforeText: "之前依赖会议讨论决定归属",
-            afterText: "现在会前列出必须确认的问题",
-            sourceRefs: [questID.uuidString],
-            userFeedback: .none
-        )
+        let acceptedInsight = makeAcceptedInsight(projectId: project.id, sourceId: cardID)
+        let pendingInsight = makePendingInsight(projectId: project.id, sourceId: questID)
 
         let store = AppStore(
             historyRecords: [record],
@@ -352,8 +468,261 @@ final class AppStore: ObservableObject {
         return store
     }
 
+    private static func makeNilProjectVariant() -> AppStore {
+        let projectId = UUID()
+        let sourceId = UUID()
+        let link = makeConfirmedLink(projectId: projectId, sourceId: sourceId)
+        let record = makeHistoryRecord(projectId: projectId, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        // No projectsById or projectNames — board item exists via link but no persisted Project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = projectId
+        return store
+    }
+
+    private static func makeMinimalVariant() -> AppStore {
+        let project = Project(
+            name: "Visual QA - 最小项目",
+            goal: "验证最小数据",
+            successCriteria: "目标可展示"
+        )
+        let sourceId = UUID()
+        let link = makeConfirmedLink(projectId: project.id, sourceId: sourceId)
+        let record = makeHistoryRecord(projectId: project.id, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeAcceptedInsightVariant() -> AppStore {
+        let project = makeBaseProject()
+        let sourceId1 = UUID()
+        let sourceId2 = UUID()
+        let link1 = makeConfirmedLink(projectId: project.id, sourceId: sourceId1)
+        let link2 = makeConfirmedLink(projectId: project.id, sourceId: sourceId2)
+        let record = makeHistoryRecord(projectId: project.id, links: [link1, link2])
+
+        let insight1 = makeAcceptedInsight(projectId: project.id, sourceId: sourceId1)
+        let insight2 = ProjectInsight(
+            projectId: project.id,
+            insightType: .progress,
+            title: "Visual QA - 流程改善",
+            summary: "会议纪要模板落地后，确认项漏掉率明显下降。",
+            sourceRefs: [sourceId2.uuidString],
+            userFeedback: .accepted
+        )
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.acceptedProjectInsights = [insight1, insight2]
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makePendingInsightVariant() -> AppStore {
+        let project = makeBaseProject()
+        let sourceId1 = UUID()
+        let sourceId2 = UUID()
+        let link1 = makeConfirmedLink(projectId: project.id, sourceId: sourceId1)
+        let link2 = makeConfirmedLink(projectId: project.id, sourceId: sourceId2)
+        let record = makeHistoryRecord(projectId: project.id, links: [link1, link2])
+
+        let pending1 = makePendingInsight(projectId: project.id, sourceId: sourceId1)
+        let pending2 = ProjectInsight(
+            projectId: project.id,
+            insightType: .blockerChange,
+            title: "Visual QA - 待审瓶颈",
+            summary: "跨团队依赖确认仍在等待反馈。",
+            sourceRefs: [sourceId2.uuidString],
+            userFeedback: .none
+        )
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.pendingProjectInsights = [pending1, pending2]
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeMergeHistoryVariant() -> AppStore {
+        let project = Project(
+            name: "Visual QA - 合并历史",
+            goal: "验证合并展示",
+            successCriteria: "合并历史完整显示",
+            mergeHistory: [
+                "合并了: Visual QA - 接口归属确认\n来源项目: fixture-a\n原因: 证据重叠\n证据: ev-001",
+                "合并了: Visual QA - 会议优化\n来源项目: fixture-b\n原因: 目标对齐\n证据: ev-002",
+                "合并了: Visual QA - 返工追踪\n来源项目: fixture-c\n原因: 主题一致\n证据: ev-003"
+            ]
+        )
+        let sourceId = UUID()
+        let link = makeConfirmedLink(projectId: project.id, sourceId: sourceId)
+        let record = makeHistoryRecord(projectId: project.id, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeLongTimelineVariant() -> AppStore {
+        let project = makeBaseProject()
+        var records: [HistoryRecord] = []
+        for i in 0..<10 {
+            let sourceId = UUID()
+            let link = makeConfirmedLink(projectId: project.id, sourceId: sourceId)
+            let record = HistoryRecord(
+                draft: DailyEntryDraft(
+                    rawText: "Visual QA timeline entry \(i)",
+                    sessionMode: .standard,
+                    hasSelectedSessionMode: true,
+                    state: .sessionComplete
+                ),
+                cards: [ThinkingCard(
+                    id: sourceId,
+                    type: .problem,
+                    title: "Timeline entry \(i)",
+                    body: "Evidence for timeline entry \(i)",
+                    isConfirmed: true
+                )],
+                quests: [],
+                principles: [],
+                verification: nil,
+                lensSession: nil,
+                projectLinks: [link],
+                growthContributions: []
+            )
+            records.append(record)
+        }
+
+        let store = AppStore(
+            historyRecords: records,
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeLongNameVariant() -> AppStore {
+        let longName = "Visual QA - 这是一个非常长的项目名称用于测试文本换行效果和截断展示的视觉验证场景"
+        let project = Project(
+            name: longName,
+            goal: "验证长名称显示",
+            successCriteria: "名称完整显示或正确截断"
+        )
+        let sourceId = UUID()
+        let link = makeConfirmedLink(projectId: project.id, sourceId: sourceId)
+        let record = makeHistoryRecord(projectId: project.id, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = longName
+        store.projectsById[project.id] = project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeSparseNextBetVariant() -> AppStore {
+        let project = Project(
+            name: "Visual QA - 稀疏下一步",
+            goal: "",
+            successCriteria: ""
+        )
+        let sourceId = UUID()
+        let link = ProjectLink(
+            projectId: project.id,
+            sourceType: .quest,
+            sourceId: sourceId.uuidString,
+            linkType: .task,
+            isUserConfirmed: true
+        )
+        let record = makeHistoryRecord(projectId: project.id, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
+    private static func makeGeneratingInsightVariant() -> AppStore {
+        let project = makeBaseProject()
+        let sourceId = UUID()
+        let link = makeConfirmedLink(projectId: project.id, sourceId: sourceId)
+        let record = makeHistoryRecord(projectId: project.id, links: [link])
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.isGeneratingProjectInsights = true
+        store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
+        return store
+    }
+
     func applyVisualQAProjectDetailFixture() {
-        let fixture = AppStore.visualQAProjectDetail()
+        applyVisualQAProjectDetailFixture(variant: AppStore.resolveVisualQAProjectDetailVariant())
+    }
+
+    func applyVisualQAProjectDetailFixture(variant: VisualQAProjectDetailVariant) {
+        let fixture = AppStore.visualQAProjectDetail(variant: variant)
         selectedTab = fixture.selectedTab
         todayDraft = fixture.todayDraft
         thinkingCards = fixture.thinkingCards
@@ -375,6 +744,7 @@ final class AppStore: ObservableObject {
         projectLinkCandidates = fixture.projectLinkCandidates
         isResumeBannerDismissed = fixture.isResumeBannerDismissed
         visualQAProjectDetailDirectEntryProjectID = fixture.visualQAProjectDetailDirectEntryProjectID
+        isGeneratingProjectInsights = fixture.isGeneratingProjectInsights
         loadsPersistedStateOnLaunch = false
     }
 #endif

@@ -200,3 +200,35 @@ Manager classification:
 
 - Existing direct-entry fixture is enough to verify normal populated Project Detail top state in light/dark.
 - Completing the remaining matrix states likely requires a new Debug-only fixture variant selector or screenshot harness; repeated coordinate clicking is not a reliable path because `simctl` has no tap/scroll command and System Events access has already proven unstable.
+
+## Fixture Variant Selector Acceptance
+
+Timestamp: 2026-06-06
+
+Subtask 057 added Debug-only Project Detail visual QA fixture variants for the Subtask 048 matrix.
+
+Variant ids:
+
+- `nil_project`
+- `minimal`
+- `normal`
+- `accepted_insight`
+- `pending_insight`
+- `merge_history`
+- `long_timeline`
+- `long_name`
+- `sparse_next_bet`
+- `generating_insight`
+
+Verification:
+
+- Claude Code worker reached `HANDOFF/DONE`.
+- Codex accepted after manager fixes so fixture ProjectLinks resolve to real History sources and `sparse_next_bet` actually derives a next bet from quest/task evidence.
+- `git diff --check` passed.
+- `AppStoreStateMachineTests` passed with 153 tests and 0 failures.
+- iPhone 17 Release simulator build passed.
+
+Result:
+
+- Subtask 049 can now proceed to real iPhone 17 screenshot capture using fixture variants.
+- Subtask 049 is still open until the real light/dark Project Detail screenshot matrix is captured and reviewed.

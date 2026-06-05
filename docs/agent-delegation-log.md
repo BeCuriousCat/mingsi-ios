@@ -2,6 +2,52 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Prepared Project Detail Visual QA Fixture Variants - Subtask 057
+
+Reason:
+
+- Subtask 049 still needs the full Subtask 048 Project Detail screenshot matrix on a real iPhone 17 simulator.
+- The existing Debug-only fixture can now directly open one Project Detail state, but it does not expose all matrix states needed for visual acceptance.
+- A Debug-only variant selector is needed so Codex can capture nil-project, minimal, normal, insight, merge, long-timeline, long-name, sparse, and generating states without manual taps or persistence writes.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-prd.md`
+- Progress: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-progress.md`
+- Prompt: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-claude-prompt.md`
+- Event log: `docs/subtasks/logs/057-project-detail-visual-qa-fixture-variants-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/057-project-detail-visual-qa-fixture-variants-claude-run.jsonl`
+
+Delegation rationale:
+
+- This is a bounded Debug-only source/test fixture implementation with explicit data-shape tests. Claude Code can implement it in an isolated worktree while Codex keeps final screenshot capture, visual taste, and acceptance decisions.
+
+Manager constraints:
+
+- Worker may edit only `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, the 057 progress file, and `Sources/Features/FeatureTabs.swift` only if strictly needed.
+- Worker may not edit screenshots, 049 findings, persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, project files, or unrelated docs.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+- Resource health at preparation was near threshold: `codex_tree_zombies=19/20`, `total_zombies=21/80`; launch must re-check wrapper health before starting.
+
+Outcome:
+
+- Worker reached `HANDOFF/DONE` in the worker progress file and reported 151 AppStoreStateMachineTests passing with 0 failures.
+- Wrapper print-mode launch exited with code 75 and claimed no `HANDOFF`, while `scripts/claude_delegate.sh status` correctly surfaced the worker `HANDOFF/DONE`. This is a control-plane follow-up for the delegation framework.
+- Codex reviewed the final diff and accepted the direction after manager fixes for fixture source-id resolution and true sparse next-bet behavior.
+- Codex added manager tests for ProjectLink source resolution and sparse next-bet derivation.
+
+Verification:
+
+- `git diff --check`: passed.
+- `AppStoreStateMachineTests`: passed in manager checkout with 153 tests and 0 failures.
+- iPhone 17 Release simulator build: passed.
+
+Delegation assessment:
+
+- Useful. Claude Code implemented the bulk of the fixture variant slice and reached a usable `HANDOFF`.
+- Manager review was still necessary for evidence-chain quality: fixture ProjectLinks must resolve to concrete History sources, not just count as links.
+- Reusable framework lesson: print-mode launch exit handling must use the same worker-progress handoff detection path as `status`.
+
 ## 2026-06-06: Prepared Project Detail Debug Direct Entry - Subtask 056
 
 Reason:

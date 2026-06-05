@@ -8,6 +8,24 @@ Status: no active Claude Code worker.
 
 Latest accepted delegated implementation slice:
 
+- Subtask: `057-project-detail-visual-qa-fixture-variants`
+- Owner: Claude Code implementation candidate, Codex final acceptance.
+- PRD file: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-prd.md`
+- Progress file: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-progress.md`
+- Claude prompt file: `docs/subtasks/057-project-detail-visual-qa-fixture-variants-claude-prompt.md`
+- Event log: `docs/subtasks/logs/057-project-detail-visual-qa-fixture-variants-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/057-project-detail-visual-qa-fixture-variants-claude-run.jsonl`
+- Purpose: add Debug-only Project Detail visual QA fixture variants so Codex can capture the full Subtask 048 screenshot matrix for Subtask 049.
+- Allowed files: `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, the 057 progress file, and `Sources/Features/FeatureTabs.swift` only if strictly needed.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation rationale: bounded Debug-only source/test fixture implementation with explicit data-shape tests; Codex remains responsible for final screenshot and visual acceptance.
+- Worker result: `HANDOFF/DONE`.
+- Codex acceptance: accepted after manager fixes for fixture source-id resolution and `sparse_next_bet` semantics.
+- Verification: `git diff --check` passed; `AppStoreStateMachineTests` passed with 153 tests and 0 failures; iPhone 17 Release simulator build passed.
+- Resource/control-plane note: preparation observed `codex_tree_zombies=19/20`, `total_zombies=21/80`; after worker exit health remained below threshold. Wrapper print-mode launch exited with code 75 and claimed no `HANDOFF`, but `status` correctly surfaced the worker progress `HANDOFF/DONE`. Treat this as a framework follow-up.
+
+Previous accepted delegated implementation slice:
+
 - Subtask: `056-project-detail-debug-direct-entry`
 - Owner: Claude Code implementation candidate, Codex final acceptance.
 - PRD file: `docs/subtasks/056-project-detail-debug-direct-entry-prd.md`
