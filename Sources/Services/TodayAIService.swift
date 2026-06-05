@@ -337,7 +337,8 @@ struct DefaultContextAssembler: ContextAssembler {
                         promptId: item.promptId,
                         version: item.version,
                         title: item.title,
-                        methodLine: item.methodLine
+                        methodLine: item.methodLine,
+                        promptGuidance: item.promptGuidance
                     )
                 }
             ),

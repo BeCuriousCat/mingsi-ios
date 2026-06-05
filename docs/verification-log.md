@@ -2,6 +2,44 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 047 First Principles Lens Prompt Guidance
+
+Scope:
+
+- Keep `第一性原理` as an MVP built-in lens under the extensible lens library.
+- Add library-owned prompt guidance for built-in lenses.
+- Expose selected lens title, method line, and prompt guidance through `PromptContextPayload` and legacy GLM payload keys.
+- Avoid UI-specific or prompt-call-site lens branches.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/Services/CoreProtocols.swift`
+- `Sources/Services/TodayAIService.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/Services/TodayAIServiceContextTests.swift`
+- `docs/subtasks/047-first-principles-lens-prompt-guidance-progress.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests -only-testing:MingSiTests/AppStoreStateMachineTests/testFirstPrinciples_metadata test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Targeted tests passed: 18 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- This slice is request/context verified, not screenshot verified. It does not change Today UI layout.
+
 ## 2026-06-05: Subtask 045 Extensible Lens Library Boundary
 
 Scope:

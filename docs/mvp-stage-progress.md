@@ -55,18 +55,19 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 043 Delegation Status Handoff Summary as a direct framework fix. The wrapper `status` command now surfaces active `HANDOFF` summaries and final status tokens, and prefers manager-side `CODEX_ACCEPTED` progress after Codex acceptance, preserving conclusion-first monitoring without routine raw/event log inspection.
 - Completed Subtask 044 Project Status Filter via Claude Code delegation. Projects top-level board now has local `全部 / 活跃 / 关注中 / 暂停 / 已归档` filtering over existing `ProjectStatus` values, with no AppStore, persistence, migration, prompt, parser, LLM, or Project semantic changes. Focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Completed Subtask 045 Extensible Lens Library Boundary from the user's request that `第一性原理` live under a可扩展透镜库 rather than a UI/prompt smoke stack. Claude Code wrapper prepare/launch were blocked before execution by OS `spawn /bin/sh EAGAIN`, so Codex directly implemented the narrow Domain/test slice: `LensCatalogProviding`, `LensLibrary`, `BuiltinLensCatalog.library`, local-id/prompt-id/ThinkingLens lookup tests, with no UI, AppStore, persistence, prompt, parser, LLM, Keychain, History, Projects, Growth, or Settings changes. Focused `AppStoreStateMachineTests` passed with 110 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+- Completed Subtask 047 First Principles Lens Prompt Guidance as a direct architecture slice. Built-in lens catalog items now carry `promptGuidance`, and Today AI request assembly exposes `lensTitle`, `lensMethodLine`, and `lensPromptGuidance` through the existing `PromptContextPayload` / legacy payload boundary. This keeps `第一性原理` as normal extensible lens-library data rather than a UI or Prompt call-site branch. Focused tests passed with 18 tests and 0 failures.
 
 ## Known Remaining Work
 
 1. Project Detail hierarchy cleanup is implemented and build/test verified; later visual QA should inspect populated Project Detail states.
 2. Growth report drilldown has Subtask 038 coverage; deeper longitudinal comparison can be added later only with enough evidence.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
-4. Lens catalog prompt ids are wired into Today AI prompt payloads for question and quest generation. Later prompt/context work should remain focused and preserve `PromptProvider` / `LLMClient` boundaries.
+4. Lens catalog prompt ids and prompt guidance are wired into Today AI prompt payloads for question and quest generation. Later prompt/context work should remain focused and preserve `PromptProvider` / `LLMClient` boundaries.
 5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
 6. Delegation wrapper strict handoff detection needs a follow-up: a template `## HANDOFF` placeholder should not make `status` display an active handoff summary before a final status token exists.
 7. Process files should stay updated after each implementation or delegation slice.
 8. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
-9. Subtask 045 is verified and ready for commit. Future lens work should use the new Domain library/provider boundary instead of adding UI/prompt-specific lens branches.
+9. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
 
 ## Current Recommended Next Slice
 

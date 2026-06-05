@@ -3785,6 +3785,7 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(item.title, "第一性原理")
         XCTAssertEqual(item.promptId, "first_principles")
         XCTAssertEqual(item.version, "builtin.v1")
+        XCTAssertTrue(item.promptGuidance.contains("non-negotiable facts"))
         XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
     }
 

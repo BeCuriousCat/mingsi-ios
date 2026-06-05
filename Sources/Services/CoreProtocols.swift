@@ -58,6 +58,7 @@ struct PromptContextPayload: Codable, Hashable {
         var version: String
         var title: String
         var methodLine: String
+        var promptGuidance: String
     }
 
     struct CurrentInput: Codable, Hashable {
@@ -246,6 +247,11 @@ struct PromptContextPayload: Codable, Hashable {
             values["selectedLens"] = promptId
         } else if let selectedLens = userChoice.selectedLens {
             values["selectedLens"] = selectedLens
+        }
+        if let lensCatalog = userChoice.lensCatalog {
+            values["lensTitle"] = lensCatalog.title
+            values["lensMethodLine"] = lensCatalog.methodLine
+            values["lensPromptGuidance"] = lensCatalog.promptGuidance
         }
         if let rawText = currentInput.rawText {
             values["rawText"] = rawText

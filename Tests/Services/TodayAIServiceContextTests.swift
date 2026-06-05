@@ -391,6 +391,29 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(catalog.promptId, "first_principles")
         XCTAssertEqual(catalog.version, "builtin.v1")
         XCTAssertEqual(catalog.title, "第一性原理")
+        XCTAssertTrue(catalog.promptGuidance.contains("non-negotiable facts"))
+    }
+
+    func testGenerateQuestions_injectsLensPromptGuidance_fromCatalog() async throws {
+        let client = CapturingLLMClient(response: Self.questionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "Which assumptions are actually necessary?",
+                    selectedLens: .firstPrinciples
+                )
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.jsonPayload["selectedLens"], "first_principles")
+        XCTAssertTrue(try XCTUnwrap(request.jsonPayload["lensPromptGuidance"]).contains("non-negotiable facts"))
+        XCTAssertTrue(try XCTUnwrap(request.jsonPayload["lensMethodLine"]).contains("从零开始"))
     }
 
     func testGenerateQuests_injectsRelevantPrinciplesAndGroundingPayload() async throws {

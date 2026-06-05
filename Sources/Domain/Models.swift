@@ -108,6 +108,7 @@ struct LensCatalogItem: Equatable {
     let subtitle: String
     let shortLabel: String
     let methodLine: String
+    let promptGuidance: String
     let symbolName: String
 }
 
@@ -144,6 +145,7 @@ enum BuiltinLensCatalog {
             subtitle: "把事实、判断和假设分开，先清理地基。",
             shortLabel: "事实",
             methodLine: "先问：我知道什么，还是我以为什么？",
+            promptGuidance: "Separate facts, interpretations, assumptions, and validation gaps before asking the user to decide.",
             symbolName: "checklist"
         ),
         LensCatalogItem(
@@ -154,6 +156,7 @@ enum BuiltinLensCatalog {
             subtitle: "主动寻找相反证据，避免只证明自己是对的。",
             shortLabel: "反证",
             methodLine: "先问：如果我错了，证据会长什么样？",
+            promptGuidance: "Challenge the user's current interpretation by looking for contrary evidence, missing stakeholders, and plausible alternative explanations.",
             symbolName: "arrow.left.arrow.right"
         ),
         LensCatalogItem(
@@ -164,6 +167,7 @@ enum BuiltinLensCatalog {
             subtitle: "找出最能改变结果的一步，把精力放在关键处。",
             shortLabel: "杠杆",
             methodLine: "先问：哪一步最能改变结果？",
+            promptGuidance: "Focus questions and quests on the smallest action, decision, or constraint that can most change the outcome.",
             symbolName: "point.topleft.down.curvedto.point.bottomright.up"
         ),
         LensCatalogItem(
@@ -174,6 +178,7 @@ enum BuiltinLensCatalog {
             subtitle: "拆掉默认前提，只保留不可再拆的事实和约束。",
             shortLabel: "本质",
             methodLine: "先问：如果从零开始，这件事必须成立的条件是什么？",
+            promptGuidance: "Decompose the situation into non-negotiable facts, hard constraints, assumed rules, and rebuild the next action from those primitives.",
             symbolName: "square.stack.3d.down.right"
         ),
     ])
