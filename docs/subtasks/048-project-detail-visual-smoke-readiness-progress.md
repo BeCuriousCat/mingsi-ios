@@ -137,3 +137,91 @@ Manager classification:
 - The previous 048 blocker was local Codex process leakage / process creation pressure, not a Claude Code worker failure.
 - The 048 delegation package is ready for a fresh `prepare` / `launch` attempt.
 - Worker output is still absent; no audit result is accepted yet.
+
+## START
+
+Timestamp: 2026-06-05
+
+Worker: Claude Code
+
+Planned files:
+- Read: FeatureTabs.swift, AppStore.swift, Models.swift, HistoryFeatureTests.swift, AppStoreStateMachineTests.swift, subtask docs 037/040/041
+- Write: `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md`, `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md`
+
+Assumptions:
+- This is a read-only source audit; no Swift files will be edited.
+- Findings will be source-inferred unless actual runtime screenshots exist.
+- The audit answers the 5 required questions from the PRD.
+
+## RED
+
+Timestamp: 2026-06-06
+
+Audit questions and expected findings coverage:
+
+1. Which Project Detail states must Codex screenshot next?
+   - Expected: enumerate distinct visual states (nil project, new project, populated overview, progress signals, insights, merge history, dark mode, long text)
+
+2. Which states are evidence-backed vs. decorative/unsupported?
+   - Expected: classify each section as strongly/weakly backed, flag thinkingChangeSection as always-visible static explanation
+
+3. Source-inferred visual risks before screenshotting?
+   - Expected: identify status chip language inconsistency, thinkingChangeSection always-visible card, evidenceTimeline no pagination, header accent bar fixed height, TinyChip dark-mode opacity
+
+4. Top 1-3 narrow follow-up candidates?
+   - Expected: status chip fix, conditional thinkingChangeSection visibility, evidenceTimeline count limit
+
+5. What should Codex not change?
+   - Expected: AppStore, persistence, domain models, evidence computation, prompt/parser/LLM
+
+Findings file will be written next.
+
+## IMPLEMENTED
+
+Timestamp: 2026-06-06
+
+Changed files:
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md` — progress checkpoints
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md` — audit findings
+
+Summary:
+- Identified 10 distinct screenshot states covering nil project, populated overview, progress signals, accepted/pending insights, merge history, long timeline, long name, sparse-but-derived, and AI loading states.
+- Classified 4 sections as strongly evidence-backed and 3 as weakly evidence-backed.
+- Identified 6 source-inferred visual risks (VR-1 through VR-6).
+- Recommended 3 narrow follow-up candidates ranked by impact.
+- No Swift source or test files modified.
+
+## TARGETED_VERIFIED
+
+Timestamp: 2026-06-06
+
+Commands:
+- `git diff --check -- docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md` — PASSED (no whitespace issues, no conflict markers)
+- `git status --short` — confirmed only 2 files touched: progress.md (modified) and findings.md (new/untracked)
+- No Swift source or test files modified
+
+## HANDOFF
+
+Status: DONE
+
+Changed files:
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md` (modified — START/RED/IMPLEMENTED/TARGETED_VERIFIED/HANDOFF checkpoints)
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md` (new — full audit findings)
+
+Verification:
+- `git diff --check`: PASSED
+- `git status --short`: only 2 allowed doc files modified/created
+- No Swift source or test changes
+
+Audit summary:
+- 10 distinct Project Detail screenshot states identified (20 screenshots needed for light/dark coverage)
+- 4 sections strongly evidence-backed (progress signals, evidence timeline, project insights, merge audit)
+- 3 sections weakly evidence-backed (overview, thinking change, detail header status chip)
+- 6 source-inferred visual risks identified (VR-1 through VR-6)
+- 3 narrow follow-up candidates recommended (F1: status chip language, F2: conditional thinkingChangeSection, F3: evidence timeline count limit)
+- Codex must run real iPhone 17 screenshots before confirming any risk or implementing follow-ups
+
+Handoff notes:
+- `summarySurface()` uses `Color(.systemBackground)` rather than `DS.cardBackground`. Dark-mode screenshots should check for tonal mismatch against the warm `DS.background` background.
+- The thinking-change section always renders as a card even when it only explains absence of data. This is the highest-impact visual risk to verify on screenshots.
+- No concerns about implementation scope — all findings are source-inferred and clearly labeled.
