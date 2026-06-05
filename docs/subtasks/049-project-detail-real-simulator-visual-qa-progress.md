@@ -108,3 +108,36 @@ Manager classification:
 
 - 049 can document top-level Projects empty state and the navigation/data blocker.
 - A separate implementation slice is needed for a Debug/UITest-only visual QA entry that can launch directly into Project Detail fixture states without changing production behavior.
+
+## Fixture Launch Reliability Acceptance
+
+Timestamp: 2026-06-06
+
+Subtasks 054 and 055 added and hardened a Debug-only launch fixture path for Project Detail visual QA.
+
+Runtime verification sequence:
+
+- `05-projects-fixture-top-light.png` through `12-projects-fixture-top-light-marker.png`: fixture activation attempts still showed live Projects empty state.
+- `13-projects-fixture-top-light-task-activation.png`: marker-file launch still failed after task-stage fixture apply.
+- `14-projects-fixture-top-light-argument-after-task-activation.png`: launch-argument control also failed, proving the issue was not the marker file path.
+- Root cause: Projects tab `.task` called `store.loadHistoryRecords()` after fixture startup and replaced fixture evidence with live empty history.
+- Codex added `testVisualQAFixture_loadHistoryRecordsKeepsFixtureProjectEvidence`, observed it fail, then fixed `AppStore.loadHistoryRecords()` for Debug fixture stores.
+- `15-projects-fixture-top-light-load-guard.png`: accepted iPhone 17 light screenshot. Projects shows `1 个证据项目` and `Visual QA - 会议机制优化`.
+
+Commands:
+
+```bash
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+CONTAINER=$(xcrun simctl get_app_container booted com.codex.mingsi data) && mkdir -p "$CONTAINER/Documents" && touch "$CONTAINER/Documents/.visual_qa_project_detail"
+xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/15-projects-fixture-top-light-load-guard.png
+```
+
+Result:
+
+- Project top fixture activation is accepted.
+- Subtask 049 remains open for the actual Project Detail screenshot matrix: top row navigation is now possible because the fixture project is visible.

@@ -2,6 +2,78 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Accepted Visual QA Fixture Activation - Subtasks 054/055
+
+Outcome:
+
+- Subtask 054 worker delivered Debug-only fixture launch reliability direction with `HANDOFF/DONE_WITH_CONCERNS`; worker xcodebuild remained blocked by the known GRDB worker-worktree issue.
+- Subtask 055 worker delivered marker-file activation with `HANDOFF/DONE_WITH_CONCERNS`; worker xcodebuild remained blocked by the same GRDB issue.
+- Codex reran verification in the manager checkout and found a real simulator failure that tests had not covered: Projects tab `.task` called `loadHistoryRecords()` and overwrote fixture evidence with live empty history.
+- Codex added a manager acceptance fix in `AppStore.loadHistoryRecords()` and a regression test, then accepted the combined slice.
+
+Verification:
+
+- `git diff --check`: passed.
+- `AppStoreStateMachineTests`: passed with 128 tests and 0 failures.
+- iPhone 17 Debug simulator build: passed.
+- iPhone 17 Release simulator build: passed.
+- Real iPhone 17 marker launch screenshot accepted: `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/15-projects-fixture-top-light-load-guard.png`.
+
+Delegation assessment:
+
+- Useful but not sufficient by itself. Claude Code implemented bounded launch-detection pieces; Codex final screenshot revealed an integration boundary the worker did not cover.
+- Reusable lesson: visual QA fixture tasks need tests for view-triggered reload actions, not only app startup detection.
+
+## 2026-06-06: Prepared Visual QA Fixture Marker Activation - Subtask 055
+
+Reason:
+
+- Subtask 054 passed focused AppStore tests and Debug build in the manager checkout, but real iPhone 17 simulator screenshots still showed live Projects empty state after both UserDefaults and launch-argument activation attempts.
+- The remaining issue is narrow and testable: add a Debug-only marker-file activation path that Codex can control through the simulator app data container before launch.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/055-visual-qa-fixture-marker-activation-prd.md`
+- Progress: `docs/subtasks/055-visual-qa-fixture-marker-activation-progress.md`
+- Prompt: `docs/subtasks/055-visual-qa-fixture-marker-activation-claude-prompt.md`
+- Event log: `docs/subtasks/logs/055-visual-qa-fixture-marker-activation-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/055-visual-qa-fixture-marker-activation-claude-run.jsonl`
+
+Delegation rationale:
+
+- Claude Code can implement the narrow Debug-only launch detection fix and focused tests while Codex keeps final simulator screenshot and visual acceptance.
+
+Manager constraints:
+
+- Worker may edit only `Sources/App/AppStore.swift`, `Sources/App/MingSiApp.swift` if needed, `Tests/App/AppStoreStateMachineTests.swift`, and the 055 progress file.
+- Worker may not edit screenshots, 049 docs, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, project files, or unrelated docs.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+
+## 2026-06-06: Prepared Visual QA Fixture Launch Reliability - Subtask 054
+
+Reason:
+
+- Subtask 049 real simulator launch with `MINGSI_VISUAL_QA_PROJECT_DETAIL` still displayed the live empty Projects state instead of the Subtask 050 fixture project.
+- The remaining issue is narrow and testable: Debug-only launch detection and startup persisted-state loading for the visual QA fixture.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/054-visual-qa-fixture-launch-reliability-prd.md`
+- Progress: `docs/subtasks/054-visual-qa-fixture-launch-reliability-progress.md`
+- Prompt: `docs/subtasks/054-visual-qa-fixture-launch-reliability-claude-prompt.md`
+- Event log: `docs/subtasks/logs/054-visual-qa-fixture-launch-reliability-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/054-visual-qa-fixture-launch-reliability-claude-run.jsonl`
+
+Delegation rationale:
+
+- Claude Code can implement the narrow Debug-only fixture reliability fix and focused AppStore tests while Codex keeps final simulator screenshot and visual acceptance.
+
+Manager constraints:
+
+- Worker may edit only `Sources/App/AppStore.swift`, `Sources/App/MingSiApp.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 054 progress file.
+- Worker may not edit screenshots, 049 docs, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, project files, or unrelated docs.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+
 ## 2026-06-06: Direct Framework Fix - Subtask 053 Delegation Resource Tree Guard
 
 Reason:

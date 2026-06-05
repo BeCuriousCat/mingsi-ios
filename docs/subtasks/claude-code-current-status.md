@@ -4,7 +4,20 @@ Last updated: 2026-06-06
 
 ## Current Worker
 
-Status: no active Claude Code worker is currently running.
+Status: no active Claude Code worker.
+
+Latest accepted delegated implementation slice:
+
+- Subtasks: `054-visual-qa-fixture-launch-reliability` and `055-visual-qa-fixture-marker-activation`
+- Owner: Claude Code implementation candidates, Codex final acceptance.
+- Progress files:
+  - `docs/subtasks/054-visual-qa-fixture-launch-reliability-progress.md`
+  - `docs/subtasks/055-visual-qa-fixture-marker-activation-progress.md`
+- Purpose: make the Debug-only Project Detail visual QA fixture reliably activate in real iPhone 17 simulator launches.
+- Worker results: `HANDOFF/DONE_WITH_CONCERNS`; worker xcodebuild blocked by known GRDB worktree package-path issue.
+- Codex acceptance: accepted after manager checkout verification and a manager fix for the runtime-only reload overwrite. `ProjectsView.task` triggered `loadHistoryRecords()`, which replaced fixture evidence with live empty history; `AppStore.loadHistoryRecords()` now no-ops for Debug fixture stores.
+- Verification: `git diff --check` passed; focused `AppStoreStateMachineTests` passed with 128 tests and 0 failures; iPhone 17 Debug build passed; iPhone 17 Release build passed; screenshot `15-projects-fixture-top-light-load-guard.png` shows `1 个证据项目` and `Visual QA - 会议机制优化`.
+- Next product state: Project top fixture activation is accepted. Continue Subtask 049 by capturing the actual Project Detail screenshot matrix.
 
 Latest accepted framework fix:
 

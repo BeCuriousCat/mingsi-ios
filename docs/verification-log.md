@@ -2,6 +2,55 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtasks 054/055 Project Detail Visual QA Fixture Activation
+
+Scope:
+
+- Accept Claude Code Debug-only visual QA fixture launch reliability and marker-file activation work.
+- Add Codex manager acceptance fix for the real simulator reload overwrite discovered by screenshots.
+- Keep production persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and product semantics unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/App/MingSiApp.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/049-project-detail-real-simulator-visual-qa-progress.md`
+- `docs/subtasks/054-visual-qa-fixture-launch-reliability-*`
+- `docs/subtasks/055-visual-qa-fixture-marker-activation-*`
+- `docs/subtasks/logs/054-*`
+- `docs/subtasks/logs/055-*`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/05...15*.png`
+
+Commands run:
+
+```bash
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQAFixture_loadHistoryRecordsKeepsFixtureProjectEvidence test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl spawn booted defaults delete com.codex.mingsi MINGSI_VISUAL_QA_PROJECT_DETAIL || true
+CONTAINER=$(xcrun simctl get_app_container booted com.codex.mingsi data) && mkdir -p "$CONTAINER/Documents" && touch "$CONTAINER/Documents/.visual_qa_project_detail"
+xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/15-projects-fixture-top-light-load-guard.png
+```
+
+Result:
+
+- `git diff --check` passed.
+- The new RED test first failed because `loadHistoryRecords()` replaced fixture evidence with live empty history.
+- After the manager fix, the new test passed.
+- Full `AppStoreStateMachineTests` passed with 128 tests and 0 failures.
+- iPhone 17 Debug simulator build passed.
+- iPhone 17 Release simulator build passed, confirming Debug-only fixture symbols do not leak into Release.
+- Real iPhone 17 screenshot `15-projects-fixture-top-light-load-guard.png` shows `1 个证据项目` and the fixture project `Visual QA - 会议机制优化`.
+
+Residual risk:
+
+- This verifies Project top fixture activation and makes Project Detail navigation feasible. It does not complete the Subtask 048 Project Detail light/dark screenshot matrix.
+
 ## 2026-06-06: Subtask 053 Delegation Resource Tree Guard
 
 Scope:

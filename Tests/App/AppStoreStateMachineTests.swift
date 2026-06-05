@@ -2739,16 +2739,176 @@ final class AppStoreStateMachineTests: XCTestCase {
     }
 
     func testVisualQAProjectDetailLaunch_withoutArgument_returnsFalse() {
+        let cleanDefaults = UserDefaults(suiteName: "test-visual-qa-no-argument")!
+        cleanDefaults.removeObject(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
         XCTAssertFalse(
-            AppStore.isVisualQAProjectDetailLaunch(arguments: []),
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: [:],
+                defaults: cleanDefaults,
+                markerFileExists: { false }
+            ),
             "Without MINGSI_VISUAL_QA_PROJECT_DETAIL, fixture mode should not activate"
         )
+        cleanDefaults.removeSuite(named: "test-visual-qa-no-argument")
     }
 
     func testVisualQAProjectDetailLaunch_withArgument_returnsTrue() {
         XCTAssertTrue(
             AppStore.isVisualQAProjectDetailLaunch(arguments: ["MINGSI_VISUAL_QA_PROJECT_DETAIL"]),
             "With MINGSI_VISUAL_QA_PROJECT_DETAIL, fixture mode should activate"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withEnvironmentVariable_returnsTrue() {
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: ["MINGSI_VISUAL_QA_PROJECT_DETAIL": "1"]
+            ),
+            "With MINGSI_VISUAL_QA_PROJECT_DETAIL env var, fixture mode should activate"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withSimctlChildEnvironmentVariable_returnsTrue() {
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL": "1"]
+            ),
+            "With SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL env var, fixture mode should activate"
+        )
+    }
+
+    func testVisualQAFixtureStore_optsOutOfLoadPersistedState() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        XCTAssertFalse(
+            fixtureStore.loadsPersistedStateOnLaunch,
+            "Visual QA fixture store must not load persisted state on launch"
+        )
+    }
+
+    func testApplyVisualQAProjectDetailFixture_populatesStoreAndOptsOutOfLoadPersistedState() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+        XCTAssertTrue(store.historyRecords.flatMap(\.projectLinks).isEmpty)
+        XCTAssertTrue(store.loadsPersistedStateOnLaunch)
+
+        store.applyVisualQAProjectDetailFixture()
+
+        XCTAssertEqual(store.selectedTab, .projects)
+        XCTAssertFalse(store.historyRecords.flatMap(\.projectLinks).isEmpty)
+        XCTAssertFalse(store.projectNames.isEmpty)
+        XCTAssertFalse(store.projectsById.isEmpty)
+        XCTAssertFalse(store.acceptedProjectInsights.isEmpty)
+        XCTAssertFalse(store.pendingProjectInsights.isEmpty)
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQAFixture_loadHistoryRecordsKeepsFixtureProjectEvidence() async {
+        let store = AppStore.visualQAProjectDetail()
+        XCTAssertFalse(store.historyRecords.flatMap(\.projectLinks).isEmpty)
+
+        await store.loadHistoryRecords()
+
+        XCTAssertFalse(
+            store.historyRecords.flatMap(\.projectLinks).isEmpty,
+            "Project screen reload tasks must not replace the visual QA fixture with live empty history"
+        )
+        XCTAssertEqual(store.projectNames.values.first, "Visual QA - 会议机制优化")
+    }
+
+    func testNormalStore_loadsPersistedStateOnLaunch() {
+        let normalStore = AppStore(
+            refreshesAIServiceFromKeychain: false
+        )
+        XCTAssertTrue(
+            normalStore.loadsPersistedStateOnLaunch,
+            "Normal store must load persisted state on launch"
+        )
+    }
+
+    func testLiveStore_loadsPersistedStateOnLaunch() {
+        let liveStore = AppStore.live()
+        XCTAssertTrue(
+            liveStore.loadsPersistedStateOnLaunch,
+            "Live store must load persisted state on launch"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withUserDefaultsSet_returnsTrue() {
+        let testDefaults = UserDefaults(suiteName: "test-visual-qa-userdefaults")!
+        testDefaults.set(true, forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: [:],
+                defaults: testDefaults
+            ),
+            "With MINGSI_VISUAL_QA_PROJECT_DETAIL in UserDefaults, fixture mode should activate"
+        )
+        testDefaults.removeSuite(named: "test-visual-qa-userdefaults")
+    }
+
+    func testVisualQAProjectDetailLaunch_withoutUserDefaults_returnsFalse() {
+        let testDefaults = UserDefaults(suiteName: "test-visual-qa-userdefaults-clean")!
+        testDefaults.removeObject(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
+        XCTAssertFalse(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: [:],
+                defaults: testDefaults,
+                markerFileExists: { false }
+            ),
+            "Without any flag, fixture mode should not activate"
+        )
+        testDefaults.removeSuite(named: "test-visual-qa-userdefaults-clean")
+    }
+
+    // MARK: - Visual QA Marker File Activation
+
+    func testVisualQAProjectDetailLaunch_withMarkerFile_returnsTrue() {
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: [:],
+                defaults: UserDefaults(suiteName: "test-marker-clean")!,
+                markerFileExists: { true }
+            ),
+            "With marker file present, fixture mode should activate"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withoutMarkerFile_returnsFalse() {
+        let cleanDefaults = UserDefaults(suiteName: "test-marker-absent")!
+        cleanDefaults.removeObject(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
+        XCTAssertFalse(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: [],
+                environment: [:],
+                defaults: cleanDefaults,
+                markerFileExists: { false }
+            ),
+            "Without marker file and no other flags, fixture mode should not activate"
+        )
+        cleanDefaults.removeSuite(named: "test-marker-absent")
+    }
+
+    func testVisualQAProjectDetailLaunch_markerFile_doesNotOverrideOtherActivation() {
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(
+                arguments: ["MINGSI_VISUAL_QA_PROJECT_DETAIL"],
+                environment: [:],
+                markerFileExists: { false }
+            ),
+            "Argument activation should work even when marker file is absent"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_markerFileName_isDocumented() {
+        XCTAssertEqual(
+            AppStore.visualQAMarkerFileName,
+            ".visual_qa_project_detail",
+            "Marker filename must be documented and stable for Codex to create"
         )
     }
 

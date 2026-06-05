@@ -24,6 +24,13 @@ struct MingSiApp: App {
             AppRootView()
                 .environmentObject(store)
                 .task {
+                    #if DEBUG
+                    if AppStore.isVisualQAProjectDetailLaunch() {
+                        store.applyVisualQAProjectDetailFixture()
+                        return
+                    }
+                    guard store.loadsPersistedStateOnLaunch else { return }
+                    #endif
                     await store.loadPersistedState()
                 }
         }

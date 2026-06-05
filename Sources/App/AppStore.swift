@@ -108,6 +108,9 @@ final class AppStore: ObservableObject {
         }
     }
     private var activeAIRequestCount: Int = 0
+    #if DEBUG
+    private(set) var loadsPersistedStateOnLaunch: Bool = true
+    #endif
 
     init(
         todayDraft: DailyEntryDraft? = nil,
@@ -231,8 +234,24 @@ final class AppStore: ObservableObject {
     }
 
 #if DEBUG
-    static func isVisualQAProjectDetailLaunch(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+    nonisolated static let visualQAMarkerFileName = ".visual_qa_project_detail"
+
+    static func isVisualQAProjectDetailLaunch(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        defaults: UserDefaults = .standard,
+        markerFileExists: () -> Bool = {
+            guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return false
+            }
+            return FileManager.default.fileExists(atPath: docs.appendingPathComponent(visualQAMarkerFileName).path)
+        }
+    ) -> Bool {
         arguments.contains("MINGSI_VISUAL_QA_PROJECT_DETAIL")
+            || environment["MINGSI_VISUAL_QA_PROJECT_DETAIL"] != nil
+            || environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL"] != nil
+            || defaults.bool(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
+            || markerFileExists()
     }
 
     static func visualQAProjectDetail() -> AppStore {
@@ -327,7 +346,33 @@ final class AppStore: ObservableObject {
         store.projectsById[project.id] = project
         store.acceptedProjectInsights = [acceptedInsight]
         store.pendingProjectInsights = [pendingInsight]
+        store.loadsPersistedStateOnLaunch = false
         return store
+    }
+
+    func applyVisualQAProjectDetailFixture() {
+        let fixture = AppStore.visualQAProjectDetail()
+        selectedTab = fixture.selectedTab
+        todayDraft = fixture.todayDraft
+        thinkingCards = fixture.thinkingCards
+        questions = fixture.questions
+        quests = fixture.quests
+        principles = fixture.principles
+        activePrinciples = fixture.activePrinciples
+        referencedPrinciples = fixture.referencedPrinciples
+        historyRecords = fixture.historyRecords
+        projectNames = fixture.projectNames
+        projectsById = fixture.projectsById
+        growthSnapshot = fixture.growthSnapshot
+        metricContributions = fixture.metricContributions
+        growthReportReviewContributions = fixture.growthReportReviewContributions
+        pendingProjectInsights = fixture.pendingProjectInsights
+        acceptedProjectInsights = fixture.acceptedProjectInsights
+        pendingProjectMergeCandidates = fixture.pendingProjectMergeCandidates
+        projectCandidates = fixture.projectCandidates
+        projectLinkCandidates = fixture.projectLinkCandidates
+        isResumeBannerDismissed = fixture.isResumeBannerDismissed
+        loadsPersistedStateOnLaunch = false
     }
 #endif
 
@@ -786,6 +831,9 @@ final class AppStore: ObservableObject {
     }
 
     func loadHistoryRecords(limit: Int = 180) async {
+        #if DEBUG
+        guard loadsPersistedStateOnLaunch else { return }
+        #endif
         guard let dailyEntryRepository else {
             historyRecords = [currentHistoryRecord]
             return
