@@ -1040,35 +1040,16 @@ private enum AIGenerationStepState {
 }
 
 private extension ThinkingLens {
-    var shortLabel: String {
-        switch self {
-        case .evidenceCheck: return "事实"
-        case .opposingView: return "反证"
-        case .leverageAnalysis: return "杠杆"
-        }
-    }
-
-    var methodLine: String {
-        switch self {
-        case .evidenceCheck: return "先问：我知道什么，还是我以为什么？"
-        case .opposingView: return "先问：如果我错了，证据会长什么样？"
-        case .leverageAnalysis: return "先问：哪一步最能改变结果？"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .evidenceCheck: return "checklist"
-        case .opposingView: return "arrow.left.arrow.right"
-        case .leverageAnalysis: return "point.topleft.down.curvedto.point.bottomright.up"
-        }
-    }
+    var shortLabel: String { catalogItem.shortLabel }
+    var methodLine: String { catalogItem.methodLine }
+    var symbolName: String { catalogItem.symbolName }
 
     var tint: Color {
         switch self {
         case .evidenceCheck: return DS.graphite
         case .opposingView: return DS.brick
         case .leverageAnalysis: return DS.accent
+        case .firstPrinciples: return DS.graphite
         }
     }
 }

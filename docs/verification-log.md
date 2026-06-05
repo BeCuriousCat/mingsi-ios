@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 039 First Principles Lens Catalog
+
+Scope:
+
+- Add MVP built-in `第一性原理` as a first-party ThinkingLens.
+- Establish a lightweight built-in lens catalog boundary for local id, prompt-facing id, version, title, subtitle, short label, method line, and symbol metadata.
+- Preserve existing persisted `ThinkingLens.rawValue` values.
+- Keep changes out of persistence, migrations, PromptProvider, parser, LLM clients, Keychain, AppStore orchestration, History, Projects, Growth, and Settings.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/Features/Today/TodayView.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/039-first-principles-lens-catalog-*`
+- `docs/subtasks/logs/039-first-principles-lens-catalog-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/project-continuation-context.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh status 039-first-principles-lens-catalog docs/subtasks/039-first-principles-lens-catalog-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Worker `git diff --check` passed; worker `xcodebuild` was blocked by the known GRDB worktree package issue.
+- Codex reran verification in the main checkout.
+- Focused `AppStoreStateMachineTests` passed: 105 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- Catalog `promptId` is stored as metadata but is not yet wired into prompt payloads.
+- No simulator screenshot was captured because this is a metadata/catalog and unit-test-covered UI availability slice.
+
 ## 2026-06-05: Subtask 038 Growth Report Drilldown Polish
 
 Scope:

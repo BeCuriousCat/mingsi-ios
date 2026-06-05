@@ -100,28 +100,81 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
     }
 }
 
+struct LensCatalogItem: Equatable {
+    let lensId: String
+    let promptId: String
+    let version: String
+    let title: String
+    let subtitle: String
+    let shortLabel: String
+    let methodLine: String
+    let symbolName: String
+}
+
+enum BuiltinLensCatalog {
+    static let items: [LensCatalogItem] = [
+        LensCatalogItem(
+            lensId: "evidenceCheck",
+            promptId: "evidence_check",
+            version: "builtin.v1",
+            title: "证据校验",
+            subtitle: "把事实、判断和假设分开，先清理地基。",
+            shortLabel: "事实",
+            methodLine: "先问：我知道什么，还是我以为什么？",
+            symbolName: "checklist"
+        ),
+        LensCatalogItem(
+            lensId: "opposingView",
+            promptId: "opposing_view",
+            version: "builtin.v1",
+            title: "反方视角",
+            subtitle: "主动寻找相反证据，避免只证明自己是对的。",
+            shortLabel: "反证",
+            methodLine: "先问：如果我错了，证据会长什么样？",
+            symbolName: "arrow.left.arrow.right"
+        ),
+        LensCatalogItem(
+            lensId: "leverageAnalysis",
+            promptId: "leverage_analysis",
+            version: "builtin.v1",
+            title: "杠杆分析",
+            subtitle: "找出最能改变结果的一步，把精力放在关键处。",
+            shortLabel: "杠杆",
+            methodLine: "先问：哪一步最能改变结果？",
+            symbolName: "point.topleft.down.curvedto.point.bottomright.up"
+        ),
+        LensCatalogItem(
+            lensId: "firstPrinciples",
+            promptId: "first_principles",
+            version: "builtin.v1",
+            title: "第一性原理",
+            subtitle: "拆掉默认前提，只保留不可再拆的事实和约束。",
+            shortLabel: "本质",
+            methodLine: "先问：如果从零开始，这件事必须成立的条件是什么？",
+            symbolName: "square.stack.3d.down.right"
+        ),
+    ]
+
+    static func item(for lens: ThinkingLens) -> LensCatalogItem {
+        items.first { $0.lensId == lens.rawValue }!
+    }
+}
+
 enum ThinkingLens: String, CaseIterable, Identifiable {
     case evidenceCheck
     case opposingView
     case leverageAnalysis
+    case firstPrinciples
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .evidenceCheck: return "证据校验"
-        case .opposingView: return "反方视角"
-        case .leverageAnalysis: return "杠杆分析"
-        }
+    var catalogItem: LensCatalogItem {
+        BuiltinLensCatalog.item(for: self)
     }
 
-    var subtitle: String {
-        switch self {
-        case .evidenceCheck: return "把事实、判断和假设分开，先清理地基。"
-        case .opposingView: return "主动寻找相反证据，避免只证明自己是对的。"
-        case .leverageAnalysis: return "找出最能改变结果的一步，把精力放在关键处。"
-        }
-    }
+    var title: String { catalogItem.title }
+
+    var subtitle: String { catalogItem.subtitle }
 }
 
 enum ThinkingCardType: String, CaseIterable, Identifiable {

@@ -48,15 +48,17 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 037 Project merge audit display via Claude Code delegation. Pending merge rows now explain evidence refs and merge consequences, and Project Detail shows retained `mergeHistory` as a conditional `合并审计` section without changing merge behavior.
 - Completed Subtask 038 Growth report drilldown polish via Claude Code delegation plus Codex acceptance fix. Growth report review rows now show metric title, positive/negative accepted contribution counts, the leading contribution, and stored metric reason or conservative fallback copy; metric detail keeps evidence navigation while showing fallback reason text when accepted contributions exist.
 - Verified the Subtask 038 delegation relaunch-safety follow-up. The wrapper now preserves worker progress on relaunch unless `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1`, recognizes `## HANDOFF`, and keeps `status` / `wait` conclusion-first with raw/event logs retained only for diagnostics.
+- Completed Subtask 039 First Principles Lens Catalog via Claude Code delegation. Today now includes `第一性原理` as an MVP built-in lens through a lightweight built-in catalog boundary, while existing lens raw values remain stable and catalog prompt ids are separate metadata.
 
 ## Known Remaining Work
 
 1. Project overview hierarchy still needs additional taste and evidence review; merge audit display has been improved but can receive later visual QA.
 2. Growth report drilldown has Subtask 038 coverage; deeper longitudinal comparison can be added later only with enough evidence.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
-4. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
-5. Process files should stay updated after each implementation or delegation slice.
-6. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
+4. Lens catalog `promptId` metadata is not yet wired into AI prompt payloads; do this later only as a focused prompt/context boundary slice.
+5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
+6. Process files should stay updated after each implementation or delegation slice.
+7. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 
 ## Current Recommended Next Slice
 

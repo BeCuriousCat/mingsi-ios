@@ -4,9 +4,24 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 038 is Codex-accepted and verified.
+Status: no active Claude Code worker is running; Subtask 039 is Codex-accepted and verified.
 
-Accepted slice:
+Latest accepted slice:
+
+- Subtask: `039-first-principles-lens-catalog`
+- Owner: Claude Code implementation candidate, Codex acceptance.
+- PRD file: `docs/subtasks/039-first-principles-lens-catalog-prd.md`
+- Progress file: `docs/subtasks/039-first-principles-lens-catalog-progress.md`
+- Claude prompt file: `docs/subtasks/039-first-principles-lens-catalog-claude-prompt.md`
+- Event log: `docs/subtasks/logs/039-first-principles-lens-catalog-events.jsonl`
+- Raw log: `docs/subtasks/logs/039-first-principles-lens-catalog-claude-run.jsonl`
+- Worker path: `.claude/worktrees/subtask-039-first-principles-lens-catalog`
+- Launch state: completed with `HANDOFF/DONE_WITH_CONCERNS`; Codex accepted after fresh manager verification.
+- Purpose: add MVP built-in `第一性原理` as a first-party lens through a lightweight built-in catalog boundary without adding persistence, migrations, custom lens UI, PromptProvider changes, parser changes, LLM changes, Keychain changes, or AppStore orchestration changes.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Verification: focused `AppStoreStateMachineTests` passed with 105 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+
+Previous accepted slice:
 
 - Subtask: `038-growth-report-drilldown-polish`
 - Owner: Claude Code implementation candidate, Codex acceptance.

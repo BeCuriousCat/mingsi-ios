@@ -3725,4 +3725,48 @@ extension AppStoreStateMachineTests {
         XCTAssertTrue(store.principles.isEmpty)
         XCTAssertEqual(store.activePrinciples.map(\.title), ["先确认负责人"])
     }
+
+    // MARK: - ThinkingLens Catalog
+
+    func testThinkingLens_allCases_containsFirstPrinciples() {
+        XCTAssertTrue(ThinkingLens.allCases.contains(.firstPrinciples),
+                       "firstPrinciples should appear in allCases")
+    }
+
+    func testThinkingLens_existingRawValues_stable() {
+        XCTAssertEqual(ThinkingLens.evidenceCheck.rawValue, "evidenceCheck")
+        XCTAssertEqual(ThinkingLens.opposingView.rawValue, "opposingView")
+        XCTAssertEqual(ThinkingLens.leverageAnalysis.rawValue, "leverageAnalysis")
+    }
+
+    func testBuiltinCatalog_containsOneItem_perLensCase() {
+        let catalogCount = BuiltinLensCatalog.items.count
+        let lensCount = ThinkingLens.allCases.count
+        XCTAssertEqual(catalogCount, lensCount,
+                       "Built-in catalog should have one item per ThinkingLens case")
+    }
+
+    func testFirstPrinciples_metadata() {
+        let item = ThinkingLens.firstPrinciples.catalogItem
+        XCTAssertEqual(item.title, "第一性原理")
+        XCTAssertEqual(item.promptId, "first_principles")
+        XCTAssertEqual(item.version, "builtin.v1")
+        XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
+    }
+
+    func testFirstPrinciples_rawValue() {
+        XCTAssertEqual(ThinkingLens.firstPrinciples.rawValue, "firstPrinciples")
+    }
+
+    func testExistingLensTitles_unchanged() {
+        XCTAssertEqual(ThinkingLens.evidenceCheck.title, "证据校验")
+        XCTAssertEqual(ThinkingLens.opposingView.title, "反方视角")
+        XCTAssertEqual(ThinkingLens.leverageAnalysis.title, "杠杆分析")
+    }
+
+    func testExistingLensSubtitles_unchanged() {
+        XCTAssertEqual(ThinkingLens.evidenceCheck.subtitle, "把事实、判断和假设分开，先清理地基。")
+        XCTAssertEqual(ThinkingLens.opposingView.subtitle, "主动寻找相反证据，避免只证明自己是对的。")
+        XCTAssertEqual(ThinkingLens.leverageAnalysis.subtitle, "找出最能改变结果的一步，把精力放在关键处。")
+    }
 }

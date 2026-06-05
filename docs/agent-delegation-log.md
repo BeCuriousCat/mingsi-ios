@@ -2,6 +2,70 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared First Principles Lens Catalog - Subtask 039
+
+Reason:
+
+- The user confirmed the product direction: first ship `第一性原理` as an MVP built-in lens, but implement it under a lightweight extensible lens-catalog boundary rather than a UI-only hardcoded chimney.
+- Current implementation has only three `ThinkingLens` cases while PRD/prompt docs already include `first_principles` as a first-party lens concept.
+- This is a bounded local model/UI metadata/test slice and a suitable Claude Code implementation candidate: no migration, no repository change, no prompt strategy change, no parser behavior change, no LLM call behavior, no AppStore orchestration, and focused tests can prove the catalog contract and raw-value stability.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/039-first-principles-lens-catalog-prd.md`
+- Progress: `docs/subtasks/039-first-principles-lens-catalog-progress.md`
+- Prompt: `docs/subtasks/039-first-principles-lens-catalog-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/039-first-principles-lens-catalog-events.jsonl`
+  - `docs/subtasks/logs/039-first-principles-lens-catalog-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Codex will not inspect partial worker diffs before `HANDOFF`.
+- Worker may not edit persistence, migrations, repositories, parser behavior, PromptProvider, prompt text, LLM clients, Keychain, AppStore orchestration, History, Projects, Growth, Settings, or Today state transitions.
+- Existing `ThinkingLens.rawValue` values are durable persisted ids and must not change.
+- Codex will rerun focused tests, `git diff --check`, and simulator build before accepting the slice.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Delegation rationale:
+
+- The product/architecture decision has already been made by Codex and the user. The implementation is now a narrow catalog metadata and UI-display refactor with explicit tests, so Claude Code can do the local code work while Codex stays in manager/reviewer role.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Final worker status: `DONE_WITH_CONCERNS`.
+- Worker concern: `xcodebuild` in the isolated worker checkout was blocked by the known GRDB worktree package dependency error: `invalid custom path 'Tests' for target 'GRDBTests'`.
+- Manager consumed worker progress/HANDOFF first. Raw/event flow logs were retained as diagnostics and were not needed for acceptance.
+
+Codex review:
+
+- Accepted the first-party lens catalog boundary and `ThinkingLens.firstPrinciples`.
+- Accepted preserving the existing persisted raw values while adding separate prompt-facing ids in catalog metadata.
+- Accepted Today lens-card metadata reads from the catalog for title, subtitle, short label, method line, and symbol name.
+- Accepted keeping tint/color in `TodayView.swift`, so Domain remains SwiftUI-free.
+- Did not wire catalog `promptId` into AI requests in this slice; that would require a separate prompt/context boundary change.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- AppStoreStateMachineTests passed: 105 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
 ## 2026-06-04: Prepared Growth Report Drilldown Polish - Subtask 038
 
 Reason:

@@ -91,6 +91,14 @@ Subtask 038 proved the wrapper on a Growth display-audit slice and exposed a fra
 - Codex accepted after focused `HistoryFeatureTests` passed with 53 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - The delegation wrapper now preserves worker progress on relaunch unless `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1` and recognizes `## HANDOFF`.
 
+Subtask 039 proved the wrapper on a bounded product/catalog slice:
+
+- Today now includes `第一性原理` as an MVP built-in lens.
+- Lens metadata is represented through `BuiltinLensCatalog`, including durable local id, prompt-facing id, version, display copy, method line, short label, and SF Symbol name.
+- Existing persisted `ThinkingLens.rawValue` values remain unchanged.
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was the known GRDB worker-worktree `xcodebuild` issue, so Codex reran verification in the manager worktree.
+- Codex accepted after focused `AppStoreStateMachineTests` passed with 105 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -119,12 +127,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `038-growth-report-drilldown-polish`
-- PRD: `docs/subtasks/038-growth-report-drilldown-polish-prd.md`
-- Progress: `docs/subtasks/038-growth-report-drilldown-polish-progress.md`
-- Claude prompt: `docs/subtasks/038-growth-report-drilldown-polish-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-038-growth-report-drilldown-polish`
-- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted with a manager row-reason fix after fresh tests, diff check, wrapper smoke checks, and build.
+- Subtask: `039-first-principles-lens-catalog`
+- PRD: `docs/subtasks/039-first-principles-lens-catalog-prd.md`
+- Progress: `docs/subtasks/039-first-principles-lens-catalog-progress.md`
+- Claude prompt: `docs/subtasks/039-first-principles-lens-catalog-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-039-first-principles-lens-catalog`
+- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
 
 ## Subtask 029 Claude Attempts
 
