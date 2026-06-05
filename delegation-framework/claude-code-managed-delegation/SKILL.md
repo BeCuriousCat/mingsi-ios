@@ -90,6 +90,9 @@ A compatible wrapper should support:
 - dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
 - explicit no-progress classification: after the scheduled checks, intervention is allowed only when no `HANDOFF` arrived and the conclusion progress did not move
 - an opt-in flag to inspect flow logs
+- resource-health guards before launch/wait: if the Codex parent has too many zombie children, stop launching workers and restart/recover the parent process first
+- non-interactive shells should not automatically fall back from tmux/session mode to foreground print mode; print mode is opt-in because foreground Claude processes can leave MCP/caffeinate children attached to Codex-managed shells
+- Claude agent/MCP preflight commands should be opt-in, not default, because they can start extra child processes before the worker actually begins
 
 For this repo prototype, use:
 
@@ -107,9 +110,12 @@ CLAUDE_DELEGATE_TASK_ROOT=<path>
 CLAUDE_DELEGATE_LOG_DIR=<path>
 CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540
 CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0
+CLAUDE_DELEGATE_RESOURCE_GUARD=1
+CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=20
+CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES=80
 ```
 
-Use `status` for immediate inspection after launch. Use `wait` for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled.
+Use `status` for immediate inspection after launch. Use one long-running `wait` invocation for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled. Avoid repeated Codex shell-tool polling, because every manager-side shell invocation is another opportunity for the host app to leak unreaped child processes.
 
 Do not reset worker progress during a relaunch just because the manager edited the prompt or PRD. The worker progress file is the conclusion source; overwriting it can erase `START`, `RED`, `IMPLEMENTED`, or `TARGETED_VERIFIED` evidence and force the manager back into flow-log diagnosis. Reset only when the manager intentionally wants to discard the current worker attempt.
 
@@ -118,7 +124,7 @@ Do not reset worker progress during a relaunch just because the manager edited t
 1. Write a compact task contract: purpose, allowed files, forbidden files, tests, and acceptance criteria.
 2. Generate or update the PRD/progress/prompt artifacts from that contract.
 3. Launch the worker.
-4. Wait at low frequency on conclusion progress.
+4. Wait at low frequency on conclusion progress using one wrapper `wait` process, not repeated ad hoc shell polls.
 5. If `HANDOFF` arrives, inspect diff and rerun checks.
 6. If the 3/6/9 checks finish with no conclusion progress, classify the stall before opening flow logs or taking over.
 7. Accept, reject, or request a new worker attempt.

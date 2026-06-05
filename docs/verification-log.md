@@ -2,6 +2,62 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 048 Project Detail Visual-Smoke Readiness and Delegation Resource Guard
+
+Scope:
+
+- Accept Claude Code read-only findings for Project Detail visual-smoke readiness.
+- Verify the delegation wrapper resource guard after Codex restart cleared the prior zombie buildup.
+- Keep flow logs diagnostic-only and accept only conclusion progress/HANDOFF plus findings.
+
+Changed areas:
+
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md`
+- `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md`
+- `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-events.jsonl`
+- `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-claude-run.jsonl`
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- local installed `claude-code-managed-delegation` skill
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-claude-prompt.md docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+scripts/claude_delegate.sh status 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+bash -n scripts/claude_delegate.sh
+command -v tmux
+scripts/claude_delegate.sh --help
+CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0 scripts/claude_delegate.sh status 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0 scripts/claude_delegate.sh prepare 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+scripts/claude_delegate.sh prepare 048-project-detail-visual-smoke-readiness docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md
+git diff --check
+```
+
+Result:
+
+- After Codex restart, Codex-owned zombies dropped from 260+ to 0 and `prepare` succeeded.
+- Claude Code reached `HANDOFF/DONE`.
+- Worker findings identify 10 Project Detail screenshot states, 6 source-inferred visual risks, and 3 narrow follow-up candidates.
+- Worker reported `git diff --check` passed for the progress/findings files and no Swift source/test edits.
+- Wrapper syntax check passed.
+- `tmux` exists at `/opt/homebrew/bin/tmux`.
+- Wrapper help shows the new resource guard and non-interactive tmux defaults.
+- `status` with `CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0` warned but still surfaced conclusion progress.
+- `prepare` with `CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0` blocked with exit `75`, preventing new worker launch under zombie pressure.
+- Normal `prepare` kept `mode_effective="tmux"` in the event log.
+
+Residual risk:
+
+- Real iPhone 17 Project Detail screenshots are still required before confirming any visual risk.
+- The resource guard cannot fix Codex App's parent-process reaping bug; it prevents new worker launch when thresholds are exceeded and reduces extra Claude/MCP preflight processes.
+- Future delegated implementation should validate tmux-mode launch under load and confirm no post-handoff process remains.
+
 ## 2026-06-05: Subtask 046 Delegation Strict Handoff Detection
 
 Scope:

@@ -37,9 +37,18 @@ Launch state:
 - Attempt 2: non-login shell retry failed before command start with `Resource temporarily unavailable (os error 35)`.
 - Attempt 3: non-login shell retry failed before command start with `Resource temporarily unavailable (os error 35)`.
 - Recovery: after the user restarted Codex, the old Codex parent PID `18408` disappeared and Codex-owned zombie children dropped from 260+ to 0. The remaining zombies are 2 `DoubaoIme` children, so 048 is ready for a fresh launch attempt.
-- No Claude Code worker started.
-- No worker progress, raw log, findings file, or `HANDOFF` exists.
-- This is classified as a local system process creation failure before worker start, not a Claude Code audit failure.
+- Fresh launch after restart: worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker result: `HANDOFF/DONE`.
+- Codex accepted the read-only findings as planning evidence only.
+- Findings delivered: 10 Project Detail screenshot states, 6 source-inferred visual risks, and 3 narrow follow-up candidates.
+- Verification: worker reported `git diff --check` passed for the progress/findings files; Codex reran `git diff --check` before acceptance.
+- No Swift source or test files were modified.
+- Residual risk: real iPhone 17 screenshots are still required before confirming any visual risk or implementing follow-ups.
+
+Framework follow-up from this delegation:
+
+- The fresh launch reproduced a smaller resource hygiene concern: foreground/print-style Claude execution can leave child processes and zombies under Codex-managed shells.
+- Codex added wrapper and skill guards so non-interactive shells keep tmux/session mode by default, Claude agent/MCP preflight is opt-in, and prepare/launch/wait stop when zombie thresholds are exceeded.
 
 ## 2026-06-05: Prepared Delegation Strict Handoff Detection - Subtask 046
 

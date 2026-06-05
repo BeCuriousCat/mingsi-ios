@@ -4,12 +4,12 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: Subtask 048 is prepared for Claude Code delegation. The previous launch blocker was local Codex process leakage / process creation pressure; after the user restarted Codex, the Codex-owned zombie children are gone and the slice is ready for a fresh launch attempt.
+Status: no active Claude Code worker is running. Subtask 048 reached `HANDOFF/DONE` after the user restarted Codex, and Codex accepted the read-only findings after reviewing conclusion progress and rerunning document checks.
 
-Active prepared slice:
+Latest accepted delegated slice:
 
 - Subtask: `048-project-detail-visual-smoke-readiness`
-- Owner: Claude Code read-only audit candidate, Codex final acceptance.
+- Owner: Claude Code read-only audit, Codex final acceptance.
 - PRD file: `docs/subtasks/048-project-detail-visual-smoke-readiness-prd.md`
 - Progress file: `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md`
 - Claude prompt file: `docs/subtasks/048-project-detail-visual-smoke-readiness-claude-prompt.md`
@@ -20,8 +20,17 @@ Active prepared slice:
 - Allowed write files: 048 progress and findings only.
 - Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
 - Delegation rationale: this is a bounded read-only audit with document-only output and no product-source edits, suitable for Claude Code while Codex stays in final product judgment role.
-- Launch state: ready to retry after recovery. Three earlier `prepare` attempts failed with local process creation errors (`fork: Resource temporarily unavailable` / `os error 35`) before the user restarted Codex.
-- Worker result: none. No worker progress, raw log, findings file, or `HANDOFF` exists.
+- Launch state: completed after recovery. Three earlier `prepare` attempts failed with local process creation errors (`fork: Resource temporarily unavailable` / `os error 35`) before the user restarted Codex; the fresh launch then reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Worker result: `HANDOFF/DONE`. Findings identify 10 Project Detail screenshot states, 6 source-inferred visual risks, and 3 narrow follow-up candidates. No Swift source or test files were modified.
+- Codex acceptance: accepted as read-only planning evidence only. Real iPhone 17 screenshots are still required before confirming any visual risk or implementing follow-ups.
+
+Current framework fix in progress:
+
+- Subtask: delegation resource hygiene / zombie guard.
+- Owner: Codex direct framework fix.
+- Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
+- Purpose: prevent repeated Codex-side shell/polling and foreground print-mode launches from accumulating unreaped child processes.
+- State: wrapper now keeps non-interactive tmux mode by default, makes `claude agents --json` preflight opt-in, and blocks prepare/launch/wait when zombie thresholds are exceeded.
 
 Previous accepted framework slice:
 

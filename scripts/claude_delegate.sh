@@ -19,15 +19,22 @@ environment overrides:
   CLAUDE_DELEGATE_SETTING_SOURCES=user,local
   CLAUDE_DELEGATE_MODE=tmux    # tmux or print
   CLAUDE_DELEGATE_TMUX_STYLE=classic  # classic or native; classic is safer in non-interactive shells
+  CLAUDE_DELEGATE_NONINTERACTIVE_FALLBACK=0 # set to print only when tmux cannot be used
+  CLAUDE_DELEGATE_AGENT_PREFLIGHT=0 # set 1 to run claude agents --json before launch
   CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 # print mode only; general GLM coding budget guard
   CLAUDE_DELEGATE_SHOW_FLOW_LOGS=0     # set 1 only for diagnostics / failed acceptance
   CLAUDE_DELEGATE_TASK_ROOT=docs/subtasks
   CLAUDE_DELEGATE_LOG_DIR=$CLAUDE_DELEGATE_TASK_ROOT/logs
   CLAUDE_DELEGATE_WAIT_SCHEDULE=180,360,540 # default auto wait backoff in seconds
   CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=0 # set 1 only to intentionally reset worker progress
+  CLAUDE_DELEGATE_RESOURCE_GUARD=1
+  CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=20
+  CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES=80
 
 notes:
-  In non-interactive shells, tmux launch falls back to print mode.
+  In non-interactive shells, tmux launch stays in tmux mode by default. Set
+  CLAUDE_DELEGATE_NONINTERACTIVE_FALLBACK=print only when you intentionally
+  want a foreground print-mode worker.
   Print mode still runs inside the isolated worker worktree.
   For large delegated tasks, set CLAUDE_DELEGATE_MAX_BUDGET_USD=60.00 or higher explicitly.
   Event/raw logs are flow logs: retained by default, not consumed during routine manager checks.
@@ -89,16 +96,52 @@ tools="${CLAUDE_DELEGATE_TOOLS:-Skill,Read,Edit,MultiEdit,Write,Bash,Grep,Glob,L
 setting_sources="${CLAUDE_DELEGATE_SETTING_SOURCES:-user,local}"
 mode="${CLAUDE_DELEGATE_MODE:-tmux}"
 tmux_style="${CLAUDE_DELEGATE_TMUX_STYLE:-classic}"
+noninteractive_fallback="${CLAUDE_DELEGATE_NONINTERACTIVE_FALLBACK:-0}"
+agent_preflight="${CLAUDE_DELEGATE_AGENT_PREFLIGHT:-0}"
 max_budget="${CLAUDE_DELEGATE_MAX_BUDGET_USD:-30.00}"
 show_flow_logs="${CLAUDE_DELEGATE_SHOW_FLOW_LOGS:-0}"
 overwrite_worker_progress="${CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS:-0}"
+resource_guard_enabled="${CLAUDE_DELEGATE_RESOURCE_GUARD:-1}"
+max_codex_zombies="${CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES:-20}"
+max_total_zombies="${CLAUDE_DELEGATE_MAX_TOTAL_ZOMBIES:-80}"
 effective_mode="$mode"
 
 resolve_effective_mode() {
   effective_mode="$mode"
-  if [[ "$effective_mode" == "tmux" && ! -t 0 && ! -t 1 ]]; then
+  if [[ "$effective_mode" == "tmux" && ! -t 0 && ! -t 1 && "$noninteractive_fallback" == "print" ]]; then
     effective_mode="print"
   fi
+}
+
+codex_app_pid() {
+  ps -axo pid=,comm= | awk '$0 ~ /\/Applications\/Codex\.app\/Contents\/MacOS\/Codex$/ { print $1; exit }'
+}
+
+resource_guard() {
+  local mode="${1:-fail}"
+  [[ "$resource_guard_enabled" == "1" ]] || return 0
+
+  local codex_pid=""
+  local codex_zombies="0"
+  local total_zombies="0"
+  codex_pid="$(codex_app_pid || true)"
+  total_zombies="$(ps -axo stat= | awk '$1 ~ /Z/ { count++ } END { print count + 0 }')"
+  if [[ -n "$codex_pid" ]]; then
+    codex_zombies="$(ps -axo stat=,ppid= | awk -v ppid="$codex_pid" '$1 ~ /Z/ && $2 == ppid { count++ } END { print count + 0 }')"
+  fi
+
+  local message="resource guard: codex_pid=${codex_pid:-unknown} codex_zombies=$codex_zombies total_zombies=$total_zombies thresholds=${max_codex_zombies}/${max_total_zombies}"
+  if (( codex_zombies > max_codex_zombies || total_zombies > max_total_zombies )); then
+    if [[ "$mode" == "warn" ]]; then
+      echo "$message" >&2
+      echo "resource guard warning: zombie thresholds exceeded; avoid launching new workers until Codex/system is restarted or zombies are reaped" >&2
+      return 0
+    fi
+    echo "$message" >&2
+    echo "resource guard blocked launch: zombie thresholds exceeded; restart Codex or the parent process before delegating more work" >&2
+    exit 75
+  fi
+  echo "$message" >&2
 }
 
 progress_file_for() {
@@ -303,7 +346,7 @@ sync_worker_task_docs() {
 run_print_claude() {
   (
     cd "$worker_path"
-    claude -p \
+    exec claude -p \
       --output-format stream-json \
       --verbose \
       --include-hook-events \
@@ -378,7 +421,10 @@ preflight() {
   if [[ "$effective_mode" == "tmux" ]]; then
     command -v tmux >/dev/null || { echo "tmux not found" >&2; exit 69; }
   fi
-  claude agents --json --cwd "$repo_root" >/dev/null
+  resource_guard fail
+  if [[ "$agent_preflight" == "1" ]]; then
+    claude agents --json --cwd "$repo_root" >/dev/null
+  fi
 }
 
 case "$cmd" in
@@ -459,6 +505,7 @@ case "$cmd" in
     ;;
 
   status)
+    resource_guard warn
     progress_file="$(progress_file_for "$@")"
     manager_progress="$(manager_file_path "$progress_file")"
     worker_progress="$(worker_progress_path_for "$progress_file")"
@@ -500,6 +547,7 @@ case "$cmd" in
     ;;
 
   wait)
+    resource_guard fail
     progress_file="$(progress_file_for "${1:-}")"
     interval="${2:-auto}"
     max_checks="${3:-}"
