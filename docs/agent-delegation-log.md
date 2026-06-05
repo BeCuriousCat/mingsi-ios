@@ -2,6 +2,39 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Prepared Project Detail Display Polish - Subtask 058
+
+Reason:
+
+- Subtask 049 captured the full Project Detail light/dark fixture matrix on a real iPhone 17 simulator.
+- Confirmed issues are narrow and display-only: English `active` status chip, dark surface tone, empty thinking-change visual noise, long timeline dominance, and bottom spacing evidence around the floating tab.
+- This is suitable for Claude Code implementation once resource health allows worker launch.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/058-project-detail-display-polish-prd.md`
+- Progress: `docs/subtasks/058-project-detail-display-polish-progress.md`
+- Prompt: `docs/subtasks/058-project-detail-display-polish-claude-prompt.md`
+- Event log: `docs/subtasks/logs/058-project-detail-display-polish-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/058-project-detail-display-polish-claude-run.jsonl`
+
+Delegation rationale:
+
+- This is a bounded SwiftUI display-only slice with concrete screenshot evidence, narrow source/test files, and no product-semantic decisions. Claude Code can implement it while Codex keeps final visual acceptance.
+
+Launch state:
+
+- Not launched.
+- Wrapper health reported `codex_tree_zombies=23/20`, `total_zombies=25/80`.
+- There is no active worker process; the zombies are owned by the Codex host process and cannot be reaped by the shell wrapper.
+- Codex prepared the package but deferred launch to avoid compounding the resource leak.
+
+Manager constraints:
+
+- Worker may edit only `Sources/Features/FeatureTabs.swift`, `Sources/DesignSystem/Theme.swift` if strictly needed, one focused test file if needed, and the 058 progress file.
+- Worker may not edit AppStore orchestration, persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, Project semantics, or screenshot files.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+
 ## 2026-06-06: Prepared Project Detail Visual QA Fixture Variants - Subtask 057
 
 Reason:

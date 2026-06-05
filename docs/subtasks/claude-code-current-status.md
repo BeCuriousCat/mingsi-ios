@@ -6,6 +6,21 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
+Prepared but not launched:
+
+- Subtask: `058-project-detail-display-polish`
+- Owner: pending Claude Code implementation candidate, Codex final acceptance.
+- PRD file: `docs/subtasks/058-project-detail-display-polish-prd.md`
+- Progress file: `docs/subtasks/058-project-detail-display-polish-progress.md`
+- Claude prompt file: `docs/subtasks/058-project-detail-display-polish-claude-prompt.md`
+- Event log: `docs/subtasks/logs/058-project-detail-display-polish-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/058-project-detail-display-polish-claude-run.jsonl`
+- Purpose: narrow Project Detail display-only polish based on Subtask 049 real iPhone 17 screenshots.
+- Allowed files: `Sources/Features/FeatureTabs.swift`, `Sources/DesignSystem/Theme.swift` only if strictly needed, and one focused test file only if needed.
+- Launch state: not launched because wrapper health reports Codex process-tree zombies above threshold.
+- Resource state at preparation: `codex_tree_zombies=23/20`, `total_zombies=25/80`; no active worker process.
+- Manager decision: do not start a new Claude Code worker until resource health recovers.
+
 Latest accepted delegated implementation slice:
 
 - Subtask: `057-project-detail-visual-qa-fixture-variants`
