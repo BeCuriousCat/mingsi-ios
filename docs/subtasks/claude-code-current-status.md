@@ -4,9 +4,9 @@ Last updated: 2026-06-06
 
 ## Current Worker
 
-Status: no active Claude Code worker is currently delivering an acceptable handoff.
+Status: no active Claude Code worker is currently running.
 
-Latest attempted delegated slice:
+Latest accepted delegated implementation slice:
 
 - Subtask: `050-project-detail-visual-qa-launch-fixture`
 - Owner: Claude Code implementation candidate, Codex final acceptance.
@@ -19,8 +19,9 @@ Latest attempted delegated slice:
 - Allowed files: `Sources/App/MingSiApp.swift`, `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 050 progress file.
 - Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
 - Delegation rationale: bounded local source/test implementation with explicit acceptance tests; Codex remains final screenshot and taste owner.
-- Launch state: attempted before Subtask 051 lifecycle cleanup, but progress stayed at `PREPARED`, no `START` checkpoint was written, no `HANDOFF` exists, and wrapper liveness now reports no active worker process for the subtask.
-- Codex acceptance: none. 050 remains paused until it is relaunched under the fixed wrapper or replaced by a smaller slice.
+- Launch state: accepted after relaunching through print mode because tmux is not usable from the Codex non-TTY host.
+- Worker result: `HANDOFF/DONE`.
+- Codex acceptance: accepted after manager Debug-only guard fix and fresh verification. Focused `AppStoreStateMachineTests` passed with 115 tests and 0 failures; Debug and Release iPhone 17 simulator builds passed.
 
 Latest accepted framework fix:
 

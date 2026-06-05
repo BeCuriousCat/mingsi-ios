@@ -95,7 +95,16 @@ Launch state:
 
 - Launched before Subtask 051 lifecycle cleanup, but did not reach `START`.
 - Current wrapper status reports no active worker process and no conclusion checkpoint, so Codex classifies this as launch-before-START failure.
-- No worker handoff exists and no 050 implementation has been accepted.
+- Relaunched after Subtasks 051 and 052 using print mode because tmux cannot start from the Codex non-TTY host.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF/DONE`.
+- Codex accepted after adding a manager `#if DEBUG` guard so fixture launch code cannot activate in Release builds.
+
+Verification:
+
+- `AppStoreStateMachineTests` passed: 115 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 Debug simulator build passed.
+- iPhone 17 Release simulator build passed.
 
 ## 2026-06-05: Prepared Project Detail Visual-Smoke Readiness Audit - Subtask 048
 

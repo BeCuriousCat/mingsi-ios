@@ -230,6 +230,107 @@ final class AppStore: ObservableObject {
         )
     }
 
+#if DEBUG
+    static func isVisualQAProjectDetailLaunch(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.contains("MINGSI_VISUAL_QA_PROJECT_DETAIL")
+    }
+
+    static func visualQAProjectDetail() -> AppStore {
+        let project = Project(
+            name: "Visual QA - 会议机制优化",
+            goal: "减少会议后的返工和模糊结论",
+            successCriteria: "每次会议结束时有明确负责人、行动项和验收标准",
+            currentBottleneck: "会前没有列出必须确认的问题",
+            openQuestions: ["哪些决策必须会前确认？", "谁在会后发纪要？"],
+            status: .active,
+            mergeHistory: ["合并了: Visual QA - 接口归属确认\n来源项目: fixture\n原因: 视觉验证用例\n证据: fixture-evidence"]
+        )
+
+        let cardID = UUID()
+        let questID = UUID()
+        let draft = DailyEntryDraft(
+            rawText: "Visual QA: 会议讨论了接口归属问题，但结束时没有明确负责人。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .sessionComplete
+        )
+        let card = ThinkingCard(
+            id: cardID,
+            type: .problem,
+            title: "Visual QA - 会议目标不清",
+            body: "会议讨论了多个议题，但没有逐项确认负责人。",
+            isConfirmed: true
+        )
+        let quest = Quest(
+            id: questID,
+            type: .main,
+            title: "Visual QA - 确认会议机制",
+            whyItMatters: "减少后续返工",
+            completionCriteria: "写出负责人和验收方式",
+            expectedResistance: "跨角色沟通",
+            reflectionQuestion: "哪些归属确认后减少了返工？",
+            status: .completed
+        )
+
+        let confirmedLink = ProjectLink(
+            projectId: project.id,
+            sourceType: .thinkingCard,
+            sourceId: cardID.uuidString,
+            linkType: .evidence,
+            isUserConfirmed: true
+        )
+        let taskLink = ProjectLink(
+            projectId: project.id,
+            sourceType: .quest,
+            sourceId: questID.uuidString,
+            linkType: .task,
+            isUserConfirmed: true
+        )
+
+        let record = HistoryRecord(
+            draft: draft,
+            cards: [card],
+            quests: [quest],
+            principles: [],
+            verification: nil,
+            lensSession: nil,
+            projectLinks: [confirmedLink, taskLink],
+            growthContributions: []
+        )
+
+        let acceptedInsight = ProjectInsight(
+            projectId: project.id,
+            insightType: .progress,
+            title: "Visual QA - 进展信号",
+            summary: "从依赖会议讨论到主动会前准备，接口归属逐步明确。",
+            sourceRefs: [cardID.uuidString],
+            userFeedback: .accepted
+        )
+        let pendingInsight = ProjectInsight(
+            projectId: project.id,
+            insightType: .thinkingChange,
+            title: "Visual QA - 思考转变",
+            summary: "从被动等待会议结论到会前列出必须确认的问题。",
+            beforeText: "之前依赖会议讨论决定归属",
+            afterText: "现在会前列出必须确认的问题",
+            sourceRefs: [questID.uuidString],
+            userFeedback: .none
+        )
+
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .projects
+        store.projectNames[project.id] = project.name
+        store.projectsById[project.id] = project
+        store.acceptedProjectInsights = [acceptedInsight]
+        store.pendingProjectInsights = [pendingInsight]
+        return store
+    }
+#endif
+
     nonisolated static func makePreviewDraft() -> DailyEntryDraft {
         DailyEntryDraft(
             rawText: "今天开了一个会议，但还没把明天最重要的动作想清楚。",

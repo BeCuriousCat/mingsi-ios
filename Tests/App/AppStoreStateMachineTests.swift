@@ -2702,6 +2702,56 @@ final class AppStoreStateMachineTests: XCTestCase {
         """.utf8
     )
 
+    // MARK: - Visual QA Launch Fixture
+
+    func testVisualQAProjectDetailFixture_startsOnProjectsTab() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        XCTAssertEqual(fixtureStore.selectedTab, .projects)
+    }
+
+    func testVisualQAProjectDetailFixture_hasAtLeastOneEvidenceBackedProject() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        XCTAssertFalse(fixtureStore.projectsById.isEmpty, "Fixture must include at least one project in projectsById")
+        XCTAssertFalse(fixtureStore.projectNames.isEmpty, "Fixture must include project names")
+
+        let project = fixtureStore.projectsById.values.first!
+        let projectId = project.id
+        XCTAssertEqual(fixtureStore.projectNames[projectId], project.name)
+
+        let hasConfirmedLink = fixtureStore.historyRecords.contains { record in
+            record.projectLinks.contains { link in
+                link.projectId == projectId && link.isUserConfirmed
+            }
+        }
+        XCTAssertTrue(hasConfirmedLink, "Fixture must have at least one history record with a confirmed ProjectLink for the project")
+    }
+
+    func testVisualQAProjectDetailFixture_hasProjectInsights() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        let allInsights = fixtureStore.acceptedProjectInsights + fixtureStore.pendingProjectInsights
+        XCTAssertFalse(allInsights.isEmpty, "Fixture must have accepted or pending project insights")
+
+        let projectIds = Set(fixtureStore.projectsById.keys)
+        XCTAssertTrue(
+            allInsights.allSatisfy { projectIds.contains($0.projectId) },
+            "All fixture insights must reference a project in projectsById"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withoutArgument_returnsFalse() {
+        XCTAssertFalse(
+            AppStore.isVisualQAProjectDetailLaunch(arguments: []),
+            "Without MINGSI_VISUAL_QA_PROJECT_DETAIL, fixture mode should not activate"
+        )
+    }
+
+    func testVisualQAProjectDetailLaunch_withArgument_returnsTrue() {
+        XCTAssertTrue(
+            AppStore.isVisualQAProjectDetailLaunch(arguments: ["MINGSI_VISUAL_QA_PROJECT_DETAIL"]),
+            "With MINGSI_VISUAL_QA_PROJECT_DETAIL, fixture mode should activate"
+        )
+    }
+
     // MARK: - Project Candidate Flows
 
     func testSuggestProjects_persistsPendingCandidatesWithSourceRefs() async throws {

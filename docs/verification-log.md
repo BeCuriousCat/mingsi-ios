@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 050 Project Detail Visual QA Launch Fixture
+
+Scope:
+
+- Accept Claude Code implementation of a Debug-only Project Detail visual QA launch fixture.
+- Keep fixture in memory and outside production persistence.
+- Preserve normal `AppStore.live()` launch behavior.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/App/MingSiApp.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md`
+- `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-events.jsonl`
+- `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-claude-run.jsonl`
+
+Commands run:
+
+```bash
+CLAUDE_DELEGATE_MODE=print CLAUDE_DELEGATE_MAX_BUDGET_USD=60.00 scripts/claude_delegate.sh launch 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-claude-prompt.md docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+scripts/claude_delegate.sh status 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE`.
+- Codex accepted only the allowed 050 source/test/progress diff and ignored worker-worktree `scripts/claude_delegate.sh` sync noise.
+- Codex added a manager fix: `#if DEBUG` guards around the fixture API and launch branch.
+- `git diff --check` passed.
+- `AppStoreStateMachineTests` passed: 115 tests, 0 failures.
+- iPhone 17 Debug simulator build passed.
+- iPhone 17 Release simulator build passed, proving production builds do not reference Debug-only fixture APIs.
+
+Residual risk:
+
+- This enables Project Detail visual QA but does not itself capture Project Detail screenshots.
+- The fixture data is explicitly visual QA data and must not be interpreted as real user evidence.
+
 ## 2026-06-06: Subtask 052 Delegation Tmux Flag Compatibility
 
 Scope:
