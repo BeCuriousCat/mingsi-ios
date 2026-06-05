@@ -123,6 +123,14 @@ Subtask 042 wired the lens catalog into Today AI prompt/context payloads:
 - Codex accepted after focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Pipeline observation: `scripts/claude_delegate.sh status` briefly showed stale progress even after the worker wrote `HANDOFF`; raw/event logs were opened only after the conclusion path became inconsistent. Treat this as a wrapper follow-up, not a product blocker.
 
+Subtask 043 fixed that delegation framework status follow-up:
+
+- No Claude Code worker was launched because the bug was inside the manager wrapper.
+- `scripts/claude_delegate.sh status` now surfaces active `HANDOFF` summaries and final status tokens instead of only printing the top of long progress files.
+- After Codex acceptance, routine status prefers manager-side `Status: CODEX_ACCEPTED` progress over an older worker copy.
+- Flow logs remain diagnostic-only; conclusion progress remains the default manager consumption path.
+- Verification covered wrapper syntax, 042 handoff summary visibility, 042 manager-accepted progress precedence, 029 pending-handoff rejection, and `git diff --check`.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -158,6 +166,13 @@ Latest completed subtask:
 - Worker path: `.claude/worktrees/subtask-042-lens-prompt-context-wiring`
 - Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
 
+Latest framework subtask:
+
+- Subtask: `043-delegation-status-handoff-summary`
+- PRD: `docs/subtasks/043-delegation-status-handoff-summary-prd.md`
+- Progress: `docs/subtasks/043-delegation-status-handoff-summary-progress.md`
+- Result: direct Codex wrapper fix, no Claude Code worker launched, Codex accepted after targeted wrapper regression checks.
+
 ## Subtask 029 Claude Attempts
 
 Attempt 1:
@@ -190,7 +205,8 @@ These attempts are historical evidence only. Do not reuse the broad 029 prompt p
 Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
-   - Project overview hierarchy polish.
+   - Project Detail visual smoke verification and any narrow follow-up from screenshots.
+   - Project top-level status filtering if project count/scanning becomes user-facing.
    - Live GLM failure-path confirmation for History repair.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.

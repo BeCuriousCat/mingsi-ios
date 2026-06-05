@@ -40,6 +40,7 @@ The framework should provide:
 - Two-layer logging:
   - Conclusion layer: progress, findings, concerns, handoff, and suggested next actions. This is the default manager consumption path.
   - Flow layer: raw stream and hook JSONL logs. These are retained for diagnosis and opened only after a problem or failed acceptance.
+- Status commands must show the active handoff summary and final token when present; truncating long progress files before `HANDOFF` breaks conclusion-first monitoring.
 - Isolated worktrees for worker changes.
 - Configurable task root and log root, not hard-coded MingSi paths.
 - Templates that can generate routine PRD/progress/prompt artifacts from a compact manifest.
@@ -101,4 +102,3 @@ The next MingSi business slice, manual Principle creation, should be used as a d
 - Claude Code does the bounded coding work in an isolated worktree.
 - Codex consumes conclusion-layer progress first.
 - Raw flow logs are opened only if the worker stalls or acceptance fails.
-

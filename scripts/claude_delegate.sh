@@ -145,6 +145,10 @@ current_progress_path() {
   local worker_progress
   manager_progress="$(manager_file_path "$progress_file")"
   worker_progress="$(worker_file_path "$progress_file")"
+  if [[ -f "$manager_progress" ]] && codex_accepted "$manager_progress"; then
+    printf '%s\n' "$manager_progress"
+    return
+  fi
   if [[ -f "$worker_progress" ]] && handoff_reached "$worker_progress"; then
     printf '%s\n' "$worker_progress"
     return
@@ -160,10 +164,26 @@ current_progress_path() {
   fi
 }
 
+codex_accepted() {
+  local progress_file="$1"
+  [[ -f "$progress_file" ]] || return 1
+  rg -q '^Status:[[:space:]]*CODEX_ACCEPTED\b' "$progress_file"
+}
+
 handoff_reached() {
   local progress_file="$1"
   [[ -f "$progress_file" ]] || return 1
   rg -q '^(Status:[[:space:]]*(HANDOFF|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(reached|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|##[[:space:]]+HANDOFF\b)' "$progress_file"
+}
+
+print_handoff_summary() {
+  local progress_file="$1"
+  [[ -f "$progress_file" ]] || return
+  awk '
+    /^##[[:space:]]+HANDOFF([[:space:]]|$)/ { in_handoff = 1; print; next }
+    in_handoff && /^##[[:space:]]+/ { exit }
+    in_handoff { print }
+  ' "$progress_file"
 }
 
 progress_has_checkpoint() {
@@ -418,6 +438,11 @@ case "$cmd" in
     active_progress="$(current_progress_path "$progress_file")"
     echo "active progress: $active_progress"
     [[ -f "$active_progress" ]] && sed -n '1,80p' "$active_progress" || true
+    if handoff_reached "$active_progress"; then
+      echo
+      echo "active handoff summary:"
+      print_handoff_summary "$active_progress"
+    fi
     echo
     echo "manager progress: $manager_progress"
     [[ -f "$manager_progress" ]] && sed -n '1,40p' "$manager_progress" || true

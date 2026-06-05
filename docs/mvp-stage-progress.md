@@ -52,6 +52,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 040 Project overview hierarchy audit via Claude Code delegation. Findings recommend a narrow display-only Project Detail hierarchy slice: fix thinking-change headline accuracy, reduce placeholder overview noise, visually group sections, and hide empty progress signals.
 - Completed Subtask 041 Project Detail hierarchy cleanup via Claude Code delegation plus Codex manager fix. Project Detail now avoids placeholder-heavy overview rows, distinguishes insufficient thinking-change evidence from unconfirmed insight candidates, hides empty progress signals, and groups sections into clearer visual tiers without changing Project semantics.
 - Completed Subtask 042 Lens Prompt Context Wiring via Claude Code delegation. Today AI request payloads now use built-in lens catalog prompt ids such as `first_principles` / `leverage_analysis`, while structured context preserves local `ThinkingLens.rawValue` and exposes lens catalog metadata for audit/debugging. Focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+- Completed Subtask 043 Delegation Status Handoff Summary as a direct framework fix. The wrapper `status` command now surfaces active `HANDOFF` summaries and final status tokens, and prefers manager-side `CODEX_ACCEPTED` progress after Codex acceptance, preserving conclusion-first monitoring without routine raw/event log inspection.
 
 ## Known Remaining Work
 
@@ -65,11 +66,10 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Current Recommended Next Slice
 
-After Subtask 042, the next bounded slice should be chosen from:
+After Subtask 043, the next bounded slice should be chosen from:
 
 - Project Detail visual smoke verification and any narrow follow-up from screenshots.
 - Project top-level status filtering if project count/scanning becomes a user-facing problem.
 - Live GLM failure-path confirmation for History repair.
-- Delegation wrapper status freshness follow-up, because Subtask 042 exposed a case where `status` showed stale progress even though the worker had reached `HANDOFF`.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

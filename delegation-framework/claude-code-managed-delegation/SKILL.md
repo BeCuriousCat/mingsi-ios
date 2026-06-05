@@ -84,6 +84,8 @@ A compatible wrapper should support:
 - isolated worktree per task
 - worker progress copied or available inside the worktree
 - `status` and `wait` commands that prefer conclusion progress
+- `status` output that surfaces the active `HANDOFF` summary and final status token when present, rather than only printing the top of a long progress file
+- manager-accepted progress precedence: after manager acceptance, status should prefer the manager-side `CODEX_ACCEPTED` progress file over an older worker copy
 - relaunch-safe progress sync: once worker progress contains checkpoints, do not overwrite it with a stale manager-side progress file unless an explicit reset flag is set
 - dynamic wait backoff, defaulting to 3/6/9 minute checks before manager intervention
 - explicit no-progress classification: after the scheduled checks, intervention is allowed only when no `HANDOFF` arrived and the conclusion progress did not move

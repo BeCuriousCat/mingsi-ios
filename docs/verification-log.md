@@ -2,6 +2,52 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 043 Delegation Status Handoff Summary
+
+Scope:
+
+- Fix the reusable delegation wrapper status view so conclusion-first monitoring shows active handoff summaries and final status tokens.
+- Prefer manager-side `CODEX_ACCEPTED` progress after Codex acceptance.
+- Keep raw/event flow logs out of routine status consumption.
+- Preserve strict pending-handoff handling.
+- Do not change MingSi product source, tests, persistence, migrations, prompt, parser, LLM, Keychain, AppStore orchestration, or SwiftUI behavior.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- `delegation-framework/claude-code-managed-delegation/references/conclusion-first-monitoring.md`
+- `docs/delegation-framework-boundary.md`
+- `docs/subtasks/043-delegation-status-handoff-summary-prd.md`
+- `docs/subtasks/043-delegation-status-handoff-summary-progress.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+- `docs/project-continuation-context.md`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh status 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md | rg -q 'Status: DONE_WITH_CONCERNS'
+scripts/claude_delegate.sh status 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md | rg -q 'active progress: .*/docs/subtasks/042-lens-prompt-context-wiring-progress.md'
+scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md 0 1
+git diff --check
+```
+
+Result:
+
+- Wrapper syntax check passed.
+- 042 regression fixture showed `Status: DONE_WITH_CONCERNS` in the routine status output.
+- 042 status now prefers the manager-side accepted progress file after `CODEX_ACCEPTED`.
+- 029 pending handoff wait guard exited `75` as expected, proving `HANDOFF: pending` is not accepted as completion.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This is wrapper-level verification only. The next real Claude Code implementation slice should dogfood the improved status display under a live worker handoff.
+
 ## 2026-06-05: Subtask 042 Lens Prompt Context Wiring
 
 Scope:

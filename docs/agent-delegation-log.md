@@ -2,6 +2,59 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Direct Framework Fix - Subtask 043 Delegation Status Handoff Summary
+
+Reason:
+
+- Subtask 042 exposed a framework bug: the worker had reached `HANDOFF/DONE_WITH_CONCERNS`, but `scripts/claude_delegate.sh status` printed only the first 80 lines of the active progress file, so the manager view looked stale when `## HANDOFF` appeared later in the file.
+- After Codex acceptance, manager progress could hold `Status: CODEX_ACCEPTED` while the worker copy still had an older top-level status. Routine status should prefer the manager-side accepted conclusion.
+- This is a delegation framework bug, not a MingSi product implementation task.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/043-delegation-status-handoff-summary-prd.md`
+- Progress: `docs/subtasks/043-delegation-status-handoff-summary-progress.md`
+- Claude prompt: none
+- Worker logs: none
+
+Delegation state:
+
+- Not delegated.
+
+Delegation rationale:
+
+- Claude Code was not used because the defect was inside the manager wrapper that launches and monitors Claude Code. Codex fixed it directly to avoid delegating the supervisor's control plane to the current worker path.
+
+Observed result:
+
+- `status` now prints an `active handoff summary` section when the active progress has reached `HANDOFF`.
+- `current_progress_path` now prefers manager-side progress when it contains `Status: CODEX_ACCEPTED`.
+- Flow logs remain hidden by default; routine status still consumes conclusion progress.
+- Pending-handoff text is still rejected by `wait`.
+
+Codex review:
+
+- Accepted the direct wrapper fix.
+- Accepted documentation updates to the reusable skill prototype, conclusion-first monitoring reference, and framework boundary doc.
+- Rejected any scope expansion into MingSi product source, launch-mode rewrite, hook bridge rewrite, raw/event log parsing, or wait-cadence changes.
+
+Verification:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh status 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md | rg -q 'Status: DONE_WITH_CONCERNS'
+scripts/claude_delegate.sh status 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md | rg -q 'active progress: .*/docs/subtasks/042-lens-prompt-context-wiring-progress.md'
+scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md 0 1
+git diff --check
+```
+
+Result:
+
+- Syntax check passed.
+- 042 status regression checks passed.
+- 029 pending-handoff guard exited `75` as expected.
+- `git diff --check` passed.
+
 ## 2026-06-05: Prepared Lens Prompt Context Wiring - Subtask 042
 
 Reason:

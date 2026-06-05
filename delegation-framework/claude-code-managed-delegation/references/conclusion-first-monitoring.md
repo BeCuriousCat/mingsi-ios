@@ -12,6 +12,10 @@ Read these routinely:
 - test/build command summary
 - concerns and suggestions
 
+The wrapper `status` command must surface the active `HANDOFF` summary and final status token when they exist. A progress file can be long; printing only the beginning can make a completed worker look stalled and force unnecessary raw-log inspection.
+
+After manager acceptance, the manager-side progress file with `Status: CODEX_ACCEPTED` should take precedence over an older worker progress copy for routine status display.
+
 ## Flow Layer
 
 Open these only after a problem:

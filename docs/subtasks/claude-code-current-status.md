@@ -4,7 +4,20 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 042 is Codex-accepted and verified.
+Status: no active Claude Code worker is running; Subtask 043 is a direct Codex framework fix and is Codex-accepted.
+
+Latest framework slice:
+
+- Subtask: `043-delegation-status-handoff-summary`
+- Owner: Codex direct implementation.
+- PRD file: `docs/subtasks/043-delegation-status-handoff-summary-prd.md`
+- Progress file: `docs/subtasks/043-delegation-status-handoff-summary-progress.md`
+- Claude prompt file: none; no Claude Code worker was delegated because the bug was inside `scripts/claude_delegate.sh`.
+- Worker path: none.
+- Launch state: not launched.
+- Purpose: fix wrapper `status` so routine manager status shows active `HANDOFF` summary/final status token and prefers manager-side `CODEX_ACCEPTED` progress after acceptance.
+- Manager consumption rule: read conclusion progress/HANDOFF first; raw/event logs remain diagnostic only.
+- Verification: wrapper syntax check passed; 042 status regression checks passed; 029 pending-handoff guard still exited `75`; `git diff --check` passed.
 
 Latest accepted slice:
 
