@@ -22,7 +22,7 @@ Latest attempted delegated slice:
 - Launch state: attempted before Subtask 051 lifecycle cleanup, but progress stayed at `PREPARED`, no `START` checkpoint was written, no `HANDOFF` exists, and wrapper liveness now reports no active worker process for the subtask.
 - Codex acceptance: none. 050 remains paused until it is relaunched under the fixed wrapper or replaced by a smaller slice.
 
-Current framework fix in progress:
+Latest accepted framework fix:
 
 - Subtask: `051-delegation-lifecycle-cleanup`
 - Owner: Codex direct framework fix.
@@ -30,7 +30,7 @@ Current framework fix in progress:
 - Progress file: `docs/subtasks/051-delegation-lifecycle-cleanup-progress.md`
 - Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
 - Purpose: prevent wrapper-managed tmux/session launches from hiding immediate launch failure or accumulating stale worker processes under Codex.
-- State: implemented and under final verification. Wrapper now observes tmux launch exit status, reports task-scoped worker liveness, exits `wait` early on launch-before-START failure, and has a task-scoped `cleanup` command.
+- State: accepted and committed in `2f5c8f5 Fix delegation worker lifecycle cleanup`. Wrapper now observes tmux launch exit status, reports task-scoped worker liveness, exits `wait` early on launch-before-START failure, and has a task-scoped `cleanup` command.
 
 Latest accepted delegated slice:
 
