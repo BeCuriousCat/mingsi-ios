@@ -2,6 +2,48 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 040 Project Overview Hierarchy Audit
+
+Scope:
+
+- Delegate a read-only audit of current Projects overview and Project Detail hierarchy.
+- Identify the next narrow implementation slice without changing Project semantics.
+- Preserve the rule that Projects remain evidence-backed and History remains the evidence archive.
+
+Changed areas:
+
+- `docs/subtasks/040-project-overview-hierarchy-audit-prd.md`
+- `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
+- `docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md`
+- `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
+- `docs/subtasks/logs/040-project-overview-hierarchy-audit-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/project-continuation-context.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 040-project-overview-hierarchy-audit docs/subtasks/040-project-overview-hierarchy-audit-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 040-project-overview-hierarchy-audit docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md docs/subtasks/040-project-overview-hierarchy-audit-progress.md
+scripts/claude_delegate.sh status 040-project-overview-hierarchy-audit docs/subtasks/040-project-overview-hierarchy-audit-progress.md
+git diff --check
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE`.
+- Worker findings cite concrete Project view symbols and recommend a display-only Project Detail hierarchy slice.
+- Worker `git diff --check -- docs/subtasks/040-project-overview-hierarchy-audit-progress.md docs/subtasks/040-project-overview-hierarchy-audit-findings.md` passed.
+- Manager `git diff --check` passed.
+
+Residual risk:
+
+- This is an audit/documentation slice, not a source implementation.
+- The recommended implementation still needs a separate PRD, tests, build, and simulator review according to risk.
+
 ## 2026-06-05: Subtask 039 First Principles Lens Catalog
 
 Scope:

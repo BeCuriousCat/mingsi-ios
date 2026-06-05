@@ -2,6 +2,67 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Project Overview Hierarchy Audit - Subtask 040
+
+Reason:
+
+- `docs/mvp-stage-progress.md` lists Project overview hierarchy polish as a current recommended next slice.
+- Project hierarchy includes product taste and evidence semantics, so Codex should not delegate broad UI redesign directly.
+- A read-only audit is a better Claude Code task: it can map current code, cite concrete symbols, identify evidence-backed sections, and recommend a narrow implementation slice for Codex to accept or reject.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/040-project-overview-hierarchy-audit-prd.md`
+- Progress: `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
+- Prompt: `docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md`
+- Expected findings: `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
+- Expected logs:
+  - `docs/subtasks/logs/040-project-overview-hierarchy-audit-events.jsonl`
+  - `docs/subtasks/logs/040-project-overview-hierarchy-audit-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF and findings first.
+- Raw/event flow logs are diagnostic only.
+- Worker may not edit Swift source, tests, persistence, migrations, repositories, PromptProvider, prompt text, LLM clients, Keychain, AppStore orchestration, assets, screenshots, or product docs.
+- Findings must cite concrete files, symbols, and tests where relevant.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Delegation rationale:
+
+- This is a bounded read-only audit with a narrow findings deliverable. It uses Claude Code for repo inspection while keeping Codex in product owner, architect, and final verifier role.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Final worker status: `DONE`.
+- Worker changed only allowed files:
+  - `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
+  - `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
+- Worker verification passed: `git diff --check -- docs/subtasks/040-project-overview-hierarchy-audit-progress.md docs/subtasks/040-project-overview-hierarchy-audit-findings.md`.
+
+Codex review:
+
+- Accepted the current Projects top-level and Project Detail hierarchy map.
+- Accepted the P1 finding that `thinkingChangeSection` can show `证据不足` even when before/after evidence exists; this is an accuracy bug, not only taste.
+- Accepted the recommendation to split the implementation into a separate display-only slice touching `Sources/Features/FeatureTabs.swift` and focused helper tests.
+- Rejected including status segment filtering in the immediate implementation slice because it needs new local view state and should be scoped separately.
+- Raw/event flow logs were retained as diagnostics; Codex did not need to consume them for acceptance.
+
+Verification:
+
+```bash
+git diff --check
+```
+
+Result:
+
+- Whitespace check passed in the manager checkout.
+
 ## 2026-06-05: Prepared First Principles Lens Catalog - Subtask 039
 
 Reason:

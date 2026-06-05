@@ -99,6 +99,13 @@ Subtask 039 proved the wrapper on a bounded product/catalog slice:
 - Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was the known GRDB worker-worktree `xcodebuild` issue, so Codex reran verification in the manager worktree.
 - Codex accepted after focused `AppStoreStateMachineTests` passed with 105 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 
+Subtask 040 proved the wrapper on a read-only Projects hierarchy audit:
+
+- Worker reached `HANDOFF/DONE`.
+- Findings map the current Projects top-level and Project Detail hierarchy with concrete symbols in `Sources/Features/FeatureTabs.swift`.
+- Codex accepted the recommendation to make the next implementation slice display-only: fix Project Detail thinking-change headline accuracy, reduce placeholder overview noise, group sections, and hide empty progress signals.
+- Status segment filtering was explicitly deferred to a separate slice because it requires new view state.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -127,12 +134,13 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `039-first-principles-lens-catalog`
-- PRD: `docs/subtasks/039-first-principles-lens-catalog-prd.md`
-- Progress: `docs/subtasks/039-first-principles-lens-catalog-progress.md`
-- Claude prompt: `docs/subtasks/039-first-principles-lens-catalog-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-039-first-principles-lens-catalog`
-- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
+- Subtask: `040-project-overview-hierarchy-audit`
+- PRD: `docs/subtasks/040-project-overview-hierarchy-audit-prd.md`
+- Progress: `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
+- Claude prompt: `docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md`
+- Findings: `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
+- Worker path: `.claude/worktrees/subtask-040-project-overview-hierarchy-audit`
+- Result: `HANDOFF/DONE`, Codex accepted as the source for the next Project Detail display cleanup slice.
 
 ## Subtask 029 Claude Attempts
 

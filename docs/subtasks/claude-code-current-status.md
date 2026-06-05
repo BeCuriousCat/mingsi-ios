@@ -4,9 +4,26 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 039 is Codex-accepted and verified.
+Status: no active Claude Code worker is running; Subtask 040 is Codex-accepted.
 
 Latest accepted slice:
+
+- Subtask: `040-project-overview-hierarchy-audit`
+- Owner: Claude Code read-only audit candidate, Codex acceptance.
+- PRD file: `docs/subtasks/040-project-overview-hierarchy-audit-prd.md`
+- Progress file: `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
+- Claude prompt file: `docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md`
+- Findings file: `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
+- Event log: `docs/subtasks/logs/040-project-overview-hierarchy-audit-events.jsonl`
+- Raw log: `docs/subtasks/logs/040-project-overview-hierarchy-audit-claude-run.jsonl`
+- Worker path: `.claude/worktrees/subtask-040-project-overview-hierarchy-audit`
+- Launch state: completed with `HANDOFF/DONE`; Codex accepted the read-only findings.
+- Purpose: audit current Projects overview and Project Detail hierarchy to choose a narrow evidence-backed implementation slice without changing Project semantics.
+- Manager consumption rule: read worker progress/HANDOFF and findings first; raw/event logs are diagnostic only.
+- Verification: `git diff --check -- docs/subtasks/040-project-overview-hierarchy-audit-progress.md docs/subtasks/040-project-overview-hierarchy-audit-findings.md` passed in the worker; Codex reran `git diff --check` in the manager checkout.
+- Accepted recommendation: prepare a separate display-only implementation slice for Project Detail hierarchy: fix thinking-change headline accuracy, reduce placeholder overview noise, visually group sections, and hide empty progress signals.
+
+Previous accepted slice:
 
 - Subtask: `039-first-principles-lens-catalog`
 - Owner: Claude Code implementation candidate, Codex acceptance.
