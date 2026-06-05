@@ -1,0 +1,110 @@
+# Subtask 049 Progress: Project Detail Real Simulator Visual QA
+
+Status: STARTED
+Timestamp: 2026-06-06
+
+Owner: Codex manager
+Delegated implementer: none
+
+PRD: `docs/subtasks/049-project-detail-real-simulator-visual-qa-prd.md`
+Expected findings: `docs/subtasks/049-project-detail-real-simulator-visual-qa-findings.md`
+Screenshot directory: `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/`
+
+## Current Goal
+
+Use real iPhone 17 simulator screenshots to verify Project Detail visual risks from Subtask 048 before implementing any Project Detail polish.
+
+## Current Goal Brief
+
+- MVP stop condition remains a coherent personal alpha with evidence-backed Today, History, Projects, Growth, Settings, AI failure audit, and simulator verification.
+- Current priority from `docs/mvp-stage-progress.md`: Project Detail real iPhone 17 visual-smoke screenshots using the Subtask 048 matrix.
+- Startup prompt and repo docs do not conflict. Repo docs are authoritative for slice selection.
+- This slice is verification-first and not delegated because final visual judgment and screenshot acceptance belong to Codex.
+- Current worktree was clean at start.
+
+## Initial Resource Check
+
+- iPhone 17 simulator was available but shutdown.
+- No simulator device was booted.
+- `git status --short` was clean.
+- System zombie count was 5: 2 under `DoubaoIme`, 3 under Codex, below the wrapper launch guard threshold.
+
+## Data Source Check
+
+Current findings:
+
+- There is no existing Project Detail screenshot automation script.
+- There is no current deep link or launch argument to open Project Detail directly.
+- `AppStore.preview` seeds Today/Growth preview data but does not seed Project Detail states.
+- Current app launch uses live persistence through `AppDatabase.defaultURL()`.
+
+Manager classification:
+
+- Real Project Detail screenshot verification probably needs either existing simulator data, normal in-app creation, or a clearly labeled Visual QA fixture in the simulator database.
+- Do not modify Swift source until the simulator data path is confirmed insufficient.
+
+## Build And Simulator Check
+
+Timestamp: 2026-06-06
+
+Commands:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl boot 'iPhone 17'
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl launch booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/01-launch-initial-light.png
+```
+
+Result:
+
+- iPhone 17 simulator build succeeded.
+- App installed and launched with bundle id `com.codex.mingsi`.
+- Initial screenshot was captured, but simulator appearance was dark at first despite the filename.
+- Projects tab was reachable once via macOS System Events coordinate click.
+
+Screenshots captured:
+
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/01-launch-initial-light.png`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/02-projects-top-dark.png`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/03-projects-top-light-empty.png`
+
+Finding:
+
+- Current simulator data has no evidence-backed projects, so Project Detail is not reachable through normal UI state.
+- Projects empty state is visually captured in light/dark, but Subtask 048 Project Detail risks remain unverified.
+
+## Visual QA Fixture Attempt
+
+Timestamp: 2026-06-06
+
+Simulator database inspection found:
+
+- `daily_entries`: 12
+- `thinking_cards`: 9
+- `quests`: 4
+- `projects`: 0
+- `project_links`: 0
+- `project_insights`: 0
+
+Codex inserted one explicitly labeled Visual QA fixture Project into the simulator database, linked only to existing simulator cards and quests:
+
+- Project id: `B4E5CE57-03E6-45C8-89EF-27D8B1CA56D1`
+- No new DailyEntry, ThinkingCard, Quest, Verification, Principle, PromptRun, or Growth data was inserted.
+- This fixture is not real-user evidence and must not be used to claim production behavior.
+
+Follow-up screenshots:
+
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/04-launch-after-fixture-light.png`
+
+Blocker:
+
+- `simctl` has no tap command.
+- macOS System Events initially clicked the Projects tab successfully, but later Simulator exposed no foreground window to System Events, so coordinate navigation became unreliable.
+- Without a stable deep link, UI test, or Debug/UITest-only launch entry, Codex cannot reliably navigate to Project Detail for the screenshot matrix.
+
+Manager classification:
+
+- 049 can document top-level Projects empty state and the navigation/data blocker.
+- A separate implementation slice is needed for a Debug/UITest-only visual QA entry that can launch directly into Project Detail fixture states without changing production behavior.

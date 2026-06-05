@@ -2,6 +2,37 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Prepared Project Detail Visual QA Launch Fixture - Subtask 050
+
+Reason:
+
+- Subtask 049 captured Projects top-level empty state on iPhone 17 but could not reliably navigate to Project Detail because current simulator data had no projects and `simctl` has no tap command.
+- A Debug/UITest-only launch fixture is needed to open Projects with evidence-backed Project Detail data for real screenshots.
+- This is suitable for Claude Code because it is a bounded implementation slice with named source/test files and clear acceptance tests.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-prd.md`
+- Progress: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md`
+- Prompt: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-claude-prompt.md`
+- Event log: `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-claude-run.jsonl`
+
+Delegation rationale:
+
+- Claude Code can implement the narrow Debug/UITest-only fixture and focused AppStore tests while Codex keeps product semantics and final screenshot acceptance.
+
+Manager constraints:
+
+- Worker may edit only `Sources/App/MingSiApp.swift`, `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and 050 progress.
+- Worker may not edit persistence, migrations, PromptProvider, parser, LLM clients, Keychain, project files, screenshots, or unrelated docs.
+- No production launch behavior may change when the fixture argument is absent.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+
+Launch state:
+
+- Prepared, not yet launched.
+
 ## 2026-06-05: Prepared Project Detail Visual-Smoke Readiness Audit - Subtask 048
 
 Reason:

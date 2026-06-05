@@ -4,7 +4,21 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running. Subtask 048 reached `HANDOFF/DONE` after the user restarted Codex, and Codex accepted the read-only findings after reviewing conclusion progress and rerunning document checks.
+Status: Subtask 050 is prepared for Claude Code delegation.
+
+Active prepared slice:
+
+- Subtask: `050-project-detail-visual-qa-launch-fixture`
+- Owner: Claude Code implementation candidate, Codex final acceptance.
+- PRD file: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-prd.md`
+- Progress file: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md`
+- Claude prompt file: `docs/subtasks/050-project-detail-visual-qa-launch-fixture-claude-prompt.md`
+- Event log: `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/050-project-detail-visual-qa-launch-fixture-claude-run.jsonl`
+- Purpose: add a Debug/UITest-only launch fixture so Codex can reliably open Projects/Project Detail for real iPhone 17 screenshots without changing production persistence or product semantics.
+- Allowed files: `Sources/App/MingSiApp.swift`, `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 050 progress file.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation rationale: bounded local source/test implementation with explicit acceptance tests; Codex remains final screenshot and taste owner.
 
 Latest accepted delegated slice:
 
