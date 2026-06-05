@@ -2,6 +2,45 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Project Detail Visual-Smoke Readiness Audit - Subtask 048
+
+Reason:
+
+- `docs/mvp-stage-progress.md` records Project Detail hierarchy cleanup as implemented and verified, but populated Project Detail states still need visual QA.
+- This is a bounded read-only audit that can help Codex choose the next real screenshot matrix and any narrow follow-up implementation slice.
+- It is suitable for Claude Code because the output is document-only findings with explicit acceptance evidence and no product-source edits.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/048-project-detail-visual-smoke-readiness-prd.md`
+- Progress: `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md`
+- Prompt: `docs/subtasks/048-project-detail-visual-smoke-readiness-claude-prompt.md`
+- Expected findings: `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md`
+- Expected logs:
+  - `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-events.jsonl`
+  - `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-claude-run.jsonl`
+
+Delegation rationale:
+
+- Claude Code can inspect source and prior subtask docs in an isolated worker worktree, write a concise findings file, and keep Codex focused on final product judgment and real screenshot verification.
+
+Manager constraints:
+
+- Codex consumes worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may write only the 048 progress and findings files.
+- Worker may not edit Swift source, Swift tests, persistence, migrations, prompt boundaries, LLM clients, Keychain, or unrelated docs.
+
+Launch state:
+
+- Attempt 1: `prepare` failed before worker start with `scripts/claude_delegate.sh: fork: Resource temporarily unavailable`.
+- Attempt 2: non-login shell retry failed before command start with `Resource temporarily unavailable (os error 35)`.
+- Attempt 3: non-login shell retry failed before command start with `Resource temporarily unavailable (os error 35)`.
+- Recovery: after the user restarted Codex, the old Codex parent PID `18408` disappeared and Codex-owned zombie children dropped from 260+ to 0. The remaining zombies are 2 `DoubaoIme` children, so 048 is ready for a fresh launch attempt.
+- No Claude Code worker started.
+- No worker progress, raw log, findings file, or `HANDOFF` exists.
+- This is classified as a local system process creation failure before worker start, not a Claude Code audit failure.
+
 ## 2026-06-05: Prepared Delegation Strict Handoff Detection - Subtask 046
 
 Reason:

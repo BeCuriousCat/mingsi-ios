@@ -57,6 +57,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 045 Extensible Lens Library Boundary from the user's request that `第一性原理` live under a可扩展透镜库 rather than a UI/prompt smoke stack. Claude Code wrapper prepare/launch were blocked before execution by OS `spawn /bin/sh EAGAIN`, so Codex directly implemented the narrow Domain/test slice: `LensCatalogProviding`, `LensLibrary`, `BuiltinLensCatalog.library`, local-id/prompt-id/ThinkingLens lookup tests, with no UI, AppStore, persistence, prompt, parser, LLM, Keychain, History, Projects, Growth, or Settings changes. Focused `AppStoreStateMachineTests` passed with 110 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Completed Subtask 047 First Principles Lens Prompt Guidance as a direct architecture slice. Built-in lens catalog items now carry `promptGuidance`, and Today AI request assembly exposes `lensTitle`, `lensMethodLine`, and `lensPromptGuidance` through the existing `PromptContextPayload` / legacy payload boundary. This keeps `第一性原理` as normal extensible lens-library data rather than a UI or Prompt call-site branch. Focused tests passed with 18 tests and 0 failures.
 - Completed Subtask 046 Delegation Strict Handoff Detection as a framework/control-plane fix after Claude Code launch was blocked before worker start three times. The wrapper now requires a real final status token before `status` prints an active handoff summary or `wait` exits success; bare/template `## HANDOFF`, `Pending worker update.`, and `- HANDOFF: reached` no longer count as completion. Manager-side `CODEX_ACCEPTED` remains accepted, flow logs remain diagnostic-only, external temporary progress fixtures no longer pollute status with outside-repo path noise, and `git diff --check` passed.
+- Prepared Subtask 048 Project Detail visual-smoke readiness audit for Claude Code delegation. The slice is read-only and document-only, intended to identify Project Detail screenshot states and narrow UI follow-up candidates. Three `prepare` attempts failed before worker start due to local process creation errors. After the user restarted Codex, Codex-owned zombie children dropped from 260+ to 0, so the slice is ready for a fresh launch attempt. No worker progress, findings file, raw log, or `HANDOFF` exists yet.
 
 ## Known Remaining Work
 
@@ -65,17 +66,17 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
 4. Lens catalog prompt ids and prompt guidance are wired into Today AI prompt payloads for question and quest generation. Later prompt/context work should remain focused and preserve `PromptProvider` / `LLMClient` boundaries.
 5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
-6. Delegation wrapper strict handoff detection is fixed in Subtask 046; future framework work should focus on improving actual worker launch reliability and reducing manager coordination overhead.
+6. Delegation wrapper strict handoff detection is fixed in Subtask 046, but Subtask 048 shows worker launch reliability is still the current framework bottleneck when local process creation is under pressure.
 7. Process files should stay updated after each implementation or delegation slice.
 8. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 9. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
 
 ## Current Recommended Next Slice
 
-After Subtask 044, the next bounded slice should be chosen from:
+After Subtasks 046 and 047, the next bounded slice should be chosen from:
 
-- Project Detail visual smoke verification and any narrow follow-up from screenshots.
-- Live GLM failure-path confirmation for History repair.
-- Delegation wrapper strict handoff detection follow-up, because 044 exposed a template `## HANDOFF` placeholder display issue.
+- Project Detail visual-smoke readiness audit and any narrow follow-up from real screenshots.
+- Live GLM failure-path confirmation for History repair, if a real BYOK configuration is available for safe testing.
+- Delegation worker-launch reliability hardening, because recent attempts still hit local process creation pressure before Claude Code could start.
 
-Choose the slice based on the user's newest bug report or the highest user-facing instability.
+Choose the slice based on the user's newest bug report or the highest user-facing instability. Prefer Claude Code for read-only audits and narrow UI/service implementation slices that have a clear progress contract and acceptance evidence.

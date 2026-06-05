@@ -4,9 +4,26 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 046 is Codex-accepted after direct manager implementation and fresh verification.
+Status: Subtask 048 is prepared for Claude Code delegation. The previous launch blocker was local Codex process leakage / process creation pressure; after the user restarted Codex, the Codex-owned zombie children are gone and the slice is ready for a fresh launch attempt.
 
-Latest accepted framework slice:
+Active prepared slice:
+
+- Subtask: `048-project-detail-visual-smoke-readiness`
+- Owner: Claude Code read-only audit candidate, Codex final acceptance.
+- PRD file: `docs/subtasks/048-project-detail-visual-smoke-readiness-prd.md`
+- Progress file: `docs/subtasks/048-project-detail-visual-smoke-readiness-progress.md`
+- Claude prompt file: `docs/subtasks/048-project-detail-visual-smoke-readiness-claude-prompt.md`
+- Expected findings: `docs/subtasks/048-project-detail-visual-smoke-readiness-findings.md`
+- Expected event log: `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/048-project-detail-visual-smoke-readiness-claude-run.jsonl`
+- Purpose: produce source-inferred Project Detail visual-smoke readiness findings so Codex can run targeted iPhone 17 screenshots and choose a narrow follow-up implementation slice.
+- Allowed write files: 048 progress and findings only.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation rationale: this is a bounded read-only audit with document-only output and no product-source edits, suitable for Claude Code while Codex stays in final product judgment role.
+- Launch state: ready to retry after recovery. Three earlier `prepare` attempts failed with local process creation errors (`fork: Resource temporarily unavailable` / `os error 35`) before the user restarted Codex.
+- Worker result: none. No worker progress, raw log, findings file, or `HANDOFF` exists.
+
+Previous accepted framework slice:
 
 - Subtask: `046-delegation-strict-handoff-detection`
 - Owner: Codex direct implementation after Claude Code launch blockers.
