@@ -141,3 +141,26 @@ Result:
 
 - Project top fixture activation is accepted.
 - Subtask 049 remains open for the actual Project Detail screenshot matrix: top row navigation is now possible because the fixture project is visible.
+
+## Project Detail Direct Entry Acceptance
+
+Timestamp: 2026-06-06
+
+Subtask 056 added a Debug-only direct-entry path for the existing visual QA fixture.
+
+Verification:
+
+- Claude Code worker reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Codex reviewed and accepted the worker diff without manager source fixes.
+- `git diff --check` passed.
+- `AppStoreStateMachineTests` passed with 132 tests and 0 failures.
+- iPhone 17 Debug simulator build passed.
+- iPhone 17 Release simulator build passed.
+- Real iPhone 17 marker launch screenshot:
+  - `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/16-project-detail-direct-entry-light.png`
+
+Result:
+
+- The screenshot shows Project Detail (`长期议题`) for `Visual QA - 会议机制优化`, proving the direct-entry navigation blocker is removed.
+- Subtask 049 remains open for the full Subtask 048 Project Detail light/dark screenshot matrix.
+- The screenshot confirms a known Subtask 048 follow-up candidate: Project Detail status chip still displays English `active`.

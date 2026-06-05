@@ -110,6 +110,7 @@ final class AppStore: ObservableObject {
     private var activeAIRequestCount: Int = 0
     #if DEBUG
     private(set) var loadsPersistedStateOnLaunch: Bool = true
+    private(set) var visualQAProjectDetailDirectEntryProjectID: UUID?
     #endif
 
     init(
@@ -347,6 +348,7 @@ final class AppStore: ObservableObject {
         store.acceptedProjectInsights = [acceptedInsight]
         store.pendingProjectInsights = [pendingInsight]
         store.loadsPersistedStateOnLaunch = false
+        store.visualQAProjectDetailDirectEntryProjectID = project.id
         return store
     }
 
@@ -372,6 +374,7 @@ final class AppStore: ObservableObject {
         projectCandidates = fixture.projectCandidates
         projectLinkCandidates = fixture.projectLinkCandidates
         isResumeBannerDismissed = fixture.isResumeBannerDismissed
+        visualQAProjectDetailDirectEntryProjectID = fixture.visualQAProjectDetailDirectEntryProjectID
         loadsPersistedStateOnLaunch = false
     }
 #endif

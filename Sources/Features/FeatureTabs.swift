@@ -1230,6 +1230,10 @@ private struct GrowthContributionListContent: View {
 struct ProjectsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var statusFilter: ProjectStatus?
+    @State private var navigationPath = NavigationPath()
+    #if DEBUG
+    @State private var hasPushedDirectEntry = false
+    #endif
 
     private var projectItems: [ProjectEvidenceBoardItem] {
         var grouped: [UUID: [(link: ProjectLink, record: HistoryRecord)]] = [:]
@@ -1250,7 +1254,7 @@ struct ProjectsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     projectHeader
@@ -1283,14 +1287,36 @@ struct ProjectsView: View {
             }
             .scrollIndicators(.hidden)
             .background(DS.background.ignoresSafeArea())
+            .navigationDestination(for: ProjectDetailDirectEntryTarget.self) { target in
+                if let item = projectItems.first(where: { $0.id == target.projectID }) {
+                    ProjectDetailView(
+                        item: item,
+                        project: store.projectsById[target.projectID]
+                    )
+                }
+            }
             .task {
                 await store.loadHistoryRecords()
                 await store.loadPendingProjectMergeCandidates()
+                #if DEBUG
+                pushDirectEntryIfAvailable()
+                #endif
             }
         }
         .background(DS.background.ignoresSafeArea())
         .topSafeAreaScrim()
     }
+
+    #if DEBUG
+    private func pushDirectEntryIfAvailable() {
+        guard !hasPushedDirectEntry,
+              let directEntryID = store.visualQAProjectDetailDirectEntryProjectID,
+              navigationPath.isEmpty,
+              projectItems.contains(where: { $0.id == directEntryID }) else { return }
+        hasPushedDirectEntry = true
+        navigationPath.append(ProjectDetailDirectEntryTarget(projectID: directEntryID))
+    }
+    #endif
 
     private var projectHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -3110,6 +3136,10 @@ private struct PrincipleArchiveRow: View {
         }
         .evidenceSurface(isHighlighted: isHighlighted, base: .principle)
     }
+}
+
+private struct ProjectDetailDirectEntryTarget: Hashable {
+    let projectID: UUID
 }
 
 struct ProjectEvidenceBoardItem: Identifiable {

@@ -8,6 +8,24 @@ Status: no active Claude Code worker.
 
 Latest accepted delegated implementation slice:
 
+- Subtask: `056-project-detail-debug-direct-entry`
+- Owner: Claude Code implementation candidate, Codex final acceptance.
+- PRD file: `docs/subtasks/056-project-detail-debug-direct-entry-prd.md`
+- Progress file: `docs/subtasks/056-project-detail-debug-direct-entry-progress.md`
+- Claude prompt file: `docs/subtasks/056-project-detail-debug-direct-entry-claude-prompt.md`
+- Event log: `docs/subtasks/logs/056-project-detail-debug-direct-entry-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/056-project-detail-debug-direct-entry-claude-run.jsonl`
+- Purpose: add a Debug-only direct-entry path so the existing Project Detail visual QA fixture can launch straight into Project Detail for real iPhone 17 screenshots.
+- Allowed files: `Sources/App/AppStore.swift`, `Sources/Features/FeatureTabs.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 056 progress file.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation rationale: bounded Debug-only UI/state fixture implementation with focused tests; Codex remains responsible for final screenshot and visual acceptance.
+- Worker result: `HANDOFF/DONE_WITH_CONCERNS`.
+- Codex acceptance: accepted without manager source fixes after fresh verification and real simulator screenshot.
+- Verification: `git diff --check` passed; `AppStoreStateMachineTests` passed with 132 tests and 0 failures; iPhone 17 Debug build passed; iPhone 17 Release build passed; screenshot `16-project-detail-direct-entry-light.png` shows Project Detail.
+- Resource note after launch: Codex process-tree zombies rose from 16/20 to 17/20 and total zombies rose from 18/80 to 19/80. No active worker remains. Monitor before the next Claude Code launch.
+
+Previous accepted delegated implementation slice:
+
 - Subtasks: `054-visual-qa-fixture-launch-reliability` and `055-visual-qa-fixture-marker-activation`
 - Owner: Claude Code implementation candidates, Codex final acceptance.
 - Progress files:

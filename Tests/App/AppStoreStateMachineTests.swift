@@ -2912,6 +2912,45 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    // MARK: - Visual QA Direct Entry
+
+    func testVisualQAProjectDetailFixture_hasDirectEntryProjectID() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        let directEntryID = fixtureStore.visualQAProjectDetailDirectEntryProjectID
+        XCTAssertNotNil(directEntryID, "Fixture store must expose a non-nil direct-entry project id")
+    }
+
+    func testVisualQAProjectDetailFixture_directEntryID_existsInProjectsById() {
+        let fixtureStore = AppStore.visualQAProjectDetail()
+        let directEntryID = fixtureStore.visualQAProjectDetailDirectEntryProjectID!
+        XCTAssertNotNil(
+            fixtureStore.projectsById[directEntryID],
+            "Direct-entry project id must exist in projectsById"
+        )
+    }
+
+    func testNormalStore_hasNoDirectEntryProjectID() {
+        let normalStore = AppStore(refreshesAIServiceFromKeychain: false)
+        XCTAssertNil(
+            normalStore.visualQAProjectDetailDirectEntryProjectID,
+            "Normal store must not have a direct-entry project id"
+        )
+    }
+
+    func testApplyVisualQAProjectDetailFixture_preservesDirectEntryProjectID() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+        XCTAssertNil(store.visualQAProjectDetailDirectEntryProjectID)
+
+        store.applyVisualQAProjectDetailFixture()
+
+        let directEntryID = store.visualQAProjectDetailDirectEntryProjectID
+        XCTAssertNotNil(directEntryID, "applyVisualQAProjectDetailFixture must preserve direct-entry id")
+        XCTAssertNotNil(
+            store.projectsById[directEntryID!],
+            "Direct-entry project id must exist in projectsById after apply"
+        )
+    }
+
     // MARK: - Project Candidate Flows
 
     func testSuggestProjects_persistsPendingCandidatesWithSourceRefs() async throws {

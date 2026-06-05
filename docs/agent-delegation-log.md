@@ -2,6 +2,52 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Prepared Project Detail Debug Direct Entry - Subtask 056
+
+Reason:
+
+- Subtask 049 still needs real iPhone 17 Project Detail screenshots from the Subtask 048 matrix.
+- Subtasks 050/054/055 made the visual QA fixture project visible on Projects top, but simulator coordinate navigation into Project Detail remains unreliable.
+- A Debug-only direct-entry path is needed so Codex can capture Project Detail screenshots without manual taps or macOS System Events.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/056-project-detail-debug-direct-entry-prd.md`
+- Progress: `docs/subtasks/056-project-detail-debug-direct-entry-progress.md`
+- Prompt: `docs/subtasks/056-project-detail-debug-direct-entry-claude-prompt.md`
+- Event log: `docs/subtasks/logs/056-project-detail-debug-direct-entry-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/056-project-detail-debug-direct-entry-claude-run.jsonl`
+
+Delegation rationale:
+
+- This is a bounded Debug-only UI/state fixture slice with named source/test files and clear acceptance tests. Claude Code can implement it in an isolated worktree while Codex keeps product semantics, final simulator screenshots, and visual acceptance.
+
+Manager constraints:
+
+- Worker may edit only `Sources/App/AppStore.swift`, `Sources/Features/FeatureTabs.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 056 progress file.
+- Worker may not edit screenshots, 049 findings, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, project files, or unrelated docs.
+- Codex consumes worker progress/HANDOFF first. Raw/event logs are diagnostic only.
+
+Outcome:
+
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Codex accepted the scoped source/test diff without manager source fixes.
+- Worker concern about GRDB worktree test resources was expected and did not affect the manager checkout.
+- Real iPhone 17 marker launch screenshot confirmed direct entry into Project Detail.
+
+Verification:
+
+- `git diff --check`: passed.
+- `AppStoreStateMachineTests`: passed with 132 tests and 0 failures.
+- iPhone 17 Debug simulator build: passed.
+- iPhone 17 Release simulator build: passed.
+- Real screenshot accepted: `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/16-project-detail-direct-entry-light.png`.
+
+Delegation assessment:
+
+- Useful. Claude Code completed a bounded fixture navigation slice quickly, and Codex stayed in manager/reviewer/visual-acceptance role.
+- Resource note: Codex process-tree zombies increased from 16 to 17 during this run, still below the 20 threshold but close enough to monitor before the next worker launch.
+
 ## 2026-06-06: Accepted Visual QA Fixture Activation - Subtasks 054/055
 
 Outcome:

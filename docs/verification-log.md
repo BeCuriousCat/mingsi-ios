@@ -2,6 +2,50 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 056 Project Detail Debug Direct Entry
+
+Scope:
+
+- Accept Claude Code implementation of a Debug-only Project Detail direct-entry path for the visual QA fixture.
+- Keep production persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and Project semantics unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/056-project-detail-debug-direct-entry-*`
+- `docs/subtasks/logs/056-project-detail-debug-direct-entry-*`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/16-project-detail-direct-entry-light.png`
+
+Commands run:
+
+```bash
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+CONTAINER=$(xcrun simctl get_app_container booted com.codex.mingsi data) && mkdir -p "$CONTAINER/Documents" && touch "$CONTAINER/Documents/.visual_qa_project_detail"
+xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/16-project-detail-direct-entry-light.png
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Codex accepted the scoped worker diff without manager source fixes.
+- `git diff --check` passed.
+- AppStoreStateMachineTests passed with 132 tests and 0 failures.
+- iPhone 17 Debug simulator build passed.
+- iPhone 17 Release simulator build passed.
+- Real iPhone 17 screenshot `16-project-detail-direct-entry-light.png` shows Project Detail (`长期议题`) for `Visual QA - 会议机制优化`.
+
+Residual risk:
+
+- This removes the navigation blocker for Subtask 049 but does not complete the full Project Detail light/dark screenshot matrix.
+- The accepted screenshot confirms the known Subtask 048 status-chip issue: the Project Detail header still displays English `active`.
+
 ## 2026-06-06: Subtasks 054/055 Project Detail Visual QA Fixture Activation
 
 Scope:
