@@ -139,17 +139,29 @@ worker_file_path() {
   printf '%s/%s\n' "$worker_path" "$rel_path"
 }
 
+worker_progress_path_for() {
+  local progress_file="$1"
+  if [[ "$progress_file" == /* ]]; then
+    case "$progress_file" in
+      "$repo_root"/*) worker_file_path "$progress_file" ;;
+      *) return 0 ;;
+    esac
+  else
+    worker_file_path "$progress_file"
+  fi
+}
+
 current_progress_path() {
   local progress_file="$1"
   local manager_progress
-  local worker_progress
+  local worker_progress=""
   manager_progress="$(manager_file_path "$progress_file")"
-  worker_progress="$(worker_file_path "$progress_file")"
+  worker_progress="$(worker_progress_path_for "$progress_file")"
   if [[ -f "$manager_progress" ]] && codex_accepted "$manager_progress"; then
     printf '%s\n' "$manager_progress"
     return
   fi
-  if [[ -f "$worker_progress" ]] && handoff_reached "$worker_progress"; then
+  if [[ -n "$worker_progress" && -f "$worker_progress" ]] && handoff_reached "$worker_progress"; then
     printf '%s\n' "$worker_progress"
     return
   fi
@@ -157,7 +169,7 @@ current_progress_path() {
     printf '%s\n' "$manager_progress"
     return
   fi
-  if [[ -f "$worker_progress" ]]; then
+  if [[ -n "$worker_progress" && -f "$worker_progress" ]]; then
     printf '%s\n' "$worker_progress"
   else
     printf '%s\n' "$manager_progress"
@@ -173,7 +185,22 @@ codex_accepted() {
 handoff_reached() {
   local progress_file="$1"
   [[ -f "$progress_file" ]] || return 1
-  rg -q '^(Status:[[:space:]]*(HANDOFF|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(reached|DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|##[[:space:]]+HANDOFF\b)' "$progress_file"
+  final_handoff_token_reached "$progress_file"
+}
+
+final_handoff_token_reached() {
+  local progress_file="$1"
+  [[ -f "$progress_file" ]] || return 1
+  if rg -q '^(Status:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED|CODEX_ACCEPTED)|Final status token:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)|-[[:space:]]+HANDOFF:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED))\b' "$progress_file"; then
+    return 0
+  fi
+  awk '
+    /^##[[:space:]]+HANDOFF([[:space:]]|$)/ { in_handoff = 1; next }
+    in_handoff && /^##[[:space:]]+/ { exit }
+    in_handoff && /^(Status:|Final status token:)[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)([[:space:]]|$)/ { found = 1; exit }
+    in_handoff && /^[[:space:]]*-[[:space:]]*HANDOFF:[[:space:]]*(DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED)([[:space:]]|$)/ { found = 1; exit }
+    END { exit found ? 0 : 1 }
+  ' "$progress_file"
 }
 
 print_handoff_summary() {
@@ -434,7 +461,7 @@ case "$cmd" in
   status)
     progress_file="$(progress_file_for "$@")"
     manager_progress="$(manager_file_path "$progress_file")"
-    worker_progress="$(worker_file_path "$progress_file")"
+    worker_progress="$(worker_progress_path_for "$progress_file")"
     active_progress="$(current_progress_path "$progress_file")"
     echo "active progress: $active_progress"
     [[ -f "$active_progress" ]] && sed -n '1,80p' "$active_progress" || true
@@ -446,9 +473,11 @@ case "$cmd" in
     echo
     echo "manager progress: $manager_progress"
     [[ -f "$manager_progress" ]] && sed -n '1,40p' "$manager_progress" || true
-    echo
-    echo "worker progress: $worker_progress"
-    [[ -f "$worker_progress" ]] && sed -n '1,40p' "$worker_progress" || true
+    if [[ -n "$worker_progress" ]]; then
+      echo
+      echo "worker progress: $worker_progress"
+      [[ -f "$worker_progress" ]] && sed -n '1,40p' "$worker_progress" || true
+    fi
     echo
     echo "flow logs retained:"
     echo "  events: $event_log"

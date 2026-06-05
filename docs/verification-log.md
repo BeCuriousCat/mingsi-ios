@@ -2,6 +2,53 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 046 Delegation Strict Handoff Detection
+
+Scope:
+
+- Tighten `scripts/claude_delegate.sh` handoff detection.
+- Require a real final status token before `status` displays an active handoff summary or `wait` exits success.
+- Preserve manager-side `Status: CODEX_ACCEPTED`.
+- Keep flow logs diagnostic-only.
+- Avoid MingSi product source changes.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `docs/subtasks/046-delegation-strict-handoff-detection-prd.md`
+- `docs/subtasks/046-delegation-strict-handoff-detection-progress.md`
+- `docs/subtasks/046-delegation-strict-handoff-detection-claude-prompt.md`
+- `docs/subtasks/logs/046-delegation-strict-handoff-detection-events.jsonl`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh status 044-project-status-filter docs/subtasks/044-project-status-filter-progress.md
+scripts/claude_delegate.sh status 046-placeholder "$tmp_progress"
+scripts/claude_delegate.sh wait 046-placeholder "$tmp_progress" 0 1
+scripts/claude_delegate.sh wait 029-safe-area-floating-tab docs/subtasks/029-safe-area-floating-tab-progress.md 0 1
+git diff --check
+```
+
+Result:
+
+- Syntax check passed.
+- 044 real handoff still surfaces `Status: DONE_WITH_CONCERNS`.
+- Placeholder `## HANDOFF` does not print `active handoff summary`.
+- Placeholder `wait` exits `75`.
+- 029 pending/non-worker progress still exits `75`.
+- External temporary progress fixtures do not print `path is outside repo` noise.
+- `git diff --check` passed.
+
+Residual risk:
+
+- Claude Code did not implement this slice because three launch attempts failed before worker start. This is accepted as a verified framework fix, not as evidence of improved worker utilization.
+
 ## 2026-06-05: Subtask 047 First Principles Lens Prompt Guidance
 
 Scope:

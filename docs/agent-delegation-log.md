@@ -2,6 +2,64 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Delegation Strict Handoff Detection - Subtask 046
+
+Reason:
+
+- Subtask 044 exposed that `scripts/claude_delegate.sh status` can display `active handoff summary` for a template `## HANDOFF` placeholder before a worker has delivered a real final token.
+- False-positive handoff detection undermines conclusion-first monitoring and can push Codex toward premature review or acceptance.
+- This is a narrow framework/control-plane fix with explicit shell regression commands and no MingSi product behavior.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/046-delegation-strict-handoff-detection-prd.md`
+- Progress: `docs/subtasks/046-delegation-strict-handoff-detection-progress.md`
+- Prompt: `docs/subtasks/046-delegation-strict-handoff-detection-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/046-delegation-strict-handoff-detection-events.jsonl`
+  - `docs/subtasks/logs/046-delegation-strict-handoff-detection-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may edit only `scripts/claude_delegate.sh` and the 046 progress file.
+- Worker may not edit MingSi product source, Swift tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, existing raw/event logs, or unrelated docs.
+- A bare `## HANDOFF` or `Pending worker update.` must not count as completion.
+
+Delegation state:
+
+- Prepared; first worker launch blocked before worker start by system process creation failure.
+- `prepare` succeeded and wrote `.claude/delegation/046-delegation-strict-handoff-detection-settings.json`.
+- `launch` failed while creating the worker worktree with: `error: cannot fork() for branch: Resource temporarily unavailable`.
+- Launch attempt 2 also failed before worker start with: `scripts/claude_delegate.sh: fork: Resource temporarily unavailable`.
+- Launch attempt 3 failed before worker start while preparing the worker worktree with: `error: cannot fork() for branch: Resource temporarily unavailable`.
+- No worker worktree, raw log, source diff, or `HANDOFF` exists yet.
+- Codex classified this as a local system process creation failure, not a Claude Code implementation failure or task-shaping failure.
+- Because there is no worker output to inspect or salvage and the same launch blocker repeated three times, Codex may implement the narrow wrapper fix directly while preserving the non-delivery record.
+
+Delegation rationale:
+
+- This is a bounded shell-wrapper behavior fix with known fixtures and explicit acceptance commands. Claude Code can implement and test the local script change in isolation while Codex stays in manager and final verifier role.
+
+Codex implementation state:
+
+- Codex directly updated `scripts/claude_delegate.sh` so `handoff_reached` requires strict final-token detection rather than bare `## HANDOFF`.
+- `Status: CODEX_ACCEPTED` remains accepted for manager-side conclusions.
+- Bare `## HANDOFF`, `Pending worker update.`, and `- HANDOFF: reached` are no longer intended to count as completion.
+
+Verification state:
+
+- Accepted after process creation recovered and Codex reran fresh manager verification.
+- Syntax check passed.
+- 044 real worker handoff still surfaces `Status: DONE_WITH_CONCERNS`.
+- Placeholder `## HANDOFF` progress does not print `active handoff summary`.
+- Placeholder `wait` exits `75`.
+- 029 pending/non-worker progress still exits `75`.
+- External temporary progress fixtures no longer print `path is outside repo` noise during status/wait checks.
+- `git diff --check` passed.
+- No Claude Code output was accepted because no worker ever started.
+
 ## 2026-06-05: Prepared Extensible Lens Library Boundary - Subtask 045
 
 Reason:

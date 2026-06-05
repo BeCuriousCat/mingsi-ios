@@ -4,7 +4,27 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 045 is Codex-accepted and verified after Claude Code worker launch was blocked before execution by OS `spawn /bin/sh EAGAIN`.
+Status: no active Claude Code worker is running; Subtask 046 is Codex-accepted after direct manager implementation and fresh verification.
+
+Latest accepted framework slice:
+
+- Subtask: `046-delegation-strict-handoff-detection`
+- Owner: Codex direct implementation after Claude Code launch blockers.
+- PRD file: `docs/subtasks/046-delegation-strict-handoff-detection-prd.md`
+- Progress file: `docs/subtasks/046-delegation-strict-handoff-detection-progress.md`
+- Claude prompt file: `docs/subtasks/046-delegation-strict-handoff-detection-claude-prompt.md`
+- Expected event log: `docs/subtasks/logs/046-delegation-strict-handoff-detection-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/046-delegation-strict-handoff-detection-claude-run.jsonl`
+- Purpose: tighten `scripts/claude_delegate.sh` so bare/template `## HANDOFF` sections are not treated as completed handoffs unless a real final status token exists.
+- Allowed files: `scripts/claude_delegate.sh` and the 046 progress file.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation rationale: this is a narrow shell-wrapper behavior fix with explicit regression commands and no MingSi product semantics, suitable for Claude Code implementation under Codex verification.
+- Launch attempt 1: `prepare` succeeded, but `launch` failed before worker start with `error: cannot fork() for branch: Resource temporarily unavailable`; no worker worktree, raw log, source diff, or `HANDOFF` exists yet.
+- Launch attempt 2: failed before worker start with `scripts/claude_delegate.sh: fork: Resource temporarily unavailable`; no worker progress, raw log, source diff, or `HANDOFF` exists yet.
+- Launch attempt 3: failed before worker start with `error: cannot fork() for branch: Resource temporarily unavailable`; Codex classified the blocker as local system process creation failure with no worker output to inspect or salvage.
+- Codex direct implementation state: `scripts/claude_delegate.sh` now routes `handoff_reached` through strict final-token detection, preserving `CODEX_ACCEPTED` while removing bare `## HANDOFF` from the success path.
+- Manager fix: repo-external absolute progress fixtures now bypass worker worktree path mapping, avoiding `path is outside repo` noise during negative tests.
+- Verification state: accepted after fresh manager verification. Syntax check passed; 044 real handoff still surfaces `Status: DONE_WITH_CONCERNS`; placeholder `## HANDOFF` does not show active handoff and `wait` exits `75`; 029 pending progress still exits `75`; `git diff --check` passed.
 
 Latest accepted slice:
 
