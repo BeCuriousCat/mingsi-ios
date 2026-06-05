@@ -50,10 +50,11 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Verified the Subtask 038 delegation relaunch-safety follow-up. The wrapper now preserves worker progress on relaunch unless `CLAUDE_DELEGATE_OVERWRITE_WORKER_PROGRESS=1`, recognizes `## HANDOFF`, and keeps `status` / `wait` conclusion-first with raw/event logs retained only for diagnostics.
 - Completed Subtask 039 First Principles Lens Catalog via Claude Code delegation. Today now includes `第一性原理` as an MVP built-in lens through a lightweight built-in catalog boundary, while existing lens raw values remain stable and catalog prompt ids are separate metadata.
 - Completed Subtask 040 Project overview hierarchy audit via Claude Code delegation. Findings recommend a narrow display-only Project Detail hierarchy slice: fix thinking-change headline accuracy, reduce placeholder overview noise, visually group sections, and hide empty progress signals.
+- Completed Subtask 041 Project Detail hierarchy cleanup via Claude Code delegation plus Codex manager fix. Project Detail now avoids placeholder-heavy overview rows, distinguishes insufficient thinking-change evidence from unconfirmed insight candidates, hides empty progress signals, and groups sections into clearer visual tiers without changing Project semantics.
 
 ## Known Remaining Work
 
-1. Project overview hierarchy audit is complete; the next implementation slice should be display-only Project Detail hierarchy cleanup from Subtask 040 findings.
+1. Project Detail hierarchy cleanup is implemented and build/test verified; later visual QA should inspect populated Project Detail states.
 2. Growth report drilldown has Subtask 038 coverage; deeper longitudinal comparison can be added later only with enough evidence.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
 4. Lens catalog `promptId` metadata is not yet wired into AI prompt payloads; do this later only as a focused prompt/context boundary slice.
@@ -63,9 +64,10 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Current Recommended Next Slice
 
-After Subtask 040 audit, the next bounded slice should be:
+After Subtask 041, the next bounded slice should be chosen from:
 
-- Project Detail hierarchy display cleanup based on `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`.
+- Project Detail visual smoke verification and any narrow follow-up from screenshots.
+- Project top-level status filtering if project count/scanning becomes a user-facing problem.
 - Live GLM failure-path confirmation for History repair.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

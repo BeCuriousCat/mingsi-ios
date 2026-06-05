@@ -873,4 +873,99 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertEqual(growthMetricDisplayTitle(.calibration), "校准")
         XCTAssertEqual(growthMetricDisplayTitle(.reflectionDepth), "反思深度")
     }
+
+    // MARK: - Project detail display helpers
+
+    func testProjectThinkingChangeHeadline_returnsInsufficientEvidence_whenNoBeforeAfter() {
+        XCTAssertEqual(projectThinkingChangeHeadline(hasBeforeAfterEvidence: false), "证据不足")
+    }
+
+    func testProjectThinkingChangeHeadline_returnsAwaitingInsight_whenBeforeAfterExists() {
+        let headline = projectThinkingChangeHeadline(hasBeforeAfterEvidence: true)
+        XCTAssertNotEqual(headline, "证据不足")
+        XCTAssertFalse(headline.isEmpty)
+    }
+
+    func testProjectThinkingChangeBody_isNonEmptyInBothCases() {
+        XCTAssertFalse(projectThinkingChangeBody(hasBeforeAfterEvidence: false).isEmpty)
+        XCTAssertFalse(projectThinkingChangeBody(hasBeforeAfterEvidence: true).isEmpty)
+    }
+
+    func testProjectOverviewFactLines_includesRealProjectFields() {
+        let lines = projectOverviewFactLines(
+            goal: "提高会议效率",
+            successCriteria: "会议时间缩短30%",
+            currentBottleneck: "负责人不明确",
+            nextBet: nil,
+            openQuestions: nil,
+            evidenceGapMessage: ""
+        )
+        let titles = lines.map(\.title)
+        XCTAssertTrue(titles.contains("目标"))
+        XCTAssertTrue(titles.contains("成功标准"))
+        XCTAssertTrue(titles.contains("当前阻塞"))
+    }
+
+    func testProjectOverviewFactLines_omitsMissingOptionalPlaceholders() {
+        let lines = projectOverviewFactLines(
+            goal: "提高效率",
+            successCriteria: "缩短时间",
+            currentBottleneck: nil,
+            nextBet: nil,
+            openQuestions: nil,
+            evidenceGapMessage: ""
+        )
+        let titles = lines.map(\.title)
+        XCTAssertFalse(titles.contains("当前阻塞"), "nil bottleneck should not appear")
+        XCTAssertFalse(titles.contains("下一步押注"), "nil nextBet should not appear")
+        XCTAssertFalse(titles.contains("开放问题"), "nil openQuestions should not appear")
+        XCTAssertFalse(titles.contains("证据缺口"), "empty gap message should not appear")
+    }
+
+    func testProjectOverviewFactLines_trimsAndOmitsWhitespaceOnlyValues() {
+        let lines = projectOverviewFactLines(
+            goal: "  提高效率  ",
+            successCriteria: "   ",
+            currentBottleneck: "\n\t",
+            nextBet: "  发出会议纪要模板  ",
+            openQuestions: ["  谁负责推进？  ", "   "],
+            evidenceGapMessage: "  缺少验证证据  "
+        )
+
+        XCTAssertEqual(
+            lines,
+            [
+                ProjectOverviewFactLine(title: "目标", value: "提高效率"),
+                ProjectOverviewFactLine(title: "下一步押注", value: "发出会议纪要模板"),
+                ProjectOverviewFactLine(title: "开放问题", value: "谁负责推进？"),
+                ProjectOverviewFactLine(title: "证据缺口", value: "缺少验证证据"),
+            ]
+        )
+    }
+
+    func testProjectOverviewFactLines_includesDigestDerivedRowsWhenAvailable() {
+        let lines = projectOverviewFactLines(
+            goal: nil,
+            successCriteria: nil,
+            currentBottleneck: nil,
+            nextBet: "验证：发出会议纪要模板",
+            openQuestions: nil,
+            evidenceGapMessage: "缺少任务或验证证据"
+        )
+        let titles = lines.map(\.title)
+        XCTAssertTrue(titles.contains("下一步押注"), "should include nextBet when present")
+        XCTAssertTrue(titles.contains("证据缺口"), "should include gap message when non-empty")
+    }
+
+    func testProjectOverviewFactLines_emptyWhenNoRealData() {
+        let lines = projectOverviewFactLines(
+            goal: nil,
+            successCriteria: nil,
+            currentBottleneck: nil,
+            nextBet: nil,
+            openQuestions: nil,
+            evidenceGapMessage: ""
+        )
+        XCTAssertTrue(lines.isEmpty, "should produce no fact lines when all inputs are nil/empty")
+    }
 }

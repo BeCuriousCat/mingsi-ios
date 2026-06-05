@@ -3283,14 +3283,20 @@ private struct ProjectDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                detailHeader
-                overviewSection
-                mergeAuditSection
-                projectInsightSection
-                progressSignalsSection
-                thinkingChangeSection
-                evidenceTimeline
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 18) {
+                    detailHeader
+                    overviewSection
+                    progressSignalsSection
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    projectInsightSection
+                    thinkingChangeSection
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    mergeAuditSection
+                    evidenceTimeline
+                }
             }
             .padding(.horizontal, DS.pagePadding)
             .padding(.top, 18)
@@ -3342,23 +3348,25 @@ private struct ProjectDetailView: View {
         }
     }
 
+    @ViewBuilder
     private var overviewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("Overview")
-            ProjectDetailFactLine(title: "目标", value: project?.goal ?? "这个长期议题来自历史证据，但缺少完整目标描述。")
-            ProjectDetailFactLine(title: "成功标准", value: project?.successCriteria ?? "后续需要用任务和验证补齐成功标准。")
-            ProjectDetailFactLine(title: "当前阻塞", value: project?.currentBottleneck ?? "证据不足")
-            ProjectDetailFactLine(title: "下一步押注", value: digest.nextBet ?? "证据不足")
-            if let openQuestions = project?.openQuestions, !openQuestions.isEmpty {
-                ProjectDetailFactLine(title: "开放问题", value: openQuestions.joined(separator: "\n"))
-            } else {
-                ProjectDetailFactLine(title: "开放问题", value: "证据不足")
+        let factLines = projectOverviewFactLines(
+            goal: project?.goal,
+            successCriteria: project?.successCriteria,
+            currentBottleneck: project?.currentBottleneck,
+            nextBet: digest.nextBet,
+            openQuestions: project?.openQuestions,
+            evidenceGapMessage: digest.evidenceGapMessage
+        )
+        if !factLines.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Overview")
+                ForEach(factLines, id: \.title) { line in
+                    ProjectDetailFactLine(title: line.title, value: line.value)
+                }
             }
-            if !digest.evidenceGapMessage.isEmpty {
-                ProjectDetailFactLine(title: "证据缺口", value: digest.evidenceGapMessage)
-            }
+            .summarySurface()
         }
-        .summarySurface()
     }
 
     @ViewBuilder
@@ -3455,14 +3463,11 @@ private struct ProjectDetailView: View {
         .summarySurface()
     }
 
+    @ViewBuilder
     private var progressSignalsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("进展信号")
-            if digest.progressSignals.isEmpty {
-                Text("还没有可解释的项目证据。")
-                    .font(.subheadline)
-                    .foregroundStyle(DS.mutedInk)
-            } else {
+        if !digest.progressSignals.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("进展信号")
                 ForEach(digest.progressSignals.prefix(5)) { signal in
                     Button {
                         store.navigateToHistoryDeepLink(
@@ -3478,19 +3483,17 @@ private struct ProjectDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .summarySurface()
         }
-        .summarySurface()
     }
 
     private var thinkingChangeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel("思考变化")
-            Text("证据不足")
+            Text(projectThinkingChangeHeadline(hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence))
                 .font(.headline)
                 .foregroundStyle(DS.ink)
-            Text(digest.hasBeforeAfterEvidence
-                 ? "已有多条证据，但还没有经过确认的 before / after 项目洞察；MVP 阶段暂不自动编造变化叙事。"
-                 : "当前 MVP 只展示已确认来源证据。没有 before / after 证据时，不生成项目洞察，也不编造思考变化。")
+            Text(projectThinkingChangeBody(hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence))
                 .font(.subheadline)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -5064,6 +5067,62 @@ func growthMetricFallbackReason(reason: String?, contributions: [MetricContribut
 func mergeAuditDisplayLinesIfNonEmpty(from history: [String]) -> [String]? {
     let lines = mergeAuditDisplayLines(from: history)
     return lines.isEmpty ? nil : lines
+}
+
+// MARK: - Project detail display helpers
+
+struct ProjectOverviewFactLine: Hashable {
+    let title: String
+    let value: String
+}
+
+func projectOverviewFactLines(
+    goal: String?,
+    successCriteria: String?,
+    currentBottleneck: String?,
+    nextBet: String?,
+    openQuestions: [String]?,
+    evidenceGapMessage: String
+) -> [ProjectOverviewFactLine] {
+    var lines: [ProjectOverviewFactLine] = []
+
+    if let goal = projectOverviewDisplayValue(goal) {
+        lines.append(ProjectOverviewFactLine(title: "目标", value: goal))
+    }
+    if let successCriteria = projectOverviewDisplayValue(successCriteria) {
+        lines.append(ProjectOverviewFactLine(title: "成功标准", value: successCriteria))
+    }
+    if let bottleneck = projectOverviewDisplayValue(currentBottleneck) {
+        lines.append(ProjectOverviewFactLine(title: "当前阻塞", value: bottleneck))
+    }
+    if let nextBet = projectOverviewDisplayValue(nextBet) {
+        lines.append(ProjectOverviewFactLine(title: "下一步押注", value: nextBet))
+    }
+    if let questions = openQuestions?.compactMap(projectOverviewDisplayValue), !questions.isEmpty {
+        lines.append(ProjectOverviewFactLine(title: "开放问题", value: questions.joined(separator: "\n")))
+    }
+    if let evidenceGapMessage = projectOverviewDisplayValue(evidenceGapMessage) {
+        lines.append(ProjectOverviewFactLine(title: "证据缺口", value: evidenceGapMessage))
+    }
+
+    return lines
+}
+
+func projectOverviewDisplayValue(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+        return nil
+    }
+    return trimmed
+}
+
+func projectThinkingChangeHeadline(hasBeforeAfterEvidence: Bool) -> String {
+    hasBeforeAfterEvidence ? "等待确认洞察" : "证据不足"
+}
+
+func projectThinkingChangeBody(hasBeforeAfterEvidence: Bool) -> String {
+    hasBeforeAfterEvidence
+        ? "已有多条项目证据，可以生成候选洞察；在你确认之前，明思不会自动写入思考变化叙事。"
+        : "当前只有零散项目证据。没有 before / after 来源时，不生成项目洞察，也不编造思考变化。"
 }
 
 struct ProjectMergeCandidateReviewRow: View {

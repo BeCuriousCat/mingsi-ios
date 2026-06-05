@@ -2,6 +2,69 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Project Detail Hierarchy Cleanup - Subtask 041
+
+Reason:
+
+- Subtask 040 accepted a narrow display-only implementation recommendation for Project Detail hierarchy cleanup.
+- The slice is bounded to SwiftUI display/helper code plus focused tests and does not require product semantics, AppStore orchestration, persistence, prompt, parser, or LLM changes.
+- This is suitable for Claude Code implementation because the acceptance criteria are concrete and testable: thinking-change headline accuracy, overview placeholder filtering, hidden empty progress signals, and visual grouping with existing DS patterns.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/041-project-detail-hierarchy-cleanup-prd.md`
+- Progress: `docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md`
+- Prompt: `docs/subtasks/041-project-detail-hierarchy-cleanup-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/041-project-detail-hierarchy-cleanup-events.jsonl`
+  - `docs/subtasks/logs/041-project-detail-hierarchy-cleanup-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may edit only `Sources/Features/FeatureTabs.swift`, `Tests/Features/HistoryFeatureTests.swift`, and the 041 progress file.
+- Worker may not add status filters, evidence timeline pagination, AppStore changes, persistence changes, PromptProvider/prompt/parser/LLM changes, or Project semantic changes.
+
+Delegation state:
+
+- Completed and Codex-accepted with manager fix.
+
+Delegation rationale:
+
+- This is a local display/helper/test slice with explicit non-goals. Claude Code can implement it in isolation while Codex stays in manager, visual reviewer, and final verifier role.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Final worker status: `DONE_WITH_CONCERNS`.
+- Worker concern: `xcodebuild` in the isolated worker checkout was blocked by the known GRDB package dependency error: `invalid custom path 'Tests' for target 'GRDBTests'`.
+- Worker `git diff --check` passed.
+- Worker changed only allowed source/test files plus the 041 progress file.
+
+Codex review:
+
+- Accepted the display-only direction and helper-test coverage.
+- Accepted the thinking-change copy fix and hiding empty progress signals.
+- Accepted the three-tier Project Detail grouping.
+- Added a manager fix so overview helper trims values, ignores whitespace-only strings, and avoids rendering an empty Overview surface.
+- Rejected scope expansion into status filters or evidence timeline pagination.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- HistoryFeatureTests passed: 61 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
 ## 2026-06-05: Prepared Project Overview Hierarchy Audit - Subtask 040
 
 Reason:

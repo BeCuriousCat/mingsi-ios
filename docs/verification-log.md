@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 041 Project Detail Hierarchy Cleanup
+
+Scope:
+
+- Implement display-only Project Detail hierarchy cleanup from Subtask 040 findings.
+- Keep Project semantics, AppStore orchestration, persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, Today, History, Growth, and Settings unchanged.
+- Accept Claude Code worker output only after `HANDOFF`, then apply Codex manager display-helper fix and fresh verification.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/subtasks/041-project-detail-hierarchy-cleanup-*`
+- `docs/subtasks/logs/041-project-detail-hierarchy-cleanup-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/project-continuation-context.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 041-project-detail-hierarchy-cleanup docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 041-project-detail-hierarchy-cleanup docs/subtasks/041-project-detail-hierarchy-cleanup-claude-prompt.md docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md
+scripts/claude_delegate.sh status 041-project-detail-hierarchy-cleanup docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Worker `git diff --check` passed; worker `xcodebuild` was blocked by the known GRDB worktree package issue.
+- Codex reran verification in the main checkout.
+- Focused `HistoryFeatureTests` passed: 61 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- This is build/test verified but not screenshot verified. Because it changes Project Detail display hierarchy, a later simulator visual smoke pass should inspect a project with populated overview/progress/insight/evidence sections.
+- Project top-level status filtering and evidence timeline pagination remain separate future slices.
+
 ## 2026-06-05: Subtask 040 Project Overview Hierarchy Audit
 
 Scope:

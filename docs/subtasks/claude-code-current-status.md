@@ -4,9 +4,24 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 040 is Codex-accepted.
+Status: no active Claude Code worker is running; Subtask 041 is Codex-accepted and verified.
 
 Latest accepted slice:
+
+- Subtask: `041-project-detail-hierarchy-cleanup`
+- Owner: Claude Code implementation candidate, Codex acceptance.
+- PRD file: `docs/subtasks/041-project-detail-hierarchy-cleanup-prd.md`
+- Progress file: `docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md`
+- Claude prompt file: `docs/subtasks/041-project-detail-hierarchy-cleanup-claude-prompt.md`
+- Event log: `docs/subtasks/logs/041-project-detail-hierarchy-cleanup-events.jsonl`
+- Raw log: `docs/subtasks/logs/041-project-detail-hierarchy-cleanup-claude-run.jsonl`
+- Worker path: `.claude/worktrees/subtask-041-project-detail-hierarchy-cleanup`
+- Launch state: completed with `HANDOFF/DONE_WITH_CONCERNS`; Codex accepted with a manager display-helper fix.
+- Purpose: implement the display-only Project Detail hierarchy cleanup accepted from Subtask 040 findings without changing Project semantics, AppStore, persistence, prompt, parser, or LLM behavior.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Verification: focused `HistoryFeatureTests` passed with 61 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+
+Previous accepted slice:
 
 - Subtask: `040-project-overview-hierarchy-audit`
 - Owner: Claude Code read-only audit candidate, Codex acceptance.

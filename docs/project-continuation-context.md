@@ -106,6 +106,14 @@ Subtask 040 proved the wrapper on a read-only Projects hierarchy audit:
 - Codex accepted the recommendation to make the next implementation slice display-only: fix Project Detail thinking-change headline accuracy, reduce placeholder overview noise, group sections, and hide empty progress signals.
 - Status segment filtering was explicitly deferred to a separate slice because it requires new view state.
 
+Subtask 041 implemented the accepted Project Detail hierarchy cleanup:
+
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was the known GRDB worker-worktree `xcodebuild` issue.
+- Codex accepted the display-only direction and added a manager fix for overview trimming/whitespace filtering and empty Overview surface suppression.
+- Project Detail now groups sections into primary, secondary, and tertiary tiers.
+- Thinking-change copy no longer labels projects with before/after evidence as `证据不足`; it waits for user-confirmed ProjectInsight.
+- Codex accepted after focused `HistoryFeatureTests` passed with 61 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -134,13 +142,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `040-project-overview-hierarchy-audit`
-- PRD: `docs/subtasks/040-project-overview-hierarchy-audit-prd.md`
-- Progress: `docs/subtasks/040-project-overview-hierarchy-audit-progress.md`
-- Claude prompt: `docs/subtasks/040-project-overview-hierarchy-audit-claude-prompt.md`
-- Findings: `docs/subtasks/040-project-overview-hierarchy-audit-findings.md`
-- Worker path: `.claude/worktrees/subtask-040-project-overview-hierarchy-audit`
-- Result: `HANDOFF/DONE`, Codex accepted as the source for the next Project Detail display cleanup slice.
+- Subtask: `041-project-detail-hierarchy-cleanup`
+- PRD: `docs/subtasks/041-project-detail-hierarchy-cleanup-prd.md`
+- Progress: `docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md`
+- Claude prompt: `docs/subtasks/041-project-detail-hierarchy-cleanup-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-041-project-detail-hierarchy-cleanup`
+- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted with manager display-helper fix after fresh focused tests, diff check, and iPhone 17 simulator build.
 
 ## Subtask 029 Claude Attempts
 
