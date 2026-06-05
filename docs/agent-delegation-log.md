@@ -2,6 +2,36 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Direct Framework Fix - Subtask 053 Delegation Resource Tree Guard
+
+Reason:
+
+- The user reported that the delegation skill model can accumulate stale/zombie processes under Codex and eventually exhaust macOS user-level process resources.
+- Subtasks 051 and 052 reduced launch lifecycle leaks, but the wrapper still counted only direct zombie children of the Codex app PID.
+- Codex manager shell commands run through a Codex process tree, so direct-child-only accounting can undercount real pressure.
+
+Delegation state:
+
+- Claude Code was not delegated because this is a control-plane/resource-hygiene bug in the delegation framework itself.
+
+Changed framework behavior:
+
+- `scripts/claude_delegate.sh health` now prints resource state without requiring a task progress file.
+- Resource guard reports direct Codex zombies, Codex process-tree zombies, Codex tree process count, and total zombies.
+- Guard blocking now uses Codex process-tree zombie count.
+- Print-mode launch records a `manager_launch_exit` event.
+- Print-mode launch exits `75` when Claude exits without a final handoff token.
+
+Verification:
+
+- `bash -n scripts/claude_delegate.sh` passed.
+- `health` reported current post-restart resource state.
+- `CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0 ... prepare` exited `75`.
+- Existing 050 accepted `status` remained compatible.
+- Fake print-mode Claude exited `0` without handoff; wrapper returned `75`.
+- Temporary 053 fake worker worktree and branch were removed.
+- `git diff --check` passed.
+
 ## 2026-06-06: Direct Framework Fix - Subtask 052 Delegation Tmux Flag Compatibility
 
 Reason:

@@ -93,8 +93,10 @@ A compatible wrapper should support:
 - before-START failure detection: if there is no active worker process and no conclusion checkpoint, treat the launch as failed instead of continuing low-frequency polling
 - task-scoped cleanup: a `cleanup` command should terminate only processes tied to that worker worktree or `--worktree` target, without deleting worktrees or reading flow logs
 - an opt-in flag to inspect flow logs
-- resource-health guards before launch/wait: if the Codex parent has too many zombie children, stop launching workers and restart/recover the parent process first
+- resource-health guards before launch/wait: count zombie children across the Codex process tree, not only direct children of the Codex app PID; if the tree crosses the threshold, stop launching workers and restart/recover the parent process first
+- a `health` command that prints direct Codex zombies, Codex process-tree zombies, total zombies, and task liveness without requiring a progress file
 - non-interactive shells should not automatically fall back from tmux/session mode to foreground print mode; print mode is opt-in because foreground Claude processes can leave MCP/caffeinate children attached to Codex-managed shells
+- print mode must observe Claude exit status, record a launch-exit event, and treat "process exited without a final handoff token" as non-delivery
 - Claude agent/MCP preflight commands should be opt-in, not default, because they can start extra child processes before the worker actually begins
 - tmux/session launch should observe the Claude CLI launch exit code instead of backgrounding the launcher process and losing its failure status
 - tmux native mode is the bare `--tmux` flag; classic mode is `--tmux=classic` and may fail in non-TTY hosts with `open terminal failed: not a terminal`
@@ -107,6 +109,7 @@ scripts/claude_delegate.sh launch <task-id> <prompt-file> <progress-file>
 scripts/claude_delegate.sh status <task-id> <progress-file>
 scripts/claude_delegate.sh wait <task-id> <progress-file>
 scripts/claude_delegate.sh cleanup <task-id> <progress-file>
+scripts/claude_delegate.sh health [task-id]
 ```
 
 Set these for non-default projects:
@@ -126,6 +129,8 @@ CLAUDE_DELEGATE_CLEANUP_ON_STALL=0
 Use `status` for immediate inspection after launch. Use one long-running `wait` invocation for low-frequency monitoring; it prints the active conclusion source and keeps flow logs hidden unless diagnostics are explicitly enabled. Avoid repeated Codex shell-tool polling, because every manager-side shell invocation is another opportunity for the host app to leak unreaped child processes.
 
 If `status` reports no active worker process and no conclusion checkpoint, do not keep waiting. Classify it as a launch-before-START failure, use `cleanup` for task-scoped process cleanup, then relaunch only after the resource guard is healthy.
+
+If `health` reports rising Codex process-tree zombies, do not attempt to "fix" that by launching another worker. Zombies are already-dead processes and can only be reaped by their parent. The manager action is to stop delegation, record the resource state, and restart/recover the parent host before more worker launches.
 
 Do not reset worker progress during a relaunch just because the manager edited the prompt or PRD. The worker progress file is the conclusion source; overwriting it can erase `START`, `RED`, `IMPLEMENTED`, or `TARGETED_VERIFIED` evidence and force the manager back into flow-log diagnosis. Reset only when the manager intentionally wants to discard the current worker attempt.
 

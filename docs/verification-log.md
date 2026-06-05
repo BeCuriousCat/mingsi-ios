@@ -2,6 +2,57 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 053 Delegation Resource Tree Guard
+
+Scope:
+
+- Harden reusable delegation framework resource hygiene.
+- Keep MingSi product source unchanged.
+- Preserve conclusion-first monitoring and flow-log separation.
+
+Changed areas:
+
+- `scripts/claude_delegate.sh`
+- `delegation-framework/claude-code-managed-delegation/SKILL.md`
+- local installed `claude-code-managed-delegation` skill
+- `docs/subtasks/053-delegation-resource-tree-guard-prd.md`
+- `docs/subtasks/053-delegation-resource-tree-guard-progress.md`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash -n scripts/claude_delegate.sh
+scripts/claude_delegate.sh health
+CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0 scripts/claude_delegate.sh prepare 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+scripts/claude_delegate.sh status 050-project-detail-visual-qa-launch-fixture docs/subtasks/050-project-detail-visual-qa-launch-fixture-progress.md
+PATH="$tmpdir:$PATH" CLAUDE_DELEGATE_MODE=print CLAUDE_DELEGATE_LOG_DIR="$tmpdir/logs" scripts/claude_delegate.sh launch 053-delegation-resource-tree-guard docs/subtasks/053-delegation-resource-tree-guard-prd.md docs/subtasks/053-delegation-resource-tree-guard-progress.md
+git worktree remove .claude/worktrees/subtask-053-delegation-resource-tree-guard --force
+git branch -D worker-subtask-053-delegation-resource-tree-guard
+git worktree list --porcelain | rg -n "subtask-053|worker-subtask-053" || true
+git branch --list worker-subtask-053-delegation-resource-tree-guard
+git diff --check
+```
+
+Result:
+
+- Syntax check passed.
+- `health` reports direct Codex zombies, Codex process-tree zombies, Codex process-tree size, total zombies, and task-scoped liveness.
+- Current post-restart health observed Codex tree zombies below the default threshold but not zero.
+- Guard blocking regression passed with `CLAUDE_DELEGATE_MAX_CODEX_ZOMBIES=0`; `prepare` exited `75`.
+- Existing 050 `status` still surfaces manager-side `CODEX_ACCEPTED` progress.
+- Fake print-mode Claude exited `0` without writing `HANDOFF`; wrapper returned `75` instead of quiet success.
+- Temporary fake 053 worker worktree and branch were removed.
+- `git diff --check` passed.
+
+Residual risk:
+
+- A shell wrapper cannot reap existing zombies if their parent process is Codex and Codex does not reap them.
+- Real tmux-mode launches still require a usable TTY/session path; print mode remains an explicit fallback, now with stricter lifecycle checks.
+
 ## 2026-06-06: Subtask 050 Project Detail Visual QA Launch Fixture
 
 Scope:

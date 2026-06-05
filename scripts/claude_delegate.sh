@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 usage:
+  scripts/claude_delegate.sh health [subtask-id-topic]
   scripts/claude_delegate.sh prepare <subtask-id-topic> [progress-file]
   scripts/claude_delegate.sh launch <subtask-id-topic> <prompt-file> [progress-file]
   scripts/claude_delegate.sh status <subtask-id-topic> [progress-file]
@@ -42,6 +43,7 @@ notes:
   For large delegated tasks, set CLAUDE_DELEGATE_MAX_BUDGET_USD=60.00 or higher explicitly.
   Event/raw logs are flow logs: retained by default, not consumed during routine manager checks.
   Progress files are the conclusion source: worker checkpoints, findings, concerns, and handoff.
+  health prints resource guard state without requiring a task progress file.
   Default wait uses auto backoff: 3m, then 6m, then 9m. If those checks show no
   conclusion-progress movement and no HANDOFF, the manager may intervene after
   classifying the stall.
@@ -74,12 +76,22 @@ if [[ -z "$cmd" || "$cmd" == "-h" || "$cmd" == "--help" ]]; then
 fi
 shift
 
-subtask="${1:-}"
+if [[ "$cmd" == "health" ]]; then
+  subtask="${1:-health}"
+  [[ $# -gt 0 ]] && shift || true
+else
+  subtask="${1:-}"
+  if [[ -z "$subtask" ]]; then
+    usage >&2
+    exit 64
+  fi
+  shift || true
+fi
+
 if [[ -z "$subtask" ]]; then
   usage >&2
   exit 64
 fi
-shift || true
 
 task_root="${CLAUDE_DELEGATE_TASK_ROOT:-docs/subtasks}"
 task_root_abs="$(absolute_or_repo_path "$task_root")"
@@ -125,21 +137,109 @@ codex_app_pid() {
   ps -axo pid=,comm= | awk '$0 ~ /\/Applications\/Codex\.app\/Contents\/MacOS\/Codex$/ { print $1; exit }'
 }
 
+codex_tree_zombie_count() {
+  local root_pid="$1"
+  if [[ -z "$root_pid" ]]; then
+    printf '0\n'
+    return
+  fi
+  ps -axo pid=,ppid=,stat= | awk -v root="$root_pid" '
+    {
+      pid[NR] = $1
+      ppid[NR] = $2
+      stat[NR] = $3
+    }
+    END {
+      seen[root] = 1
+      changed = 1
+      while (changed) {
+        changed = 0
+        for (i = 1; i <= NR; i++) {
+          if (seen[ppid[i]] && !seen[pid[i]]) {
+            seen[pid[i]] = 1
+            changed = 1
+          }
+        }
+      }
+      count = 0
+      for (i = 1; i <= NR; i++) {
+        if (stat[i] ~ /^Z/ && seen[ppid[i]]) {
+          count++
+        }
+      }
+      print count + 0
+    }
+  '
+}
+
+codex_tree_active_count() {
+  local root_pid="$1"
+  if [[ -z "$root_pid" ]]; then
+    printf '0\n'
+    return
+  fi
+  ps -axo pid=,ppid=,stat= | awk -v root="$root_pid" '
+    {
+      pid[NR] = $1
+      ppid[NR] = $2
+      stat[NR] = $3
+    }
+    END {
+      seen[root] = 1
+      changed = 1
+      while (changed) {
+        changed = 0
+        for (i = 1; i <= NR; i++) {
+          if (seen[ppid[i]] && !seen[pid[i]]) {
+            seen[pid[i]] = 1
+            changed = 1
+          }
+        }
+      }
+      count = 0
+      for (i in seen) {
+        count++
+      }
+      print count + 0
+    }
+  '
+}
+
+print_codex_resource_health() {
+  local codex_pid=""
+  local codex_direct_zombies="0"
+  local codex_tree_zombies="0"
+  local codex_tree_processes="0"
+  local total_zombies="0"
+  codex_pid="$(codex_app_pid || true)"
+  total_zombies="$(ps -axo stat= | awk '$1 ~ /Z/ { count++ } END { print count + 0 }')"
+  if [[ -n "$codex_pid" ]]; then
+    codex_direct_zombies="$(ps -axo stat=,ppid= | awk -v ppid="$codex_pid" '$1 ~ /Z/ && $2 == ppid { count++ } END { print count + 0 }')"
+    codex_tree_zombies="$(codex_tree_zombie_count "$codex_pid")"
+    codex_tree_processes="$(codex_tree_active_count "$codex_pid")"
+  fi
+  echo "resource health: codex_pid=${codex_pid:-unknown} codex_direct_zombies=$codex_direct_zombies codex_tree_zombies=$codex_tree_zombies codex_tree_processes=$codex_tree_processes total_zombies=$total_zombies thresholds=${max_codex_zombies}/${max_total_zombies}"
+}
+
 resource_guard() {
   local mode="${1:-fail}"
   [[ "$resource_guard_enabled" == "1" ]] || return 0
 
   local codex_pid=""
-  local codex_zombies="0"
+  local codex_direct_zombies="0"
+  local codex_tree_zombies="0"
+  local codex_tree_processes="0"
   local total_zombies="0"
   codex_pid="$(codex_app_pid || true)"
   total_zombies="$(ps -axo stat= | awk '$1 ~ /Z/ { count++ } END { print count + 0 }')"
   if [[ -n "$codex_pid" ]]; then
-    codex_zombies="$(ps -axo stat=,ppid= | awk -v ppid="$codex_pid" '$1 ~ /Z/ && $2 == ppid { count++ } END { print count + 0 }')"
+    codex_direct_zombies="$(ps -axo stat=,ppid= | awk -v ppid="$codex_pid" '$1 ~ /Z/ && $2 == ppid { count++ } END { print count + 0 }')"
+    codex_tree_zombies="$(codex_tree_zombie_count "$codex_pid")"
+    codex_tree_processes="$(codex_tree_active_count "$codex_pid")"
   fi
 
-  local message="resource guard: codex_pid=${codex_pid:-unknown} codex_zombies=$codex_zombies total_zombies=$total_zombies thresholds=${max_codex_zombies}/${max_total_zombies}"
-  if (( codex_zombies > max_codex_zombies || total_zombies > max_total_zombies )); then
+  local message="resource guard: codex_pid=${codex_pid:-unknown} codex_direct_zombies=$codex_direct_zombies codex_tree_zombies=$codex_tree_zombies codex_tree_processes=$codex_tree_processes total_zombies=$total_zombies thresholds=${max_codex_zombies}/${max_total_zombies}"
+  if (( codex_tree_zombies > max_codex_zombies || total_zombies > max_total_zombies )); then
     if [[ "$mode" == "warn" ]]; then
       echo "$message" >&2
       echo "resource guard warning: zombie thresholds exceeded; avoid launching new workers until Codex/system is restarted or zombies are reaped" >&2
@@ -574,11 +674,34 @@ case "$cmd" in
     fi
 
     if [[ "$effective_mode" == "print" ]]; then
+      launch_status="0"
       if [[ "$show_flow_logs" == "1" ]]; then
-        run_print_claude | tee "$raw_log"
+        if run_print_claude | tee "$raw_log"; then
+          launch_status="0"
+        else
+          launch_status="$?"
+        fi
       else
-        run_print_claude > "$raw_log"
+        if run_print_claude > "$raw_log"; then
+          launch_status="0"
+        else
+          launch_status="$?"
+        fi
       fi
+      printf '{"event":"manager_launch_exit","time":"%s","exit_code":%s,"raw_log":"%s","event_log":"%s","mode":"print-observed"}\n' \
+        "$(timestamp)" "$launch_status" "$raw_log" "$event_log" >> "$event_log"
+      if [[ "$launch_status" != "0" ]]; then
+        cleanup_worker_processes "print-launch-failed"
+        echo "claude print launch failed with exit code $launch_status; inspect progress first, then raw log if needed: $raw_log" >&2
+        exit "$launch_status"
+      fi
+      active_progress="$(current_progress_path "$progress_file")"
+      if ! handoff_reached "$active_progress"; then
+        cleanup_worker_processes "print-exited-without-handoff"
+        echo "claude print launch exited without HANDOFF; conclusion source: $active_progress" >&2
+        exit 75
+      fi
+      resource_guard warn
     elif [[ "$effective_mode" == "tmux" ]]; then
       launch_status="0"
       tmux_arg="$(tmux_cli_args)"
@@ -665,6 +788,13 @@ case "$cmd" in
       echo "agents:"
       claude agents --json --cwd "$repo_root" || true
     fi
+    ;;
+
+  health)
+    resource_guard warn
+    print_codex_resource_health
+    echo
+    print_worker_liveness
     ;;
 
   wait)

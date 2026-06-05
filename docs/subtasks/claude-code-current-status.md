@@ -6,6 +6,17 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker is currently running.
 
+Latest accepted framework fix:
+
+- Subtask: `053-delegation-resource-tree-guard`
+- Owner: Codex direct framework fix.
+- PRD file: `docs/subtasks/053-delegation-resource-tree-guard-prd.md`
+- Progress file: `docs/subtasks/053-delegation-resource-tree-guard-progress.md`
+- Files: `scripts/claude_delegate.sh`, `delegation-framework/claude-code-managed-delegation/SKILL.md`, and local installed `claude-code-managed-delegation` skill.
+- Purpose: prevent resource guard undercounting by measuring zombie pressure across the Codex process tree, and make print-mode no-handoff exits explicit non-delivery.
+- State: accepted after syntax, health, threshold blocking, status compatibility, fake print-mode no-handoff, worktree cleanup, and `git diff --check` verification.
+- Current resource observation: post-restart Codex process-tree zombies remain below threshold but are not zero; the wrapper can block new work under pressure but cannot reap zombies already owned by Codex.
+
 Latest accepted delegated implementation slice:
 
 - Subtask: `050-project-detail-visual-qa-launch-fixture`
