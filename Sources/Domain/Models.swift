@@ -111,8 +111,31 @@ struct LensCatalogItem: Equatable {
     let symbolName: String
 }
 
+protocol LensCatalogProviding {
+    var items: [LensCatalogItem] { get }
+    func item(localId: String) -> LensCatalogItem?
+    func item(promptId: String) -> LensCatalogItem?
+    func item(for lens: ThinkingLens) -> LensCatalogItem?
+}
+
+struct LensLibrary: LensCatalogProviding {
+    let items: [LensCatalogItem]
+
+    func item(localId: String) -> LensCatalogItem? {
+        items.first { $0.lensId == localId }
+    }
+
+    func item(promptId: String) -> LensCatalogItem? {
+        items.first { $0.promptId == promptId }
+    }
+
+    func item(for lens: ThinkingLens) -> LensCatalogItem? {
+        item(localId: lens.rawValue)
+    }
+}
+
 enum BuiltinLensCatalog {
-    static let items: [LensCatalogItem] = [
+    static let library = LensLibrary(items: [
         LensCatalogItem(
             lensId: "evidenceCheck",
             promptId: "evidence_check",
@@ -153,10 +176,22 @@ enum BuiltinLensCatalog {
             methodLine: "先问：如果从零开始，这件事必须成立的条件是什么？",
             symbolName: "square.stack.3d.down.right"
         ),
-    ]
+    ])
+
+    static var items: [LensCatalogItem] {
+        library.items
+    }
 
     static func item(for lens: ThinkingLens) -> LensCatalogItem {
-        items.first { $0.lensId == lens.rawValue }!
+        library.item(for: lens)!
+    }
+
+    static func item(localId: String) -> LensCatalogItem? {
+        library.item(localId: localId)
+    }
+
+    static func item(promptId: String) -> LensCatalogItem? {
+        library.item(promptId: promptId)
     }
 }
 

@@ -2,6 +2,53 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 045 Extensible Lens Library Boundary
+
+Scope:
+
+- Add a small Domain-level extensible lens catalog/provider boundary.
+- Keep `第一性原理` as an MVP built-in lens inside the library.
+- Preserve existing local raw ids and prompt-facing ids.
+- Do not change SwiftUI, AppStore orchestration, persistence, migrations, PromptProvider, prompt text, parser, LLM clients, Keychain, History, Projects, Growth, or Settings.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/045-extensible-lens-library-boundary-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/verification-log.md`
+
+Commands attempted:
+
+```bash
+scripts/claude_delegate.sh prepare 045-extensible-lens-library-boundary docs/subtasks/045-extensible-lens-library-boundary-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 045-extensible-lens-library-boundary docs/subtasks/045-extensible-lens-library-boundary-claude-prompt.md docs/subtasks/045-extensible-lens-library-boundary-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+```
+
+Result:
+
+- Claude Code wrapper `prepare` and `launch` were blocked before execution by OS process creation error `spawn /bin/sh EAGAIN`.
+- No Claude Code worker reached `START` or `HANDOFF`.
+- Codex directly implemented the narrow Domain/test slice.
+- Initial `xcodebuild` and `git diff --check` attempts were also blocked before execution by `spawn /bin/sh EAGAIN`.
+- After process creation recovered, Codex reran fresh verification in the manager checkout.
+
+Verification:
+
+- `AppStoreStateMachineTests` passed: 110 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+- Codex accepted the slice.
+
+Residual risk:
+
+- This was build/test verified but not screenshot verified because the slice changes Domain catalog boundary and tests only; it does not change SwiftUI.
+- Claude Code could not be used for the implementation because the worker process never launched.
+
 ## 2026-06-05: Subtask 044 Project Status Filter
 
 Scope:

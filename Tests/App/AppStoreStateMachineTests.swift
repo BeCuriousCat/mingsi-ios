@@ -3737,6 +3737,7 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(ThinkingLens.evidenceCheck.rawValue, "evidenceCheck")
         XCTAssertEqual(ThinkingLens.opposingView.rawValue, "opposingView")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.rawValue, "leverageAnalysis")
+        XCTAssertEqual(ThinkingLens.firstPrinciples.rawValue, "firstPrinciples")
     }
 
     func testBuiltinCatalog_containsOneItem_perLensCase() {
@@ -3744,6 +3745,39 @@ extension AppStoreStateMachineTests {
         let lensCount = ThinkingLens.allCases.count
         XCTAssertEqual(catalogCount, lensCount,
                        "Built-in catalog should have one item per ThinkingLens case")
+    }
+
+    func testBuiltinLensLibrary_listsOneItem_perLensCase() {
+        let library = BuiltinLensCatalog.library
+
+        XCTAssertEqual(library.items.count, ThinkingLens.allCases.count)
+    }
+
+    func testBuiltinLensLibrary_lookupByLocalId_returnsFirstPrinciples() {
+        let item = BuiltinLensCatalog.library.item(localId: "firstPrinciples")
+
+        XCTAssertEqual(item?.title, "第一性原理")
+        XCTAssertEqual(item?.lensId, ThinkingLens.firstPrinciples.rawValue)
+    }
+
+    func testBuiltinLensLibrary_lookupByPromptId_returnsFirstPrinciples() {
+        let item = BuiltinLensCatalog.library.item(promptId: "first_principles")
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.firstPrinciples.rawValue)
+        XCTAssertEqual(item?.promptId, "first_principles")
+    }
+
+    func testBuiltinLensLibrary_lookupByThinkingLens_matchesCatalogItem() {
+        let libraryItem = BuiltinLensCatalog.library.item(for: .firstPrinciples)
+
+        XCTAssertEqual(libraryItem, ThinkingLens.firstPrinciples.catalogItem)
+    }
+
+    func testThinkingLens_promptIds_stable() {
+        XCTAssertEqual(ThinkingLens.evidenceCheck.catalogItem.promptId, "evidence_check")
+        XCTAssertEqual(ThinkingLens.opposingView.catalogItem.promptId, "opposing_view")
+        XCTAssertEqual(ThinkingLens.leverageAnalysis.catalogItem.promptId, "leverage_analysis")
+        XCTAssertEqual(ThinkingLens.firstPrinciples.catalogItem.promptId, "first_principles")
     }
 
     func testFirstPrinciples_metadata() {

@@ -4,9 +4,25 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 044 is Codex-accepted and verified.
+Status: no active Claude Code worker is running; Subtask 045 is Codex-accepted and verified after Claude Code worker launch was blocked before execution by OS `spawn /bin/sh EAGAIN`.
 
-Latest accepted delegated slice:
+Latest accepted slice:
+
+- Subtask: `045-extensible-lens-library-boundary`
+- Owner: Codex direct implementation after Claude Code launch blocker.
+- PRD file: `docs/subtasks/045-extensible-lens-library-boundary-prd.md`
+- Progress file: `docs/subtasks/045-extensible-lens-library-boundary-progress.md`
+- Claude prompt file: `docs/subtasks/045-extensible-lens-library-boundary-claude-prompt.md`
+- Expected event log: `docs/subtasks/logs/045-extensible-lens-library-boundary-events.jsonl`
+- Expected raw log: `docs/subtasks/logs/045-extensible-lens-library-boundary-claude-run.jsonl`
+- Purpose: turn the existing built-in first-principles lens catalog into a small extensible lens library/provider boundary without adding custom lenses, remote loading, persistence, prompt text, parser, AppStore, or UI changes.
+- Allowed source/test files: `Sources/Domain/Models.swift`, `Tests/App/AppStoreStateMachineTests.swift`, plus the 045 progress file.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Delegation attempt: `scripts/claude_delegate.sh prepare` and `launch` both failed before execution with `spawn /bin/sh EAGAIN`; no worker progress or handoff exists.
+- Current implementation state: Codex added `LensCatalogProviding`, `LensLibrary`, `BuiltinLensCatalog.library`, compatibility lookups, and focused catalog tests in the manager checkout.
+- Verification state: accepted after fresh manager verification: `AppStoreStateMachineTests` passed with 110 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+
+Previous accepted delegated slice:
 
 - Subtask: `044-project-status-filter`
 - Owner: Claude Code implementation candidate, Codex acceptance.

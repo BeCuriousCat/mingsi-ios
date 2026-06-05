@@ -2,6 +2,59 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Extensible Lens Library Boundary - Subtask 045
+
+Reason:
+
+- The user explicitly requested that the MVP built-in `第一性原理` lens be implemented under an extensible lens library, not as architecture-free logic stacking.
+- Subtasks 039 and 042 already added the first-principles built-in lens and prompt-facing lens ids.
+- The remaining gap is a narrow Domain/test architecture boundary: expose built-in lenses through reusable list and lookup APIs so future lens packs/custom/remote metadata can plug in without UI/prompt smoke stacks.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/045-extensible-lens-library-boundary-prd.md`
+- Progress: `docs/subtasks/045-extensible-lens-library-boundary-progress.md`
+- Prompt: `docs/subtasks/045-extensible-lens-library-boundary-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/045-extensible-lens-library-boundary-events.jsonl`
+  - `docs/subtasks/logs/045-extensible-lens-library-boundary-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may edit only `Sources/Domain/Models.swift`, `Tests/App/AppStoreStateMachineTests.swift`, and the 045 progress file.
+- Worker may not edit SwiftUI views, AppStore orchestration, persistence, migrations, repositories, PromptProvider, prompt text, parser, LLM clients, Keychain, History, Projects, Growth, Settings, assets, screenshots, or unrelated docs.
+- The slice must not add custom lens persistence, remote loading, or any prompt strategy change.
+
+Delegation state:
+
+- Attempted but not launched.
+- `scripts/claude_delegate.sh prepare` failed before execution with `spawn /bin/sh EAGAIN`.
+- `scripts/claude_delegate.sh launch` failed before execution with `spawn /bin/sh EAGAIN`.
+- Claude Code produced no worker progress, no diff, and no `HANDOFF`.
+- Codex directly implemented the narrow Domain/test slice in the manager checkout.
+- Initial verification was delayed because `xcodebuild`, `git diff --check`, and git commands were also blocked by the same OS process creation error.
+- After process creation recovered, Codex verified and accepted the slice.
+
+Delegation rationale:
+
+- This is a bounded Domain/test architecture-boundary slice with explicit acceptance tests. Codex has already made the product and architecture decision; Claude Code can implement the local code changes in isolation while Codex stays manager, architecture reviewer, and final verifier.
+
+Codex implementation summary:
+
+- Added `LensCatalogProviding` and `LensLibrary` in Domain.
+- Kept `BuiltinLensCatalog.items` compatible and added `BuiltinLensCatalog.library`.
+- Added local-id, prompt-id, and `ThinkingLens` lookup behavior.
+- Added focused tests for the extensible library boundary and stable ids.
+- No SwiftUI, AppStore, persistence, migration, prompt, parser, LLM, Keychain, History, Projects, Growth, or Settings changes were made.
+
+Codex verification:
+
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test`: passed, 110 tests, 0 failures.
+- `git diff --check`: passed.
+- `xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build`: passed.
+
 ## 2026-06-05: Prepared Project Status Filter - Subtask 044
 
 Reason:
