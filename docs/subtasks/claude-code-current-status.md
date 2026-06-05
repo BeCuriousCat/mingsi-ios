@@ -4,9 +4,25 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 041 is Codex-accepted and verified.
+Status: no active Claude Code worker is running; Subtask 042 is Codex-accepted and verified.
 
 Latest accepted slice:
+
+- Subtask: `042-lens-prompt-context-wiring`
+- Owner: Claude Code implementation candidate, Codex acceptance.
+- PRD file: `docs/subtasks/042-lens-prompt-context-wiring-prd.md`
+- Progress file: `docs/subtasks/042-lens-prompt-context-wiring-progress.md`
+- Claude prompt file: `docs/subtasks/042-lens-prompt-context-wiring-claude-prompt.md`
+- Event log: `docs/subtasks/logs/042-lens-prompt-context-wiring-events.jsonl`
+- Raw log: `docs/subtasks/logs/042-lens-prompt-context-wiring-claude-run.jsonl`
+- Worker path: `.claude/worktrees/subtask-042-lens-prompt-context-wiring`
+- Launch state: completed with `HANDOFF/DONE_WITH_CONCERNS`; Codex accepted after fresh manager verification.
+- Purpose: wire existing built-in lens catalog metadata into Today AI request/context payloads so model-facing `selectedLens` uses prompt ids like `first_principles` while local persistence and filters keep `ThinkingLens.rawValue`.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Verification: focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Pipeline note: `status` briefly showed stale progress after the worker reached `HANDOFF`; raw/event logs were opened only after conclusion-progress inconsistency.
+
+Previous accepted slice:
 
 - Subtask: `041-project-detail-hierarchy-cleanup`
 - Owner: Claude Code implementation candidate, Codex acceptance.

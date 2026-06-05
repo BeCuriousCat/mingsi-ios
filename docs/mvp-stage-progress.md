@@ -51,23 +51,25 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 039 First Principles Lens Catalog via Claude Code delegation. Today now includes `第一性原理` as an MVP built-in lens through a lightweight built-in catalog boundary, while existing lens raw values remain stable and catalog prompt ids are separate metadata.
 - Completed Subtask 040 Project overview hierarchy audit via Claude Code delegation. Findings recommend a narrow display-only Project Detail hierarchy slice: fix thinking-change headline accuracy, reduce placeholder overview noise, visually group sections, and hide empty progress signals.
 - Completed Subtask 041 Project Detail hierarchy cleanup via Claude Code delegation plus Codex manager fix. Project Detail now avoids placeholder-heavy overview rows, distinguishes insufficient thinking-change evidence from unconfirmed insight candidates, hides empty progress signals, and groups sections into clearer visual tiers without changing Project semantics.
+- Completed Subtask 042 Lens Prompt Context Wiring via Claude Code delegation. Today AI request payloads now use built-in lens catalog prompt ids such as `first_principles` / `leverage_analysis`, while structured context preserves local `ThinkingLens.rawValue` and exposes lens catalog metadata for audit/debugging. Focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 
 ## Known Remaining Work
 
 1. Project Detail hierarchy cleanup is implemented and build/test verified; later visual QA should inspect populated Project Detail states.
 2. Growth report drilldown has Subtask 038 coverage; deeper longitudinal comparison can be added later only with enough evidence.
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
-4. Lens catalog `promptId` metadata is not yet wired into AI prompt payloads; do this later only as a focused prompt/context boundary slice.
+4. Lens catalog prompt ids are wired into Today AI prompt payloads for question and quest generation. Later prompt/context work should remain focused and preserve `PromptProvider` / `LLMClient` boundaries.
 5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
 6. Process files should stay updated after each implementation or delegation slice.
 7. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 
 ## Current Recommended Next Slice
 
-After Subtask 041, the next bounded slice should be chosen from:
+After Subtask 042, the next bounded slice should be chosen from:
 
 - Project Detail visual smoke verification and any narrow follow-up from screenshots.
 - Project top-level status filtering if project count/scanning becomes a user-facing problem.
 - Live GLM failure-path confirmation for History repair.
+- Delegation wrapper status freshness follow-up, because Subtask 042 exposed a case where `status` showed stale progress even though the worker had reached `HANDOFF`.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

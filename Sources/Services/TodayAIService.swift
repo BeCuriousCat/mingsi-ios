@@ -103,7 +103,7 @@ final class TodayAIService {
             promptID: .generateQuestions,
             context: context,
             payload: [
-                "selectedLens": context.draft.selectedLens?.rawValue ?? "",
+                "selectedLens": context.draft.selectedLens?.catalogItem.promptId ?? "",
                 "sessionMode": context.draft.sessionMode.rawValue
             ]
         )
@@ -116,7 +116,7 @@ final class TodayAIService {
             promptID: .generateQuests,
             context: context,
             payload: [
-                "selectedLens": context.draft.selectedLens?.rawValue ?? "",
+                "selectedLens": context.draft.selectedLens?.catalogItem.promptId ?? "",
                 "sessionMode": context.draft.sessionMode.rawValue
             ]
         )
@@ -329,7 +329,17 @@ struct DefaultContextAssembler: ContextAssembler {
             ),
             userChoice: .init(
                 sessionMode: context.draft.sessionMode.rawValue,
-                selectedLens: context.draft.selectedLens?.rawValue
+                selectedLens: context.draft.selectedLens?.rawValue,
+                lensCatalog: context.draft.selectedLens.map { lens in
+                    let item = lens.catalogItem
+                    return .init(
+                        localId: item.lensId,
+                        promptId: item.promptId,
+                        version: item.version,
+                        title: item.title,
+                        methodLine: item.methodLine
+                    )
+                }
             ),
             cards: context.confirmedCards.map { card in
                 .init(
@@ -432,7 +442,7 @@ struct DefaultContextAssembler: ContextAssembler {
 
     private func inputSummary(for context: TodayAIContext, relevantPrinciples: [PrincipleAsset]) -> String {
         let rawText = context.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lens = context.draft.selectedLens?.rawValue ?? "none"
+        let lens = context.draft.selectedLens?.catalogItem.promptId ?? "none"
         let cardTitles = context.confirmedCards.map(\.title).joined(separator: ", ")
         let principleTitles = relevantPrinciples.map(\.title).joined(separator: ", ")
         return "mode=\(context.draft.sessionMode.rawValue); lens=\(lens); rawText=\(rawText); cards=\(cardTitles); principles=\(principleTitles)"

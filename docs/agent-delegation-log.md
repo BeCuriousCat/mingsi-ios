@@ -2,6 +2,71 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Lens Prompt Context Wiring - Subtask 042
+
+Reason:
+
+- Subtask 039 added the extensible built-in lens catalog and `第一性原理`, but current Today AI request assembly still sends local Swift/persistence ids such as `firstPrinciples` / `leverageAnalysis` to the model.
+- The slice is bounded to service-layer prompt/context assembly plus focused request-payload tests.
+- This is suitable for Claude Code implementation because the product/architecture decision is already made: local ids remain durable, model-facing ids come from `LensCatalogItem.promptId`, and structured context should expose audit metadata without changing prompt strategy.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/042-lens-prompt-context-wiring-prd.md`
+- Progress: `docs/subtasks/042-lens-prompt-context-wiring-progress.md`
+- Prompt: `docs/subtasks/042-lens-prompt-context-wiring-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/042-lens-prompt-context-wiring-events.jsonl`
+  - `docs/subtasks/logs/042-lens-prompt-context-wiring-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may edit only `Sources/Services/CoreProtocols.swift`, `Sources/Services/TodayAIService.swift`, `Tests/Services/TodayAIServiceContextTests.swift`, and the 042 progress file.
+- Worker may not edit SwiftUI, AppStore orchestration, persistence, migrations, PromptProvider text, parser, LLM transport clients, Keychain, History, Projects, Growth, Settings, assets, screenshots, or non-allowed tests.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Delegation rationale:
+
+- This is a local request/context contract slice with explicit tests and no product taste decisions. Claude Code can implement it in isolation while Codex stays in manager, architecture reviewer, and final verifier role.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Final worker status: `DONE_WITH_CONCERNS`.
+- Worker concern: `xcodebuild` in the isolated worker checkout was blocked by the known GRDB package dependency error: `invalid custom path 'Tests' for target 'GRDBTests'`.
+- Worker `git diff --check` passed.
+- Worker changed only allowed source/test files plus the 042 progress file.
+- Raw model telemetry recorded real `glm-5.1` usage: 53,901 input tokens, 12,659 output tokens, 1,209,536 cache-read input tokens, estimated cost 1.190748 USD. This supports the user's concern that utilization should be judged from logs/progress, not from manager token counters.
+
+Codex review:
+
+- Accepted the request/context contract direction.
+- Accepted `PromptContextPayload.LensCatalogContext` for audit metadata: local id, prompt id, version, title, and method line.
+- Accepted model-facing `selectedLens` values from `LensCatalogItem.promptId`.
+- Accepted keeping `PromptContextPayload.selectedLens` compatible with local `ThinkingLens`.
+- Rejected scope expansion into PromptProvider text, parser behavior, AppStore orchestration, persistence, or UI.
+- Noted a wrapper follow-up: `status` briefly showed stale progress after the worker had written `HANDOFF`; raw/event logs were opened only after the conclusion path appeared inconsistent.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- `TodayAIServiceContextTests` passed: 16 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
 ## 2026-06-05: Prepared Project Detail Hierarchy Cleanup - Subtask 041
 
 Reason:

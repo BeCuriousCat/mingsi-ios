@@ -114,6 +114,15 @@ Subtask 041 implemented the accepted Project Detail hierarchy cleanup:
 - Thinking-change copy no longer labels projects with before/after evidence as `证据不足`; it waits for user-confirmed ProjectInsight.
 - Codex accepted after focused `HistoryFeatureTests` passed with 61 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 
+Subtask 042 wired the lens catalog into Today AI prompt/context payloads:
+
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was the known GRDB worker-worktree `xcodebuild` issue.
+- Model-facing `selectedLens` now uses catalog prompt ids such as `first_principles`, `leverage_analysis`, and `evidence_check`.
+- Local persisted lens identity remains `ThinkingLens.rawValue` through structured context, so persistence/history filters keep stable local ids.
+- Structured prompt context now includes selected lens catalog metadata: local id, prompt id, version, title, and method line.
+- Codex accepted after focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+- Pipeline observation: `scripts/claude_delegate.sh status` briefly showed stale progress even after the worker wrote `HANDOFF`; raw/event logs were opened only after the conclusion path became inconsistent. Treat this as a wrapper follow-up, not a product blocker.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -142,12 +151,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `041-project-detail-hierarchy-cleanup`
-- PRD: `docs/subtasks/041-project-detail-hierarchy-cleanup-prd.md`
-- Progress: `docs/subtasks/041-project-detail-hierarchy-cleanup-progress.md`
-- Claude prompt: `docs/subtasks/041-project-detail-hierarchy-cleanup-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-041-project-detail-hierarchy-cleanup`
-- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted with manager display-helper fix after fresh focused tests, diff check, and iPhone 17 simulator build.
+- Subtask: `042-lens-prompt-context-wiring`
+- PRD: `docs/subtasks/042-lens-prompt-context-wiring-prd.md`
+- Progress: `docs/subtasks/042-lens-prompt-context-wiring-progress.md`
+- Claude prompt: `docs/subtasks/042-lens-prompt-context-wiring-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-042-lens-prompt-context-wiring`
+- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
 
 ## Subtask 029 Claude Attempts
 

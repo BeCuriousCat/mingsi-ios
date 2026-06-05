@@ -299,10 +299,98 @@ final class TodayAIServiceContextTests: XCTestCase {
         let request = try XCTUnwrap(client.requests.first)
         _ = try XCTUnwrap(request.contextPayload)
         XCTAssertTrue(try XCTUnwrap(request.jsonPayload["confirmedCards"]).contains("Meeting ownership unclear"))
-        XCTAssertEqual(request.jsonPayload["selectedLens"], ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(request.jsonPayload["selectedLens"], "evidence_check")
         XCTAssertEqual(request.jsonPayload["sessionMode"], SessionMode.standard.rawValue)
         XCTAssertTrue(try XCTUnwrap(request.jsonPayload["relevantPrinciples"]).contains("Clarify meeting ownership"))
         XCTAssertTrue(try XCTUnwrap(request.jsonPayload["principleUsageRule"]).contains("Do not force"))
+    }
+
+    // MARK: - Subtask 042: Lens Prompt Context Wiring
+
+    func testGenerateQuestions_sendsPromptFacingLensId_forFirstPrinciples() async throws {
+        let client = CapturingLLMClient(response: Self.questionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "What are the fundamentals?",
+                    selectedLens: .firstPrinciples
+                )
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.jsonPayload["selectedLens"], "first_principles")
+    }
+
+    func testGenerateQuests_sendsPromptFacingLensId_forLeverageAnalysis() async throws {
+        let client = CapturingLLMClient(response: Self.questsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.generateQuests(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "What is the leverage point?",
+                    selectedLens: .leverageAnalysis
+                )
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.jsonPayload["selectedLens"], "leverage_analysis")
+    }
+
+    func testStructuredContext_exposesLocalSelectedLens_forFirstPrinciples() async throws {
+        let client = CapturingLLMClient(response: Self.questionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "What are the fundamentals?",
+                    selectedLens: .firstPrinciples
+                )
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let payload = try XCTUnwrap(request.contextPayload)
+        XCTAssertEqual(payload.selectedLens, .firstPrinciples)
+    }
+
+    func testStructuredContext_exposesLensCatalogMetadata_forFirstPrinciples() async throws {
+        let client = CapturingLLMClient(response: Self.questionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "What are the fundamentals?",
+                    selectedLens: .firstPrinciples
+                )
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let payload = try XCTUnwrap(request.contextPayload)
+        let catalog = try XCTUnwrap(payload.userChoice.lensCatalog)
+        XCTAssertEqual(catalog.localId, "firstPrinciples")
+        XCTAssertEqual(catalog.promptId, "first_principles")
+        XCTAssertEqual(catalog.version, "builtin.v1")
+        XCTAssertEqual(catalog.title, "第一性原理")
     }
 
     func testGenerateQuests_injectsRelevantPrinciplesAndGroundingPayload() async throws {

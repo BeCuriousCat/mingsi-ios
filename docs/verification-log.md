@@ -2,6 +2,54 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 042 Lens Prompt Context Wiring
+
+Scope:
+
+- Wire existing built-in lens catalog metadata into Today AI request/context payloads.
+- Keep local persisted `ThinkingLens.rawValue` stable while model-facing `selectedLens` uses `LensCatalogItem.promptId`.
+- Preserve PromptProvider text, parser behavior, LLM transport, persistence, migrations, AppStore orchestration, and SwiftUI.
+- Accept Claude Code worker output only after `HANDOFF`, then rerun fresh verification in the manager checkout.
+
+Changed areas:
+
+- `Sources/Services/CoreProtocols.swift`
+- `Sources/Services/TodayAIService.swift`
+- `Tests/Services/TodayAIServiceContextTests.swift`
+- `docs/subtasks/042-lens-prompt-context-wiring-*`
+- `docs/subtasks/logs/042-lens-prompt-context-wiring-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/project-continuation-context.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-claude-prompt.md docs/subtasks/042-lens-prompt-context-wiring-progress.md
+scripts/claude_delegate.sh status 042-lens-prompt-context-wiring docs/subtasks/042-lens-prompt-context-wiring-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Worker `git diff --check` passed; worker `xcodebuild` was blocked by the known GRDB worktree package issue.
+- Raw model telemetry recorded real `glm-5.1` usage: 53,901 input tokens, 12,659 output tokens, 1,209,536 cache-read input tokens, estimated cost 1.190748 USD.
+- Codex reran verification in the main checkout.
+- Focused `TodayAIServiceContextTests` passed: 16 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- This is request/context contract work, not a live GLM semantic-quality test. A later live GLM run can confirm the model's behavior under `first_principles` once the History repair live failure-path slice is scheduled.
+- Delegation wrapper `status` briefly showed stale progress after worker `HANDOFF`; this should be handled as a framework follow-up.
+
 ## 2026-06-05: Subtask 041 Project Detail Hierarchy Cleanup
 
 Scope:

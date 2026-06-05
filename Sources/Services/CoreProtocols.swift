@@ -52,6 +52,14 @@ struct LLMRequest: Hashable {
 }
 
 struct PromptContextPayload: Codable, Hashable {
+    struct LensCatalogContext: Codable, Hashable {
+        var localId: String
+        var promptId: String
+        var version: String
+        var title: String
+        var methodLine: String
+    }
+
     struct CurrentInput: Codable, Hashable {
         var dailyEntryId: String?
         var rawText: String?
@@ -60,6 +68,7 @@ struct PromptContextPayload: Codable, Hashable {
     struct UserChoice: Codable, Hashable {
         var sessionMode: String
         var selectedLens: String?
+        var lensCatalog: LensCatalogContext?
     }
 
     struct Card: Codable, Hashable {
@@ -233,7 +242,9 @@ struct PromptContextPayload: Codable, Hashable {
         var values = extra
         values["sessionMode"] = userChoice.sessionMode
 
-        if let selectedLens = userChoice.selectedLens {
+        if let promptId = userChoice.lensCatalog?.promptId {
+            values["selectedLens"] = promptId
+        } else if let selectedLens = userChoice.selectedLens {
             values["selectedLens"] = selectedLens
         }
         if let rawText = currentInput.rawText {
