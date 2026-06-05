@@ -232,3 +232,61 @@ Result:
 
 - Subtask 049 can now proceed to real iPhone 17 screenshot capture using fixture variants.
 - Subtask 049 is still open until the real light/dark Project Detail screenshot matrix is captured and reviewed.
+
+## Full Fixture Variant Screenshot Matrix
+
+Timestamp: 2026-06-06
+
+Codex captured the full 10-state Project Detail fixture matrix in light and dark mode on a real iPhone 17 simulator.
+
+Commands:
+
+```bash
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+for variant in nil_project minimal normal accepted_insight pending_insight merge_history long_timeline long_name sparse_next_bet generating_insight; do
+  for appearance in light dark; do
+    xcrun simctl ui booted appearance "$appearance"
+    SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL=1 SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT="$variant" \
+      xcrun simctl launch --terminate-running-process booted com.codex.mingsi MINGSI_VISUAL_QA_PROJECT_DETAIL
+    xcrun simctl io booted screenshot "docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/<index>-project-detail-${variant}-${appearance}.png"
+  done
+done
+```
+
+Screenshots:
+
+- `18-project-detail-nil_project-light.png`
+- `19-project-detail-nil_project-dark.png`
+- `20-project-detail-minimal-light.png`
+- `21-project-detail-minimal-dark.png`
+- `22-project-detail-normal-light.png`
+- `23-project-detail-normal-dark.png`
+- `24-project-detail-accepted_insight-light.png`
+- `25-project-detail-accepted_insight-dark.png`
+- `26-project-detail-pending_insight-light.png`
+- `27-project-detail-pending_insight-dark.png`
+- `28-project-detail-merge_history-light.png`
+- `29-project-detail-merge_history-dark.png`
+- `30-project-detail-long_timeline-light.png`
+- `31-project-detail-long_timeline-dark.png`
+- `32-project-detail-long_name-light.png`
+- `33-project-detail-long_name-dark.png`
+- `34-project-detail-sparse_next_bet-light.png`
+- `35-project-detail-sparse_next_bet-dark.png`
+- `36-project-detail-generating_insight-light.png`
+- `37-project-detail-generating_insight-dark.png`
+
+Findings:
+
+- Findings file: `docs/subtasks/049-project-detail-real-simulator-visual-qa-findings.md`
+- Confirmed: status chip still displays English `active`.
+- Confirmed: dark summary surfaces are too close to pure black against the warm dark background.
+- Confirmed: empty thinking-change card still creates visual noise in sparse states.
+- Confirmed: long timeline dominates the first viewport.
+- Confirmed: long title wraps without clipping, but the header becomes visually heavy.
+- Still needs either bottom-scroll evidence or a narrow display-only follow-up for Project Detail bottom spacing around the floating tab bar.
+
+Manager classification:
+
+- Subtask 049 has enough real screenshot evidence to justify a narrow Project Detail display-polish implementation slice.
+- Do not make product-semantic or persistence changes for the follow-up.

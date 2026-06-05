@@ -2,6 +2,41 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 049 Project Detail Fixture Variant Screenshot Matrix
+
+Scope:
+
+- Capture the full Project Detail visual QA fixture matrix on a real iPhone 17 simulator.
+- Use Debug-only fixture variants from Subtask 057.
+- Keep Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, and Keychain unchanged.
+
+Changed areas:
+
+- `docs/subtasks/049-project-detail-real-simulator-visual-qa-findings.md`
+- `docs/subtasks/049-project-detail-real-simulator-visual-qa-progress.md`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/18...37*.png`
+
+Commands run:
+
+```bash
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-fzvxdxbuzzkbvfctglvogodxewmw/Build/Products/Debug-iphonesimulator/MingSi.app
+xcrun simctl ui booted appearance light
+SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL=1 SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT=<variant> xcrun simctl launch --terminate-running-process booted com.codex.mingsi MINGSI_VISUAL_QA_PROJECT_DETAIL
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/<index>-project-detail-<variant>-<appearance>.png
+```
+
+Result:
+
+- Captured 20 screenshots: 10 variants x light/dark.
+- Real screenshots confirm the next Project Detail follow-up should be narrow and display-only.
+- Confirmed risks: English `active` status chip, dark summary surface tonal mismatch, empty thinking-change card noise, long timeline first-viewport dominance, and lower first-viewport content appearing under the floating tab in some states.
+
+Residual risk:
+
+- First-viewport screenshots do not fully verify lower accepted/pending/merge sections.
+- Project Detail bottom-scroll evidence is still missing.
+- The Codex process-tree zombie count remains over the delegation wrapper threshold, so new Claude Code worker launches should wait until resource health recovers.
+
 ## 2026-06-06: Subtask 057 Project Detail Visual QA Fixture Variants
 
 Scope:
