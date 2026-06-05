@@ -1229,6 +1229,7 @@ private struct GrowthContributionListContent: View {
 
 struct ProjectsView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var statusFilter: ProjectStatus?
 
     private var projectItems: [ProjectEvidenceBoardItem] {
         var grouped: [UUID: [(link: ProjectLink, record: HistoryRecord)]] = [:]
@@ -1310,19 +1311,39 @@ struct ProjectsView: View {
 
     @ViewBuilder
     private var projectBoard: some View {
+        let filtered = projectStatusFilteredItems(projectItems, projectsById: store.projectsById, status: statusFilter)
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel("项目工作台")
                 Spacer()
-                Text(projectItems.isEmpty ? "0 个证据项目" : "\(projectItems.count) 个证据项目")
+                Text(projectBoardCountText(filteredCount: filtered.count, totalCount: projectItems.count, filterStatus: statusFilter))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(DS.mutedInk)
             }
 
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    statusFilterChip(label: "全部", isSelected: statusFilter == nil) {
+                        statusFilter = nil
+                    }
+                    ForEach(ProjectStatus.allCases) { status in
+                        statusFilterChip(label: status.chineseTitle, isSelected: statusFilter == status) {
+                            statusFilter = status
+                        }
+                    }
+                }
+            }
+
             if projectItems.isEmpty {
                 ProjectEmptyEvidenceState()
+            } else if filtered.isEmpty {
+                Text("没有匹配「\(statusFilter?.chineseTitle ?? "")」状态的项目。")
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
             } else {
-                ForEach(projectItems) { item in
+                ForEach(filtered) { item in
                     NavigationLink {
                         ProjectDetailView(
                             item: item,
@@ -1335,6 +1356,25 @@ struct ProjectsView: View {
                 }
             }
         }
+    }
+
+    private func statusFilterChip(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.caption.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? DS.accent : DS.mutedInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? DS.accent.opacity(0.12) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(isSelected ? DS.accent.opacity(0.3) : DS.mutedInk.opacity(0.2), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -3072,7 +3112,7 @@ private struct PrincipleArchiveRow: View {
     }
 }
 
-private struct ProjectEvidenceBoardItem: Identifiable {
+struct ProjectEvidenceBoardItem: Identifiable {
     let id: UUID
     let name: String
     let entries: [(link: ProjectLink, record: HistoryRecord)]
@@ -3132,6 +3172,25 @@ private struct ProjectEvidenceBoardItem: Identifiable {
     func record(containing link: ProjectLink) -> HistoryRecord? {
         entries.first { $0.link.id == link.id }?.record
     }
+}
+
+func projectStatusFilteredItems(
+    _ items: [ProjectEvidenceBoardItem],
+    projectsById: [UUID: Project],
+    status: ProjectStatus?
+) -> [ProjectEvidenceBoardItem] {
+    guard let status else { return items }
+    return items.filter { item in
+        guard let project = projectsById[item.id] else { return false }
+        return project.status == status
+    }
+}
+
+func projectBoardCountText(filteredCount: Int, totalCount: Int, filterStatus: ProjectStatus?) -> String {
+    if let filterStatus {
+        return "\(filteredCount) / \(totalCount) 个\(filterStatus.chineseTitle)项目"
+    }
+    return totalCount == 0 ? "0 个证据项目" : "\(totalCount) 个证据项目"
 }
 
 private struct ProjectCurrentFocus: View {
@@ -4049,6 +4108,15 @@ private extension ProjectStatus {
         case .watching: return "watching"
         case .paused: return "paused"
         case .archived: return "archived"
+        }
+    }
+
+    var chineseTitle: String {
+        switch self {
+        case .active: return "活跃"
+        case .watching: return "关注中"
+        case .paused: return "暂停"
+        case .archived: return "已归档"
         }
     }
 }

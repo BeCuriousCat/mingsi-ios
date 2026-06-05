@@ -2,6 +2,70 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-05: Prepared Project Status Filter - Subtask 044
+
+Reason:
+
+- `docs/mvp-stage-progress.md` lists Project top-level status filtering as a current recommended next slice when project count/scanning becomes user-facing.
+- The current Projects top-level board shows all evidence-backed items together while Project Detail and ProjectEditor already expose existing `ProjectStatus` values.
+- This slice is bounded to display-only SwiftUI local state and helper tests. It does not require AppStore orchestration, persistence, migrations, prompt, parser, LLM, Keychain, or Project semantic changes.
+
+Required artifacts:
+
+- PRD: `docs/subtasks/044-project-status-filter-prd.md`
+- Progress: `docs/subtasks/044-project-status-filter-progress.md`
+- Prompt: `docs/subtasks/044-project-status-filter-claude-prompt.md`
+- Expected logs:
+  - `docs/subtasks/logs/044-project-status-filter-events.jsonl`
+  - `docs/subtasks/logs/044-project-status-filter-claude-run.jsonl`
+
+Manager constraints:
+
+- Codex will consume worker progress/HANDOFF first.
+- Raw/event flow logs are diagnostic only.
+- Worker may edit only `Sources/Features/FeatureTabs.swift`, `Tests/Features/HistoryFeatureTests.swift`, and the 044 progress file.
+- Worker may not edit AppStore, persistence, migrations, repositories, PromptProvider, prompt text, parser, LLM clients, Keychain, Today, History behavior outside focused helper/test needs, Growth, Settings, assets, screenshots, or unrelated docs.
+- `议题治理` / merge review availability must remain based on the unfiltered project board count.
+
+Delegation state:
+
+- Completed and Codex-accepted.
+
+Delegation rationale:
+
+- This is a local UI/helper/test slice with explicit acceptance tests and no product-taste or state-machine decisions. Claude Code can implement it in isolation while Codex stays in manager, architecture reviewer, and final verifier role.
+
+Observed result:
+
+- Claude Code launched through `scripts/claude_delegate.sh`.
+- Worker reached `START`, `RED`, `IMPLEMENTED`, `TARGETED_VERIFIED`, and `HANDOFF`.
+- Final worker status: `DONE_WITH_CONCERNS`.
+- Worker concern: `xcodebuild` in the isolated worker checkout was blocked by the known GRDB package dependency error: `invalid custom path 'Tests' for target 'GRDBTests'`.
+- Worker `git diff --check` passed.
+- Worker changed only allowed source/test files plus the 044 progress file.
+
+Codex review:
+
+- Accepted the local status filter, Chinese status chips, helper functions, and focused tests.
+- Accepted making `ProjectEvidenceBoardItem` internal for helper testability.
+- Confirmed `议题治理` / merge review remains based on unfiltered `projectItems`.
+- Rejected any scope expansion into AppStore, persistence, migrations, Project status semantics, prompt, parser, LLM, Keychain, or other tabs.
+- Noted a wrapper follow-up: `status` displayed the template `## HANDOFF` placeholder before real handoff. Codex did not accept it as completion and will handle strict handoff detection separately.
+
+Verification:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- `HistoryFeatureTests` passed: 65 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
 ## 2026-06-05: Direct Framework Fix - Subtask 043 Delegation Status Handoff Summary
 
 Reason:

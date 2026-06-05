@@ -131,6 +131,16 @@ Subtask 043 fixed that delegation framework status follow-up:
 - Flow logs remain diagnostic-only; conclusion progress remains the default manager consumption path.
 - Verification covered wrapper syntax, 042 handoff summary visibility, 042 manager-accepted progress precedence, 029 pending-handoff rejection, and `git diff --check`.
 
+Subtask 044 added Projects top-level status filtering:
+
+- Worker reached `HANDOFF/DONE_WITH_CONCERNS`; the concern was the known GRDB worker-worktree `xcodebuild` issue.
+- Projects top-level board now has local `全部 / 活跃 / 关注中 / 暂停 / 已归档` chips over existing `ProjectStatus` values.
+- Filtering is display-only local `ProjectsView` state and does not change Project semantics, AppStore orchestration, persistence, migrations, prompt, parser, LLM, Keychain, Growth, Settings, or Today behavior.
+- Missing Project metadata remains visible under `全部` and is excluded from concrete status filters.
+- `议题治理` / merge review remains based on unfiltered evidence-backed project count.
+- Codex accepted after focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
+- Pipeline observation: `scripts/claude_delegate.sh status` displayed the template `## HANDOFF` placeholder before real handoff. Codex ignored it for acceptance; treat this as a delegation-wrapper strictness follow-up.
+
 ## Latest Completed Product Evidence
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
@@ -159,11 +169,11 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `042-lens-prompt-context-wiring`
-- PRD: `docs/subtasks/042-lens-prompt-context-wiring-prd.md`
-- Progress: `docs/subtasks/042-lens-prompt-context-wiring-progress.md`
-- Claude prompt: `docs/subtasks/042-lens-prompt-context-wiring-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-042-lens-prompt-context-wiring`
+- Subtask: `044-project-status-filter`
+- PRD: `docs/subtasks/044-project-status-filter-prd.md`
+- Progress: `docs/subtasks/044-project-status-filter-progress.md`
+- Claude prompt: `docs/subtasks/044-project-status-filter-claude-prompt.md`
+- Worker path: `.claude/worktrees/subtask-044-project-status-filter`
 - Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
 
 Latest framework subtask:
@@ -206,8 +216,8 @@ Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
    - Project Detail visual smoke verification and any narrow follow-up from screenshots.
-   - Project top-level status filtering if project count/scanning becomes user-facing.
    - Live GLM failure-path confirmation for History repair.
+   - Delegation wrapper strict handoff detection follow-up for template `## HANDOFF` placeholders.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.
 4. Keep the delegation framework generic:

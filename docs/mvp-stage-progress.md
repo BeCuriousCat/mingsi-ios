@@ -53,6 +53,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 041 Project Detail hierarchy cleanup via Claude Code delegation plus Codex manager fix. Project Detail now avoids placeholder-heavy overview rows, distinguishes insufficient thinking-change evidence from unconfirmed insight candidates, hides empty progress signals, and groups sections into clearer visual tiers without changing Project semantics.
 - Completed Subtask 042 Lens Prompt Context Wiring via Claude Code delegation. Today AI request payloads now use built-in lens catalog prompt ids such as `first_principles` / `leverage_analysis`, while structured context preserves local `ThinkingLens.rawValue` and exposes lens catalog metadata for audit/debugging. Focused `TodayAIServiceContextTests` passed with 16 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Completed Subtask 043 Delegation Status Handoff Summary as a direct framework fix. The wrapper `status` command now surfaces active `HANDOFF` summaries and final status tokens, and prefers manager-side `CODEX_ACCEPTED` progress after Codex acceptance, preserving conclusion-first monitoring without routine raw/event log inspection.
+- Completed Subtask 044 Project Status Filter via Claude Code delegation. Projects top-level board now has local `全部 / 活跃 / 关注中 / 暂停 / 已归档` filtering over existing `ProjectStatus` values, with no AppStore, persistence, migration, prompt, parser, LLM, or Project semantic changes. Focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 
 ## Known Remaining Work
 
@@ -61,15 +62,16 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 3. Historical AI retry UI now exists for History day detail, but still needs live GLM failure-path confirmation.
 4. Lens catalog prompt ids are wired into Today AI prompt payloads for question and quest generation. Later prompt/context work should remain focused and preserve `PromptProvider` / `LLMClient` boundaries.
 5. Claude Code implementation worktrees currently need explicit setup for untracked vendored GRDB test resources before xcodebuild verification can run reliably.
-6. Process files should stay updated after each implementation or delegation slice.
-7. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
+6. Delegation wrapper strict handoff detection needs a follow-up: a template `## HANDOFF` placeholder should not make `status` display an active handoff summary before a final status token exists.
+7. Process files should stay updated after each implementation or delegation slice.
+8. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 
 ## Current Recommended Next Slice
 
-After Subtask 043, the next bounded slice should be chosen from:
+After Subtask 044, the next bounded slice should be chosen from:
 
 - Project Detail visual smoke verification and any narrow follow-up from screenshots.
-- Project top-level status filtering if project count/scanning becomes a user-facing problem.
 - Live GLM failure-path confirmation for History repair.
+- Delegation wrapper strict handoff detection follow-up, because 044 exposed a template `## HANDOFF` placeholder display issue.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability.

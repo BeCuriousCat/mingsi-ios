@@ -968,4 +968,66 @@ final class HistoryFeatureTests: XCTestCase {
         )
         XCTAssertTrue(lines.isEmpty, "should produce no fact lines when all inputs are nil/empty")
     }
+
+    // MARK: - Project status filter helpers
+
+    private func makeBoardItem(id: UUID = UUID()) -> ProjectEvidenceBoardItem {
+        ProjectEvidenceBoardItem(
+            id: id,
+            name: "Test Project",
+            entries: []
+        )
+    }
+
+    func testProjectStatusFilteredItems_nilStatusReturnsAllItems() {
+        let id1 = UUID()
+        let id2 = UUID()
+        let items = [makeBoardItem(id: id1), makeBoardItem(id: id2)]
+        let projectsById: [UUID: Project] = [
+            id1: Project(id: id1, name: "A", goal: "", successCriteria: "", status: .active),
+            id2: Project(id: id2, name: "B", goal: "", successCriteria: "", status: .watching),
+        ]
+
+        let filtered = projectStatusFilteredItems(items, projectsById: projectsById, status: nil)
+
+        XCTAssertEqual(filtered.count, 2, "nil filter should return all items")
+    }
+
+    func testProjectStatusFilteredItems_activeFilterReturnsOnlyActive() {
+        let activeId = UUID()
+        let watchingId = UUID()
+        let items = [makeBoardItem(id: activeId), makeBoardItem(id: watchingId)]
+        let projectsById: [UUID: Project] = [
+            activeId: Project(id: activeId, name: "Active", goal: "", successCriteria: "", status: .active),
+            watchingId: Project(id: watchingId, name: "Watching", goal: "", successCriteria: "", status: .watching),
+        ]
+
+        let filtered = projectStatusFilteredItems(items, projectsById: projectsById, status: .active)
+
+        XCTAssertEqual(filtered.count, 1)
+        XCTAssertEqual(filtered[0].id, activeId)
+    }
+
+    func testProjectStatusFilteredItems_missingProjectPreservedForNil_excludedForConcrete() {
+        let knownId = UUID()
+        let missingId = UUID()
+        let items = [makeBoardItem(id: knownId), makeBoardItem(id: missingId)]
+        let projectsById: [UUID: Project] = [
+            knownId: Project(id: knownId, name: "Known", goal: "", successCriteria: "", status: .active),
+        ]
+
+        let nilFiltered = projectStatusFilteredItems(items, projectsById: projectsById, status: nil)
+        XCTAssertEqual(nilFiltered.count, 2, "nil filter should preserve items missing from projectsById")
+
+        let activeFiltered = projectStatusFilteredItems(items, projectsById: projectsById, status: .active)
+        XCTAssertEqual(activeFiltered.count, 1, "concrete filter should exclude items missing from projectsById")
+        XCTAssertEqual(activeFiltered[0].id, knownId)
+    }
+
+    func testProjectBoardCountText_concreteFilterDistinguishesFilteredFromTotal() {
+        let text = projectBoardCountText(filteredCount: 2, totalCount: 5, filterStatus: .active)
+
+        XCTAssertTrue(text.contains("2"), "should show filtered count")
+        XCTAssertTrue(text.contains("5"), "should show total count")
+    }
 }

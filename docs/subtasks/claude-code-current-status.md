@@ -4,7 +4,23 @@ Last updated: 2026-06-05
 
 ## Current Worker
 
-Status: no active Claude Code worker is running; Subtask 043 is a direct Codex framework fix and is Codex-accepted.
+Status: no active Claude Code worker is running; Subtask 044 is Codex-accepted and verified.
+
+Latest accepted delegated slice:
+
+- Subtask: `044-project-status-filter`
+- Owner: Claude Code implementation candidate, Codex acceptance.
+- PRD file: `docs/subtasks/044-project-status-filter-prd.md`
+- Progress file: `docs/subtasks/044-project-status-filter-progress.md`
+- Claude prompt file: `docs/subtasks/044-project-status-filter-claude-prompt.md`
+- Event log: `docs/subtasks/logs/044-project-status-filter-events.jsonl`
+- Raw log: `docs/subtasks/logs/044-project-status-filter-claude-run.jsonl`
+- Worker path: `.claude/worktrees/subtask-044-project-status-filter`
+- Launch state: completed with `HANDOFF/DONE_WITH_CONCERNS`; Codex accepted after fresh manager verification.
+- Purpose: add display-only Projects top-level status filtering over existing `ProjectStatus` values without changing Project semantics, AppStore orchestration, persistence, migrations, prompts, parsers, or LLM behavior.
+- Manager consumption rule: read worker progress/HANDOFF first; raw/event logs are diagnostic only.
+- Verification: focused `HistoryFeatureTests` passed with 65 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Pipeline note: `status` displayed the template `## HANDOFF` placeholder before real handoff; Codex ignored it for acceptance and recorded it as a separate wrapper strictness follow-up.
 
 Latest framework slice:
 

@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-05: Subtask 044 Project Status Filter
+
+Scope:
+
+- Add display-only status filtering to the Projects top-level board.
+- Expose existing `ProjectStatus` values through local `ProjectsView` state.
+- Preserve Project semantics, AppStore orchestration, persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, Today, History behavior, Growth, and Settings.
+- Accept Claude Code worker output only after `HANDOFF`, then rerun fresh verification in the manager checkout.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/subtasks/044-project-status-filter-*`
+- `docs/subtasks/logs/044-project-status-filter-*`
+- `docs/subtasks/claude-code-current-status.md`
+- `docs/agent-delegation-log.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh prepare 044-project-status-filter docs/subtasks/044-project-status-filter-progress.md
+CLAUDE_DELEGATE_MAX_BUDGET_USD=30.00 scripts/claude_delegate.sh launch 044-project-status-filter docs/subtasks/044-project-status-filter-claude-prompt.md docs/subtasks/044-project-status-filter-progress.md
+scripts/claude_delegate.sh status 044-project-status-filter docs/subtasks/044-project-status-filter-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Claude Code reached `HANDOFF/DONE_WITH_CONCERNS`.
+- Worker `git diff --check` passed; worker `xcodebuild` was blocked by the known GRDB worktree package issue.
+- Codex reran verification in the main checkout.
+- `HistoryFeatureTests` passed: 65 tests, 0 failures.
+- `git diff --check` passed.
+- iPhone 17 simulator build passed.
+
+Residual risk:
+
+- This was build/test verified but not screenshot verified. A later visual smoke pass should inspect Projects with enough active/watching/paused/archived evidence-backed items to confirm chip wrapping and empty filtered state.
+- Delegation wrapper `status` displayed a template `## HANDOFF` placeholder before real handoff; this should be handled as a separate framework follow-up.
+
 ## 2026-06-05: Subtask 043 Delegation Status Handoff Summary
 
 Scope:
