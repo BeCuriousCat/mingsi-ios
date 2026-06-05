@@ -46,6 +46,38 @@ Residual risk:
 - This removes the navigation blocker for Subtask 049 but does not complete the full Project Detail light/dark screenshot matrix.
 - The accepted screenshot confirms the known Subtask 048 status-chip issue: the Project Detail header still displays English `active`.
 
+## 2026-06-06: Subtask 049 Project Detail Current Fixture Dark Screenshot
+
+Scope:
+
+- Capture the current visual QA Project Detail fixture in dark mode after Subtask 056 direct entry.
+- Keep source code unchanged.
+
+Changed areas:
+
+- `docs/subtasks/049-project-detail-real-simulator-visual-qa-progress.md`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/17-project-detail-direct-entry-dark.png`
+
+Commands run:
+
+```bash
+xcrun simctl ui booted appearance dark
+xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/17-project-detail-direct-entry-dark.png
+```
+
+Result:
+
+- Screenshot shows Project Detail (`长期议题`) for `Visual QA - 会议机制优化` in dark mode.
+- Header and top content are below the Dynamic Island/status area.
+- Text is readable in dark mode.
+- The screenshot confirms the existing Subtask 048 concerns: English `active` status chip and a very dark `summarySurface()` against warm dark background.
+
+Residual risk:
+
+- This is only the current fixture top state, not the full Subtask 048 10-state light/dark matrix.
+- Bottom-scroll and lower sections such as accepted/pending insights and merge audit still need dedicated screenshots or fixture/harness support.
+
 ## 2026-06-06: Subtasks 054/055 Project Detail Visual QA Fixture Activation
 
 Scope:

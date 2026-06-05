@@ -164,3 +164,39 @@ Result:
 - The screenshot shows Project Detail (`长期议题`) for `Visual QA - 会议机制优化`, proving the direct-entry navigation blocker is removed.
 - Subtask 049 remains open for the full Subtask 048 Project Detail light/dark screenshot matrix.
 - The screenshot confirms a known Subtask 048 follow-up candidate: Project Detail status chip still displays English `active`.
+
+## Current Fixture Project Detail Light/Dark Top Screens
+
+Timestamp: 2026-06-06
+
+Screenshots:
+
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/16-project-detail-direct-entry-light.png`
+- `docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/17-project-detail-direct-entry-dark.png`
+
+Commands:
+
+```bash
+xcrun simctl ui booted appearance dark
+xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/049-project-detail-real-simulator-visual-qa/17-project-detail-direct-entry-dark.png
+```
+
+Coverage:
+
+- Confirms Project Detail can be captured in both light and dark mode for the current fixture.
+- Current fixture top screen covers a populated active project with overview data, derived progress signals, accepted/pending insight data in the store, and merge history in the store.
+- This does not yet cover the full 10-state Subtask 048 matrix.
+
+Visual observations:
+
+- Header and top content are below the Dynamic Island/status area.
+- Bottom floating tab overlaps the lower edge of the viewport, but the detail page is scrollable; bottom-scroll evidence still needs dedicated screenshots if used for final visual acceptance.
+- The status chip still displays English `active`, confirming Subtask 048 VR-2.
+- Dark mode text is readable, but `summarySurface()` appears close to pure black against the warm dark background, confirming Subtask 048 VR-6 as worth a narrow follow-up after the matrix.
+- `ProjectTinyChip` text/icon contrast is readable in dark mode, though the chip fill is subtle.
+
+Manager classification:
+
+- Existing direct-entry fixture is enough to verify normal populated Project Detail top state in light/dark.
+- Completing the remaining matrix states likely requires a new Debug-only fixture variant selector or screenshot harness; repeated coordinate clicking is not a reliable path because `simctl` has no tap/scroll command and System Events access has already proven unstable.
