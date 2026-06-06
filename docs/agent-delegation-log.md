@@ -2,6 +2,39 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Fresh-Data Alpha Root Visual Pass - Subtask 060
+
+Reason:
+
+- Subtask 059 made root-tab visual QA deterministic, but its Projects screenshot still used a simulator data container containing prior Visual QA project evidence.
+- Alpha visual evidence needs a fresh app-data pass so Projects and History first-view screenshots prove real empty/evidence-gated states instead of old fixture records.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a manager-owned simulator verification and documentation slice, not an implementation task.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 060.
+
+Changed behavior:
+
+- No product behavior changed.
+- No Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, or product semantics changed.
+- The accepted artifact is fresh iPhone 17 screenshot evidence after uninstall/reinstall cleared the app data container.
+
+Verification:
+
+- Debug iPhone 17 simulator build passed before capture.
+- App data was cleared by uninstalling the app before reinstall.
+- 10 fresh-data root-tab screenshots were captured in light/dark mode.
+- Projects root shows `0 个证据项目` and `尚无长期议题证据`, not the prior Visual QA fixture.
+- History root shows no stale Visual QA evidence.
+- Growth and Settings dark screenshots remain readable.
+
+Delegation assessment:
+
+- Direct Codex execution was correct for this slice because the primary work was final simulator evidence capture and acceptance.
+- This closes the Subtask 059 fresh-data residual risk. The next product verification gap is an interactive Today core-loop walkthrough or live GLM failure-path confirmation.
+
 ## 2026-06-06: Alpha Root-Tab Visual Regression - Subtask 059
 
 Reason:

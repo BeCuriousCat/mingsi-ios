@@ -1,6 +1,6 @@
 # MingSi Project Continuation Context
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Current Role Contract
 
@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 038 source/docs and the delegation relaunch guard were committed in the latest local commit.
+At the last recorded check, Subtask 059 was committed in `820e73f Add root tab visual QA selector`, and Subtask 060 fresh-data visual evidence was accepted in the documentation/screenshot record.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -141,7 +141,35 @@ Subtask 044 added Projects top-level status filtering:
 - Codex accepted after focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Pipeline observation: `scripts/claude_delegate.sh status` displayed the template `## HANDOFF` placeholder before real handoff. Codex ignored it for acceptance; treat this as a delegation-wrapper strictness follow-up.
 
+Subtasks 045 through 060 continued Alpha hardening:
+
+- 045 added an extensible lens-library boundary for built-in lenses without changing UI/persistence/prompt semantics.
+- 047 wired first-principles prompt guidance through catalog metadata and existing prompt-context payload boundaries.
+- 046, 051, 052, and 053 hardened the generic Claude delegation wrapper around strict handoff detection, lifecycle cleanup, tmux flag compatibility, and Codex process-tree zombie guards.
+- 048 audited Project Detail visual readiness through Claude Code; 049 captured the Project Detail real simulator matrix.
+- 050, 054, 055, 056, and 057 added Debug-only Project Detail visual QA fixture launch/direct-entry/variant support through delegated slices plus Codex acceptance fixes.
+- 058 polished Project Detail display states directly after delegation resource health blocked worker launch.
+- 059 added a Debug-only root-tab visual QA selector and captured Today, History, Projects, Growth, and Settings in light/dark mode.
+- 060 repeated the root-tab capture after uninstall/reinstall cleared the simulator app data container, confirming Projects and History are not contaminated by prior Visual QA fixture records.
+
 ## Latest Completed Product Evidence
+
+Subtask 060 fresh-data Alpha root visual pass is complete:
+
+- Codex uninstalled/reinstalled the Debug app on the booted iPhone 17 simulator before capture.
+- Real iPhone 17 simulator screenshots cover Today, History, Projects, Growth, and Settings in light/dark modes from a fresh app data container.
+- Projects root shows `0 个证据项目` and `尚无长期议题证据`, not the prior Visual QA fixture.
+- History root shows no stale Visual QA evidence.
+- Growth and Settings dark states remain readable.
+- No Swift source or test files changed.
+
+Subtask 059 Alpha root-tab visual regression is complete:
+
+- Commit: `820e73f Add root tab visual QA selector`.
+- Debug-only root-tab launch selection supports `MINGSI_VISUAL_QA_TAB` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB`.
+- Stale Project Detail marker files no longer hijack root-tab screenshots.
+- Real iPhone 17 simulator screenshots covered Today, History, Projects, Growth, and Settings in light/dark modes.
+- The stale-data residual risk from 059 was closed by Subtask 060.
 
 Subtask 029 safe-area / floating-tab visual acceptance is complete:
 
@@ -169,19 +197,19 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `044-project-status-filter`
-- PRD: `docs/subtasks/044-project-status-filter-prd.md`
-- Progress: `docs/subtasks/044-project-status-filter-progress.md`
-- Claude prompt: `docs/subtasks/044-project-status-filter-claude-prompt.md`
-- Worker path: `.claude/worktrees/subtask-044-project-status-filter`
-- Result: `HANDOFF/DONE_WITH_CONCERNS`, Codex accepted after fresh focused tests, diff check, and iPhone 17 simulator build.
+- Subtask: `060-fresh-data-alpha-root-visual`
+- PRD: `docs/subtasks/060-fresh-data-alpha-root-visual-prd.md`
+- Progress: `docs/subtasks/060-fresh-data-alpha-root-visual-progress.md`
+- Claude prompt: none
+- Worker path: none
+- Result: direct Codex simulator verification accepted after fresh-data iPhone 17 root-tab screenshots.
 
 Latest framework subtask:
 
-- Subtask: `043-delegation-status-handoff-summary`
-- PRD: `docs/subtasks/043-delegation-status-handoff-summary-prd.md`
-- Progress: `docs/subtasks/043-delegation-status-handoff-summary-progress.md`
-- Result: direct Codex wrapper fix, no Claude Code worker launched, Codex accepted after targeted wrapper regression checks.
+- Subtask: `053-delegation-resource-tree-guard`
+- PRD: `docs/subtasks/053-delegation-resource-tree-guard-prd.md`
+- Progress: `docs/subtasks/053-delegation-resource-tree-guard-progress.md`
+- Result: direct Codex wrapper fix; launch/wait now account for Codex process-tree zombie pressure.
 
 ## Subtask 029 Claude Attempts
 
@@ -215,9 +243,9 @@ These attempts are historical evidence only. Do not reuse the broad 029 prompt p
 Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
-   - Project Detail visual smoke verification and any narrow follow-up from screenshots.
    - Live GLM failure-path confirmation for History repair.
-   - Delegation wrapper strict handoff detection follow-up for template `## HANDOFF` placeholders.
+   - Interactive Today core-loop walkthrough on iPhone 17.
+   - Delegation worker-launch reliability hardening if Claude Code resource health still blocks useful worker runs.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.
 4. Keep the delegation framework generic:

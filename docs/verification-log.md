@@ -2,6 +2,62 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 060 Fresh-Data Alpha Root Visual Pass
+
+Scope:
+
+- Repeat the Subtask 059 root-tab Alpha visual pass after clearing the booted iPhone 17 simulator app data container.
+- Verify Today, History, Projects, Growth, and Settings first-viewport visuals from a freshly reinstalled Debug app.
+- Close the Subtask 059 residual risk that Projects/History screenshots contained prior visual QA fixture evidence.
+- Keep Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and product semantics unchanged.
+
+Changed areas:
+
+- `docs/subtasks/060-fresh-data-alpha-root-visual-prd.md`
+- `docs/subtasks/060-fresh-data-alpha-root-visual-progress.md`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/*.png`
+- Process docs for stage progress, verification, delegation, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=<tab> xcrun simctl launch --terminate-running-process booted com.codex.mingsi MINGSI_VISUAL_QA_TAB
+xcrun simctl io booted screenshot docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/<index>-<tab>-<appearance>.png
+```
+
+Result:
+
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- App data was cleared by uninstalling the app before reinstall.
+- Captured 10 fresh-data root-tab screenshots for Today, History, Projects, Growth, and Settings in light/dark mode.
+- Projects root shows a clean evidence-gated state with `0 个证据项目` and `尚无长期议题证据`; no prior `Visual QA` fixture project remains.
+- History root shows the current date with no stale visual QA evidence.
+- Growth dark mode remains readable and evidence-gated.
+- Settings dark mode remains readable and shows the fresh-state AI audit copy `还没有 AI 调用记录。`
+
+Screenshots:
+
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/01-today-light.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/02-history-light.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/03-projects-light.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/04-growth-light.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/05-settings-light.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/06-today-dark.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/07-history-dark.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/08-projects-dark.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/09-growth-dark.png`
+- `docs/subtasks/screenshots/060-fresh-data-alpha-root-visual/10-settings-dark.png`
+
+Residual risk:
+
+- This is first-viewport visual evidence only; it does not replace a complete interactive Today core-loop walkthrough.
+- Live GLM failure/retry confirmation remains a separate MVP hardening slice.
+- Growth/Settings bottom-scroll evidence was not repeated in this fresh-data pass because the shared scroll reserve was already accepted in Subtask 029.
+
 ## 2026-06-06: Subtask 059 Alpha Root-Tab Visual Regression
 
 Scope:

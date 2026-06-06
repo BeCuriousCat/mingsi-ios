@@ -8,6 +8,22 @@ Status: no active Claude Code worker.
 
 Latest direct Codex acceptance:
 
+- Subtask: `060-fresh-data-alpha-root-visual`
+- Owner: Codex direct simulator verification and final acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/060-fresh-data-alpha-root-visual-prd.md`
+- Progress file: `docs/subtasks/060-fresh-data-alpha-root-visual-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: close the Subtask 059 residual risk by repeating root-tab visual capture after uninstalling/reinstalling the app on the booted iPhone 17 simulator.
+- Allowed files: 060 docs, 060 screenshots, and process docs only.
+- Launch state: no Claude Code worker launched because this was a manager-owned simulator verification/documentation slice.
+- Codex acceptance: accepted after fresh screenshot review confirmed Projects/History no longer contain prior Visual QA fixture evidence and Growth/Settings dark states remain readable.
+- Verification: Debug iPhone 17 simulator build passed before capture; 10 light/dark root-tab screenshots were captured after app data was cleared; no source or test files changed.
+- Residual risk: this does not replace an interactive Today core-loop walkthrough or live GLM failure-path verification.
+
+Previous direct Codex acceptance:
+
 - Subtask: `059-alpha-core-visual-regression`
 - Owner: Codex direct implementation and final acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/059-alpha-core-visual-regression-prd.md`
@@ -20,7 +36,7 @@ Latest direct Codex acceptance:
 - Launch state: no Claude Code worker launched because the user requested fast local implementation only and the slice was a small Debug-only visual QA harness.
 - Codex acceptance: accepted after Debug build, real iPhone 17 screenshot review, focused AppStore tests, diff check, and Release build.
 - Verification: `AppStoreStateMachineTests` passed with 162 tests and 0 failures; `git diff --check` passed; iPhone 17 Release simulator build passed.
-- Residual risk: Projects root screenshots used the current booted simulator data container, which still has prior visual QA project evidence. Repeat with erased app data before final fresh-user Alpha visual acceptance.
+- Residual risk: stale fixture data risk was closed by Subtask 060 fresh-data screenshots.
 
 Latest direct Codex acceptance after delegation guard:
 
