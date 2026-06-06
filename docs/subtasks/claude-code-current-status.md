@@ -1,12 +1,28 @@
 # Claude Code Current Status
 
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 ## Current Worker
 
 Status: no active Claude Code worker.
 
-Latest direct Codex partial acceptance:
+Latest direct Codex implementation acceptance:
+
+- Subtask: `066-today-session-complete-history-seed`
+- Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/066-today-session-complete-history-seed-prd.md`
+- Progress file: `docs/subtasks/066-today-session-complete-history-seed-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: add a Debug-only `session_complete` Today stage seed so rendered iPhone 17 verification can show Today completion and History archive evidence without relying on brittle host Simulator clicks.
+- Allowed files: `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, 066 docs, 066 screenshots, and process docs.
+- Launch state: no Claude Code worker launched because this was a small Debug-only visual QA harness plus manager-owned simulator acceptance slice.
+- Codex acceptance: accepted as Debug-only visual QA scaffolding after Today `SessionComplete` and History archive screenshots rendered on a real iPhone 17 simulator.
+- Verification: focused RED/GREEN test passed; full `AppStoreStateMachineTests` passed with 173 tests and 0 failures; `git diff --check` passed; Debug and Release iPhone 17 simulator builds passed; screenshots captured under `docs/subtasks/screenshots/066-today-session-complete-history-seed/`.
+- Residual risk: this does not prove live GLM success or production SQLite persistence through the real Today completion path. It seeds an in-memory History record for deterministic visual QA.
+
+Previous direct Codex partial acceptance:
 
 - Subtask: `065-today-completion-history-archive-walkthrough`
 - Owner: Codex direct simulator verification and partial acceptance; Claude Code not launched.

@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 064 Today Debug Stage Seed was committed in `609f631 Add debug Today stage seed`, and Subtask 065 Today Completion And History Archive Walkthrough is being accepted as a documentation-only partial verification record.
+At the last recorded check, Subtask 065 Today Completion And History Archive Walkthrough was committed in `75548c9 Record today completion walkthrough blocker`, and Subtask 066 Today Session Complete History Seed is accepted as a Debug-only implementation and simulator-verification slice.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -156,8 +156,19 @@ Subtasks 045 through 062 continued Alpha hardening:
 - 063 used that seed path to continue rendered iPhone 17 Today verification after `思考卡片`. It proved ReviewCards is reachable, but card-level confirmation cannot yet be reliably driven through host Simulator coordinate/accessibility automation. This is a rendered verification blocker, not an accepted AppStore state-machine bug.
 - 064 added a Debug-only Today stage seed so iPhone 17 visual QA can launch directly into `select_lens`, `answer_questions`, `review_quests`, or `extract_principle` using existing local fallback helpers and explicit fallback messaging. Focused tests, full AppStore state-machine tests, Debug/Release builds, `git diff --check`, and real screenshots passed.
 - 065 used the 064 `extract_principle` stage seed to attempt rendered completion into `SessionComplete` and History archive verification. It proved `ExtractPrinciple` can render from the Debug stage seed after relaunch, but host Simulator automation could not reliably click `保存原则` (`System Events` error `-25208`, no usable Simulator windows), so session completion and History archive screenshots remain open.
+- 066 added a Debug-only `session_complete` Today stage seed and allowed Today visual QA launches to honor `MINGSI_VISUAL_QA_TAB=history`. It seeds a completed local-fallback loop and an in-memory History evidence record containing raw input, confirmed cards, lens questions, quests, and a principle candidate. Focused RED/GREEN, full AppStore state-machine tests, Debug/Release builds, `git diff --check`, and real iPhone 17 screenshots passed.
 
 ## Latest Product Evidence
+
+Subtask 066 Today Session Complete History Seed is complete:
+
+- Debug launches now support `MINGSI_VISUAL_QA_TODAY_STAGE=session_complete` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=session_complete`.
+- The complete seed still requires non-empty Today visual QA input and uses existing local fallback helpers.
+- Explicit History tab selection is honored, so rendered History archive verification no longer depends on Simulator coordinate clicks.
+- The seeded History record exposes raw input, 3 confirmed cards, first-principles lens questions with an answer, 2 quests, and 1 principle candidate.
+- The visible Debug/local fallback copy remains clear that this is not AI success.
+- Focused RED/GREEN test passed; full `AppStoreStateMachineTests` passed with 173 tests and 0 failures; `git diff --check`, Debug build, Release build, and real iPhone 17 screenshots passed.
+- Residual risk: this is a deterministic in-memory Debug visual QA accelerator, not live GLM proof or full production persistence proof.
 
 Subtask 065 Today Completion And History Archive Walkthrough is partially accepted:
 

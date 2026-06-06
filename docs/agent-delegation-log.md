@@ -2,6 +2,41 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-07: Today Session Complete History Seed - Subtask 066
+
+Reason:
+
+- Subtask 065 proved `ExtractPrinciple` can render from the Debug stage seed, but host Simulator automation could not click `保存原则`.
+- Alpha hardening still needed rendered iPhone 17 evidence for Today `SessionComplete` and History archive first viewport.
+- A narrow Debug-only state seed was the lowest-risk way to continue visual verification without adding UI test infrastructure or relying on macOS coordinate clicks.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a small Debug-only visual QA harness plus manager-owned simulator acceptance slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 066.
+
+Changed behavior:
+
+- Debug launches with a non-empty Today visual QA input can now specify `MINGSI_VISUAL_QA_TODAY_STAGE=session_complete` or `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=session_complete`.
+- The seeded state uses existing local fallback helpers, sets Today to `SessionComplete`, and seeds an in-memory History evidence record containing raw input, confirmed cards, first-principles lens questions with an answer, quests, and a principle candidate.
+- Today visual QA seed now honors explicit `MINGSI_VISUAL_QA_TAB=history` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=history` instead of forcing Today.
+- Visible fallback copy remains explicit that this is Debug/local fallback, not AI success.
+
+Verification:
+
+- Focused RED test failed for the expected reasons before implementation: `session_complete` fell back to `capture`, selected tab stayed `today`, and History had no record.
+- Focused GREEN test passed after implementation.
+- Full `AppStoreStateMachineTests` passed with 173 tests and 0 failures.
+- `git diff --check` passed.
+- Debug and Release iPhone 17 simulator builds passed.
+- Real iPhone 17 simulator screenshots captured Today `SessionComplete` and History archive first viewport.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because the work was a tiny Debug-only visual QA hook plus final simulator acceptance.
+- This does not prove live GLM success or production SQLite persistence. The next product slice should prove the real Today completion path persists raw input, confirmed cards, lens questions, quests, and principles into History through repositories.
+
 ## 2026-06-06: Today Completion And History Archive Walkthrough Partial Verification - Subtask 065
 
 Reason:

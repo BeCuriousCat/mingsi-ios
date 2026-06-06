@@ -286,6 +286,7 @@ final class AppStore: ObservableObject {
         case answerQuestions = "answer_questions"
         case reviewQuests = "review_quests"
         case extractPrinciple = "extract_principle"
+        case sessionComplete = "session_complete"
 
         var label: String {
             switch self {
@@ -301,6 +302,8 @@ final class AppStore: ObservableObject {
                 return DailyLoopState.reviewQuests.title
             case .extractPrinciple:
                 return DailyLoopState.extractPrinciple.title
+            case .sessionComplete:
+                return DailyLoopState.sessionComplete.title
             }
         }
     }
@@ -325,7 +328,7 @@ final class AppStore: ObservableObject {
             return
         }
 
-        selectedTab = .today
+        selectedTab = Self.resolveVisualQATab(environment: environment) ?? .today
         todayDraft.rawText = seedInput
         todayDraft.sessionMode = Self.resolveVisualQATodayMode(environment: environment)
         todayDraft.hasSelectedSessionMode = true
@@ -370,6 +373,14 @@ final class AppStore: ObservableObject {
             activateVisualQAMainQuest()
             generateLocalPrinciple()
             todayDraft.state = .extractPrinciple
+
+        case .sessionComplete:
+            seedVisualQAQuestions(from: input, answered: true)
+            generateLocalQuests()
+            activateVisualQAMainQuest()
+            generateLocalPrinciple()
+            todayDraft.state = .sessionComplete
+            historyRecords = [currentHistoryRecord]
         }
 
         markVisualQATodayStageFallback(stage)

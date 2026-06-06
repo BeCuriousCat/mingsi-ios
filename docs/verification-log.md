@@ -2,6 +2,62 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-07: Subtask 066 Today Session Complete History Seed
+
+Scope:
+
+- Add a Debug-only `session_complete` Today stage seed so rendered iPhone 17 visual QA can reach Today `SessionComplete` and History archive evidence without host coordinate clicks.
+- Keep Release behavior, persistence schema, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, and production Today semantics unchanged.
+- Verify that the Debug-seeded History archive exposes raw input, confirmed cards, first-principles lens questions, quests, and a principle candidate while visibly marking local fallback.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/066-today-session-complete-history-seed-prd.md`
+- `docs/subtasks/066-today-session-complete-history-seed-progress.md`
+- `docs/subtasks/screenshots/066-today-session-complete-history-seed/*.png`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_sessionCompleteSeedsHistoryArchiveAndHonorsHistoryTab test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天要把会议目标拆成一个可以明天验证的行动，并沉淀一个可复用原则。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=session_complete SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/066-today-session-complete-history-seed/01-today-session-complete.png
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天要把会议目标拆成一个可以明天验证的行动，并沉淀一个可复用原则。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=session_complete SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=history xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/066-today-session-complete-history-seed/02-history-archive.png
+```
+
+Result:
+
+- RED focused test failed for the expected reasons before implementation: selected tab stayed `today`, Today state stayed `capture`, and History had no seeded record.
+- GREEN focused test passed after implementation.
+- Full `AppStoreStateMachineTests` passed with 173 tests and 0 failures.
+- `git diff --check`: exit 0, no output.
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Release iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Today screenshot shows `今日完成`, local fallback copy, main quest, principle, growth snapshot, and no floating-tab overlap.
+- History screenshot shows the seeded completed record summary with raw input evidence and source card evidence visible.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/066-today-session-complete-history-seed/01-today-session-complete.png`
+- `docs/subtasks/screenshots/066-today-session-complete-history-seed/02-history-archive.png`
+
+Residual risk:
+
+- This is a Debug-only deterministic visual QA accelerator.
+- It does not prove live GLM success.
+- It does not prove production SQLite persistence through the real Today completion path; that remains the recommended next product slice.
+
 ## 2026-06-06: Subtask 065 Today Completion And History Archive Walkthrough Partial Verification
 
 Scope:

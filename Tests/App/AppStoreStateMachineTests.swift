@@ -3130,6 +3130,35 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
     }
 
+    func testVisualQATodayStageSeed_sessionCompleteSeedsHistoryArchiveAndHonorsHistoryTab() throws {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天要把闭环结果归档到历史证据里。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "session_complete",
+                "MINGSI_VISUAL_QA_TAB": "history"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .history)
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+        XCTAssertEqual(store.todayDraft.rawText, "今天要把闭环结果归档到历史证据里。")
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+
+        let record = try XCTUnwrap(store.historyRecords.first)
+        XCTAssertEqual(record.draft.id, store.todayDraft.id)
+        XCTAssertEqual(record.draft.state, .sessionComplete)
+        XCTAssertEqual(record.draft.rawText, store.todayDraft.rawText)
+        XCTAssertTrue(record.hasCardEvidence)
+        XCTAssertTrue(record.confirmedCards.allSatisfy(\.isConfirmed))
+        XCTAssertNotNil(record.lensSession)
+        XCTAssertTrue(record.lensSession?.questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } == true)
+        XCTAssertNotNil(record.mainQuest)
+        XCTAssertFalse(record.principles.isEmpty)
+        XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
+    }
+
     // MARK: - Visual QA Direct Entry
 
     func testVisualQAProjectDetailFixture_hasDirectEntryProjectID() {
