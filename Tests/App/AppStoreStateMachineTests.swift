@@ -4160,6 +4160,54 @@ extension AppStoreStateMachineTests {
         }
     }
 
+    // MARK: - Project Detail Display Helpers
+
+    func testProjectDetailStatusChipText_usesChineseStatusAndFallback() {
+        XCTAssertEqual(projectDetailStatusChipText(for: .active), "活跃")
+        XCTAssertEqual(projectDetailStatusChipText(for: .watching), "关注中")
+        XCTAssertEqual(projectDetailStatusChipText(for: .paused), "暂停")
+        XCTAssertEqual(projectDetailStatusChipText(for: .archived), "已归档")
+        XCTAssertEqual(projectDetailStatusChipText(for: nil), "活跃")
+    }
+
+    func testProjectDetailThinkingChangeVisibility_requiresAcceptedInsightOrBeforeAfterEvidence() {
+        XCTAssertFalse(
+            shouldShowProjectDetailThinkingChange(
+                hasBeforeAfterEvidence: false,
+                acceptedInsightCount: 0
+            )
+        )
+        XCTAssertTrue(
+            shouldShowProjectDetailThinkingChange(
+                hasBeforeAfterEvidence: true,
+                acceptedInsightCount: 0
+            )
+        )
+        XCTAssertTrue(
+            shouldShowProjectDetailThinkingChange(
+                hasBeforeAfterEvidence: false,
+                acceptedInsightCount: 1
+            )
+        )
+    }
+
+    func testProjectDetailTimelineDisplay_boundsLongTimelineUntilExpanded() {
+        XCTAssertEqual(projectDetailTimelineVisibleCount(totalCount: 10, isExpanded: false), 5)
+        XCTAssertEqual(projectDetailTimelineVisibleCount(totalCount: 10, isExpanded: true), 10)
+        XCTAssertEqual(projectDetailTimelineVisibleCount(totalCount: 3, isExpanded: false), 3)
+        XCTAssertEqual(projectDetailTimelineToggleTitle(totalCount: 10, isExpanded: false), "查看全部 10 条证据")
+        XCTAssertEqual(projectDetailTimelineToggleTitle(totalCount: 10, isExpanded: true), "收起证据")
+        XCTAssertNil(projectDetailTimelineToggleTitle(totalCount: 5, isExpanded: false))
+    }
+
+    func testProjectDetailProgressSignalDisplay_boundsLongSignalsUntilExpanded() {
+        XCTAssertEqual(projectDetailTimelineVisibleCount(totalCount: 10, isExpanded: false, collapsedLimit: 2), 2)
+        XCTAssertEqual(projectDetailTimelineVisibleCount(totalCount: 10, isExpanded: true, collapsedLimit: 2), 10)
+        XCTAssertEqual(projectDetailProgressSignalsToggleTitle(totalCount: 10, isExpanded: false), "查看全部 10 条进展")
+        XCTAssertEqual(projectDetailProgressSignalsToggleTitle(totalCount: 10, isExpanded: true), "收起进展")
+        XCTAssertNil(projectDetailProgressSignalsToggleTitle(totalCount: 2, isExpanded: false))
+    }
+
     // MARK: - Variant-Specific Shape Tests
 
     func testVariant_nilProject_hasNoPersistedProject() {

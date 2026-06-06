@@ -3365,6 +3365,8 @@ private struct ProjectDetailView: View {
     let item: ProjectEvidenceBoardItem
     let project: Project?
     @State private var isEditorPresented = false
+    @State private var isProgressSignalsExpanded = false
+    @State private var isEvidenceTimelineExpanded = false
 
     private var digest: ProjectEvidenceDigest {
         item.digest
@@ -3389,7 +3391,7 @@ private struct ProjectDetailView: View {
             }
             .padding(.horizontal, DS.pagePadding)
             .padding(.top, 18)
-            .padding(.bottom, 96)
+            .padding(.bottom, DS.primaryScrollBottomReserve)
         }
         .background(DS.background.ignoresSafeArea())
         .navigationTitle("长期议题")
@@ -3428,7 +3430,7 @@ private struct ProjectDetailView: View {
                         .foregroundStyle(DS.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
-                        ProjectTinyChip(text: project?.status.title ?? "active", systemImage: "circle.dashed")
+                        ProjectTinyChip(text: projectDetailStatusChipText(for: project?.status), systemImage: "circle.dashed")
                         ProjectTinyChip(text: "\(item.evidenceCount) 条证据", systemImage: "number")
                         ProjectTinyChip(text: item.latestDate.mingsiShortDate, systemImage: "calendar")
                     }
@@ -3454,7 +3456,7 @@ private struct ProjectDetailView: View {
                     ProjectDetailFactLine(title: line.title, value: line.value)
                 }
             }
-            .summarySurface()
+            .projectDetailSurface()
         }
     }
 
@@ -3470,7 +3472,7 @@ private struct ProjectDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .summarySurface()
+            .projectDetailSurface()
         }
     }
 
@@ -3549,15 +3551,21 @@ private struct ProjectDetailView: View {
                 ProjectInsightNote(message: "还没有经过确认的项目洞察。先积累并确认几条项目证据，再让 AI 提出候选。")
             }
         }
-        .summarySurface()
+        .projectDetailSurface()
     }
 
     @ViewBuilder
     private var progressSignalsSection: some View {
-        if !digest.progressSignals.isEmpty {
+        let totalCount = digest.progressSignals.count
+        let visibleCount = projectDetailTimelineVisibleCount(
+            totalCount: totalCount,
+            isExpanded: isProgressSignalsExpanded,
+            collapsedLimit: 2
+        )
+        if totalCount > 0 {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel("进展信号")
-                ForEach(digest.progressSignals.prefix(5)) { signal in
+                ForEach(Array(digest.progressSignals.prefix(visibleCount))) { signal in
                     Button {
                         store.navigateToHistoryDeepLink(
                             HistoryDeepLink(
@@ -3571,29 +3579,69 @@ private struct ProjectDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                if let toggleTitle = projectDetailProgressSignalsToggleTitle(
+                    totalCount: totalCount,
+                    isExpanded: isProgressSignalsExpanded,
+                    collapsedLimit: 2
+                ) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isProgressSignalsExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(toggleTitle)
+                                .font(.caption.weight(.semibold))
+                            Image(systemName: isProgressSignalsExpanded ? "chevron.up" : "chevron.down")
+                                .font(.caption2.weight(.bold))
+                        }
+                        .foregroundStyle(DS.accent)
+                        .padding(.top, 2)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .summarySurface()
+            .projectDetailSurface()
         }
     }
 
+    @ViewBuilder
     private var thinkingChangeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel("思考变化")
-            Text(projectThinkingChangeHeadline(hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence))
-                .font(.headline)
-                .foregroundStyle(DS.ink)
-            Text(projectThinkingChangeBody(hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence))
-                .font(.subheadline)
-                .foregroundStyle(DS.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
+        let acceptedInsightCount = store.acceptedProjectInsights.filter { $0.projectId == item.id }.count
+        if shouldShowProjectDetailThinkingChange(
+            hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
+            acceptedInsightCount: acceptedInsightCount
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel("思考变化")
+                Text(projectThinkingChangeHeadline(
+                    hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
+                    acceptedInsightCount: acceptedInsightCount
+                ))
+                    .font(.headline)
+                    .foregroundStyle(DS.ink)
+                Text(projectThinkingChangeBody(
+                    hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
+                    acceptedInsightCount: acceptedInsightCount
+                ))
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .projectDetailSurface()
         }
-        .summarySurface()
     }
 
+    @ViewBuilder
     private var evidenceTimeline: some View {
+        let totalCount = item.sortedEntries.count
+        let visibleCount = projectDetailTimelineVisibleCount(
+            totalCount: totalCount,
+            isExpanded: isEvidenceTimelineExpanded
+        )
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel("Evidence Timeline")
-            ForEach(item.sortedEntries, id: \.link.id) { entry in
+            ForEach(Array(item.sortedEntries.prefix(visibleCount)), id: \.link.id) { entry in
                 Button {
                     store.navigateToHistoryDeepLink(
                         HistoryDeepLink(
@@ -3607,7 +3655,38 @@ private struct ProjectDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if let toggleTitle = projectDetailTimelineToggleTitle(
+                totalCount: totalCount,
+                isExpanded: isEvidenceTimelineExpanded
+            ) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isEvidenceTimelineExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(toggleTitle)
+                            .font(.caption.weight(.semibold))
+                        Image(systemName: isEvidenceTimelineExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(DS.accent)
+                    .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
+            }
         }
+    }
+}
+
+private extension View {
+    func projectDetailSurface() -> some View {
+        padding(DS.cardInnerPadding)
+            .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                    .stroke(DS.hairline, lineWidth: 1)
+            )
     }
 }
 
@@ -5221,6 +5300,46 @@ func projectThinkingChangeBody(hasBeforeAfterEvidence: Bool) -> String {
     hasBeforeAfterEvidence
         ? "已有多条项目证据，可以生成候选洞察；在你确认之前，明思不会自动写入思考变化叙事。"
         : "当前只有零散项目证据。没有 before / after 来源时，不生成项目洞察，也不编造思考变化。"
+}
+
+func projectDetailStatusChipText(for status: ProjectStatus?) -> String {
+    status?.chineseTitle ?? "活跃"
+}
+
+func shouldShowProjectDetailThinkingChange(hasBeforeAfterEvidence: Bool, acceptedInsightCount: Int) -> Bool {
+    hasBeforeAfterEvidence || acceptedInsightCount > 0
+}
+
+func projectThinkingChangeHeadline(hasBeforeAfterEvidence: Bool, acceptedInsightCount: Int) -> String {
+    if hasBeforeAfterEvidence {
+        return "等待确认洞察"
+    }
+    return acceptedInsightCount > 0 ? "已确认洞察" : "证据不足"
+}
+
+func projectThinkingChangeBody(hasBeforeAfterEvidence: Bool, acceptedInsightCount: Int) -> String {
+    if hasBeforeAfterEvidence {
+        return "已有多条项目证据，可以生成候选洞察；在你确认之前，明思不会自动写入思考变化叙事。"
+    }
+    if acceptedInsightCount > 0 {
+        return "已确认项目洞察保留在上方。没有 before / after 来源时，明思不会把它改写成思考变化叙事。"
+    }
+    return "当前只有零散项目证据。没有 before / after 来源时，不生成项目洞察，也不编造思考变化。"
+}
+
+func projectDetailTimelineVisibleCount(totalCount: Int, isExpanded: Bool, collapsedLimit: Int = 5) -> Int {
+    guard totalCount > 0 else { return 0 }
+    return isExpanded ? totalCount : min(totalCount, collapsedLimit)
+}
+
+func projectDetailTimelineToggleTitle(totalCount: Int, isExpanded: Bool, collapsedLimit: Int = 5) -> String? {
+    guard totalCount > collapsedLimit else { return nil }
+    return isExpanded ? "收起证据" : "查看全部 \(totalCount) 条证据"
+}
+
+func projectDetailProgressSignalsToggleTitle(totalCount: Int, isExpanded: Bool, collapsedLimit: Int = 2) -> String? {
+    guard totalCount > collapsedLimit else { return nil }
+    return isExpanded ? "收起进展" : "查看全部 \(totalCount) 条进展"
 }
 
 struct ProjectMergeCandidateReviewRow: View {

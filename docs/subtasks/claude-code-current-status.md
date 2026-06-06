@@ -6,10 +6,10 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
-Prepared but not launched:
+Latest direct Codex acceptance after delegation guard:
 
 - Subtask: `058-project-detail-display-polish`
-- Owner: pending Claude Code implementation candidate, Codex final acceptance.
+- Owner: Codex direct implementation and final acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/058-project-detail-display-polish-prd.md`
 - Progress file: `docs/subtasks/058-project-detail-display-polish-progress.md`
 - Claude prompt file: `docs/subtasks/058-project-detail-display-polish-claude-prompt.md`
@@ -19,7 +19,10 @@ Prepared but not launched:
 - Allowed files: `Sources/Features/FeatureTabs.swift`, `Sources/DesignSystem/Theme.swift` only if strictly needed, and one focused test file only if needed.
 - Launch state: not launched because wrapper health reports Codex process-tree zombies above threshold.
 - Resource state at preparation: `codex_tree_zombies=23/20`, `total_zombies=25/80`; no active worker process.
-- Manager decision: do not start a new Claude Code worker until resource health recovers.
+- Resource state at acceptance: `codex_direct_zombies=53/20`, `codex_tree_zombies=53/20`, `total_zombies=55/80`; no active worker process.
+- Codex acceptance: accepted after direct manager implementation, screenshot review, focused AppStore tests, diff check, and iPhone 17 Release build.
+- Verification: `AppStoreStateMachineTests` passed with 157 tests and 0 failures; `git diff --check` passed; iPhone 17 Release simulator build passed.
+- Manager decision: do not start a new Claude Code worker until resource health recovers or worker supervision is moved outside the Codex parent process.
 
 Latest accepted delegated implementation slice:
 

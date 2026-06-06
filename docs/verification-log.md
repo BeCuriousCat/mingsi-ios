@@ -2,6 +2,53 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 058 Project Detail Display Polish
+
+Scope:
+
+- Accept display-only Project Detail fixes based on Subtask 049 real iPhone 17 findings.
+- Keep AppStore orchestration, persistence, migrations, repositories, PromptProvider, parser, LLM clients, Keychain, and Project semantics unchanged.
+- Record that Claude Code was not launched because the delegation resource guard blocked new workers.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/058-project-detail-display-polish-progress.md`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/*.png`
+- Process docs for stage progress, verification, delegation, and current Claude status.
+
+Commands run:
+
+```bash
+scripts/claude_delegate.sh health 058-project-detail-display-polish docs/subtasks/058-project-detail-display-polish-progress.md
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Delegation health blocked worker launch: `codex_direct_zombies=53/20`, `codex_tree_zombies=53/20`, `total_zombies=55/80`, `active_processes=0`.
+- `AppStoreStateMachineTests`: passed with 157 tests and 0 failures.
+- `git diff --check`: passed.
+- iPhone 17 Release simulator build: `BUILD SUCCEEDED`.
+- Screenshot review accepted Chinese Project status labels, readable dark Project Detail surfaces, collapsed long progress signals, and hidden empty thinking-change card states.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/058-project-detail-display-polish/01-project-detail-normal-light.png`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/02-project-detail-normal-dark.png`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/03-project-detail-long_timeline-light.png`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/04-project-detail-long_timeline-dark.png`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/05-project-detail-sparse_next_bet-light.png`
+- `docs/subtasks/screenshots/058-project-detail-display-polish/06-project-detail-sparse_next_bet-dark.png`
+
+Residual risk:
+
+- Dedicated bottom-scroll Project Detail screenshot evidence is still missing; implementation uses the shared `DS.primaryScrollBottomReserve`.
+- New Claude Code launches remain blocked until the Codex process-tree zombie pressure clears or delegation is moved behind a safer supervisor.
+
 ## 2026-06-06: Subtask 049 Project Detail Fixture Variant Screenshot Matrix
 
 Scope:
