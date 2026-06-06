@@ -909,6 +909,197 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(record.sourceIds.contains(completedEntryID.uuidString))
     }
 
+    func testProductionTodayEvidence_canBackProjectLinkAndGrowthContributionsThroughHistoryReload() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let cardRepo = SQLiteThinkingCardRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let lensRepo = SQLiteLensSessionRepository(database: database)
+        let projectRepo = SQLiteProjectRepository(database: database)
+        let projectLinkRepo = SQLiteProjectLinkRepository(database: database)
+        let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+
+        func seedVerifiedLoop(daysAgo: Int, title: String, completion: YesterdayCompletion, value: YesterdayValueRating) async throws {
+            let entry = DailyEntryDraft(
+                date: Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date(),
+                rawText: "Historical verified loop \(daysAgo)",
+                sessionMode: .standard,
+                hasSelectedSessionMode: true,
+                selectedLens: .evidenceCheck,
+                state: .sessionComplete
+            )
+            try await dailyRepo.saveDraft(entry)
+
+            let quest = Quest(
+                type: .main,
+                title: title,
+                whyItMatters: "Historical evidence matters.",
+                completionCriteria: "A visible result exists.",
+                expectedResistance: "Interruptions",
+                reflectionQuestion: "What changed?",
+                status: completion == .done ? .completed : .failed
+            )
+            try await questRepo.saveQuest(quest, sourceDailyEntryId: entry.id)
+            try await verificationRepo.saveVerification(
+                Verification(
+                    questId: quest.id,
+                    questTitle: quest.title,
+                    sourceDailyEntryId: entry.id,
+                    completion: completion,
+                    valueRating: value,
+                    calibrationNote: "Historical calibration \(daysAgo)"
+                )
+            )
+            try await lensRepo.saveLensSession(
+                LensSession(
+                    dailyEntryId: entry.id,
+                    selectedLens: .evidenceCheck,
+                    questions: [
+                        ReflectionQuestion(
+                            question: "What evidence supports this?",
+                            whyItMatters: "It keeps Growth attribution evidence-backed.",
+                            answer: "A concrete result was checked."
+                        )
+                    ]
+                )
+            )
+        }
+
+        try await seedVerifiedLoop(daysAgo: 2, title: "Verify historical quality gate", completion: .done, value: .high)
+        try await seedVerifiedLoop(daysAgo: 1, title: "Reduce historical ambiguity", completion: .missed, value: .low)
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            lensSessionRepository: lensRepo,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let rawInput = "今天要把生产历史证据继续回链到长期议题和成长归因，而不是只停在历史列表里。"
+
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+        store.submitTodayStep()
+        try await waitForState(.capture)
+
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture(rawInput)
+        store.submitTodayStep()
+        try await waitForGeneratedCards()
+
+        store.submitTodayStep()
+        try await waitForState(.reviewCards)
+
+        for card in store.thinkingCards {
+            store.confirmCard(card.id)
+        }
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.selectThinkingLens(.firstPrinciples)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+        try await waitForGeneratedQuestions()
+
+        let questionID = try XCTUnwrap(store.questions.first?.id)
+        store.updateQuestionAnswer(questionID: questionID, answer: "证据链必须能指向真实任务、透镜和历史日期。")
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+
+        store.submitTodayStep()
+        try await waitForState(.extractPrinciple)
+
+        store.submitTodayStep()
+        try await waitForState(.sessionComplete)
+
+        let completedEntryID = store.todayDraft.id
+
+        try await waitUntilAsync(
+            timeout: 5,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected local Growth attribution to include completed Today evidence"
+        ) {
+            guard let snapshot = try await snapshotRepo.latestSnapshot(),
+                  snapshot.canDisplayScores,
+                  snapshot.completeLoopCount >= 3
+            else {
+                return false
+            }
+            return try await contributionRepo.contributions(for: snapshot.id).contains { contribution in
+                contribution.sourceDailyEntryId == completedEntryID &&
+                    !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+        }
+
+        let archiveStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            lensSessionRepository: lensRepo,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            projectLinkRepository: projectLinkRepo,
+            projectRepository: projectRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await archiveStore.loadHistoryRecords()
+
+        let completedRecord = try XCTUnwrap(archiveStore.historyRecords.first { $0.draft.id == completedEntryID })
+        let quest = try XCTUnwrap(completedRecord.mainQuest)
+        XCTAssertEqual(completedRecord.draft.rawText, rawInput)
+        XCTAssertEqual(completedRecord.lensSession?.selectedLens, .firstPrinciples)
+        XCTAssertFalse(completedRecord.growthContributions.isEmpty)
+        XCTAssertTrue(completedRecord.growthContributions.allSatisfy { contribution in
+            contribution.sourceDailyEntryId == completedEntryID &&
+                !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })
+
+        await archiveStore.createProjectFromQuest(quest, dailyEntryId: completedEntryID)
+
+        let projects = try await projectRepo.activeProjects()
+        let project = try XCTUnwrap(projects.first)
+        let projectLinks = try await projectLinkRepo.links(for: project.id)
+        XCTAssertEqual(projectLinks.map(\.sourceId), [quest.id.uuidString])
+        XCTAssertEqual(projectLinks.first?.sourceType, .quest)
+        XCTAssertEqual(projectLinks.first?.linkType, .task)
+        XCTAssertTrue(projectLinks.first?.isUserConfirmed == true)
+
+        let finalStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            lensSessionRepository: lensRepo,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            projectLinkRepository: projectLinkRepo,
+            projectRepository: projectRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await finalStore.loadHistoryRecords()
+
+        let finalRecord = try XCTUnwrap(finalStore.historyRecords.first { $0.draft.id == completedEntryID })
+        XCTAssertEqual(finalRecord.projectLinks.map(\.sourceId), [quest.id.uuidString])
+        XCTAssertEqual(finalStore.projectNames[project.id], project.name)
+        XCTAssertTrue(finalRecord.sourceIds.contains(quest.id.uuidString))
+        XCTAssertTrue(finalRecord.growthContributions.contains { contribution in
+            contribution.sourceDailyEntryId == completedEntryID &&
+                finalRecord.sourceIds.contains(contribution.sourceId)
+        })
+    }
+
     // MARK: - AI failure repair
 
     func testAIFailure_usesVisibleFallbackAndCanRetrySameStep() async throws {

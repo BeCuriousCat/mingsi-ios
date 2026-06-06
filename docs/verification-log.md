@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-07: Subtask 068 Production Project And Growth Evidence Chain Proof
+
+Scope:
+
+- Prove production Today evidence reloaded into History can continue into user-confirmed Project links and local Growth attribution.
+- Use SQLite repositories and the normal AppStore Today state machine, not Debug visual QA seed state.
+- Seed only enough historical verified loops to satisfy the existing Growth complete-loop threshold.
+- Keep production source, persistence schema, migrations, PromptProvider, parser, LLM clients, Keychain, SwiftUI views, Debug visual QA behavior, and product semantics unchanged.
+
+Changed areas:
+
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/068-production-project-growth-evidence-chain-prd.md`
+- `docs/subtasks/068-production-project-growth-evidence-chain-progress.md`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testProductionTodayEvidence_canBackProjectLinkAndGrowthContributionsThroughHistoryReload test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- First focused run failed at compile because the new test helper used obsolete type names `QuestCompletion` and `QuestValueRating`; the current domain types are `YesterdayCompletion` and `YesterdayValueRating`.
+- Focused 068 test passed after the test helper type correction: 1 test, 0 failures.
+- Full `AppStoreStateMachineTests` passed with 175 tests and 0 failures.
+- `git diff --check`: exit 0, no output.
+- iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- The proof test drives Today through the normal production state machine using SQLite repositories.
+- A fresh `AppStore` reloads History and verifies raw input, first-principles lens session, main quest, and source-linked Growth contributions for the completed DailyEntry.
+- The test creates a Project from the reloaded History quest through `createProjectFromQuest`, then reloads History again through another fresh `AppStore`.
+- The final reload verifies the ProjectLink points to the real quest source id, `projectNames` resolves the created Project name, and Growth contributions still point to source ids present in the History record.
+- No production source change was required after the proof test reached runtime.
+
+Residual risk:
+
+- This is not live GLM proof because the test path uses local/test AI behavior.
+- This does not prove AI-generated ProjectInsights or AI Growth reports.
+- This does not add rendered simulator screenshot evidence.
+
 ## 2026-06-07: Subtask 067 Production History Persistence Proof
 
 Scope:

@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 066 Today Session Complete History Seed was committed in `4ed9d5b Add debug today completion history seed`, and Subtask 067 Production History Persistence Proof is accepted.
+At the last recorded check, Subtask 067 Production History Persistence Proof was committed in `6a4316b Prove and harden Today history persistence`, and Subtask 068 Production Project And Growth Evidence Chain Proof is accepted.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -160,6 +160,17 @@ Subtasks 045 through 062 continued Alpha hardening:
 
 ## Latest Product Evidence
 
+Subtask 068 Production Project And Growth Evidence Chain Proof is complete:
+
+- A focused production-path AppStore test now proves the completed Today evidence reloaded into History can continue into user-confirmed Projects and local Growth attribution.
+- The test uses SQLite repositories and the normal Today/AppStore state machine, not Debug visual QA seed state.
+- It seeds only two historical verified loops to satisfy the existing Growth complete-loop threshold, then completes a real Today loop as the third record.
+- A fresh AppStore reloads History and verifies raw input, first-principles lens session, main quest, and source-linked Growth contributions for the completed DailyEntry.
+- The test creates a Project from the reloaded History quest through the existing `createProjectFromQuest` API, then reloads History again and verifies the ProjectLink points to the real quest source id and `projectNames` resolves the created Project name.
+- Focused 068 test passed with 1 test and 0 failures; full `AppStoreStateMachineTests` passed with 175 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- No production source change was required after the proof test reached runtime; the existing production Project/Growth/History chain satisfied the proof.
+- Residual risk: this is not live GLM proof, does not prove AI-generated ProjectInsights or AI Growth reports, and does not add rendered simulator screenshot evidence.
+
 Subtask 067 Production History Persistence Proof is complete:
 
 - A focused production-path AppStore test now drives Today through VerifyYesterday, Capture, Organizing, ReviewCards, SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, and SessionComplete.
@@ -167,7 +178,7 @@ Subtask 067 Production History Persistence Proof is complete:
 - The proof test exposed a production AppStore persistence ordering race: rapid Today writes could let older snapshots overwrite newer confirmed evidence.
 - `AppStore` now queues Today local persistence writes and waits for pending persistence before SessionComplete history/growth refresh.
 - Focused 067 test passed with 1 test and 0 failures; full `AppStoreStateMachineTests` passed with 174 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
-- Residual risk: this is not live GLM proof and does not prove Projects/Growth cross-feature attribution beyond the Today -> History evidence archive reload.
+- Residual risk: this is not live GLM proof; Subtask 068 separately proves the Projects/Growth cross-feature evidence-chain attribution beyond History reload.
 
 Subtask 066 Today Session Complete History Seed is complete:
 

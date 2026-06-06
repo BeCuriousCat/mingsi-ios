@@ -8,6 +8,22 @@ Status: no active Claude Code worker.
 
 Latest direct Codex implementation acceptance:
 
+- Subtask: `068-production-project-growth-evidence-chain`
+- Owner: Codex direct proof-test implementation and acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/068-production-project-growth-evidence-chain-prd.md`
+- Progress file: `docs/subtasks/068-production-project-growth-evidence-chain-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: prove production Today/History evidence can continue into user-confirmed Project links and local Growth attribution without fake conclusions or Debug-only seed state.
+- Allowed files: `Tests/App/AppStoreStateMachineTests.swift`, 068 docs, and process docs. Production source changes were allowed only if the proof test exposed a real evidence-chain bug; none were required after runtime verification.
+- Launch state: no Claude Code worker launched because this was a production AppStore evidence-chain proof and the user requested fast local implementation.
+- Codex acceptance: accepted after fresh verification of the scoped proof test, full AppStore state-machine regression, diff check, and iPhone 17 simulator build.
+- Verification: focused 068 test passed with 1 test and 0 failures; full `AppStoreStateMachineTests` passed with 175 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Residual risk: this is not live GLM proof, does not prove AI-generated ProjectInsights or AI Growth reports, and does not add rendered simulator screenshot evidence.
+
+Previous direct Codex implementation acceptance:
+
 - Subtask: `067-production-history-persistence-proof`
 - Owner: Codex direct proof-test implementation and acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/067-production-history-persistence-proof-prd.md`

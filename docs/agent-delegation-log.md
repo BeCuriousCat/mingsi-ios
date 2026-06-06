@@ -2,6 +2,43 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-07: Production Project And Growth Evidence Chain Proof - Subtask 068
+
+Reason:
+
+- Subtask 067 proved the production Today completion path persists into SQLite and reloads into History through repository abstractions.
+- Alpha hardening still needed proof that this History evidence can continue into Projects and Growth attribution without fake conclusions or Debug-only seed state.
+- The proof needed to exercise existing AppStore/repository contracts: completed Today evidence, fresh History reload, user-confirmed Project creation from a real quest, fresh History reload with ProjectLink, and source-linked Growth contributions.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a direct Codex proof-test slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 068.
+
+Changed behavior:
+
+- Added a focused AppStore state-machine test that drives a normal Today completion with SQLite repositories.
+- The test seeds two historical verified loops only to satisfy the existing Growth complete-loop threshold, then completes a real Today loop as the third evidence record.
+- A fresh `AppStore` reloads History and verifies raw input, first-principles lens session, main quest, and source-linked Growth contributions for the completed DailyEntry.
+- The test creates a Project from the reloaded History quest through `createProjectFromQuest`.
+- Another fresh `AppStore` reloads History and verifies the ProjectLink points to the real quest source id, `projectNames` resolves the created Project name, and Growth contributions remain source-linked to source ids present in the History record.
+- No production source change was required after the proof test reached runtime.
+
+Verification:
+
+- First focused run failed at compile because the test helper used obsolete type names; Codex corrected the test helper to `YesterdayCompletion` / `YesterdayValueRating`.
+- Focused 068 test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 175 tests and 0 failures.
+- `git diff --check` passed with no output.
+- iPhone 17 simulator build passed with `BUILD SUCCEEDED`.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because the user requested fast local implementation and the slice tested product-sensitive Project/Growth evidence semantics.
+- This closes the production evidence-chain proof gap from Today/History into Projects and local Growth attribution.
+- It does not prove live GLM success, AI-generated ProjectInsights, AI Growth reports, or rendered simulator screenshot walkthrough completeness.
+
 ## 2026-06-07: Production History Persistence Proof - Subtask 067
 
 Reason:
