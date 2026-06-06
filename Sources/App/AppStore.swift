@@ -237,6 +237,28 @@ final class AppStore: ObservableObject {
 #if DEBUG
     nonisolated static let visualQAMarkerFileName = ".visual_qa_project_detail"
 
+    static func resolveVisualQATab(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> AppTab? {
+        let raw = environment["MINGSI_VISUAL_QA_TAB"]
+            ?? environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB"]
+        guard let normalized = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !normalized.isEmpty
+        else {
+            return nil
+        }
+        return AppTab(rawValue: normalized)
+    }
+
+    func applyVisualQATabOverride(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        guard let visualQATab = Self.resolveVisualQATab(environment: environment) else {
+            return
+        }
+        selectedTab = visualQATab
+    }
+
     enum VisualQAProjectDetailVariant: String, CaseIterable, Equatable {
         case nil_project
         case minimal
@@ -275,6 +297,28 @@ final class AppStore: ObservableObject {
             || environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_PROJECT_DETAIL"] != nil
             || defaults.bool(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
             || markerFileExists()
+    }
+
+    static func shouldUseVisualQAProjectDetailFixture(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        defaults: UserDefaults = .standard,
+        markerFileExists: () -> Bool = {
+            guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return false
+            }
+            return FileManager.default.fileExists(atPath: docs.appendingPathComponent(visualQAMarkerFileName).path)
+        }
+    ) -> Bool {
+        if resolveVisualQATab(environment: environment) != nil {
+            return false
+        }
+        return isVisualQAProjectDetailLaunch(
+            arguments: arguments,
+            environment: environment,
+            defaults: defaults,
+            markerFileExists: markerFileExists
+        )
     }
 
     static func visualQAProjectDetail() -> AppStore {

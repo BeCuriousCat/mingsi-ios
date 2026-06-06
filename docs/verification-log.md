@@ -2,6 +2,65 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 059 Alpha Root-Tab Visual Regression
+
+Scope:
+
+- Add a Debug-only root-tab launch selector for repeatable iPhone 17 screenshots.
+- Capture Today, History, Projects, Growth, and Settings in light/dark mode.
+- Keep Release launch behavior, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and product semantics unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/App/MingSiApp.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/059-alpha-core-visual-regression-prd.md`
+- `docs/subtasks/059-alpha-core-visual-regression-progress.md`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/*.png`
+- Process docs for stage progress, verification, delegation, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=<tab> xcrun simctl launch --terminate-running-process booted com.codex.mingsi MINGSI_VISUAL_QA_TAB
+xcrun simctl io booted screenshot docs/subtasks/screenshots/059-alpha-core-visual-regression/<index>-<tab>-<appearance>.png
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Captured root-tab screenshots for Today, History, Projects, Growth, and Settings in light/dark mode.
+- Screenshot review confirmed root-tab selection works, stale Project Detail marker files no longer hijack root-tab captures, History stays below the Dynamic Island/status area, Projects remains on the Projects root tab, and Settings dark placeholder/disabled text is readable enough for Alpha.
+- `AppStoreStateMachineTests`: passed with 162 tests and 0 failures.
+- `git diff --check`: passed.
+- iPhone 17 Release simulator build: `BUILD SUCCEEDED`.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/01-current-light.png` - early Today light baseline before final root-tab matrix recapture
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/02-today-light.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/03-history-light.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/04-projects-light.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/05-growth-light.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/06-settings-light.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/07-today-dark.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/08-history-dark.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/09-projects-dark.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/10-growth-dark.png`
+- `docs/subtasks/screenshots/059-alpha-core-visual-regression/11-settings-dark.png`
+
+Residual risk:
+
+- The booted simulator still contains prior visual QA project evidence, so Projects root screenshots are not a clean first-run empty state. This is acceptable for root-tab selector/layout verification but should be repeated with erased app data before a final fresh-user Alpha pass.
+- This visual regression does not replace a live GLM failure-path confirmation or a complete interactive Today loop walkthrough.
+
 ## 2026-06-06: Subtask 058 Project Detail Display Polish
 
 Scope:

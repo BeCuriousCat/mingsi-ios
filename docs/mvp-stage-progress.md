@@ -68,6 +68,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 057 Project Detail visual QA fixture variants via Claude Code delegation plus Codex acceptance fixes. Debug-only Project Detail fixtures now support 10 stable variant ids for the Subtask 048 screenshot matrix: nil project, minimal, normal, accepted insight, pending insight, merge history, long timeline, long name, sparse next bet, and generating insight. Codex fixed worker output so fixture ProjectLinks resolve to actual History sources and sparse next-bet evidence is genuinely derived. `git diff --check` passed, AppStoreStateMachineTests passed with 153 tests and 0 failures, and iPhone 17 Release build passed. Pipeline note: print-mode launch exit failed to recognize worker `HANDOFF`, while `status` correctly surfaced it; record as a delegation-wrapper follow-up.
 - Completed Subtask 049 Project Detail real simulator visual QA matrix capture. Codex captured all 10 Subtask 048 Project Detail fixture variants in light/dark mode on a real iPhone 17 simulator, producing screenshots `18` through `37` and findings in `docs/subtasks/049-project-detail-real-simulator-visual-qa-findings.md`. Confirmed follow-up issues are display-only: English `active` status chip, dark summary-surface tonal mismatch, empty thinking-change card noise, long timeline first-viewport dominance, and missing bottom-scroll evidence around the floating tab.
 - Completed Subtask 058 Project Detail display polish as a direct Codex acceptance slice after wrapper health blocked Claude Code launch. Project Detail now uses Chinese status labels, a warmer local surface treatment, hidden/demoted empty thinking-change states, bounded progress signals and evidence timelines with explicit show-all affordances, and shared bottom scroll reserve. `AppStoreStateMachineTests` passed with 157 tests and 0 failures, `git diff --check` passed, iPhone 17 Release simulator build passed, and six light/dark Project Detail screenshots were captured.
+- Completed Subtask 059 Alpha root-tab visual regression as a direct Codex slice. Debug-only root-tab launch selection now supports `MINGSI_VISUAL_QA_TAB` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB`, and stale Project Detail marker files no longer hijack root-tab screenshots. Codex captured Today, History, Projects, Growth, and Settings in light/dark mode on a real iPhone 17 simulator. `AppStoreStateMachineTests` passed with 162 tests and 0 failures, `git diff --check` passed, and iPhone 17 Release simulator build passed.
 
 ## Known Remaining Work
 
@@ -82,13 +83,14 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 9. Process files should stay updated after each implementation or delegation slice.
 10. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 11. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
+12. Subtask 059 root-tab screenshots used the current booted simulator data container, which still contains prior visual QA project evidence. A later "fresh user" visual pass should uninstall or erase app data before capture.
 
 ## Current Recommended Next Slice
 
-After Subtask 058, the next bounded slice should be chosen from:
+After Subtask 059, the next bounded slice should be chosen from:
 
 - Live GLM failure-path confirmation for History repair, if a real BYOK configuration is available for safe testing.
 - Delegation worker-launch reliability hardening, especially Codex direct zombie accumulation, print-mode launch-exit detection, tmux/session-mode validation, and post-handoff process cleanup checks.
-- Final alpha visual/core-loop regression across Today, History, Projects, Growth, and Settings once resource health is stable.
+- Fresh-data Alpha visual pass or interactive Today core-loop walkthrough, now that root-tab screenshot automation is deterministic.
 
 Choose the slice based on the user's newest bug report or the highest user-facing instability. Prefer Claude Code for read-only audits and narrow UI/service implementation slices that have a clear progress contract and acceptance evidence.

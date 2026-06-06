@@ -2912,6 +2912,69 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testVisualQATabResolve_environmentVariable() {
+        XCTAssertEqual(
+            AppStore.resolveVisualQATab(environment: ["MINGSI_VISUAL_QA_TAB": "history"]),
+            .history
+        )
+        XCTAssertEqual(
+            AppStore.resolveVisualQATab(environment: ["MINGSI_VISUAL_QA_TAB": "projects"]),
+            .projects
+        )
+        XCTAssertEqual(
+            AppStore.resolveVisualQATab(environment: ["MINGSI_VISUAL_QA_TAB": "growth"]),
+            .growth
+        )
+        XCTAssertEqual(
+            AppStore.resolveVisualQATab(environment: ["MINGSI_VISUAL_QA_TAB": "settings"]),
+            .settings
+        )
+    }
+
+    func testVisualQATabResolve_simctlChildEnvironmentVariable() {
+        XCTAssertEqual(
+            AppStore.resolveVisualQATab(environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB": "today"]),
+            .today
+        )
+    }
+
+    func testVisualQATabResolve_unknownReturnsNil() {
+        XCTAssertNil(
+            AppStore.resolveVisualQATab(environment: ["MINGSI_VISUAL_QA_TAB": "timeline"]),
+            "Unknown visual QA tabs must not change launch state"
+        )
+    }
+
+    func testApplyVisualQATabOverride_winsAfterProjectDetailFixture() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQAProjectDetailFixture()
+        store.applyVisualQATabOverride(environment: ["MINGSI_VISUAL_QA_TAB": "history"])
+
+        XCTAssertEqual(
+            store.selectedTab,
+            .history,
+            "Visual QA tab override must win after fixture apply so screenshot automation can target any root tab"
+        )
+    }
+
+    func testVisualQARootTabLaunch_doesNotUseProjectDetailFixtureMarker() {
+        let cleanDefaults = UserDefaults(suiteName: "test-visual-qa-root-tab-priority")!
+        cleanDefaults.removeObject(forKey: "MINGSI_VISUAL_QA_PROJECT_DETAIL")
+
+        XCTAssertFalse(
+            AppStore.shouldUseVisualQAProjectDetailFixture(
+                arguments: [],
+                environment: ["MINGSI_VISUAL_QA_TAB": "history"],
+                defaults: cleanDefaults,
+                markerFileExists: { true }
+            ),
+            "Root-tab screenshot automation must ignore stale Project Detail marker files"
+        )
+
+        cleanDefaults.removeSuite(named: "test-visual-qa-root-tab-priority")
+    }
+
     // MARK: - Visual QA Direct Entry
 
     func testVisualQAProjectDetailFixture_hasDirectEntryProjectID() {

@@ -2,6 +2,39 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Alpha Root-Tab Visual Regression - Subtask 059
+
+Reason:
+
+- Subtask 058 closed Project Detail display polish, and the next Alpha hardening slice needed repeatable Today/History/Projects/Growth/Settings screenshots.
+- macOS coordinate clicks were unreliable for tab switching.
+- A stale Project Detail visual QA marker file could hijack root-tab screenshots into the Project Detail fixture.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- User requested fast local implementation only for this window.
+- The implementation was a small Debug-only launch harness plus manager-owned real simulator screenshot verification.
+
+Changed behavior:
+
+- Debug launches can target a root tab with `MINGSI_VISUAL_QA_TAB` or `SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB`.
+- Root-tab visual QA launch ignores stale Project Detail marker files.
+- Release launches remain on `AppStore.live()` and do not consume the Debug visual QA tab selector.
+
+Verification:
+
+- iPhone 17 Debug simulator build passed.
+- 10 root-tab screenshots were captured in light/dark mode.
+- `AppStoreStateMachineTests` passed with 162 tests and 0 failures.
+- `git diff --check` passed.
+- iPhone 17 Release simulator build passed.
+
+Delegation assessment:
+
+- No worker diff, handoff, or raw/event logs exist for 059.
+- This was the right direct-Codex slice because the primary work was simulator orchestration and final visual acceptance rather than bulk implementation.
+
 ## 2026-06-06: Project Detail Display Polish - Subtask 058
 
 Reason:

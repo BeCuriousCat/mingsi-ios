@@ -6,6 +6,22 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
+Latest direct Codex acceptance:
+
+- Subtask: `059-alpha-core-visual-regression`
+- Owner: Codex direct implementation and final acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/059-alpha-core-visual-regression-prd.md`
+- Progress file: `docs/subtasks/059-alpha-core-visual-regression-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: make root-tab iPhone 17 visual regression deterministic and capture Today, History, Projects, Growth, and Settings in light/dark mode.
+- Allowed files: `Sources/App/AppStore.swift`, `Sources/App/MingSiApp.swift`, `Tests/App/AppStoreStateMachineTests.swift`, 059 docs, and 059 screenshots.
+- Launch state: no Claude Code worker launched because the user requested fast local implementation only and the slice was a small Debug-only visual QA harness.
+- Codex acceptance: accepted after Debug build, real iPhone 17 screenshot review, focused AppStore tests, diff check, and Release build.
+- Verification: `AppStoreStateMachineTests` passed with 162 tests and 0 failures; `git diff --check` passed; iPhone 17 Release simulator build passed.
+- Residual risk: Projects root screenshots used the current booted simulator data container, which still has prior visual QA project evidence. Repeat with erased app data before final fresh-user Alpha visual acceptance.
+
 Latest direct Codex acceptance after delegation guard:
 
 - Subtask: `058-project-detail-display-polish`

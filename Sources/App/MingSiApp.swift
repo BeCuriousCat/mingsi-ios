@@ -8,11 +8,12 @@ struct MingSiApp: App {
         DS.configureTabBarAppearance()
 #if DEBUG
         let storeInstance: AppStore
-        if AppStore.isVisualQAProjectDetailLaunch() {
+        if AppStore.shouldUseVisualQAProjectDetailFixture() {
             storeInstance = AppStore.visualQAProjectDetail()
         } else {
             storeInstance = AppStore.live()
         }
+        storeInstance.applyVisualQATabOverride()
         _store = StateObject(wrappedValue: storeInstance)
 #else
         _store = StateObject(wrappedValue: AppStore.live())
@@ -25,8 +26,9 @@ struct MingSiApp: App {
                 .environmentObject(store)
                 .task {
                     #if DEBUG
-                    if AppStore.isVisualQAProjectDetailLaunch() {
+                    if AppStore.shouldUseVisualQAProjectDetailFixture() {
                         store.applyVisualQAProjectDetailFixture()
+                        store.applyVisualQATabOverride()
                         return
                     }
                     guard store.loadsPersistedStateOnLaunch else { return }
