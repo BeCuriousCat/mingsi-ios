@@ -1,6 +1,6 @@
 # MingSi Project Continuation Context
 
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 ## Current Role Contract
 
@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 065 Today Completion And History Archive Walkthrough was committed in `75548c9 Record today completion walkthrough blocker`, and Subtask 066 Today Session Complete History Seed is accepted as a Debug-only implementation and simulator-verification slice.
+At the last recorded check, Subtask 066 Today Session Complete History Seed was committed in `4ed9d5b Add debug today completion history seed`, and Subtask 067 Production History Persistence Proof is accepted.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -160,6 +160,15 @@ Subtasks 045 through 062 continued Alpha hardening:
 
 ## Latest Product Evidence
 
+Subtask 067 Production History Persistence Proof is complete:
+
+- A focused production-path AppStore test now drives Today through VerifyYesterday, Capture, Organizing, ReviewCards, SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, and SessionComplete.
+- The test uses SQLite repositories backed by `AppDatabase(dbQueue: DatabaseQueue())`, not Debug in-memory visual QA fixture state.
+- The proof test exposed a production AppStore persistence ordering race: rapid Today writes could let older snapshots overwrite newer confirmed evidence.
+- `AppStore` now queues Today local persistence writes and waits for pending persistence before SessionComplete history/growth refresh.
+- Focused 067 test passed with 1 test and 0 failures; full `AppStoreStateMachineTests` passed with 174 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Residual risk: this is not live GLM proof and does not prove Projects/Growth cross-feature attribution beyond the Today -> History evidence archive reload.
+
 Subtask 066 Today Session Complete History Seed is complete:
 
 - Debug launches now support `MINGSI_VISUAL_QA_TODAY_STAGE=session_complete` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=session_complete`.
@@ -257,11 +266,11 @@ Source:
 
 No active Claude Code worker is running.
 
-Latest completed implementation subtask:
+Latest completed MVP hardening subtask:
 
-- Subtask: `064-today-debug-stage-seed`
-- PRD: `docs/subtasks/064-today-debug-stage-seed-prd.md`
-- Progress: `docs/subtasks/064-today-debug-stage-seed-progress.md`
+- Subtask: `067-production-history-persistence-proof`
+- PRD: `docs/subtasks/067-production-history-persistence-proof-prd.md`
+- Progress: `docs/subtasks/067-production-history-persistence-proof-progress.md`
 - Status: `CODEX_ACCEPTED`
 
 Latest partially accepted verification subtask:
@@ -320,8 +329,9 @@ These attempts are historical evidence only. Do not reuse the broad 029 prompt p
 Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
-   - Minimal Today testability/accessibility support, so the iPhone 17 rendered Today walkthrough can reliably enter input and reach card review.
    - Live GLM failure-path confirmation for History repair.
+   - Production evidence-chain proof from Today/History into Projects and Growth attribution, without fake conclusions.
+   - Minimal Today testability/accessibility support if rendered walkthroughs again need reliable user-action automation.
    - Delegation worker-launch reliability hardening if Claude Code resource health still blocks useful worker runs.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.

@@ -2,6 +2,39 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-07: Production History Persistence Proof - Subtask 067
+
+Reason:
+
+- Subtask 066 proved Today `SessionComplete` and History archive first viewport through a Debug-only in-memory visual QA seed.
+- Alpha hardening still needed production evidence that the normal Today completion path persists into SQLite and reloads into History through repository abstractions.
+- History is the evidence archive, so this proof belongs at the product-facing History reload level rather than only at individual repository row checks.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a direct Codex proof-test slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 067.
+
+Changed behavior:
+
+- Added a focused AppStore state-machine test that drives the normal Today flow to `SessionComplete` with SQLite repositories.
+- The test creates a fresh `AppStore` with the same repositories and verifies `loadHistoryRecords()` reloads raw input, completed state, confirmed cards, first-principles lens with an answered question, main quest, principle evidence, and the completed DailyEntry source id.
+- The proof test exposed and fixed a production AppStore local persistence ordering race. Today persistence writes are now queued, so older rapid snapshots cannot finish after and overwrite newer confirmed evidence.
+
+Verification:
+
+- Focused 067 test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 174 tests and 0 failures.
+- `git diff --check` passed with no output.
+- iPhone 17 simulator build passed with `BUILD SUCCEEDED`.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because the user requested fast local implementation and the slice was a narrow proof test over existing repository boundaries.
+- This closes the production Today -> History persistence proof gap from Subtask 066.
+- It does not prove live GLM success or Projects/Growth cross-feature attribution beyond History reload.
+
 ## 2026-06-07: Today Session Complete History Seed - Subtask 066
 
 Reason:

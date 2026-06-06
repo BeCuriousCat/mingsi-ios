@@ -8,6 +8,22 @@ Status: no active Claude Code worker.
 
 Latest direct Codex implementation acceptance:
 
+- Subtask: `067-production-history-persistence-proof`
+- Owner: Codex direct proof-test implementation and acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/067-production-history-persistence-proof-prd.md`
+- Progress file: `docs/subtasks/067-production-history-persistence-proof-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: prove the production Today completion path persists raw input, confirmed cards, first-principles lens questions/answers, quests, and principle evidence into SQLite and can reload it into History through repository abstractions.
+- Allowed files: `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, 067 docs, and process docs.
+- Launch state: no Claude Code worker launched because this was a narrow proof-test slice and the user requested fast local implementation.
+- Codex acceptance: accepted after fresh verification of the scoped AppStore persistence-ordering fix and History reload proof.
+- Verification: focused 067 test passed with 1 test and 0 failures; full `AppStoreStateMachineTests` passed with 174 tests and 0 failures; `git diff --check` passed; iPhone 17 simulator build passed.
+- Residual risk: this is not live GLM proof and does not prove Projects/Growth attribution beyond Today -> History reload.
+
+Previous direct Codex implementation acceptance:
+
 - Subtask: `066-today-session-complete-history-seed`
 - Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/066-today-session-complete-history-seed-prd.md`

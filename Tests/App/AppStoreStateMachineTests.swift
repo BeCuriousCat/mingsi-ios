@@ -809,6 +809,106 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForState(.sessionComplete)
     }
 
+    func testProductionTodayCompletion_persistsHistoryEvidenceThroughSQLiteReload() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let cardRepo = SQLiteThinkingCardRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let lensRepo = SQLiteLensSessionRepository(database: database)
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            lensSessionRepository: lensRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let rawInput = "今天要把生产完成路径归档到历史证据里，确认明天可以复盘。"
+
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+        store.submitTodayStep()
+        try await waitForState(.capture)
+
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture(rawInput)
+        store.submitTodayStep()
+        try await waitForGeneratedCards()
+
+        store.submitTodayStep()
+        try await waitForState(.reviewCards)
+
+        for card in store.thinkingCards {
+            store.confirmCard(card.id)
+        }
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.selectThinkingLens(.firstPrinciples)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+        try await waitForGeneratedQuestions()
+
+        let questionID = try XCTUnwrap(store.questions.first?.id)
+        store.updateQuestionAnswer(questionID: questionID, answer: "先验证最小闭环是否真的写进历史证据。")
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+
+        store.submitTodayStep()
+        try await waitForState(.extractPrinciple)
+
+        store.submitTodayStep()
+        try await waitForState(.sessionComplete)
+
+        let completedEntryID = store.todayDraft.id
+        let reloadedStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            lensSessionRepository: lensRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await waitUntilAsync(
+            timeout: 5,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected completed Today evidence to reload from SQLite into History"
+        ) {
+            await reloadedStore.loadHistoryRecords()
+            guard let record = reloadedStore.historyRecords.first(where: { $0.draft.id == completedEntryID }) else {
+                return false
+            }
+
+            return record.draft.rawText == rawInput &&
+                record.draft.state == .sessionComplete &&
+                record.confirmedCards.count == 3 &&
+                record.confirmedCards.allSatisfy(\.isConfirmed) &&
+                record.lensSession?.selectedLens == .firstPrinciples &&
+                record.lensSession?.questions.contains {
+                    !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                } == true &&
+                record.mainQuest != nil &&
+                !record.principles.isEmpty &&
+                record.sourceIds.contains(completedEntryID.uuidString)
+        }
+
+        let record = try XCTUnwrap(reloadedStore.historyRecords.first { $0.draft.id == completedEntryID })
+        XCTAssertEqual(record.draft.rawText, rawInput)
+        XCTAssertEqual(record.draft.state, .sessionComplete)
+        XCTAssertEqual(record.confirmedCards.count, 3)
+        XCTAssertTrue(record.confirmedCards.allSatisfy(\.isConfirmed))
+        XCTAssertEqual(record.lensSession?.selectedLens, .firstPrinciples)
+        XCTAssertTrue(record.lensSession?.questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } == true)
+        XCTAssertNotNil(record.mainQuest)
+        XCTAssertFalse(record.principles.isEmpty)
+        XCTAssertTrue(record.sourceIds.contains(completedEntryID.uuidString))
+    }
+
     // MARK: - AI failure repair
 
     func testAIFailure_usesVisibleFallbackAndCanRetrySameStep() async throws {

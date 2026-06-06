@@ -102,6 +102,8 @@ final class AppStore: ObservableObject {
     private var apiKeyStatusMessage: String = ""
     private var glmConnectionMessage: String = ""
     private var scheduledReminderIDs: Set<String> = []
+    private var persistenceChain: Task<Void, Never>?
+    private var persistenceChainGeneration = 0
     private var pendingAIRepairPrompts: Set<PromptID> = [] {
         didSet {
             pendingAIRepairCount = pendingAIRepairPrompts.count
@@ -2660,6 +2662,7 @@ final class AppStore: ObservableObject {
     private func completeTodayLoop(message: String) {
         moveTodayLoop(to: .sessionComplete, message: message)
         Task {
+            await waitForPendingPersistence()
             await refreshGrowthEvidenceAfterTodayChange()
         }
     }
@@ -3358,14 +3361,8 @@ final class AppStore: ObservableObject {
     private func persistDraft() {
         guard let dailyEntryRepository else { return }
         let draft = todayDraft
-        Task {
-            do {
-                try await dailyEntryRepository.saveDraft(draft)
-            } catch {
-                await MainActor.run {
-                    todayLoopMessage = "保存本地复盘草稿失败。"
-                }
-            }
+        enqueuePersistence(errorMessage: "保存本地复盘草稿失败。") {
+            try await dailyEntryRepository.saveDraft(draft)
         }
     }
 
@@ -3373,14 +3370,8 @@ final class AppStore: ObservableObject {
         guard let thinkingCardRepository else { return }
         let cards = thinkingCards.filter { $0.isConfirmed || $0.isExcludedFromModel }
         let draftID = todayDraft.id
-        Task {
-            do {
-                try await thinkingCardRepository.saveCards(cards, dailyEntryId: draftID)
-            } catch {
-                await MainActor.run {
-                    todayLoopMessage = "保存思考卡片失败。"
-                }
-            }
+        enqueuePersistence(errorMessage: "保存思考卡片失败。") {
+            try await thinkingCardRepository.saveCards(cards, dailyEntryId: draftID)
         }
     }
 
@@ -3395,14 +3386,8 @@ final class AppStore: ObservableObject {
         guard let questRepository else { return }
         let quests = quests
         let draftID = todayDraft.id
-        Task {
-            do {
-                try await questRepository.saveQuests(quests, sourceDailyEntryId: draftID)
-            } catch {
-                await MainActor.run {
-                    todayLoopMessage = "保存明日任务失败。"
-                }
-            }
+        enqueuePersistence(errorMessage: "保存明日任务失败。") {
+            try await questRepository.saveQuests(quests, sourceDailyEntryId: draftID)
         }
     }
 
@@ -3410,14 +3395,8 @@ final class AppStore: ObservableObject {
         guard let principleRepository else { return }
         let principles = principles
         let draftID = todayDraft.id
-        Task {
-            do {
-                try await principleRepository.savePrinciples(principles, sourceDailyEntryId: draftID)
-            } catch {
-                await MainActor.run {
-                    todayLoopMessage = "保存原则资产失败。"
-                }
-            }
+        enqueuePersistence(errorMessage: "保存原则资产失败。") {
+            try await principleRepository.savePrinciples(principles, sourceDailyEntryId: draftID)
         }
     }
 
@@ -3425,20 +3404,47 @@ final class AppStore: ObservableObject {
         guard let lensSessionRepository, let lens = todayDraft.selectedLens else { return }
         let draftID = todayDraft.id
         let currentQuestions = questions
-        Task {
-            let session = LensSession(
-                dailyEntryId: draftID,
-                selectedLens: lens,
-                questions: currentQuestions
-            )
+        let session = LensSession(
+            dailyEntryId: draftID,
+            selectedLens: lens,
+            questions: currentQuestions
+        )
+        enqueuePersistence(errorMessage: "保存透镜会话失败。") {
+            try await lensSessionRepository.saveLensSession(session)
+        }
+    }
+
+    private func enqueuePersistence(
+        errorMessage: String,
+        operation: @escaping () async throws -> Void
+    ) {
+        let previous = persistenceChain
+        persistenceChainGeneration += 1
+        let generation = persistenceChainGeneration
+        let next = Task { [weak self] in
+            if let previous {
+                await previous.value
+            }
+
             do {
-                try await lensSessionRepository.saveLensSession(session)
+                try await operation()
             } catch {
                 await MainActor.run {
-                    todayLoopMessage = "保存透镜会话失败。"
+                    self?.todayLoopMessage = errorMessage
                 }
             }
+
+            await MainActor.run {
+                guard self?.persistenceChainGeneration == generation else { return }
+                self?.persistenceChain = nil
+            }
         }
+        persistenceChain = next
+    }
+
+    private func waitForPendingPersistence() async {
+        let chain = persistenceChain
+        await chain?.value
     }
 
     private func inputSummary(from input: String) -> String {

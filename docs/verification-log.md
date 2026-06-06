@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-07: Subtask 067 Production History Persistence Proof
+
+Scope:
+
+- Prove the production Today completion path persists into SQLite and can reload into History through repository abstractions.
+- Use the normal AppStore Today state machine, not Debug visual QA seed state.
+- Keep persistence schema, migrations, PromptProvider, parser, LLM clients, Keychain, SwiftUI views, Projects, Growth, Settings, and product semantics unchanged.
+- Include the scoped AppStore persistence-ordering fix that the proof test exposed.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/067-production-history-persistence-proof-prd.md`
+- `docs/subtasks/067-production-history-persistence-proof-progress.md`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testProductionTodayCompletion_persistsHistoryEvidenceThroughSQLiteReload test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+```
+
+Result:
+
+- Focused 067 test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 174 tests and 0 failures.
+- `git diff --check`: exit 0, no output.
+- iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- The proof test drives Today through VerifyYesterday, Capture, Organizing, ReviewCards, SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, and SessionComplete using SQLite repositories.
+- The proof test exposed a production AppStore persistence ordering race. Today local persistence writes are now queued before History/Growth refresh so older snapshots cannot overwrite newer confirmed evidence.
+- A fresh `AppStore` using the same repositories reloads History and verifies raw input, `sessionComplete`, 3 confirmed cards, first-principles lens session, at least one answered lens question, main quest, principle evidence, and the completed DailyEntry source id.
+
+Residual risk:
+
+- This is not live GLM proof because the test path uses local fallback in the test environment.
+- This does not add rendered screenshots; Subtask 066 already covers deterministic rendered Today/History first-viewport evidence through Debug visual QA.
+- This does not prove Projects/Growth cross-feature attribution beyond Today -> History archive reload.
+
 ## 2026-06-07: Subtask 066 Today Session Complete History Seed
 
 Scope:
