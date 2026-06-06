@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 063 Today Rendered Post-Card Walkthrough was committed in `618e63c Record today post-card walkthrough blocker`, and Subtask 064 Today Debug Stage Seed was accepted in the documentation/screenshot record.
+At the last recorded check, Subtask 064 Today Debug Stage Seed was committed in `609f631 Add debug Today stage seed`, and Subtask 065 Today Completion And History Archive Walkthrough is being accepted as a documentation-only partial verification record.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -155,8 +155,18 @@ Subtasks 045 through 062 continued Alpha hardening:
 - 062 added a Debug-only Today seed-input launch path and proved the rendered iPhone 17 app can show seeded raw input, advance into visible local-fallback organization, and reach `思考卡片` review without relying on unstable Simulator paste automation.
 - 063 used that seed path to continue rendered iPhone 17 Today verification after `思考卡片`. It proved ReviewCards is reachable, but card-level confirmation cannot yet be reliably driven through host Simulator coordinate/accessibility automation. This is a rendered verification blocker, not an accepted AppStore state-machine bug.
 - 064 added a Debug-only Today stage seed so iPhone 17 visual QA can launch directly into `select_lens`, `answer_questions`, `review_quests`, or `extract_principle` using existing local fallback helpers and explicit fallback messaging. Focused tests, full AppStore state-machine tests, Debug/Release builds, `git diff --check`, and real screenshots passed.
+- 065 used the 064 `extract_principle` stage seed to attempt rendered completion into `SessionComplete` and History archive verification. It proved `ExtractPrinciple` can render from the Debug stage seed after relaunch, but host Simulator automation could not reliably click `保存原则` (`System Events` error `-25208`, no usable Simulator windows), so session completion and History archive screenshots remain open.
 
 ## Latest Product Evidence
+
+Subtask 065 Today Completion And History Archive Walkthrough is partially accepted:
+
+- Debug iPhone 17 launch from `MINGSI_VISUAL_QA_TODAY_STAGE=extract_principle` initially produced a blank screenshot, but relaunch rendered the `原则沉淀` screen correctly.
+- The rendered screen shows Debug/local fallback copy, the principle candidate, and the visible `保存原则` action.
+- AppleScript/System Events could not drive the save action: error `-25208`; the Simulator process was visible/frontmost but exposed no usable windows to click.
+- No Swift source, tests, persistence, migrations, prompt, parser, LLM, Keychain, History, Projects, Growth, Settings, or Today semantics changed.
+- `git diff --check` passed.
+- Next implementation slice should add a narrow Debug-only completion/history archive launch path or action seed to avoid host coordinate-click fragility.
 
 Subtask 064 Today Debug Stage Seed is complete:
 

@@ -6,6 +6,23 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
+Latest direct Codex partial acceptance:
+
+- Subtask: `065-today-completion-history-archive-walkthrough`
+- Owner: Codex direct simulator verification and partial acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/065-today-completion-history-archive-walkthrough-prd.md`
+- Progress file: `docs/subtasks/065-today-completion-history-archive-walkthrough-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: continue rendered iPhone 17 verification from the 064 `extract_principle` stage seed into principle save, `SessionComplete`, and History archive inspection.
+- Allowed files: 065 docs, 065 screenshots, and process docs only.
+- Launch state: no Claude Code worker launched because this was a manager-owned simulator/product acceptance slice.
+- Codex acceptance: partially accepted as evidence that `ExtractPrinciple` renders correctly from the Debug stage seed after relaunch, while principle save/session completion remains blocked by host Simulator click automation.
+- Verification: `git diff --check` passed; screenshots captured under `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/`.
+- Blocker: AppleScript/System Events raised error `-25208`; it could see the Simulator process as frontmost/visible but exposed no usable Simulator windows; `simctl` has no tap/click operation and `cliclick` is not installed.
+- Residual risk: this does not prove `SessionComplete`, History archive persistence, live GLM success, or Projects/Growth evidence-chain回链 in the rendered app.
+
 Latest direct Codex implementation acceptance:
 
 - Subtask: `064-today-debug-stage-seed`

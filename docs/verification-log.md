@@ -2,6 +2,58 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 065 Today Completion And History Archive Walkthrough Partial Verification
+
+Scope:
+
+- Use the Subtask 064 Debug-only Today stage seed to launch the rendered iPhone 17 app at `ExtractPrinciple`.
+- Attempt to drive the visible `保存原则` action into `SessionComplete`, then inspect History archive evidence.
+- Keep Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, and Today product semantics unchanged.
+
+Changed areas:
+
+- `docs/subtasks/065-today-completion-history-archive-walkthrough-prd.md`
+- `docs/subtasks/065-today-completion-history-archive-walkthrough-progress.md`
+- `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/*.png`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天要把会议目标拆成一个可以明天验证的行动，并沉淀一个可复用原则。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=extract_principle SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/<state>.png
+osascript / System Events coordinate interaction against Simulator
+git diff --check
+```
+
+Result:
+
+- First rendered capture after launch was blank:
+  - `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/01-extract-principle.png`
+  - `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/01b-extract-principle-after-wait.png`
+- Relaunch with the same environment rendered `原则沉淀` correctly:
+  - `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/02-extract-principle-relaunch.png`
+- The rendered screen shows the Debug/local fallback warning, principle candidate content, and visible `保存原则` action.
+- Host AppleScript/System Events automation could not click `保存原则`: `System Events` raised error `-25208`, could see the Simulator process as frontmost/visible, but reported no usable Simulator windows.
+- `xcrun simctl` has no tap/click operation and `cliclick` is not installed.
+- `git diff --check`: exit 0, no output.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/01-extract-principle.png`
+- `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/01b-extract-principle-after-wait.png`
+- `docs/subtasks/screenshots/065-today-completion-history-archive-walkthrough/02-extract-principle-relaunch.png`
+
+Residual risk:
+
+- This is not full Today completion or History archive acceptance.
+- `SessionComplete`, History archive evidence, live GLM success, and Projects/Growth evidence-chain proof remain unverified in the rendered app.
+- Recommended next slice: add a narrow Debug-only completion/history archive launch path or action seed, then repeat rendered verification without macOS coordinate clicks.
+
 ## 2026-06-06: Subtask 064 Today Debug Stage Seed
 
 Scope:

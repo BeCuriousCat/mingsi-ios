@@ -2,6 +2,38 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Today Completion And History Archive Walkthrough Partial Verification - Subtask 065
+
+Reason:
+
+- Subtask 064 made later Today states renderable through a Debug-only stage seed.
+- The next Alpha hardening gap was whether the rendered iPhone 17 app could continue from `原则沉淀` into `SessionComplete` and then show History archive evidence.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a manager-owned simulator verification and product acceptance slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 065.
+
+Changed behavior:
+
+- No product behavior changed.
+- No Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, or Today semantics changed.
+- The accepted artifact is a partial verification record and screenshot evidence identifying the next rendered-walkthrough blocker.
+
+Verification:
+
+- Debug iPhone 17 launch from `MINGSI_VISUAL_QA_TODAY_STAGE=extract_principle` initially produced a blank capture, then rendered `原则沉淀` correctly after relaunch.
+- The rendered screen showed the Debug/local fallback warning, principle candidate content, and visible `保存原则` action.
+- Host AppleScript/System Events automation could not reliably click `保存原则`: `System Events` raised error `-25208`, reported the Simulator process as frontmost/visible, but exposed no usable Simulator windows.
+- `xcrun simctl` has no tap/click operation and `cliclick` is not installed.
+- `git diff --check` passed.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because this slice required final simulator observation and product judgment.
+- The next implementation slice should add a narrow Debug-only Today completion/history archive launch path or action seed, then repeat rendered verification without relying on macOS coordinate clicks.
+
 ## 2026-06-06: Today Debug Stage Seed - Subtask 064
 
 Reason:
