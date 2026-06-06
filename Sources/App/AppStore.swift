@@ -278,6 +278,46 @@ final class AppStore: ObservableObject {
         return SessionMode(rawValue: normalized) ?? .standard
     }
 
+    enum VisualQATodayStage: String {
+        case capture
+        case reviewCards = "review_cards"
+        case reviewCardsConfirmed = "review_cards_confirmed"
+        case selectLens = "select_lens"
+        case answerQuestions = "answer_questions"
+        case reviewQuests = "review_quests"
+        case extractPrinciple = "extract_principle"
+
+        var label: String {
+            switch self {
+            case .capture:
+                return DailyLoopState.capture.title
+            case .reviewCards, .reviewCardsConfirmed:
+                return DailyLoopState.reviewCards.title
+            case .selectLens:
+                return DailyLoopState.selectLens.title
+            case .answerQuestions:
+                return DailyLoopState.answerQuestions.title
+            case .reviewQuests:
+                return DailyLoopState.reviewQuests.title
+            case .extractPrinciple:
+                return DailyLoopState.extractPrinciple.title
+            }
+        }
+    }
+
+    static func resolveVisualQATodayStage(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> VisualQATodayStage {
+        let raw = environment["MINGSI_VISUAL_QA_TODAY_STAGE"]
+            ?? environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE"]
+            ?? ""
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+        return VisualQATodayStage(rawValue: normalized) ?? .capture
+    }
+
     func applyVisualQATodaySeed(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -290,8 +330,89 @@ final class AppStore: ObservableObject {
         todayDraft.sessionMode = Self.resolveVisualQATodayMode(environment: environment)
         todayDraft.hasSelectedSessionMode = true
         trimDerivedState(after: .capture)
-        todayDraft.state = .capture
+        applyVisualQATodayStageSeed(
+            Self.resolveVisualQATodayStage(environment: environment),
+            input: seedInput
+        )
         loadsPersistedStateOnLaunch = false
+    }
+
+    private func applyVisualQATodayStageSeed(_ stage: VisualQATodayStage, input: String) {
+        switch stage {
+        case .capture:
+            todayDraft.state = .capture
+            return
+
+        case .reviewCards:
+            seedVisualQAFallbackCards(from: input, confirmed: false)
+            todayDraft.state = .reviewCards
+
+        case .reviewCardsConfirmed:
+            seedVisualQAFallbackCards(from: input, confirmed: true)
+            todayDraft.state = .reviewCards
+
+        case .selectLens:
+            seedVisualQAFallbackCards(from: input, confirmed: true)
+            todayDraft.state = .selectLens
+
+        case .answerQuestions:
+            seedVisualQAQuestions(from: input, answered: false)
+            todayDraft.state = .answerQuestions
+
+        case .reviewQuests:
+            seedVisualQAQuestions(from: input, answered: true)
+            generateLocalQuests()
+            todayDraft.state = .reviewQuests
+
+        case .extractPrinciple:
+            seedVisualQAQuestions(from: input, answered: true)
+            generateLocalQuests()
+            activateVisualQAMainQuest()
+            generateLocalPrinciple()
+            todayDraft.state = .extractPrinciple
+        }
+
+        markVisualQATodayStageFallback(stage)
+    }
+
+    private func seedVisualQAFallbackCards(from input: String, confirmed: Bool) {
+        generateLocalCards(from: input)
+        guard confirmed else { return }
+        thinkingCards = thinkingCards.map { card in
+            var updated = card
+            updated.isConfirmed = true
+            updated.isExcludedFromModel = false
+            return updated
+        }
+    }
+
+    private func seedVisualQAQuestions(from input: String, answered: Bool) {
+        seedVisualQAFallbackCards(from: input, confirmed: true)
+        todayDraft.selectedLens = .firstPrinciples
+        generateLocalQuestions(from: input)
+        guard answered else { return }
+        questions = questions.map { question in
+            var updated = question
+            updated.answer = "先回到最小事实：明天只验证一个会改变判断的关键假设。"
+            return updated
+        }
+    }
+
+    private func activateVisualQAMainQuest() {
+        quests = quests.map { quest in
+            var updated = quest
+            if quest.type == .main {
+                updated.status = .active
+            }
+            return updated
+        }
+    }
+
+    private func markVisualQATodayStageFallback(_ stage: VisualQATodayStage) {
+        let message = "Debug 视觉验证：已使用本地 fallback 预置到\(stage.label)，不会记录为 AI 成功。"
+        lastAIFailureMessage = message
+        canRetryCurrentAI = false
+        todayLoopMessage = message
     }
 
     enum VisualQAProjectDetailVariant: String, CaseIterable, Equatable {

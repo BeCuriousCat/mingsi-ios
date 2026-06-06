@@ -2,6 +2,41 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Today Debug Stage Seed - Subtask 064
+
+Reason:
+
+- Subtask 063 proved ReviewCards is reachable in the rendered iPhone 17 app, but host Simulator automation could not reliably toggle card-level confirmation.
+- Alpha hardening needed a repeatable rendered path into SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple without relying on brittle coordinate clicks.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a small Debug-only visual QA harness plus manager-owned simulator verification slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 064.
+
+Changed behavior:
+
+- Debug launches with non-empty Today seed input can also specify `MINGSI_VISUAL_QA_TODAY_STAGE` or `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE`.
+- Supported stages include `capture`, `review_cards`, `review_cards_confirmed`, `select_lens`, `answer_questions`, `review_quests`, and `extract_principle`.
+- Seeded later stages reuse existing local fallback helpers and show visible copy that the result is Debug fallback, not AI success.
+- Stage seed is ignored without input and remains behind `#if DEBUG`.
+
+Verification:
+
+- RED test failed for the expected reason: stage seed left Today at `capture`.
+- Focused 064 tests passed: 6 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 172 tests, 0 failures.
+- Debug iPhone 17 simulator build passed.
+- Release iPhone 17 simulator build passed.
+- `git diff --check` passed.
+- Real iPhone 17 screenshots show SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple from stage seed.
+
+Delegation assessment:
+
+- Direct Codex execution was correct for this tiny Debug-only harness because the main work was state-machine TDD plus final simulator screenshot acceptance.
+- This removes the rendered card-confirmation automation blocker for later Today visual QA, but it does not prove live GLM success or final persistence to History/Projects/Growth.
+
 ## 2026-06-06: Today Rendered Post-Card Walkthrough Partial Verification - Subtask 063
 
 Reason:

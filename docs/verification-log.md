@@ -2,6 +2,62 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 064 Today Debug Stage Seed
+
+Scope:
+
+- Add a Debug-only Today stage seed so rendered iPhone 17 visual QA can continue after the Subtask 063 card-confirmation automation blocker.
+- Preserve Release behavior and keep persistence, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, and Today product semantics unchanged.
+- Verify that SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple render from stage seed with visible local fallback messaging.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/064-today-debug-stage-seed-prd.md`
+- `docs/subtasks/064-today-debug-stage-seed-progress.md`
+- `docs/subtasks/screenshots/064-today-debug-stage-seed/*.png`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_selectLensSeedsConfirmedFallbackCards -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_withoutInputDoesNothing -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_readsSimctlChildStage -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_answerQuestionsSeedsLensQuestions -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_reviewQuestsSeedsAnsweredQuestionsAndQuests -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodayStageSeed_extractPrincipleSeedsQuestsAndPrinciple test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+git diff --check
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天要把会议目标拆成一个可以明天验证的行动，并沉淀一个可复用原则。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE=<stage> SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/064-today-debug-stage-seed/<stage>.png
+```
+
+Result:
+
+- RED test failed for the expected reason: stage seed was ignored and Today stayed at `capture`.
+- Focused 064 tests passed: 6 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 172 tests, 0 failures.
+- `git diff --check`: exit 0, no output.
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Release iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Real iPhone 17 simulator screenshots show SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple rendered from stage seed.
+- Each rendered seeded stage shows visible Debug/local fallback copy and does not represent AI success.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/064-today-debug-stage-seed/select_lens.png`
+- `docs/subtasks/screenshots/064-today-debug-stage-seed/answer_questions.png`
+- `docs/subtasks/screenshots/064-today-debug-stage-seed/review_quests.png`
+- `docs/subtasks/screenshots/064-today-debug-stage-seed/extract_principle.png`
+
+Residual risk:
+
+- This does not verify live GLM success because the simulator has no API Key configured.
+- This does not prove final Today completion persistence into History or Projects/Growth evidence chains.
+- This is a Debug-only visual QA accelerator, not a production user feature.
+
 ## 2026-06-06: Subtask 063 Today Rendered Post-Card Walkthrough Partial Verification
 
 Scope:

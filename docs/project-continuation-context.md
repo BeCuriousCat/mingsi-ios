@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 062 Today Debug Seed Input was committed in `93db856 Add debug Today seed input`, and Subtask 063 Today Rendered Post-Card Walkthrough was partially accepted in the documentation/screenshot record.
+At the last recorded check, Subtask 063 Today Rendered Post-Card Walkthrough was committed in `618e63c Record today post-card walkthrough blocker`, and Subtask 064 Today Debug Stage Seed was accepted in the documentation/screenshot record.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -154,10 +154,21 @@ Subtasks 045 through 062 continued Alpha hardening:
 - 061 attempted the rendered iPhone 17 Today core-loop walkthrough. It proved the first rendered transition from `验证昨日` to `今日输入` and verified the logical Today local-fallback loop plus AI failure/retry behavior through focused AppStore tests, but exposed that repeatable rendered text input requires a testability/accessibility slice.
 - 062 added a Debug-only Today seed-input launch path and proved the rendered iPhone 17 app can show seeded raw input, advance into visible local-fallback organization, and reach `思考卡片` review without relying on unstable Simulator paste automation.
 - 063 used that seed path to continue rendered iPhone 17 Today verification after `思考卡片`. It proved ReviewCards is reachable, but card-level confirmation cannot yet be reliably driven through host Simulator coordinate/accessibility automation. This is a rendered verification blocker, not an accepted AppStore state-machine bug.
+- 064 added a Debug-only Today stage seed so iPhone 17 visual QA can launch directly into `select_lens`, `answer_questions`, `review_quests`, or `extract_principle` using existing local fallback helpers and explicit fallback messaging. Focused tests, full AppStore state-machine tests, Debug/Release builds, `git diff --check`, and real screenshots passed.
 
 ## Latest Product Evidence
 
-Subtask 063 Today Rendered Post-Card Walkthrough is partially accepted:
+Subtask 064 Today Debug Stage Seed is complete:
+
+- Debug-only launches can now seed later Today stages through `MINGSI_VISUAL_QA_TODAY_STAGE` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE`.
+- Supported stage ids are `capture`, `review_cards`, `review_cards_confirmed`, `select_lens`, `answer_questions`, `review_quests`, and `extract_principle`.
+- Stage seed works only with a non-empty Today seed input and still skips persisted-state loading for visual QA.
+- Later seeded states use existing local fallback card/question/quest/principle generators and show a visible debug fallback message that says the result is not AI success.
+- Focused 064 tests passed with 6 tests and 0 failures; full `AppStoreStateMachineTests` passed with 172 tests and 0 failures.
+- Debug and Release iPhone 17 simulator builds passed, and `git diff --check` passed.
+- Real iPhone 17 simulator screenshots show SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple rendered from stage seed.
+
+Subtask 063 Today Rendered Post-Card Walkthrough remains partially accepted:
 
 - Real iPhone 17 simulator screenshots show seeded Today input can reach visible local-fallback organization and `思考卡片` / ReviewCards.
 - Attempted host coordinate clicks did not reliably toggle card-level `确认`, and the bottom `确认卡片` action correctly showed the precondition failure: at least one card must be confirmed before lens selection.
@@ -225,6 +236,13 @@ Source:
 
 No active Claude Code worker is running.
 
+Latest completed implementation subtask:
+
+- Subtask: `064-today-debug-stage-seed`
+- PRD: `docs/subtasks/064-today-debug-stage-seed-prd.md`
+- Progress: `docs/subtasks/064-today-debug-stage-seed-progress.md`
+- Status: `CODEX_ACCEPTED`
+
 Latest partially accepted verification subtask:
 
 - Subtask: `063-today-rendered-post-card-walkthrough`
@@ -233,7 +251,7 @@ Latest partially accepted verification subtask:
 - Status: `CODEX_PARTIAL_ACCEPTED`
 - Reason: rendered ReviewCards is reachable, but card-level confirmation cannot yet be reliably driven through host Simulator automation.
 
-Latest completed implementation subtask:
+Previous completed implementation subtask:
 
 - Subtask: `062-today-debug-seed-input`
 - PRD: `docs/subtasks/062-today-debug-seed-input-prd.md`

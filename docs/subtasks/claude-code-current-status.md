@@ -6,6 +6,22 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
+Latest direct Codex implementation acceptance:
+
+- Subtask: `064-today-debug-stage-seed`
+- Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/064-today-debug-stage-seed-prd.md`
+- Progress file: `docs/subtasks/064-today-debug-stage-seed-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: add a Debug-only Today stage seed so rendered iPhone 17 visual QA can continue after the Subtask 063 card-confirmation automation blocker.
+- Allowed files: `Sources/App/AppStore.swift`, `Tests/App/AppStoreStateMachineTests.swift`, 064 docs, 064 screenshots, and process docs.
+- Launch state: no Claude Code worker launched because this was a small Debug-only visual QA harness plus manager-owned simulator acceptance slice.
+- Codex acceptance: accepted after stage seed rendered SelectLens, AnswerQuestions, ReviewQuests, and ExtractPrinciple on a real iPhone 17 simulator.
+- Verification: focused 064 tests passed with 6 tests and 0 failures; full `AppStoreStateMachineTests` passed with 172 tests and 0 failures; Debug and Release iPhone 17 simulator builds passed; `git diff --check` passed; screenshots captured under `docs/subtasks/screenshots/064-today-debug-stage-seed/`.
+- Residual risk: this does not prove live GLM success or final persisted History/Projects/Growth evidence-chain archival.
+
 Latest direct Codex partial acceptance:
 
 - Subtask: `063-today-rendered-post-card-walkthrough`
@@ -22,7 +38,7 @@ Latest direct Codex partial acceptance:
 - Verification: Debug iPhone 17 simulator build passed before capture; rendered screenshots show seeded Today input, visible local fallback organization, ReviewCards, and the explicit `至少确认一张卡片` precondition after confirmation attempts.
 - Residual risk: this does not prove SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, or live GLM success in the rendered app.
 
-Latest direct Codex implementation acceptance:
+Previous direct Codex implementation acceptance:
 
 - Subtask: `062-today-debug-seed-input`
 - Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.

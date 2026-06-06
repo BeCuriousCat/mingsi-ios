@@ -3032,6 +3032,104 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testVisualQATodayStageSeed_withoutInputDoesNothing() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(environment: ["MINGSI_VISUAL_QA_TODAY_STAGE": "select_lens"])
+
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertTrue(store.todayDraft.rawText.isEmpty)
+        XCTAssertTrue(store.thinkingCards.isEmpty)
+        XCTAssertTrue(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQATodayStageSeed_selectLensSeedsConfirmedFallbackCards() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天需要先明确会议目标。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "select_lens"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertEqual(store.todayDraft.state, .selectLens)
+        XCTAssertEqual(store.todayDraft.rawText, "今天需要先明确会议目标。")
+        XCTAssertFalse(store.thinkingCards.isEmpty)
+        XCTAssertTrue(store.thinkingCards.contains(where: \.isConfirmed))
+        XCTAssertNil(store.todayDraft.selectedLens)
+        XCTAssertTrue(store.questions.isEmpty)
+        XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQATodayStageSeed_readsSimctlChildStage() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT": "今天继续截图验证透镜流程。",
+                "SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_STAGE": "review_cards_confirmed"
+            ]
+        )
+
+        XCTAssertEqual(store.todayDraft.state, .reviewCards)
+        XCTAssertFalse(store.thinkingCards.isEmpty)
+        XCTAssertTrue(store.thinkingCards.allSatisfy(\.isConfirmed))
+    }
+
+    func testVisualQATodayStageSeed_answerQuestionsSeedsLensQuestions() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天需要用第一性原理拆一下会议目标。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "answer_questions"
+            ]
+        )
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(store.todayDraft.selectedLens, .firstPrinciples)
+        XCTAssertFalse(store.thinkingCards.isEmpty)
+        XCTAssertTrue(store.thinkingCards.allSatisfy(\.isConfirmed))
+        XCTAssertFalse(store.questions.isEmpty)
+        XCTAssertFalse(store.hasAnsweredReflectionQuestion)
+    }
+
+    func testVisualQATodayStageSeed_reviewQuestsSeedsAnsweredQuestionsAndQuests() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天要把明天的最高杠杆行动说清楚。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "review_quests"
+            ]
+        )
+
+        XCTAssertEqual(store.todayDraft.state, .reviewQuests)
+        XCTAssertEqual(store.todayDraft.selectedLens, .firstPrinciples)
+        XCTAssertTrue(store.hasAnsweredReflectionQuestion)
+        XCTAssertNotNil(store.mainQuest)
+        XCTAssertFalse(store.quests.isEmpty)
+    }
+
+    func testVisualQATodayStageSeed_extractPrincipleSeedsQuestsAndPrinciple() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天要把可复用原则从任务里沉淀出来。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "extract_principle"
+            ]
+        )
+
+        XCTAssertEqual(store.todayDraft.state, .extractPrinciple)
+        XCTAssertNotNil(store.mainQuest)
+        XCTAssertFalse(store.principles.isEmpty)
+        XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
+    }
+
     // MARK: - Visual QA Direct Entry
 
     func testVisualQAProjectDetailFixture_hasDirectEntryProjectID() {
