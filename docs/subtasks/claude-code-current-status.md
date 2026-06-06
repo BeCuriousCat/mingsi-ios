@@ -6,7 +6,23 @@ Last updated: 2026-06-06
 
 Status: no active Claude Code worker.
 
-Latest direct Codex acceptance:
+Latest direct Codex partial acceptance:
+
+- Subtask: `063-today-rendered-post-card-walkthrough`
+- Owner: Codex direct simulator verification and partial acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/063-today-rendered-post-card-walkthrough-prd.md`
+- Progress file: `docs/subtasks/063-today-rendered-post-card-walkthrough-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: continue the rendered iPhone 17 Today walkthrough after Subtask 062 reached `思考卡片`.
+- Allowed files: 063 docs, 063 screenshots, and process docs only.
+- Launch state: no Claude Code worker launched because this was a manager-owned simulator/product acceptance slice.
+- Codex acceptance: partially accepted as evidence that ReviewCards is reachable in the rendered app, while card-level confirmation remains blocked by unreliable host Simulator coordinate/accessibility automation.
+- Verification: Debug iPhone 17 simulator build passed before capture; rendered screenshots show seeded Today input, visible local fallback organization, ReviewCards, and the explicit `至少确认一张卡片` precondition after confirmation attempts.
+- Residual risk: this does not prove SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, or live GLM success in the rendered app.
+
+Latest direct Codex implementation acceptance:
 
 - Subtask: `062-today-debug-seed-input`
 - Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.

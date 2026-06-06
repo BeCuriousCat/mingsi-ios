@@ -2,6 +2,37 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Today Rendered Post-Card Walkthrough Partial Verification - Subtask 063
+
+Reason:
+
+- Subtask 062 made rendered Today raw input repeatable through a Debug-only seed path.
+- The next Alpha hardening gap was whether the rendered iPhone 17 app could continue from `思考卡片` into lens questions, quests, and principle candidate.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a manager-owned simulator verification and product acceptance slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 063.
+
+Changed behavior:
+
+- No product behavior changed.
+- No Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, or Today semantics changed.
+- The accepted artifact is a partial verification record and screenshot evidence identifying the next Today rendered-walkthrough automation blocker.
+
+Verification:
+
+- Debug iPhone 17 simulator build passed.
+- Rendered Today reached visible local fallback organization and `思考卡片` / ReviewCards with seeded input.
+- Host coordinate clicks could not reliably toggle card-level `确认`, and AppleScript accessibility enumeration did not produce a stable button-object click path.
+- The bottom `确认卡片` action showed the expected precondition failure: at least one card must be confirmed before lens selection.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because this slice required final simulator observation and product judgment.
+- The next implementation slice should add a narrow Debug-only Today stage seed or a stable UI automation path, then repeat the rendered walkthrough from confirmed cards onward.
+
 ## 2026-06-06: Today Debug Seed Input - Subtask 062
 
 Reason:

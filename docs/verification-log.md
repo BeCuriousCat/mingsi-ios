@@ -2,6 +2,57 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 063 Today Rendered Post-Card Walkthrough Partial Verification
+
+Scope:
+
+- Use the Subtask 062 Debug-only Today seed path to continue rendered iPhone 17 walkthrough evidence after `思考卡片`.
+- Verify whether ReviewCards can be driven into SelectLens through host Simulator automation.
+- Keep Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and product semantics unchanged.
+
+Changed areas:
+
+- `docs/subtasks/063-today-rendered-post-card-walkthrough-prd.md`
+- `docs/subtasks/063-today-rendered-post-card-walkthrough-progress.md`
+- `docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/*.png`
+- Process docs for stage progress, verification, delegation, continuation context, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天需要先明确会议目标。明天要确认一个可以当天完成的行动。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/<state>.png
+osascript / System Events coordinate interaction against Simulator
+sips -g pixelWidth -g pixelHeight docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/*.png
+git status --short
+```
+
+Result:
+
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Rendered Today reached `今日输入` with seeded raw input after relaunch.
+- Rendered Today reached `整理中` with missing API Key failure visible, local fallback clearly marked, repair banner visible, and `查看卡片` available.
+- Rendered Today reached `思考卡片` / ReviewCards with fallback cards and bottom `确认卡片` action.
+- Host coordinate clicks did not reliably toggle card-level `确认`; the bottom action showed `至少确认一张卡片，才能进入思考透镜选择。`
+- AppleScript accessibility enumeration failed to provide a reliable nested Simulator button-click path.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/02-returned-today.png`
+- `docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/03-organizing-or-review.png`
+- `docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/04-review-cards.png`
+- `docs/subtasks/screenshots/063-today-rendered-post-card-walkthrough/06-after-confirm-cards.png`
+
+Residual risk:
+
+- This is not full rendered Today post-card walkthrough acceptance.
+- SelectLens, AnswerQuestions, ReviewQuests, ExtractPrinciple, and live GLM success remain unverified in the rendered app.
+- Recommended next slice: add a narrow Debug-only Today stage seed or stable UI automation path, then continue screenshot verification from confirmed cards onward.
+
 ## 2026-06-06: Subtask 062 Today Debug Seed Input
 
 Scope:
