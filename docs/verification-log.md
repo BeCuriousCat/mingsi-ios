@@ -2,6 +2,63 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 061 Today Core Loop Walkthrough Partial Verification
+
+Scope:
+
+- Start a real iPhone 17 simulator Today walkthrough after Subtask 060 fresh-data root visuals.
+- Verify whether the rendered app can move from `验证昨日` into `今日输入`.
+- Attempt automated text input into Today capture.
+- Cross-check Today logical core-loop and AI failure/retry behavior with focused AppStore tests.
+- Keep Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, and Today semantics unchanged.
+
+Changed areas:
+
+- `docs/subtasks/061-today-core-loop-walkthrough-prd.md`
+- `docs/subtasks/061-today-core-loop-walkthrough-progress.md`
+- `docs/subtasks/screenshots/061-today-core-loop-walkthrough/*.png`
+- Process docs for stage progress, verification, delegation, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -showBuildSettings
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi MINGSI_VISUAL_QA_TAB
+xcrun simctl pbcopy booted
+xcrun simctl pbpaste booted
+osascript / System Events coordinate interaction against Simulator
+xcrun simctl io booted screenshot docs/subtasks/screenshots/061-today-core-loop-walkthrough/<state>.png
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testFullLoop_canCompleteWithLocalFallback -only-testing:MingSiTests/AppStoreStateMachineTests/testAIFailure_usesVisibleFallbackAndCanRetrySameStep -only-testing:MingSiTests/AppStoreStateMachineTests/testAIRetryFailure_keepsExistingFallbackWithoutIncreasingRepairCount test
+```
+
+Result:
+
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- The first install attempt selected an `Index.noindex/.../MingSi.app` product and failed with `Missing bundle ID`; Codex corrected the path through `TARGET_BUILD_DIR` / `WRAPPER_NAME` and installed the real Debug app.
+- Fresh Today launch showed `验证昨日`.
+- A Simulator coordinate click on the main action advanced the rendered app from `验证昨日` to `今日输入`.
+- Simulator pasteboard contained the intended non-sensitive test input, but coordinate click on `粘贴剪贴板` and `Command+V` after focusing controls did not insert text into `CaptureTextView`.
+- One `osascript` coordinate-input attempt hung; Codex killed only the just-started `osascript` / zsh pair and verified no owned script process remained.
+- Focused AppStore tests passed: 3 tests, 0 failures. Covered full local-fallback Today logical loop, visible AI fallback/retry success, and retry-failure repair count stability.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/061-today-core-loop-walkthrough/01-today-fresh-light.png`
+- `docs/subtasks/screenshots/061-today-core-loop-walkthrough/02-after-save-verification.png`
+- `docs/subtasks/screenshots/061-today-core-loop-walkthrough/03-after-paste-input.png`
+- `docs/subtasks/screenshots/061-today-core-loop-walkthrough/04-after-start-input-command-v.png`
+
+Residual risk:
+
+- This is not full rendered Today UI walkthrough acceptance.
+- The app has no UI Test target, host `simctl` has no direct tap/type command, and core Today controls do not expose stable `accessibilityIdentifier`s.
+- Live GLM success/failure behavior remains unverified in the rendered app because automated input could not reach card generation.
+- Recommended next slice: add a minimal Today testability/accessibility path, then repeat the real iPhone 17 walkthrough.
+
 ## 2026-06-06: Subtask 060 Fresh-Data Alpha Root Visual Pass
 
 Scope:

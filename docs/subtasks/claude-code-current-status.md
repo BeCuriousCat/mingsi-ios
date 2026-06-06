@@ -8,6 +8,22 @@ Status: no active Claude Code worker.
 
 Latest direct Codex acceptance:
 
+- Subtask: `061-today-core-loop-walkthrough`
+- Owner: Codex direct simulator verification and partial acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/061-today-core-loop-walkthrough-prd.md`
+- Progress file: `docs/subtasks/061-today-core-loop-walkthrough-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: attempt an iPhone 17 rendered Today walkthrough after fresh-data root-tab visual verification.
+- Allowed files: 061 docs, 061 screenshots, and process docs only.
+- Launch state: no Claude Code worker launched because this was a manager-owned simulator/product acceptance slice.
+- Codex acceptance: partially accepted as evidence that rendered Today advances from `验证昨日` to `今日输入`, while full rendered input-to-card walkthrough remains blocked by missing stable UI automation entry points.
+- Verification: Debug iPhone 17 simulator build passed; focused AppStore tests passed with 3 tests and 0 failures for full logical local-fallback Today loop and AI failure/retry behavior.
+- Residual risk: rendered `CaptureTextView` input could not be driven repeatably through Simulator coordinate/paste automation; next slice should add minimal Today accessibility/testability support and repeat the walkthrough.
+
+Previous direct Codex acceptance:
+
 - Subtask: `060-fresh-data-alpha-root-visual`
 - Owner: Codex direct simulator verification and final acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/060-fresh-data-alpha-root-visual-prd.md`
@@ -20,9 +36,9 @@ Latest direct Codex acceptance:
 - Launch state: no Claude Code worker launched because this was a manager-owned simulator verification/documentation slice.
 - Codex acceptance: accepted after fresh screenshot review confirmed Projects/History no longer contain prior Visual QA fixture evidence and Growth/Settings dark states remain readable.
 - Verification: Debug iPhone 17 simulator build passed before capture; 10 light/dark root-tab screenshots were captured after app data was cleared; no source or test files changed.
-- Residual risk: this does not replace an interactive Today core-loop walkthrough or live GLM failure-path verification.
+- Residual risk: first rendered Today transition and logical loop were covered in Subtask 061, but full rendered input-to-card walkthrough still requires a testability slice.
 
-Previous direct Codex acceptance:
+Earlier direct Codex acceptance:
 
 - Subtask: `059-alpha-core-visual-regression`
 - Owner: Codex direct implementation and final acceptance; Claude Code not launched.

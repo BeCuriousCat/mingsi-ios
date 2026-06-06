@@ -2,6 +2,40 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Today Core Loop Walkthrough Partial Verification - Subtask 061
+
+Reason:
+
+- Subtask 060 closed the stale-data root-tab visual gap, but first-viewport screenshots still did not prove that Today's core loop can be operated in the rendered iPhone 17 app.
+- The next Alpha hardening step needed evidence for the path from Today launch into input and card generation, plus a precise record if simulator automation blocked the walkthrough.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a manager-owned simulator verification and product acceptance slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 061.
+
+Changed behavior:
+
+- No product behavior changed.
+- No Swift source, tests, persistence, migrations, PromptProvider, parser, LLM clients, Keychain, or Today semantics changed.
+- The accepted artifact is a partial verification record and screenshot evidence identifying a Today UI testability gap.
+
+Verification:
+
+- Debug iPhone 17 simulator build passed.
+- Fresh Debug app launch showed `验证昨日`.
+- Simulator coordinate click on the main action advanced `验证昨日` -> `今日输入`.
+- Simulator pasteboard contained the intended non-sensitive test input, but automated paste/focus/Command+V did not insert text into `CaptureTextView`.
+- One owned `osascript` attempt hung; Codex killed only that just-started script process pair and verified no owned script process remained.
+- Focused AppStore tests passed: 3 tests, 0 failures, covering full local-fallback Today logical loop and AI failure/retry handling.
+
+Delegation assessment:
+
+- Direct Codex execution was correct because this slice required final product judgment and real simulator observation.
+- This is not a full rendered Today walkthrough acceptance. It proves a rendered first transition and logical state-machine coverage, while exposing the missing repeatable UI input path.
+- Next implementation slice should add minimal Today testability/accessibility support before repeating the iPhone 17 walkthrough.
+
 ## 2026-06-06: Fresh-Data Alpha Root Visual Pass - Subtask 060
 
 Reason:

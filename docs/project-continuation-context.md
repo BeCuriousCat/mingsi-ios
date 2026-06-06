@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 059 was committed in `820e73f Add root tab visual QA selector`, and Subtask 060 fresh-data visual evidence was accepted in the documentation/screenshot record.
+At the last recorded check, Subtask 060 was committed in `9afad85 Accept fresh-data root visual pass`, and Subtask 061 Today walkthrough partial verification was accepted in the documentation/screenshot record.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -141,7 +141,7 @@ Subtask 044 added Projects top-level status filtering:
 - Codex accepted after focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Pipeline observation: `scripts/claude_delegate.sh status` displayed the template `## HANDOFF` placeholder before real handoff. Codex ignored it for acceptance; treat this as a delegation-wrapper strictness follow-up.
 
-Subtasks 045 through 060 continued Alpha hardening:
+Subtasks 045 through 061 continued Alpha hardening:
 
 - 045 added an extensible lens-library boundary for built-in lenses without changing UI/persistence/prompt semantics.
 - 047 wired first-principles prompt guidance through catalog metadata and existing prompt-context payload boundaries.
@@ -151,8 +151,17 @@ Subtasks 045 through 060 continued Alpha hardening:
 - 058 polished Project Detail display states directly after delegation resource health blocked worker launch.
 - 059 added a Debug-only root-tab visual QA selector and captured Today, History, Projects, Growth, and Settings in light/dark mode.
 - 060 repeated the root-tab capture after uninstall/reinstall cleared the simulator app data container, confirming Projects and History are not contaminated by prior Visual QA fixture records.
+- 061 attempted the rendered iPhone 17 Today core-loop walkthrough. It proved the first rendered transition from `验证昨日` to `今日输入` and verified the logical Today local-fallback loop plus AI failure/retry behavior through focused AppStore tests, but exposed that repeatable rendered text input requires a testability/accessibility slice.
 
 ## Latest Completed Product Evidence
+
+Subtask 061 Today core-loop walkthrough partial verification is complete:
+
+- Real iPhone 17 simulator screenshots show the rendered app starts at `验证昨日` and advances to `今日输入`.
+- Simulator pasteboard was populated, but automated paste/focus/Command+V did not insert text into `CaptureTextView`.
+- The project currently has no UI Test target, host `simctl` cannot directly tap/type, and Today core controls lack stable automation identifiers.
+- Focused AppStore tests passed with 3 tests and 0 failures, covering full logical local-fallback Today loop and AI failure/retry handling.
+- This is partial verification, not full rendered Today input-to-card walkthrough acceptance.
 
 Subtask 060 fresh-data Alpha root visual pass is complete:
 
@@ -197,12 +206,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `060-fresh-data-alpha-root-visual`
-- PRD: `docs/subtasks/060-fresh-data-alpha-root-visual-prd.md`
-- Progress: `docs/subtasks/060-fresh-data-alpha-root-visual-progress.md`
+- Subtask: `061-today-core-loop-walkthrough`
+- PRD: `docs/subtasks/061-today-core-loop-walkthrough-prd.md`
+- Progress: `docs/subtasks/061-today-core-loop-walkthrough-progress.md`
 - Claude prompt: none
 - Worker path: none
-- Result: direct Codex simulator verification accepted after fresh-data iPhone 17 root-tab screenshots.
+- Result: direct Codex simulator verification partially accepted; next product slice should add minimal Today testability/accessibility support before repeating the rendered walkthrough.
 
 Latest framework subtask:
 
@@ -243,8 +252,8 @@ These attempts are historical evidence only. Do not reuse the broad 029 prompt p
 Preferred next move:
 
 1. Choose the next bounded MVP hardening slice from `docs/mvp-stage-progress.md`:
+   - Minimal Today testability/accessibility support, so the iPhone 17 rendered Today walkthrough can reliably enter input and reach card review.
    - Live GLM failure-path confirmation for History repair.
-   - Interactive Today core-loop walkthrough on iPhone 17.
    - Delegation worker-launch reliability hardening if Claude Code resource health still blocks useful worker runs.
 2. Prefer a slice that improves alpha usability and can be verified by focused tests plus an iPhone 17 build.
 3. Use Claude Code generously when the slice has a clear write set and acceptance tests, but keep Codex responsible for product judgment and final acceptance.
