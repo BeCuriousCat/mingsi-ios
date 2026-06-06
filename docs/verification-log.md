@@ -2,6 +2,65 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-06: Subtask 062 Today Debug Seed Input
+
+Scope:
+
+- Add a Debug-only Today launch seed so the iPhone 17 rendered Today walkthrough can bypass unreliable Simulator text input automation.
+- Preserve Release behavior and keep persistence, migrations, PromptProvider, parser, LLM clients, Keychain, History, Projects, Growth, Settings, and Today AI semantics unchanged.
+- Verify that seeded input can render in Today, trigger local fallback card organization, and reach ReviewCards on a real iPhone 17 simulator.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/App/MingSiApp.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/subtasks/062-today-debug-seed-input-prd.md`
+- `docs/subtasks/062-today-debug-seed-input-progress.md`
+- `docs/subtasks/screenshots/062-today-debug-seed-input/*.png`
+- Process docs for stage progress, verification, delegation, and current Claude status.
+
+Commands run:
+
+```bash
+git status --short
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_appliesCaptureTextModeAndSkipsPersistedLoad -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_withoutInputDoesNotChangeNormalLaunchState test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_appliesCaptureTextModeAndSkipsPersistedLoad -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_withoutInputDoesNotChangeNormalLaunchState -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_readsSimctlChildEnvironmentAndDefaultsUnknownMode -only-testing:MingSiTests/AppStoreStateMachineTests/testVisualQATodaySeedInput_preventsProjectDetailFixtureMarker test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Release -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+xcrun simctl uninstall booted com.codex.mingsi
+xcrun simctl install booted /Users/chenzewei/Library/Developer/Xcode/DerivedData/MingSi-erjzdsaapaoobtcrmiwnfyqrwdqr/Build/Products/Debug-iphonesimulator/MingSi.app
+SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT='今天需要先明确会议目标。明天要确认一个可以当天完成的行动。' SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE=standard SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB=today xcrun simctl launch --terminate-running-process booted com.codex.mingsi
+xcrun simctl io booted screenshot docs/subtasks/screenshots/062-today-debug-seed-input/<state>.png
+osascript / System Events coordinate interaction against Simulator
+```
+
+Result:
+
+- RED test failed for the expected reason: `AppStore` had no `applyVisualQATodaySeed`.
+- Focused 062 tests passed: 4 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 166 tests, 0 failures.
+- Debug iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- Release iPhone 17 simulator build: `BUILD SUCCEEDED`, confirming the Debug-only launch code does not leak into Release behavior.
+- `git diff --check`: exit 0, no output.
+- Real iPhone 17 simulator launch with Today seed showed `今日输入`, `Standard`, and the seeded raw input.
+- Clicking the main Today action advanced into `整理中`, where missing API Key was visibly reported, local fallback was clearly marked, and the pending repair banner appeared.
+- Clicking `查看卡片` reached `思考卡片` review with generated local fallback cards and confirmation controls.
+
+Screenshots:
+
+- `docs/subtasks/screenshots/062-today-debug-seed-input/01-seeded-capture.png`
+- `docs/subtasks/screenshots/062-today-debug-seed-input/02-organizing-fallback.png`
+- `docs/subtasks/screenshots/062-today-debug-seed-input/03-review-cards-fallback.png`
+
+Residual risk:
+
+- This does not verify live GLM success in the rendered app because the simulator has no API Key configured.
+- This does not complete the full Today -> lens -> quest -> principle -> History/Projects/Growth screenshot walkthrough.
+- Coordinate-based Simulator clicking is still brittle; the important 061 blocker, repeatable raw-text entry, is now removed by Debug seed launch.
+
 ## 2026-06-06: Subtask 061 Today Core Loop Walkthrough Partial Verification
 
 Scope:

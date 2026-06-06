@@ -71,6 +71,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 - Completed Subtask 059 Alpha root-tab visual regression as a direct Codex slice. Debug-only root-tab launch selection now supports `MINGSI_VISUAL_QA_TAB` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TAB`, and stale Project Detail marker files no longer hijack root-tab screenshots. Codex captured Today, History, Projects, Growth, and Settings in light/dark mode on a real iPhone 17 simulator. `AppStoreStateMachineTests` passed with 162 tests and 0 failures, `git diff --check` passed, and iPhone 17 Release simulator build passed.
 - Completed Subtask 060 Fresh-Data Alpha Root Visual Pass as a direct Codex verification slice. Codex uninstalled/reinstalled the Debug app on the booted iPhone 17 simulator, recaptured Today, History, Projects, Growth, and Settings in light/dark mode, and confirmed Projects/History no longer contain prior Visual QA fixture evidence. No Swift source or test files changed.
 - Partially accepted Subtask 061 Today Core Loop Walkthrough as direct Codex verification. Real iPhone 17 screenshots prove the rendered app advances from `验证昨日` to `今日输入`, and focused AppStore tests prove the logical Today local-fallback loop plus AI failure/retry behavior. The full rendered UI walkthrough is still blocked because this repo has no UI Test target, host `simctl` cannot tap/type, and Today core controls lack stable automation identifiers.
+- Completed Subtask 062 Today Debug Seed Input as a direct Codex TDD and simulator-verification slice. Debug-only launches can now seed Today raw input and mode through `MINGSI_VISUAL_QA_TODAY_INPUT` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT` and `MINGSI_VISUAL_QA_TODAY_MODE` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE`, enter `今日输入`, and skip persisted-state loading for that launch. The seed path also prevents stale Project Detail marker files from hijacking Today visual QA launches. `AppStoreStateMachineTests` passed with 166 tests and 0 failures, `git diff --check` passed, Debug and Release iPhone 17 simulator builds passed, and real screenshots prove seeded Today input can proceed into local fallback card organization and `思考卡片` review.
 
 ## Known Remaining Work
 
@@ -85,13 +86,13 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 9. Process files should stay updated after each implementation or delegation slice.
 10. Claude Code flow logs are retained for diagnosis, but manager review should consume worker progress/HANDOFF first and open raw/event logs only when acceptance fails or progress reveals a hard issue.
 11. Subtask 047 keeps First Principles lens behavior under the Domain library/provider boundary. Future lens work should extend catalog metadata instead of adding UI/prompt-specific lens branches.
-12. Subtask 060 closed the Subtask 059 fresh-data screenshot gap. Subtask 061 proved the first rendered Today transition and logical Today loop, but exposed a testability gap: repeatable rendered Today input requires stable accessibility identifiers and/or a Debug-only seed-input launch path.
+12. Subtask 060 closed the Subtask 059 fresh-data screenshot gap. Subtask 061 proved the first rendered Today transition and logical Today loop, and Subtask 062 closed the repeatable rendered Today raw-input blocker with a Debug-only seed-input launch path. The remaining rendered walkthrough gap is live GLM confirmation and the later Today steps after ReviewCards.
 
 ## Current Recommended Next Slice
 
-After Subtask 061, the next bounded slice should be chosen from:
+After Subtask 062, the next bounded slice should be chosen from:
 
-- Minimal Today testability/accessibility support, so the iPhone 17 rendered Today walkthrough can reliably enter input and reach card review.
+- Continue the rendered Today walkthrough from ReviewCards through confirmed cards, lens questions, quests, and principle candidate using the new Debug seed path.
 - Live GLM failure-path confirmation for History repair, if a real BYOK configuration is available for safe testing.
 - Delegation worker-launch reliability hardening, especially Codex direct zombie accumulation, print-mode launch-exit detection, tmux/session-mode validation, and post-handoff process cleanup checks.
 

@@ -2,6 +2,42 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-06: Today Debug Seed Input - Subtask 062
+
+Reason:
+
+- Subtask 061 proved the rendered Today app can advance from `验证昨日` to `今日输入`, but Simulator paste/focus/keyboard automation could not reliably insert text into `CaptureTextView`.
+- Alpha hardening needed a repeatable rendered Today input path so Codex can continue the iPhone 17 walkthrough from input into organization and card review.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a small Debug-only visual QA harness plus manager-owned simulator verification slice.
+- No Claude prompt, raw log, event log, worker worktree, or worker handoff exists for 062.
+
+Changed behavior:
+
+- Debug launches can seed Today raw input through `MINGSI_VISUAL_QA_TODAY_INPUT` or `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT`.
+- Debug launches can seed Today mode through `MINGSI_VISUAL_QA_TODAY_MODE` or `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE`; unknown mode falls back to `standard` when input is provided.
+- Applying a non-empty seed selects Today, enters `Capture`, marks mode selected, trims downstream state after capture, skips persisted-state loading for that launch, and prevents stale Project Detail visual QA marker files from hijacking Today screenshots.
+- Release behavior remains guarded by `#if DEBUG` and does not read these variables.
+
+Verification:
+
+- RED test failed for the expected reason before implementation: `AppStore` had no `applyVisualQATodaySeed`.
+- Focused 062 tests passed: 4 tests, 0 failures.
+- Full `AppStoreStateMachineTests` passed: 166 tests, 0 failures.
+- Debug iPhone 17 simulator build passed.
+- Release iPhone 17 simulator build passed.
+- `git diff --check` passed.
+- Real iPhone 17 screenshots show seeded Today input, visible local-fallback organization with missing API Key repair messaging, and `思考卡片` review with fallback cards.
+
+Delegation assessment:
+
+- Direct Codex execution was correct for this tiny Debug-only harness because the main work was test-driven store wiring plus final simulator acceptance.
+- This removed the repeatable raw-text entry blocker from Subtask 061.
+- The next product walkthrough can continue from ReviewCards through card confirmation, lens questions, quests, and principle candidate.
+
 ## 2026-06-06: Today Core Loop Walkthrough Partial Verification - Subtask 061
 
 Reason:

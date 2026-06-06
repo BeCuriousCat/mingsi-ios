@@ -8,6 +8,22 @@ Status: no active Claude Code worker.
 
 Latest direct Codex acceptance:
 
+- Subtask: `062-today-debug-seed-input`
+- Owner: Codex direct TDD implementation, simulator verification, and acceptance; Claude Code not launched.
+- PRD file: `docs/subtasks/062-today-debug-seed-input-prd.md`
+- Progress file: `docs/subtasks/062-today-debug-seed-input-progress.md`
+- Claude prompt file: none.
+- Event log: none.
+- Raw log: none.
+- Purpose: add a Debug-only Today seed-input launch path so rendered iPhone 17 walkthroughs can bypass unreliable Simulator paste/keyboard automation.
+- Allowed files: `Sources/App/AppStore.swift`, `Sources/App/MingSiApp.swift`, `Tests/App/AppStoreStateMachineTests.swift`, 062 docs, 062 screenshots, and process docs.
+- Launch state: no Claude Code worker launched because this was a small Debug-only visual QA harness plus manager-owned simulator acceptance slice.
+- Codex acceptance: accepted after Debug seed input rendered in `今日输入`, advanced to visible local-fallback organization, and reached `思考卡片` review on a real iPhone 17 simulator.
+- Verification: focused 062 tests passed with 4 tests and 0 failures; full `AppStoreStateMachineTests` passed with 166 tests and 0 failures; Debug and Release iPhone 17 simulator builds passed; `git diff --check` passed; screenshots captured under `docs/subtasks/screenshots/062-today-debug-seed-input/`.
+- Residual risk: live GLM success is not verified in the rendered simulator because no API Key is configured; full Today -> lens -> quest -> principle -> History/Projects/Growth screenshot walkthrough remains open.
+
+Previous direct Codex acceptance:
+
 - Subtask: `061-today-core-loop-walkthrough`
 - Owner: Codex direct simulator verification and partial acceptance; Claude Code not launched.
 - PRD file: `docs/subtasks/061-today-core-loop-walkthrough-prd.md`
@@ -20,9 +36,9 @@ Latest direct Codex acceptance:
 - Launch state: no Claude Code worker launched because this was a manager-owned simulator/product acceptance slice.
 - Codex acceptance: partially accepted as evidence that rendered Today advances from `验证昨日` to `今日输入`, while full rendered input-to-card walkthrough remains blocked by missing stable UI automation entry points.
 - Verification: Debug iPhone 17 simulator build passed; focused AppStore tests passed with 3 tests and 0 failures for full logical local-fallback Today loop and AI failure/retry behavior.
-- Residual risk: rendered `CaptureTextView` input could not be driven repeatably through Simulator coordinate/paste automation; next slice should add minimal Today accessibility/testability support and repeat the walkthrough.
+- Residual risk: rendered `CaptureTextView` input could not be driven repeatably through Simulator coordinate/paste automation; Subtask 062 removed the repeatable raw-text entry blocker with a Debug seed launch path.
 
-Previous direct Codex acceptance:
+Earlier direct Codex acceptance:
 
 - Subtask: `060-fresh-data-alpha-root-visual`
 - Owner: Codex direct simulator verification and final acceptance; Claude Code not launched.
@@ -36,9 +52,9 @@ Previous direct Codex acceptance:
 - Launch state: no Claude Code worker launched because this was a manager-owned simulator verification/documentation slice.
 - Codex acceptance: accepted after fresh screenshot review confirmed Projects/History no longer contain prior Visual QA fixture evidence and Growth/Settings dark states remain readable.
 - Verification: Debug iPhone 17 simulator build passed before capture; 10 light/dark root-tab screenshots were captured after app data was cleared; no source or test files changed.
-- Residual risk: first rendered Today transition and logical loop were covered in Subtask 061, but full rendered input-to-card walkthrough still requires a testability slice.
+- Residual risk: first rendered Today transition and logical loop were covered in Subtask 061, and raw-text entry was stabilized by Subtask 062. The full rendered Today loop after ReviewCards still needs walkthrough evidence.
 
-Earlier direct Codex acceptance:
+Older direct Codex acceptance:
 
 - Subtask: `059-alpha-core-visual-regression`
 - Owner: Codex direct implementation and final acceptance; Claude Code not launched.

@@ -2975,6 +2975,63 @@ final class AppStoreStateMachineTests: XCTestCase {
         cleanDefaults.removeSuite(named: "test-visual-qa-root-tab-priority")
     }
 
+    func testVisualQATodaySeedInput_appliesCaptureTextModeAndSkipsPersistedLoad() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天需要先明确会议目标。",
+                "MINGSI_VISUAL_QA_TODAY_MODE": "deep"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertEqual(store.todayDraft.state, .capture)
+        XCTAssertEqual(store.todayDraft.rawText, "今天需要先明确会议目标。")
+        XCTAssertEqual(store.todayDraft.sessionMode, .deep)
+        XCTAssertTrue(store.todayDraft.hasSelectedSessionMode)
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQATodaySeedInput_withoutInputDoesNotChangeNormalLaunchState() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(environment: ["MINGSI_VISUAL_QA_TODAY_MODE": "quick"])
+
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertTrue(store.todayDraft.rawText.isEmpty)
+        XCTAssertFalse(store.todayDraft.hasSelectedSessionMode)
+        XCTAssertTrue(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQATodaySeedInput_readsSimctlChildEnvironmentAndDefaultsUnknownMode() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT": "  今天先把输入自动化打通。  ",
+                "SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE": "slow"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertEqual(store.todayDraft.state, .capture)
+        XCTAssertEqual(store.todayDraft.rawText, "今天先把输入自动化打通。")
+        XCTAssertEqual(store.todayDraft.sessionMode, .standard)
+        XCTAssertTrue(store.todayDraft.hasSelectedSessionMode)
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQATodaySeedInput_preventsProjectDetailFixtureMarker() {
+        XCTAssertFalse(
+            AppStore.shouldUseVisualQAProjectDetailFixture(
+                environment: ["MINGSI_VISUAL_QA_TODAY_INPUT": "今天先验证输入种子。"],
+                markerFileExists: { true }
+            ),
+            "Today seed launches must not be hijacked by stale Project Detail visual QA marker files"
+        )
+    }
+
     // MARK: - Visual QA Direct Entry
 
     func testVisualQAProjectDetailFixture_hasDirectEntryProjectID() {

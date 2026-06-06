@@ -259,6 +259,41 @@ final class AppStore: ObservableObject {
         selectedTab = visualQATab
     }
 
+    static func resolveVisualQATodayInput(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        let raw = environment["MINGSI_VISUAL_QA_TODAY_INPUT"]
+            ?? environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT"]
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func resolveVisualQATodayMode(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SessionMode {
+        let raw = environment["MINGSI_VISUAL_QA_TODAY_MODE"]
+            ?? environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE"]
+            ?? ""
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return SessionMode(rawValue: normalized) ?? .standard
+    }
+
+    func applyVisualQATodaySeed(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        guard let seedInput = Self.resolveVisualQATodayInput(environment: environment) else {
+            return
+        }
+
+        selectedTab = .today
+        todayDraft.rawText = seedInput
+        todayDraft.sessionMode = Self.resolveVisualQATodayMode(environment: environment)
+        todayDraft.hasSelectedSessionMode = true
+        trimDerivedState(after: .capture)
+        todayDraft.state = .capture
+        loadsPersistedStateOnLaunch = false
+    }
+
     enum VisualQAProjectDetailVariant: String, CaseIterable, Equatable {
         case nil_project
         case minimal
@@ -311,6 +346,9 @@ final class AppStore: ObservableObject {
         }
     ) -> Bool {
         if resolveVisualQATab(environment: environment) != nil {
+            return false
+        }
+        if resolveVisualQATodayInput(environment: environment) != nil {
             return false
         }
         return isVisualQAProjectDetailLaunch(

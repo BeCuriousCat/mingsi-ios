@@ -44,7 +44,7 @@ MVP can stop only when the app is a coherent personal alpha that supports:
 
 ## Current Worktree State
 
-At the last recorded check, Subtask 060 was committed in `9afad85 Accept fresh-data root visual pass`, and Subtask 061 Today walkthrough partial verification was accepted in the documentation/screenshot record.
+At the last recorded check, Subtask 061 was committed in `a906843 Record today walkthrough testability gap`, and Subtask 062 Today Debug Seed Input was accepted in the documentation/screenshot record.
 
 The repo may become dirty again during new subtasks. Treat the live worktree as authoritative and do not clean or revert unrelated user, Codex, Claude Code, GLM, or other-agent changes.
 
@@ -141,7 +141,7 @@ Subtask 044 added Projects top-level status filtering:
 - Codex accepted after focused `HistoryFeatureTests` passed with 65 tests and 0 failures, `git diff --check` passed, and iPhone 17 simulator build passed.
 - Pipeline observation: `scripts/claude_delegate.sh status` displayed the template `## HANDOFF` placeholder before real handoff. Codex ignored it for acceptance; treat this as a delegation-wrapper strictness follow-up.
 
-Subtasks 045 through 061 continued Alpha hardening:
+Subtasks 045 through 062 continued Alpha hardening:
 
 - 045 added an extensible lens-library boundary for built-in lenses without changing UI/persistence/prompt semantics.
 - 047 wired first-principles prompt guidance through catalog metadata and existing prompt-context payload boundaries.
@@ -152,8 +152,18 @@ Subtasks 045 through 061 continued Alpha hardening:
 - 059 added a Debug-only root-tab visual QA selector and captured Today, History, Projects, Growth, and Settings in light/dark mode.
 - 060 repeated the root-tab capture after uninstall/reinstall cleared the simulator app data container, confirming Projects and History are not contaminated by prior Visual QA fixture records.
 - 061 attempted the rendered iPhone 17 Today core-loop walkthrough. It proved the first rendered transition from `验证昨日` to `今日输入` and verified the logical Today local-fallback loop plus AI failure/retry behavior through focused AppStore tests, but exposed that repeatable rendered text input requires a testability/accessibility slice.
+- 062 added a Debug-only Today seed-input launch path and proved the rendered iPhone 17 app can show seeded raw input, advance into visible local-fallback organization, and reach `思考卡片` review without relying on unstable Simulator paste automation.
 
 ## Latest Completed Product Evidence
+
+Subtask 062 Today Debug Seed Input is complete:
+
+- Debug-only launches can seed Today raw input and mode through `MINGSI_VISUAL_QA_TODAY_INPUT` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_INPUT` and `MINGSI_VISUAL_QA_TODAY_MODE` / `SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MODE`.
+- The seed path selects Today, enters `Capture`, marks mode selected, skips persisted-state loading for that launch, and prevents stale Project Detail fixture markers from hijacking Today visual QA launches.
+- Focused 062 tests passed with 4 tests and 0 failures; full `AppStoreStateMachineTests` passed with 166 tests and 0 failures.
+- Debug and Release iPhone 17 simulator builds passed, and `git diff --check` passed.
+- Real iPhone 17 simulator screenshots show seeded input in `今日输入`, visible local-fallback organization with repair messaging, and `思考卡片` review with fallback cards.
+- This closes the repeatable raw-text entry blocker from Subtask 061, but does not prove live GLM success or the full Today -> lens -> quest -> principle -> History/Projects/Growth walkthrough.
 
 Subtask 061 Today core-loop walkthrough partial verification is complete:
 
@@ -206,12 +216,12 @@ No active Claude Code worker is running.
 
 Latest completed subtask:
 
-- Subtask: `061-today-core-loop-walkthrough`
-- PRD: `docs/subtasks/061-today-core-loop-walkthrough-prd.md`
-- Progress: `docs/subtasks/061-today-core-loop-walkthrough-progress.md`
+- Subtask: `062-today-debug-seed-input`
+- PRD: `docs/subtasks/062-today-debug-seed-input-prd.md`
+- Progress: `docs/subtasks/062-today-debug-seed-input-progress.md`
 - Claude prompt: none
 - Worker path: none
-- Result: direct Codex simulator verification partially accepted; next product slice should add minimal Today testability/accessibility support before repeating the rendered walkthrough.
+- Result: direct Codex TDD implementation and simulator verification accepted; next product slice should continue the rendered Today walkthrough from ReviewCards through card confirmation, lens questions, quests, and principle candidate using the new Debug seed path.
 
 Latest framework subtask:
 

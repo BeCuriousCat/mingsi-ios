@@ -14,6 +14,7 @@ struct MingSiApp: App {
             storeInstance = AppStore.live()
         }
         storeInstance.applyVisualQATabOverride()
+        storeInstance.applyVisualQATodaySeed()
         _store = StateObject(wrappedValue: storeInstance)
 #else
         _store = StateObject(wrappedValue: AppStore.live())
@@ -31,6 +32,7 @@ struct MingSiApp: App {
                         store.applyVisualQATabOverride()
                         return
                     }
+                    store.applyVisualQATodaySeed()
                     guard store.loadsPersistedStateOnLaunch else { return }
                     #endif
                     await store.loadPersistedState()
