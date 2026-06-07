@@ -189,9 +189,9 @@ final class AppStore: ObservableObject {
                 apiKeyStore: apiKeyStore,
                 promptRunRepository: promptRunRepository
             )
-            let growthService = GrowthAIService(
-                promptProvider: LocalPromptProvider(),
-                llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+            let growthService = makeGrowthAIService(
+                apiKeyStore: apiKeyStore,
+                promptRunRepository: promptRunRepository
             )
             return AppStore(
                 apiKeyStore: apiKeyStore,
@@ -1493,8 +1493,14 @@ final class AppStore: ObservableObject {
 
         do {
             if let snapshot = try await metricSnapshotRepository.latestSnapshot() {
-                growthSnapshot = snapshot
-                await loadGrowthReportReviewContributions()
+                let reviewContributions = try await displayableGrowthContributions(for: snapshot)
+                if snapshot.canDisplayScores && reviewContributions.isEmpty {
+                    growthSnapshot = snapshot.degradedForMissingGrowthContributions()
+                    growthReportReviewContributions = []
+                } else {
+                    growthSnapshot = snapshot
+                    growthReportReviewContributions = reviewContributions
+                }
             }
         } catch {
             todayLoopMessage = "读取成长快照失败，已保留当前证据状态。"
@@ -1502,21 +1508,21 @@ final class AppStore: ObservableObject {
     }
 
     func loadGrowthReportReviewContributions() async {
-        guard let metricContributionRepository, growthSnapshot.canDisplayScores else {
-            growthReportReviewContributions = []
-            return
-        }
-
         do {
-            growthReportReviewContributions = try await metricContributionRepository
-                .contributions(for: growthSnapshot.id)
-                .filter { contribution in
-                    contribution.isAcceptedForTrend &&
-                    !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
+            growthReportReviewContributions = try await displayableGrowthContributions(for: growthSnapshot)
         } catch {
             growthReportReviewContributions = []
         }
+    }
+
+    private func displayableGrowthContributions(for snapshot: MetricSnapshot) async throws -> [MetricContribution] {
+        guard let metricContributionRepository, snapshot.canDisplayScores else { return [] }
+        return try await metricContributionRepository
+            .contributions(for: snapshot.id)
+            .filter { contribution in
+                contribution.isAcceptedForTrend &&
+                !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
     }
 
     func loadMetricContributions(for metric: GrowthMetric) async {
@@ -2687,10 +2693,12 @@ final class AppStore: ObservableObject {
         let completedRecords = historyRecords
             .filter { $0.draft.state == .sessionComplete }
             .sorted { $0.draft.date < $1.draft.date }
+        let dismissedContributionTitles = await dismissedGrowthContributionTitles()
 
         let context = buildGrowthReportContext(
             period: "weekly",
-            completedRecords: completedRecords
+            completedRecords: completedRecords,
+            dismissedContributionTitles: dismissedContributionTitles
         )
 
         guard let growthAIService else {
@@ -2732,10 +2740,12 @@ final class AppStore: ObservableObject {
         let completedRecords = historyRecords
             .filter { $0.draft.state == .sessionComplete }
             .sorted { $0.draft.date < $1.draft.date }
+        let dismissedContributionTitles = await dismissedGrowthContributionTitles()
 
         let context = buildGrowthReportContext(
             period: "monthly",
-            completedRecords: completedRecords
+            completedRecords: completedRecords,
+            dismissedContributionTitles: dismissedContributionTitles
         )
 
         guard let growthAIService else {
@@ -2765,7 +2775,8 @@ final class AppStore: ObservableObject {
 
     private func buildGrowthReportContext(
         period: String,
-        completedRecords: [HistoryRecord]
+        completedRecords: [HistoryRecord],
+        dismissedContributionTitles: [String]
     ) -> GrowthReportContext {
         let summaries = completedRecords.map { record -> GrowthRecordSummary in
             GrowthRecordSummary(
@@ -2783,10 +2794,6 @@ final class AppStore: ObservableObject {
             )
         }
 
-        let dismissed = historyRecords.flatMap { record in
-            record.growthContributions.filter { $0.userFeedback == .inaccurate || $0.userFeedback == .dismissed }
-        }.map(\.title)
-
         return GrowthReportContext(
             period: period,
             startDate: completedRecords.first?.draft.date,
@@ -2794,8 +2801,40 @@ final class AppStore: ObservableObject {
             completeLoopCount: completedRecords.count,
             historyRecords: summaries,
             previousSnapshot: growthSnapshot.canDisplayScores ? growthSnapshot : nil,
-            dismissedContributionTitles: dismissed
+            dismissedContributionTitles: dismissedContributionTitles
         )
+    }
+
+    private func dismissedGrowthContributionTitles() async -> [String] {
+        var contributions = historyRecords.flatMap { record in
+            record.growthContributions
+        }
+
+        if let metricContributionRepository {
+            var snapshotIds: [UUID] = [growthSnapshot.id]
+            if let metricSnapshotRepository,
+               let latestSnapshot = try? await metricSnapshotRepository.latestSnapshot(),
+               latestSnapshot.id != growthSnapshot.id {
+                snapshotIds.append(latestSnapshot.id)
+            }
+
+            for snapshotId in snapshotIds {
+                if let snapshotContributions = try? await metricContributionRepository.contributions(for: snapshotId) {
+                    contributions.append(contentsOf: snapshotContributions)
+                }
+            }
+        }
+
+        var seen: Set<String> = []
+        return contributions.compactMap { contribution -> String? in
+            guard contribution.userFeedback == .inaccurate || contribution.userFeedback == .dismissed else {
+                return nil
+            }
+            let title = contribution.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty, !seen.contains(title) else { return nil }
+            seen.insert(title)
+            return title
+        }
     }
 
     private func acceptedGrowthContribution(_ contribution: MetricContribution) -> MetricContribution {
@@ -3554,6 +3593,16 @@ final class AppStore: ObservableObject {
         )
     }
 
+    private static func makeGrowthAIService(
+        apiKeyStore: KeychainAPIKeyStore,
+        promptRunRepository: PromptRunRepository?
+    ) -> GrowthAIService {
+        GrowthAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        )
+    }
+
     private static func makeLLMClient(
         apiKeyStore: KeychainAPIKeyStore,
         promptRunRepository: PromptRunRepository?
@@ -3608,6 +3657,10 @@ final class AppStore: ObservableObject {
     private func refreshAIServiceFromKeychainIfNeeded() {
         guard refreshesAIServiceFromKeychain else { return }
         todayAIService = Self.makeTodayAIService(
+            apiKeyStore: apiKeyStore,
+            promptRunRepository: promptRunRepository
+        )
+        growthAIService = Self.makeGrowthAIService(
             apiKeyStore: apiKeyStore,
             promptRunRepository: promptRunRepository
         )
@@ -3787,6 +3840,7 @@ final class AppStore: ObservableObject {
                 glmConnectionMessage = "GLM 连接测试失败：\(error.localizedDescription)"
             }
             isTestingGLMConnection = false
+            await loadRecentPromptRuns()
             updateSettingsMessage()
         }
     }

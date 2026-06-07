@@ -2,6 +2,128 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-07: Subtask 071 Settings Connection Audit Visibility
+
+Scope:
+
+- Ensure Settings connection tests refresh the user-visible PromptRun audit list after completion.
+- Prove the connection test PromptRun is visible without requiring a manual audit refresh tap.
+- Keep LLM client construction, PromptRun persistence schema, Keychain storage, prompt templates, Settings layout, and Project/Growth semantics unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testGLMConnectionRefreshesPromptRunAuditAfterCompletion test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Focused RED confirmed before implementation: connection test finished but `recentPromptRuns` stayed empty until manual reload.
+- After the AppStore completion-path fix, the focused test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 179 tests and 0 failures.
+- `HistoryFeatureTests` passed with 71 tests and 0 failures.
+- iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- `git diff --check`: exit 0, no output.
+
+Residual risk:
+
+- This is state-machine evidence, not a rendered Settings screenshot.
+- The focused test uses the missing-key audited client path to avoid network calls and to avoid touching the user's real Keychain service.
+
+## 2026-06-07: Subtask 070 Settings/Growth AI Service Refresh
+
+Scope:
+
+- Fix Settings BYOK refresh so Growth weekly/monthly reports use the current Keychain/Base URL/model configuration after Settings changes.
+- Reuse the same audited `makeLLMClient` boundary for Growth AI service creation as Today AI service creation.
+- Keep SwiftUI views, persistence schema, migrations, PromptProvider, DirectGLMClient behavior, Growth prompt semantics, and Project/Growth evidence rules unchanged.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Services/KeychainAPIKeyStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testKeychainRefreshRoutesGrowthReportsThroughAuditedMissingKeyClient test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Focused RED confirmed before implementation: after `refreshAIServiceFromKeychainIfNeeded()`, Growth report generation still returned `Growth AI service unavailable` instead of routing through an audited GLM client.
+- After the AppStore refresh fix, the focused test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 178 tests and 0 failures.
+- `HistoryFeatureTests` passed with 71 tests and 0 failures.
+- iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- `git diff --check`: exit 0, no output.
+
+Residual risk:
+
+- This proves the missing-key/audit route and service refresh boundary, not a successful live GLM Growth report with a real API key.
+- The test uses an isolated Keychain service name to avoid contaminating the user's real BYOK credentials.
+
+## 2026-06-07: Subtask 069 Project/Growth Evidence Chain Hardening
+
+Scope:
+
+- Add Project Detail Principles evidence display only for principle ProjectLinks that resolve to real History `PrincipleAsset` evidence.
+- Degrade persisted Growth snapshots to insufficient evidence when they claim displayable scores but no accepted/source-linked MetricContribution records resolve.
+- Let Growth project-source drilldowns locate and highlight matching History project evidence rows.
+- Ensure inaccurate/dismissed Growth contribution feedback from the latest snapshot enters the next weekly/monthly Growth AI context.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Domain/Models.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/Features/HistoryFeatureTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testGenerateWeeklyGrowthReport_includesDismissedContributionFeedbackFromLatestSnapshot test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/HistoryFeatureTests test
+xcodebuild -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' build
+git diff --check
+```
+
+Result:
+
+- Focused Growth feedback-context test first failed as expected: `dismissed_contributions` was nil and structured Growth context contained an empty dismissed list.
+- After the AppStore context fix, the focused test passed with 1 test and 0 failures.
+- Full `AppStoreStateMachineTests` passed with 177 tests and 0 failures.
+- `HistoryFeatureTests` passed with 71 tests and 0 failures.
+- iPhone 17 simulator build: `BUILD SUCCEEDED`.
+- `git diff --check`: exit 0, no output.
+
+Residual risk:
+
+- This is build/test evidence, not rendered screenshot evidence for the new Project Principles section or project-evidence highlight state.
+- This does not prove live GLM output quality; it proves the app now passes prior user feedback into the Growth AI request context.
+
 ## 2026-06-07: Subtask 068 Production Project And Growth Evidence Chain Proof
 
 Scope:

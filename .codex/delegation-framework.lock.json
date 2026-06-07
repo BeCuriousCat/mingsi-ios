@@ -1,0 +1,45 @@
+{
+  "components": {
+    "claude-code-managed-delegation": {
+      "path": "skills/claude-code-managed-delegation",
+      "sha256": "e4b95c51f2d6e4011a0220ea385339bd10d5905c78e8161abea71f510f026880",
+      "type": "codex-skill",
+      "version": "0.2.0"
+    },
+    "claude_delegate": {
+      "path": "scripts/claude_delegate.sh",
+      "sha256": "689109d39410d804c16d732a1653034499a2bdea4131175013822d2d6e2d55f2",
+      "type": "wrapper-script",
+      "version": "0.2.0"
+    },
+    "codex-delegated-worker": {
+      "path": "skills/codex-delegated-worker",
+      "sha256": "12386c92260e2e32ecaee85e82de127925953436e30389d97e5d91a946060485",
+      "type": "claude-skill",
+      "version": "0.1.0"
+    },
+    "delegation_experience": {
+      "path": "bin/delegation_experience.py",
+      "sha256": "9af660e130200a6a93a0777a2b072f0436bbacfbe4800ad5b794c7392deb07e0",
+      "type": "cli",
+      "version": "0.2.0"
+    },
+    "framework_skill_sync": {
+      "path": "bin/framework_skill_sync.py",
+      "sha256": "27456636b6b741aaa78977f5488c9fa30aa7b58cc009f1c6df79719a2a853dcb",
+      "type": "cli",
+      "version": "0.1.0"
+    }
+  },
+  "frameworkRoot": "/Users/chenzewei/Documents/codex/projects/codex-claude-delegation-framework",
+  "frameworkSource": {
+    "frameworkRoot": "/Users/chenzewei/Documents/codex/projects/codex-claude-delegation-framework",
+    "type": "local"
+  },
+  "frameworkVersion": "0.2.0",
+  "installedTargets": [
+    "codex"
+  ],
+  "schema": "codex-claude-delegation-framework.lock.v1",
+  "updatedAt": "2026-06-07T14:35:02+08:00"
+}

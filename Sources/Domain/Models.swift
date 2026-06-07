@@ -660,6 +660,42 @@ struct MetricSnapshot: Identifiable, Hashable {
     }
 }
 
+extension MetricSnapshot {
+    func degradedForMissingGrowthContributions() -> MetricSnapshot {
+        MetricSnapshot(
+            id: id,
+            period: period,
+            startDate: startDate,
+            endDate: endDate,
+            clarity: clarity,
+            valueJudgment: valueJudgment,
+            executionReliability: executionReliability,
+            calibration: calibration,
+            reflectionDepth: reflectionDepth,
+            previousClarity: previousClarity,
+            previousValueJudgment: previousValueJudgment,
+            previousExecutionReliability: previousExecutionReliability,
+            previousCalibration: previousCalibration,
+            previousReflectionDepth: previousReflectionDepth,
+            clarityDelta: clarityDelta,
+            valueJudgmentDelta: valueJudgmentDelta,
+            executionReliabilityDelta: executionReliabilityDelta,
+            calibrationDelta: calibrationDelta,
+            reflectionDepthDelta: reflectionDepthDelta,
+            summary: "缺少可追溯的成长贡献，暂不展示分数。",
+            metricReasons: metricReasons,
+            evidenceRefs: evidenceRefs,
+            positiveContributionRefs: [],
+            negativeContributionRefs: [],
+            status: .insufficientEvidence,
+            completeLoopCount: completeLoopCount,
+            nextTrainingFocus: nextTrainingFocus,
+            createdAt: createdAt,
+            updatedAt: .now
+        )
+    }
+}
+
 // MARK: - Growth Attribution Layer
 
 enum MetricSnapshotStatus: String, CaseIterable, Identifiable {

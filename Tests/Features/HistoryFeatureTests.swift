@@ -874,6 +874,82 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertEqual(growthMetricDisplayTitle(.reflectionDepth), "反思深度")
     }
 
+    func testHistoryRecordContainsDeepLinkSource_matchesQuestContributionSource() {
+        let quest = Quest(
+            type: .main,
+            title: "发出会议纪要",
+            whyItMatters: "减少遗漏",
+            completionCriteria: "群内发出 Action",
+            expectedResistance: "会后疲劳",
+            reflectionQuestion: "是否减少追问"
+        )
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "任务复盘", state: .sessionComplete),
+            quests: [quest]
+        )
+        let deepLink = HistoryDeepLink(
+            dailyEntryId: record.draft.id,
+            sourceId: quest.id.uuidString,
+            sourceType: .quest
+        )
+
+        XCTAssertTrue(historyRecordContainsDeepLinkSource(deepLink, in: record))
+    }
+
+    func testHistoryRecordContainsDeepLinkSource_matchesProjectContributionSource() {
+        let projectId = UUID()
+        let quest = Quest(
+            type: .main,
+            title: "发出会议纪要",
+            whyItMatters: "减少遗漏",
+            completionCriteria: "群内发出 Action",
+            expectedResistance: "会后疲劳",
+            reflectionQuestion: "是否减少追问"
+        )
+        let projectLink = ProjectLink(
+            projectId: projectId,
+            sourceType: .quest,
+            sourceId: quest.id.uuidString,
+            linkType: .task,
+            isUserConfirmed: true
+        )
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "项目复盘", state: .sessionComplete),
+            quests: [quest],
+            projectLinks: [projectLink]
+        )
+        let deepLink = HistoryDeepLink(
+            dailyEntryId: record.draft.id,
+            sourceId: projectId.uuidString,
+            sourceType: .project
+        )
+
+        XCTAssertTrue(historyRecordContainsDeepLinkSource(deepLink, in: record))
+        XCTAssertTrue(isProjectLinkHighlighted(projectLink, highlightedSourceId: projectId.uuidString))
+    }
+
+    func testHistoryRecordContainsDeepLinkSource_rejectsUnresolvedProjectContributionSource() {
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "项目复盘", state: .sessionComplete),
+            projectLinks: [
+                ProjectLink(
+                    projectId: UUID(),
+                    sourceType: .dailyEntry,
+                    sourceId: UUID().uuidString,
+                    linkType: .evidence,
+                    isUserConfirmed: true
+                )
+            ]
+        )
+        let deepLink = HistoryDeepLink(
+            dailyEntryId: record.draft.id,
+            sourceId: UUID().uuidString,
+            sourceType: .project
+        )
+
+        XCTAssertFalse(historyRecordContainsDeepLinkSource(deepLink, in: record))
+    }
+
     // MARK: - Project detail display helpers
 
     func testProjectThinkingChangeHeadline_returnsInsufficientEvidence_whenNoBeforeAfter() {
@@ -967,6 +1043,127 @@ final class HistoryFeatureTests: XCTestCase {
             evidenceGapMessage: ""
         )
         XCTAssertTrue(lines.isEmpty, "should produce no fact lines when all inputs are nil/empty")
+    }
+
+    func testProjectPrincipleEvidenceEntries_returnsOnlyPrincipleSourcesWithHistoryEvidence() {
+        let projectId = UUID()
+        let principle = PrincipleAsset(
+            title: "先定义成功标准",
+            summary: "行动前写清可验证结果。",
+            triggerContext: "任务反复返工",
+            actions: ["写出验收标准"],
+            successCriteria: "行动前能说清完成条件",
+            exceptions: "紧急止血时先做最小动作"
+        )
+        let quest = Quest(
+            type: .main,
+            title: "发出验收模板",
+            whyItMatters: "减少返工",
+            completionCriteria: "群内发出模板",
+            expectedResistance: "时间紧",
+            reflectionQuestion: "是否减少追问"
+        )
+        let card = ThinkingCard(type: .decision, title: "先同步口径", body: "先统一验收标准。", isConfirmed: true)
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "原则和任务复盘", state: .sessionComplete),
+            cards: [card],
+            quests: [quest],
+            principles: [principle]
+        )
+        let principleLink = ProjectLink(
+            projectId: projectId,
+            sourceType: .principle,
+            sourceId: principle.id.uuidString,
+            linkType: .principle,
+            isUserConfirmed: true
+        )
+        let questLink = ProjectLink(
+            projectId: projectId,
+            sourceType: .quest,
+            sourceId: quest.id.uuidString,
+            linkType: .task,
+            isUserConfirmed: true
+        )
+        let cardLink = ProjectLink(
+            projectId: projectId,
+            sourceType: .thinkingCard,
+            sourceId: card.id.uuidString,
+            linkType: .decision,
+            isUserConfirmed: true
+        )
+        let item = ProjectEvidenceBoardItem(
+            id: projectId,
+            name: "会议机制",
+            entries: [(questLink, record), (principleLink, record), (cardLink, record)]
+        )
+
+        let entries = projectPrincipleEvidenceEntries(from: item)
+
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].link.sourceType, .principle)
+        XCTAssertEqual(entries[0].link.sourceId, principle.id.uuidString)
+        XCTAssertEqual(entries[0].record.draft.id, record.draft.id)
+    }
+
+    func testProjectPrincipleEvidenceEntries_emptyWhenProjectHasNoPrincipleSources() {
+        let projectId = UUID()
+        let quest = Quest(
+            type: .main,
+            title: "发出验收模板",
+            whyItMatters: "减少返工",
+            completionCriteria: "群内发出模板",
+            expectedResistance: "时间紧",
+            reflectionQuestion: "是否减少追问"
+        )
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "任务复盘", state: .sessionComplete),
+            quests: [quest]
+        )
+        let item = ProjectEvidenceBoardItem(
+            id: projectId,
+            name: "会议机制",
+            entries: [
+                (
+                    ProjectLink(
+                        projectId: projectId,
+                        sourceType: .quest,
+                        sourceId: quest.id.uuidString,
+                        linkType: .task,
+                        isUserConfirmed: true
+                    ),
+                    record
+                )
+            ]
+        )
+
+        XCTAssertTrue(projectPrincipleEvidenceEntries(from: item).isEmpty)
+    }
+
+    func testProjectPrincipleEvidenceEntries_excludesUnresolvedPrincipleSources() {
+        let projectId = UUID()
+        let missingPrincipleId = UUID()
+        let record = HistoryRecord(
+            draft: DailyEntryDraft(rawText: "没有原则资产的复盘", state: .sessionComplete),
+            principles: []
+        )
+        let item = ProjectEvidenceBoardItem(
+            id: projectId,
+            name: "会议机制",
+            entries: [
+                (
+                    ProjectLink(
+                        projectId: projectId,
+                        sourceType: .principle,
+                        sourceId: missingPrincipleId.uuidString,
+                        linkType: .principle,
+                        isUserConfirmed: true
+                    ),
+                    record
+                )
+            ]
+        )
+
+        XCTAssertTrue(projectPrincipleEvidenceEntries(from: item).isEmpty)
     }
 
     // MARK: - Project status filter helpers

@@ -7,10 +7,14 @@ enum KeychainAPIKeyError: Error {
 }
 
 final class KeychainAPIKeyStore {
-    private let service = "com.codex.mingsi.glm"
+    private let service: String
     private let apiKeyAccount = "glm_api_key"
     private let baseURLAccount = "glm_base_url"
     private let modelNameAccount = "glm_model_name"
+
+    init(service: String = "com.codex.mingsi.glm") {
+        self.service = service
+    }
 
     // MARK: - API Key
 

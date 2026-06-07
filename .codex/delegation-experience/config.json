@@ -1,0 +1,11 @@
+{
+  "frameworkRoot": "/Users/chenzewei/Documents/codex/projects/codex-claude-delegation-framework",
+  "frameworkSource": {
+    "frameworkRoot": "/Users/chenzewei/Documents/codex/projects/codex-claude-delegation-framework",
+    "type": "local"
+  },
+  "notes": "Operational logs stay in the project; only structured, sanitized lessons go to the framework inbox.",
+  "outbox": "/Users/chenzewei/Documents/codex/projects/mingsi-ios/.codex/delegation-experience/outbox",
+  "projectId": "mingsi-ios",
+  "schema": "delegation-experience.project-config.v1"
+}

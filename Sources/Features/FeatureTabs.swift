@@ -517,8 +517,8 @@ struct HistoryView: View {
     }
 
     private var didLocateHighlightedSource: Bool {
-        guard let highlightedSourceId else { return false }
-        return visibleRecord.sourceIds.contains(highlightedSourceId)
+        guard let deepLink = store.historyDeepLink else { return false }
+        return historyRecordContainsDeepLinkSource(deepLink, in: visibleRecord)
     }
 
     private func hasProjectLink(sourceId: String) -> Bool {
@@ -1068,7 +1068,8 @@ struct HistoryView: View {
     private var projectEvidenceSection: some View {
         HistoryProjectLinksSection(
             links: visibleRecord.projectLinks,
-            projectNames: store.projectNames
+            projectNames: store.projectNames,
+            highlightedSourceId: highlightedSourceId
         )
     }
 
@@ -1127,6 +1128,7 @@ private struct QuestRowCompact: View {
 private struct HistoryProjectLinksSection: View {
     let links: [ProjectLink]
     let projectNames: [UUID: String]
+    let highlightedSourceId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1134,7 +1136,11 @@ private struct HistoryProjectLinksSection: View {
             if links.isEmpty {
                 EmptyStateLine(text: "这一天没有关联的项目证据。")
             } else {
-                ProjectLinkListContent(links: links, projectNames: projectNames)
+                ProjectLinkListContent(
+                    links: links,
+                    projectNames: projectNames,
+                    highlightedSourceId: highlightedSourceId
+                )
             }
         }
     }
@@ -1143,6 +1149,7 @@ private struct HistoryProjectLinksSection: View {
 private struct ProjectLinkListContent: View {
     let links: [ProjectLink]
     let projectNames: [UUID: String]
+    let highlightedSourceId: String?
 
     var body: some View {
         VStack(spacing: DS.cardSpacing) {
@@ -1173,7 +1180,7 @@ private struct ProjectLinkListContent: View {
             }
             Spacer()
         }
-        .summarySurface()
+        .evidenceSurface(isHighlighted: isProjectLinkHighlighted(link, highlightedSourceId: highlightedSourceId))
     }
 }
 
@@ -3383,6 +3390,7 @@ private struct ProjectDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     projectInsightSection
                     thinkingChangeSection
+                    principlesSection
                 }
                 VStack(alignment: .leading, spacing: 18) {
                     mergeAuditSection
@@ -3627,6 +3635,35 @@ private struct ProjectDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            .projectDetailSurface()
+        }
+    }
+
+    @ViewBuilder
+    private var principlesSection: some View {
+        let entries = projectPrincipleEvidenceEntries(from: item)
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel("Principles")
+                Text("只展示已链接到历史原则资产的证据。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(entries, id: \.link.id) { entry in
+                    Button {
+                        store.navigateToHistoryDeepLink(
+                            HistoryDeepLink(
+                                dailyEntryId: entry.record.draft.id,
+                                sourceId: entry.link.sourceId,
+                                sourceType: nil
+                            )
+                        )
+                    } label: {
+                        ProjectPrincipleEvidenceRow(link: entry.link, record: entry.record)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .projectDetailSurface()
         }
@@ -4084,6 +4121,56 @@ private struct ProjectEvidenceLine: View {
         case .principle:
             return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
         }
+    }
+}
+
+private struct ProjectPrincipleEvidenceRow: View {
+    let link: ProjectLink
+    let record: HistoryRecord
+
+    private var principle: PrincipleAsset? {
+        record.principles.first { $0.id.uuidString == link.sourceId }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "seal")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.note)
+                .frame(width: 24, height: 24)
+                .background(DS.note.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("原则")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.note)
+                    Text(record.draft.date.mingsiShortDate)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(DS.mutedInk)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DS.mutedInk.opacity(0.7))
+                }
+
+                Text(principle?.title ?? "原则资产")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let summary = projectOverviewDisplayValue(principle?.summary) {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(10)
+        .background(DS.background.opacity(0.55), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
     }
 }
 
@@ -5241,6 +5328,27 @@ func growthMetricFallbackReason(reason: String?, contributions: [MetricContribut
     return "根据已接受贡献归因，点击查看来源证据。"
 }
 
+func historyRecordContainsDeepLinkSource(_ deepLink: HistoryDeepLink, in record: HistoryRecord) -> Bool {
+    guard record.draft.id == deepLink.dailyEntryId, let sourceId = deepLink.sourceId else {
+        return false
+    }
+    if deepLink.sourceType == .project {
+        return record.projectLinks.contains { link in
+            isProjectLinkHighlighted(link, highlightedSourceId: sourceId)
+        }
+    }
+    return record.sourceIds.contains(sourceId)
+}
+
+func isProjectLinkHighlighted(_ link: ProjectLink, highlightedSourceId: String?) -> Bool {
+    guard let highlightedSourceId, !highlightedSourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return false
+    }
+    return link.projectId.uuidString == highlightedSourceId ||
+        link.id.uuidString == highlightedSourceId ||
+        link.sourceId == highlightedSourceId
+}
+
 func mergeAuditDisplayLinesIfNonEmpty(from history: [String]) -> [String]? {
     let lines = mergeAuditDisplayLines(from: history)
     return lines.isEmpty ? nil : lines
@@ -5290,6 +5398,15 @@ func projectOverviewDisplayValue(_ value: String?) -> String? {
         return nil
     }
     return trimmed
+}
+
+func projectPrincipleEvidenceEntries(
+    from item: ProjectEvidenceBoardItem
+) -> [(link: ProjectLink, record: HistoryRecord)] {
+    item.sortedEntries.filter { entry in
+        guard entry.link.sourceType == .principle else { return false }
+        return entry.record.principles.contains { $0.id.uuidString == entry.link.sourceId }
+    }
 }
 
 func projectThinkingChangeHeadline(hasBeforeAfterEvidence: Bool) -> String {

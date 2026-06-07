@@ -1407,6 +1407,73 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testGLMConnectionRefreshesPromptRunAuditAfterCompletion() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let isolatedKeychain = KeychainAPIKeyStore(service: "com.codex.mingsi.tests.\(UUID().uuidString)")
+        let auditStore = AppStore(
+            apiKeyStore: isolatedKeychain,
+            promptRunRepository: promptRunRepo,
+            refreshesAIServiceFromKeychain: true
+        )
+        auditStore.apiKeyConfigured = true
+
+        auditStore.testGLMConnection()
+
+        try await waitUntil(
+            !auditStore.isTestingGLMConnection && !auditStore.recentPromptRuns.isEmpty,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected completed connection test to refresh PromptRun audit rows"
+        ) {
+            !auditStore.isTestingGLMConnection && !auditStore.recentPromptRuns.isEmpty
+        }
+        let run = try XCTUnwrap(auditStore.recentPromptRuns.first)
+        XCTAssertEqual(run.promptId, PromptID.organizeCards.rawValue)
+        XCTAssertEqual(run.promptVersion, "connection-test")
+        XCTAssertEqual(run.modelProvider, "GLM")
+        XCTAssertEqual(run.modelName, "missing-api-key")
+        XCTAssertTrue(run.error?.contains("API Key") == true)
+    }
+
+    func testKeychainRefreshRoutesGrowthReportsThroughAuditedMissingKeyClient() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        let isolatedKeychain = KeychainAPIKeyStore(service: "com.codex.mingsi.tests.\(UUID().uuidString)")
+        let historyRecords = (0..<3).map { index in
+            HistoryRecord(
+                draft: DailyEntryDraft(
+                    date: Calendar.current.date(byAdding: .day, value: -index, to: Date()) ?? Date(),
+                    rawText: "Completed Settings refresh loop \(index)",
+                    state: .sessionComplete
+                )
+            )
+        }
+        let store = AppStore(
+            historyRecords: historyRecords,
+            apiKeyStore: isolatedKeychain,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            promptRunRepository: promptRunRepo,
+            refreshesAIServiceFromKeychain: true,
+            growthAIService: nil
+        )
+
+        await store.generateWeeklyGrowthReport()
+
+        XCTAssertFalse(store.growthReportMessage.contains("服务暂不可用"))
+        XCTAssertTrue(store.growthReportMessage.contains("AI 成长报告生成失败"))
+        let recentRuns = try await promptRunRepo.recentPromptRuns(limit: 1)
+        let run = try XCTUnwrap(recentRuns.first)
+        XCTAssertEqual(run.promptId, PromptID.weeklyCalibration.rawValue)
+        XCTAssertEqual(run.modelProvider, "GLM")
+        XCTAssertEqual(run.modelName, "missing-api-key")
+        XCTAssertTrue(run.error?.contains("API Key") == true)
+    }
+
     func testRepairablePromptRunsForHistoryRecordReturnsUnresolvedFailuresForThatEntry() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRunRepo = SQLitePromptRunRepository(database: database)
@@ -1771,6 +1838,40 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(growthStore.acceptedReportReviewContributions(for: .valueJudgment).map(\.id), [acceptedNegative.id])
     }
 
+    func testLoadLatestGrowthSnapshot_degradesDisplayWhenContributionRefsDoNotResolve() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        let snapshot = MetricSnapshot(
+            period: "weekly",
+            clarity: 4.1,
+            valueJudgment: 3.8,
+            executionReliability: 3.5,
+            calibration: 3.2,
+            reflectionDepth: 3.9,
+            summary: "Snapshot claims growth without real contributions.",
+            positiveContributionRefs: ["missing-positive"],
+            negativeContributionRefs: ["missing-negative"],
+            status: .confirmedTrend,
+            completeLoopCount: 4,
+            nextTrainingFocus: "Keep improving."
+        )
+        try await snapshotRepo.saveSnapshot(snapshot)
+
+        let growthStore = AppStore(
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await growthStore.loadLatestGrowthSnapshot()
+
+        XCTAssertFalse(growthStore.growthSnapshot.canDisplayScores)
+        XCTAssertEqual(growthStore.growthSnapshot.status, .insufficientEvidence)
+        XCTAssertTrue(growthStore.growthSnapshot.summary.contains("缺少可追溯的成长贡献"))
+        XCTAssertTrue(growthStore.growthReportReviewContributions.isEmpty)
+    }
+
     func testUpdateContributionFeedback_refreshesReportReviewContributions() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
@@ -1897,6 +1998,104 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(savedContributions[0].sourceDailyEntryId, entryId)
         XCTAssertEqual(savedContributions[0].candidateStatus, .accepted)
         XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), savedContributions.map(\.id))
+    }
+
+    func testGenerateWeeklyGrowthReport_includesDismissedContributionFeedbackFromLatestSnapshot() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+
+        var firstEntryId: UUID?
+        var firstQuestId: UUID?
+        for index in stride(from: 2, through: 0, by: -1) {
+            let draft = DailyEntryDraft(
+                date: Calendar.current.date(byAdding: .day, value: -index, to: Date()) ?? Date(),
+                rawText: "Completed feedback loop \(index)",
+                state: .sessionComplete
+            )
+            try await dailyRepo.saveDraft(draft)
+            let quest = Quest(
+                type: .main,
+                title: "Feedback Quest \(index)",
+                whyItMatters: "It matters",
+                completionCriteria: "Visible result",
+                expectedResistance: "Interruptions",
+                reflectionQuestion: "What changed?",
+                status: .completed
+            )
+            try await questRepo.saveQuest(quest, sourceDailyEntryId: draft.id)
+            try await verificationRepo.saveVerification(
+                Verification(
+                    questId: quest.id,
+                    questTitle: quest.title,
+                    sourceDailyEntryId: draft.id,
+                    completion: .done,
+                    valueRating: .high,
+                    calibrationNote: "Feedback verification \(index)"
+                )
+            )
+
+            if firstEntryId == nil {
+                firstEntryId = draft.id
+                firstQuestId = quest.id
+            }
+        }
+
+        let entryId = try XCTUnwrap(firstEntryId)
+        let questId = try XCTUnwrap(firstQuestId)
+        let previousSnapshot = MetricSnapshot(
+            period: "weekly",
+            clarity: 3.6,
+            valueJudgment: 3.1,
+            executionReliability: 3.0,
+            calibration: 3.0,
+            reflectionDepth: 3.0,
+            summary: "Previous weekly report",
+            positiveContributionRefs: ["dismissed"],
+            status: .confirmedTrend,
+            completeLoopCount: 3
+        )
+        try await snapshotRepo.saveSnapshot(previousSnapshot)
+        let dismissedContribution = MetricContribution(
+            snapshotId: previousSnapshot.id,
+            metric: .clarity,
+            direction: .positive,
+            delta: 0.2,
+            title: "Overstated clarity gain",
+            reason: "This inference was too broad.",
+            sourceType: .quest,
+            sourceId: questId.uuidString,
+            sourceDailyEntryId: entryId,
+            userFeedback: .inaccurate,
+            candidateStatus: .accepted
+        )
+        try await contributionRepo.saveContribution(dismissedContribution)
+
+        let client = RecordingLLMClient(response: Self.growthReportResponse(entryID: entryId, sourceID: questId.uuidString))
+        let growthService = GrowthAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        let growthStore = AppStore(
+            growthSnapshot: previousSnapshot,
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            verificationRepository: verificationRepo,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            refreshesAIServiceFromKeychain: false,
+            growthAIService: growthService
+        )
+
+        await growthStore.loadHistoryRecords()
+        await growthStore.generateWeeklyGrowthReport()
+
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(request.jsonPayload["dismissed_contributions"], "Overstated clarity gain")
+        XCTAssertEqual(request.contextPayload?.growth?.dismissedContributionTitles, ["Overstated clarity gain"])
     }
 
     func testGenerateMonthlyGrowthReport_withInsufficientEvidenceSavesNoContributions() async throws {
