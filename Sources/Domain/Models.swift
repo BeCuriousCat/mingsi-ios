@@ -100,6 +100,13 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
     }
 }
 
+enum LensAccentRole: String, CaseIterable {
+    case graphite
+    case brick
+    case accent
+    case principle
+}
+
 struct LensCatalogItem: Equatable {
     let lensId: String
     let promptId: String
@@ -110,6 +117,10 @@ struct LensCatalogItem: Equatable {
     let methodLine: String
     let promptGuidance: String
     let symbolName: String
+    let recommendedReason: String
+    let questionSeeds: [String]
+    let accentRole: LensAccentRole
+    let methodIndex: Int
 }
 
 protocol LensCatalogProviding {
@@ -117,6 +128,7 @@ protocol LensCatalogProviding {
     func item(localId: String) -> LensCatalogItem?
     func item(promptId: String) -> LensCatalogItem?
     func item(for lens: ThinkingLens) -> LensCatalogItem?
+    func recommendedItem(for cards: [ThinkingCard], mode: SessionMode) -> LensCatalogItem?
 }
 
 struct LensLibrary: LensCatalogProviding {
@@ -133,6 +145,38 @@ struct LensLibrary: LensCatalogProviding {
     func item(for lens: ThinkingLens) -> LensCatalogItem? {
         item(localId: lens.rawValue)
     }
+
+    func recommendedItem(for cards: [ThinkingCard], mode: SessionMode) -> LensCatalogItem? {
+        let consideredCards = cards.filter { !$0.isExcludedFromModel }
+        guard !consideredCards.isEmpty else {
+            return items.sorted { $0.methodIndex < $1.methodIndex }.first
+        }
+
+        let counts = Dictionary(grouping: consideredCards, by: \.type).mapValues(\.count)
+        let highPriorityTypes = Set(consideredCards.filter { $0.priority == .high }.map(\.type))
+        let riskProblemCount = (counts[.risk] ?? 0) + (counts[.problem] ?? 0)
+        let actionCount = (counts[.task] ?? 0) + (counts[.decision] ?? 0)
+        let validationCount = (counts[.fact] ?? 0) + riskProblemCount
+        let dominantCount = counts.values.max() ?? 0
+
+        if mode == .deep && riskProblemCount >= 2 {
+            return item(for: .opposingView)
+        }
+
+        if actionCount >= 2 && actionCount >= riskProblemCount {
+            return item(for: .leverageAnalysis)
+        }
+
+        if validationCount >= 2 && !highPriorityTypes.isDisjoint(with: [.fact, .risk, .problem]) {
+            return item(for: .evidenceCheck)
+        }
+
+        if dominantCount <= 1 {
+            return item(for: .firstPrinciples)
+        }
+
+        return item(for: .firstPrinciples)
+    }
 }
 
 enum BuiltinLensCatalog {
@@ -146,7 +190,15 @@ enum BuiltinLensCatalog {
             shortLabel: "事实",
             methodLine: "先问：我知道什么，还是我以为什么？",
             promptGuidance: "Separate facts, interpretations, assumptions, and validation gaps before asking the user to decide.",
-            symbolName: "checklist"
+            symbolName: "checklist",
+            recommendedReason: "当前材料里有事实、风险或问题需要先验清依据。",
+            questionSeeds: [
+                "我知道什么，还是我以为什么？",
+                "哪条判断现在缺少可验证证据？",
+                "如果只保留事实，这件事还剩什么？"
+            ],
+            accentRole: .graphite,
+            methodIndex: 1
         ),
         LensCatalogItem(
             lensId: "opposingView",
@@ -157,7 +209,15 @@ enum BuiltinLensCatalog {
             shortLabel: "反证",
             methodLine: "先问：如果我错了，证据会长什么样？",
             promptGuidance: "Challenge the user's current interpretation by looking for contrary evidence, missing stakeholders, and plausible alternative explanations.",
-            symbolName: "arrow.left.arrow.right"
+            symbolName: "arrow.left.arrow.right",
+            recommendedReason: "当前材料里问题和风险偏多，适合先挑战默认判断。",
+            questionSeeds: [
+                "如果我错了，证据会长什么样？",
+                "谁会不同意这个判断，理由是什么？",
+                "有没有一个更便宜的解释？"
+            ],
+            accentRole: .brick,
+            methodIndex: 2
         ),
         LensCatalogItem(
             lensId: "leverageAnalysis",
@@ -168,7 +228,15 @@ enum BuiltinLensCatalog {
             shortLabel: "杠杆",
             methodLine: "先问：哪一步最能改变结果？",
             promptGuidance: "Focus questions and quests on the smallest action, decision, or constraint that can most change the outcome.",
-            symbolName: "point.topleft.down.curvedto.point.bottomright.up"
+            symbolName: "point.topleft.down.curvedto.point.bottomright.up",
+            recommendedReason: "当前材料已经出现任务或决策，适合收敛最高杠杆动作。",
+            questionSeeds: [
+                "哪一步最能改变结果？",
+                "如果只做一件事，哪件事会让其他事变简单？",
+                "当前真正卡住结果的约束是什么？"
+            ],
+            accentRole: .accent,
+            methodIndex: 3
         ),
         LensCatalogItem(
             lensId: "firstPrinciples",
@@ -179,7 +247,15 @@ enum BuiltinLensCatalog {
             shortLabel: "本质",
             methodLine: "先问：如果从零开始，这件事必须成立的条件是什么？",
             promptGuidance: "Decompose the situation into non-negotiable facts, hard constraints, assumed rules, and rebuild the next action from those primitives.",
-            symbolName: "square.stack.3d.down.right"
+            symbolName: "square.stack.3d.down.right",
+            recommendedReason: "当前材料没有单一主导类型，适合先拆前提和硬约束。",
+            questionSeeds: [
+                "如果从零开始，这件事必须成立的条件是什么？",
+                "哪些规则是事实，哪些只是沿用的假设？",
+                "去掉默认做法后，最小可行动作是什么？"
+            ],
+            accentRole: .principle,
+            methodIndex: 4
         ),
     ])
 
