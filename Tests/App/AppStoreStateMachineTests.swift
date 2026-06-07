@@ -4775,6 +4775,71 @@ extension AppStoreStateMachineTests {
         XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
     }
 
+    func testBuiltinLensCatalog_methodAssetMetadataIsComplete() {
+        let methodIndexes = BuiltinLensCatalog.items.map(\.methodIndex)
+
+        XCTAssertEqual(Set(methodIndexes).count, ThinkingLens.allCases.count)
+        XCTAssertEqual(methodIndexes.sorted(), [1, 2, 3, 4])
+
+        for item in BuiltinLensCatalog.items {
+            XCTAssertFalse(item.recommendedReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(item.questionSeeds.isEmpty)
+            XCTAssertTrue(item.questionSeeds.allSatisfy {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            })
+            XCTAssertFalse(item.accentRole.rawValue.isEmpty)
+            XCTAssertGreaterThan(item.methodIndex, 0)
+        }
+    }
+
+    func testBuiltinLensLibrary_recommendsEvidenceCheckForValidationHeavyCards() {
+        let cards = [
+            ThinkingCard(type: .fact, title: "客户预期变更", body: "需要确认客户是否真的接受延期。", priority: .high),
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "缺少事实支撑。", priority: .high),
+            ThinkingCard(type: .problem, title: "判断依据不足", body: "目前只有推测。", priority: .medium)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .standard)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.evidenceCheck.rawValue)
+    }
+
+    func testBuiltinLensLibrary_recommendsLeverageAnalysisForActionHeavyCards() {
+        let cards = [
+            ThinkingCard(type: .task, title: "确认接口负责人", body: "明天先定边界。", priority: .high),
+            ThinkingCard(type: .decision, title: "短期兼容旧逻辑", body: "先保证交付。", priority: .medium),
+            ThinkingCard(type: .task, title: "补完成标准", body: "写清验收条件。", priority: .medium)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .standard)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.leverageAnalysis.rawValue)
+    }
+
+    func testBuiltinLensLibrary_recommendsOpposingViewForDeepRiskHeavyCards() {
+        let cards = [
+            ThinkingCard(type: .risk, title: "第三方接口延期", body: "计划可能被拖住。", priority: .medium),
+            ThinkingCard(type: .problem, title: "只看到自己视角", body: "缺少反证。", priority: .medium),
+            ThinkingCard(type: .risk, title: "技术债继续累积", body: "短期方案可能扩大成本。", priority: .low)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .deep)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.opposingView.rawValue)
+    }
+
+    func testBuiltinLensLibrary_recommendsFirstPrinciplesWhenNoTypeDominates() {
+        let cards = [
+            ThinkingCard(type: .idea, title: "也许要重排优先级", body: "目前只是感觉。", priority: .medium),
+            ThinkingCard(type: .communication, title: "同步会没有结论", body: "没人确认前提。", priority: .medium),
+            ThinkingCard(type: .fact, title: "会议没有 owner", body: "这是唯一确定事实。", priority: .low)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .quick)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.firstPrinciples.rawValue)
+    }
+
     func testFirstPrinciples_rawValue() {
         XCTAssertEqual(ThinkingLens.firstPrinciples.rawValue, "firstPrinciples")
     }
