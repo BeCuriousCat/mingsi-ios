@@ -1,6 +1,13 @@
 import SwiftUI
 import UIKit
 
+enum TodayAutomationID {
+    static let cardConfirmAction = "today.card.confirm-action"
+    static let cardExcludeAction = "today.card.exclude-action"
+    static let questionAnswerField = "today.question.answer-field"
+    static let questEditAction = "today.quest.edit-action"
+}
+
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
     @State private var isCaptureFocused = false
@@ -1081,6 +1088,50 @@ private extension ThinkingLens {
     }
 }
 
+private extension PriorityLevel {
+    var displayTitle: String {
+        switch self {
+        case .low: return "低"
+        case .medium: return "中"
+        case .high: return "高"
+        }
+    }
+}
+
+private extension SensitivityLevel {
+    var displayTitle: String {
+        switch self {
+        case .normal: return "普通"
+        case .possiblySensitive: return "可能敏感"
+        case .sensitive: return "敏感"
+        }
+    }
+}
+
+private struct BriefRow: View {
+    let title: String
+    private let text: String
+    var accent: Color = DS.mutedInk
+
+    init(title: String, body: String, accent: Color = DS.mutedInk) {
+        self.title = title
+        self.text = body
+        self.accent = accent
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(accent)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 private struct CaptureTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -1176,23 +1227,37 @@ private struct ThinkingCardRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle()
                     .fill(card.type.color)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 7, height: 7)
 
                 Text(card.type.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(card.type.color)
+
+                Text("重要性 \(card.priority.displayTitle)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(DS.surface, in: Capsule())
+
+                if card.sensitivity != .normal {
+                    Text(card.sensitivity.displayTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.caution)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(DS.caution.opacity(0.10), in: Capsule())
+                }
 
                 Spacer()
 
-                if card.isConfirmed {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.caption)
-                        .foregroundStyle(DS.success)
-                }
+                Image(systemName: card.isConfirmed ? "checkmark.square.fill" : "square")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(card.isConfirmed ? DS.success : DS.mutedInk.opacity(0.55))
             }
 
             if isEditing {
@@ -1218,13 +1283,17 @@ private struct ThinkingCardRow: View {
                 .pickerStyle(.segmented)
             } else {
                 Text(card.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(card.body)
                     .font(.subheadline)
                     .foregroundStyle(DS.mutedInk)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Button(isEditing ? "保存编辑" : "编辑") {
                     if isEditing {
                         update(draftType, draftTitle, draftBody, draftPriority, draftSensitivity)
@@ -1234,13 +1303,15 @@ private struct ThinkingCardRow: View {
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
 
-                Button("确认", action: confirm)
+                Button(card.isConfirmed ? "已确认" : "确认", action: confirm)
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.borderedProminent)
                     .tint(DS.accent)
+                    .accessibilityIdentifier(TodayAutomationID.cardConfirmAction)
                 Button(card.isExcludedFromModel ? "已排除" : "排除", action: exclude)
                     .font(.caption)
                     .buttonStyle(.bordered)
+                    .accessibilityIdentifier(TodayAutomationID.cardExcludeAction)
                 Button("删除", role: .destructive, action: delete)
                     .font(.caption)
                     .buttonStyle(.bordered)
@@ -1256,16 +1327,37 @@ private struct QuestionCardView: View {
     @Binding var answer: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "scope")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.accent)
+                Text("透镜追问")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.accentInk)
+            }
+
             Text(question.question)
-                .font(.subheadline.weight(.semibold))
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
             Text(question.whyItMatters)
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
-            TextField("在这里回答", text: $answer, axis: .vertical)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("写下你的判断，不需要完整答案", text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
+                .font(.subheadline)
                 .padding(12)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+                )
+                .accessibilityIdentifier(TodayAutomationID.questionAnswerField)
         }
         .questionSurface()
     }
@@ -1309,6 +1401,7 @@ private struct QuestCardView: View {
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier(TodayAutomationID.questEditAction)
             }
 
             if isEditing {
@@ -1319,19 +1412,16 @@ private struct QuestCardView: View {
                 EditableField(title: "复盘问题", text: $draftQuestion, axis: .vertical)
             } else {
                 Text(quest.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("完成标准")
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                    Text(quest.completionCriteria)
-                        .font(.subheadline)
+                VStack(alignment: .leading, spacing: 10) {
+                    BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    BriefRow(title: "完成标准", body: quest.completionCriteria, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    BriefRow(title: "预期阻力", body: quest.expectedResistance, accent: DS.caution)
+                    BriefRow(title: "回看问题", body: quest.reflectionQuestion, accent: DS.graphite)
                 }
-
-                Text("阻力：\(quest.expectedResistance)")
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
             }
         }
         .questSurface(isMain: quest.type == .main)
