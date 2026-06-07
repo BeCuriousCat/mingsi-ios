@@ -320,8 +320,13 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("思考透镜", subtitle: "选择一个角度，让问题从另一面被看见。")
 
-            ForEach(ThinkingLens.allCases) { lens in
-                lensCard(lens)
+            let recommendedLensId = BuiltinLensCatalog.library.recommendedItem(
+                for: store.thinkingCards.filter(\.isConfirmed),
+                mode: store.todayDraft.sessionMode
+            )?.lensId
+
+            ForEach(ThinkingLens.allCases.sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }) { lens in
+                lensCard(lens, isRecommended: lens.rawValue == recommendedLensId)
             }
         }
     }
@@ -717,57 +722,79 @@ struct TodayView: View {
         .modeSurface(isSelected: store.todayDraft.hasSelectedSessionMode && store.todayDraft.sessionMode == mode)
     }
 
-    private func lensCard(_ lens: ThinkingLens) -> some View {
-        Button(action: { store.selectThinkingLens(lens) }) {
-            HStack(alignment: .top, spacing: 13) {
-                LensGlyph(lens: lens, isSelected: store.todayDraft.selectedLens == lens)
+    private func lensCard(_ lens: ThinkingLens, isRecommended: Bool) -> some View {
+        let item = lens.catalogItem
+        let isSelected = store.todayDraft.selectedLens == lens
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(lens.title)
+        return Button(action: { store.selectThinkingLens(lens) }) {
+            HStack(alignment: .top, spacing: 13) {
+                LensGlyph(lens: lens, isSelected: isSelected)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("[\(item.methodIndex)]")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(lens.tint.opacity(0.82))
+                        Text(item.title)
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(DS.ink)
-                        Text(lens.shortLabel)
+                        Text(item.shortLabel)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(lens.tint)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(lens.tint.opacity(0.10), in: Capsule())
+                        if isRecommended {
+                            Text("推荐")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(DS.accentInk)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(DS.accent.opacity(0.10), in: Capsule())
+                        }
                     }
-                    Text(lens.subtitle)
+
+                    Text(item.subtitle)
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(lens.methodLine)
-                        .font(.caption2.weight(.semibold))
+
+                    Text(item.methodLine)
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(lens.tint)
-                        .padding(.top, 2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if isRecommended {
+                        Text(item.recommendedReason)
+                            .font(.caption2)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
-                Spacer()
+                Spacer(minLength: 10)
 
-                if store.todayDraft.selectedLens == lens {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(DS.accent)
-                }
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? DS.accent : DS.mutedInk.opacity(0.42))
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(DS.cardInnerPadding)
         .background(
-            store.todayDraft.selectedLens == lens ? lens.tint.opacity(0.08) : Color(.systemBackground),
+            isSelected ? lens.tint.opacity(0.055) : Color(.systemBackground),
             in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
         )
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(lens.tint)
-                .frame(width: 3)
+                .frame(width: isRecommended || isSelected ? 4 : 3)
         }
         .clipShape(RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(store.todayDraft.selectedLens == lens ? lens.tint.opacity(0.32) : Color.primary.opacity(0.05), lineWidth: 1)
+                .stroke(isSelected ? lens.tint.opacity(0.42) : (isRecommended ? lens.tint.opacity(0.24) : Color.primary.opacity(0.05)), lineWidth: isSelected ? 1.25 : 1)
         )
     }
 
@@ -1045,11 +1072,11 @@ private extension ThinkingLens {
     var symbolName: String { catalogItem.symbolName }
 
     var tint: Color {
-        switch self {
-        case .evidenceCheck: return DS.graphite
-        case .opposingView: return DS.brick
-        case .leverageAnalysis: return DS.accent
-        case .firstPrinciples: return DS.graphite
+        switch catalogItem.accentRole {
+        case .graphite: return DS.graphite
+        case .brick: return DS.brick
+        case .accent: return DS.accent
+        case .principle: return DS.graphite
         }
     }
 }
