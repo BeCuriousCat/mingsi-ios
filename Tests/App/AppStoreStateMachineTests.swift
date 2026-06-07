@@ -4804,6 +4804,31 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(item?.lensId, ThinkingLens.evidenceCheck.rawValue)
     }
 
+    func testBuiltinLensLibrary_prioritizesEvidenceCheckForDeepValidationRisk() {
+        let cards = [
+            ThinkingCard(type: .risk, title: "关键依赖未确认", body: "上线窗口可能只是估计。", priority: .high),
+            ThinkingCard(type: .problem, title: "验收边界模糊", body: "需要补充事实依据。", priority: .medium),
+            ThinkingCard(type: .fact, title: "客户还没回复", body: "这是当前唯一确定事实。", priority: .high)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .deep)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.evidenceCheck.rawValue)
+    }
+
+    func testBuiltinLensLibrary_prioritizesEvidenceCheckOverLeverageForHighPriorityValidation() {
+        let cards = [
+            ThinkingCard(type: .task, title: "同步接口 owner", body: "今天先约齐负责人。", priority: .high),
+            ThinkingCard(type: .decision, title: "保留旧逻辑", body: "先用兼容方案交付。", priority: .medium),
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "上线前必须确认依据。", priority: .high),
+            ThinkingCard(type: .fact, title: "客户承诺未落文档", body: "需要先确认是否真实存在。", priority: .high)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .standard)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.evidenceCheck.rawValue)
+    }
+
     func testBuiltinLensLibrary_recommendsLeverageAnalysisForActionHeavyCards() {
         let cards = [
             ThinkingCard(type: .task, title: "确认接口负责人", body: "明天先定边界。", priority: .high),

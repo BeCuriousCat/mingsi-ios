@@ -159,16 +159,16 @@ struct LensLibrary: LensCatalogProviding {
         let validationCount = (counts[.fact] ?? 0) + riskProblemCount
         let dominantCount = counts.values.max() ?? 0
 
+        if validationCount >= 2 && !highPriorityTypes.isDisjoint(with: [.fact, .risk, .problem]) {
+            return item(for: .evidenceCheck)
+        }
+
         if mode == .deep && riskProblemCount >= 2 {
             return item(for: .opposingView)
         }
 
         if actionCount >= 2 && actionCount >= riskProblemCount {
             return item(for: .leverageAnalysis)
-        }
-
-        if validationCount >= 2 && !highPriorityTypes.isDisjoint(with: [.fact, .risk, .problem]) {
-            return item(for: .evidenceCheck)
         }
 
         if dominantCount <= 1 {
