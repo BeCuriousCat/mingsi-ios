@@ -2188,6 +2188,38 @@ final class PersistenceCoreTests: XCTestCase {
         )
     }
 
+    func testAssetPackRegistrySubscriptionRepository_saveLoadAndRecordSyncResult() async throws {
+        let repo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let subscription = AssetPackRegistrySubscription(
+            id: "mingsi.registry.default",
+            displayName: "MingSi Registry",
+            catalogURL: catalogURL,
+            isEnabled: true
+        )
+
+        try await repo.saveSubscription(subscription)
+        try await repo.recordSyncResult(
+            subscriptionId: subscription.id,
+            status: .succeeded,
+            message: "Fetched 2 entries.",
+            syncedAt: Date(timeIntervalSince1970: 1_804_032_000)
+        )
+
+        let loaded = try await repo.allSubscriptions()
+
+        XCTAssertEqual(loaded.map(\.id), ["mingsi.registry.default"])
+        XCTAssertEqual(loaded.first?.displayName, "MingSi Registry")
+        XCTAssertEqual(loaded.first?.catalogURL, catalogURL)
+        XCTAssertEqual(loaded.first?.isEnabled, true)
+        XCTAssertEqual(loaded.first?.syncPolicyVersion, AssetPackRegistrySubscription.currentSyncPolicyVersion)
+        XCTAssertEqual(loaded.first?.lastSyncStatus, .succeeded)
+        XCTAssertEqual(loaded.first?.lastSyncMessage, "Fetched 2 entries.")
+        XCTAssertEqual(loaded.first?.lastSyncedAt, Date(timeIntervalSince1970: 1_804_032_000))
+        let enabledIds = try await repo.enabledSubscriptions().map(\.id)
+        XCTAssertEqual(enabledIds, ["mingsi.registry.default"])
+    }
+
     func testAssetPackInstallManifest_filtersInstallablePromptAndLensPacksThroughTrustGate() throws {
         let trustedPromptUnsigned = PromptAssetPack(
             id: "marketplace.prompts.installable",
@@ -2662,6 +2694,34 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertTrue(exportedTrustMetadataJSON.contains("sha256:"))
         XCTAssertTrue(try XCTUnwrap(exportedPack["items_json"] as? String).contains("framework-review"))
         XCTAssertEqual(counts["lens_asset_packs"], 1)
+    }
+
+    func testDataExport_includesAssetPackRegistrySubscriptions() async throws {
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let subscription = AssetPackRegistrySubscription(
+            id: "mingsi.registry.default",
+            displayName: "MingSi Registry",
+            catalogURL: URL(string: "https://registry.mingsi.test/catalog.json")!,
+            isEnabled: true
+        )
+
+        try await subscriptionRepo.saveSubscription(subscription)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let subscriptions = try XCTUnwrap(sections["asset_pack_registry_subscriptions"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+        let exported = try XCTUnwrap(subscriptions.first)
+
+        XCTAssertEqual(subscriptions.count, 1)
+        XCTAssertEqual(exported["id"] as? String, "mingsi.registry.default")
+        XCTAssertEqual(exported["display_name"] as? String, "MingSi Registry")
+        XCTAssertEqual(exported["catalog_url"] as? String, "https://registry.mingsi.test/catalog.json")
+        XCTAssertEqual(exported["sync_policy_version"] as? String, AssetPackRegistrySubscription.currentSyncPolicyVersion)
+        XCTAssertEqual(exported["last_sync_status"] as? String, AssetPackRegistrySyncStatus.neverSynced.rawValue)
+        XCTAssertEqual(counts["asset_pack_registry_subscriptions"], 1)
     }
 
     func testDataExport_emptyDatabaseStillReturnsStructuredSections() async throws {
@@ -3219,6 +3279,30 @@ final class PersistenceCoreTests: XCTestCase {
             let indexes = try db.indexes(on: "asset_pack_trust_policies").map(\.name)
             XCTAssertTrue(indexes.contains("idx_asset_pack_trust_policies_source_url"))
             XCTAssertTrue(indexes.contains("idx_asset_pack_trust_policies_updated_at"))
+        }
+    }
+
+    func testMigration_v23_addsAssetPackRegistrySubscriptionsTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("asset_pack_registry_subscriptions"))
+
+            let columns = Set(try db.columns(in: "asset_pack_registry_subscriptions").map(\.name))
+            XCTAssertTrue(columns.contains("id"))
+            XCTAssertTrue(columns.contains("schema_version"))
+            XCTAssertTrue(columns.contains("display_name"))
+            XCTAssertTrue(columns.contains("catalog_url"))
+            XCTAssertTrue(columns.contains("sync_policy_version"))
+            XCTAssertTrue(columns.contains("is_enabled"))
+            XCTAssertTrue(columns.contains("last_synced_at"))
+            XCTAssertTrue(columns.contains("last_sync_status"))
+            XCTAssertTrue(columns.contains("last_sync_message"))
+            XCTAssertTrue(columns.contains("created_at"))
+            XCTAssertTrue(columns.contains("updated_at"))
+            XCTAssertTrue(columns.contains("deleted_at"))
+
+            let indexes = try db.indexes(on: "asset_pack_registry_subscriptions").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_asset_pack_registry_subscriptions_enabled"))
+            XCTAssertTrue(indexes.contains("idx_asset_pack_registry_subscriptions_updated_at"))
         }
     }
 

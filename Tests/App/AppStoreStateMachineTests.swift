@@ -1890,6 +1890,59 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.assetPackInstallMessage, "已获取 1 个远程资产包条目。")
     }
 
+    func testSyncAssetPackRegistrySubscriptions_fetchesEnabledCatalogsAndRecordsStatus() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "mingsi.registry.default",
+            displayName: "MingSi Registry",
+            catalogURL: catalogURL,
+            isEnabled: true
+        ))
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "mingsi.registry.disabled",
+            displayName: "Disabled Registry",
+            catalogURL: URL(string: "https://registry.mingsi.test/disabled.json")!,
+            isEnabled: false
+        ))
+
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.coach",
+                    displayName: "Coach Starter Pack",
+                    summary: "Prompt and lens starter pack.",
+                    manifestURL: URL(string: "manifests/coach.json")!
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [catalogURL: try Self.assetPackJSONEncoder.encode(catalog)]
+        )
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let syncedEntries = try await store.syncAssetPackRegistrySubscriptions(fetcher: fetcher)
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL])
+        XCTAssertEqual(syncedEntries.map(\.id), ["marketplace.coach"])
+        XCTAssertEqual(store.assetPackRegistryCatalogEntries.map(\.id), ["marketplace.coach"])
+        XCTAssertTrue(store.assetPackInstallMessage.contains("已同步 1 个资产包目录订阅，获取 1 个条目"))
+
+        let subscriptions = try await subscriptionRepo.allSubscriptions()
+        let enabled = try XCTUnwrap(subscriptions.first { $0.id == "mingsi.registry.default" })
+        let disabled = try XCTUnwrap(subscriptions.first { $0.id == "mingsi.registry.disabled" })
+        XCTAssertEqual(enabled.lastSyncStatus, .succeeded)
+        XCTAssertEqual(enabled.lastSyncMessage, "Fetched 1 entries.")
+        XCTAssertNotNil(enabled.lastSyncedAt)
+        XCTAssertEqual(disabled.lastSyncStatus, .neverSynced)
+        XCTAssertNil(disabled.lastSyncedAt)
+    }
+
     func testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRepo = SQLitePromptAssetPackRepository(database: database)

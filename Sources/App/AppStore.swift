@@ -108,6 +108,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var promptAssetPacks: [PromptAssetPack] = []
     @Published var promptAssetPackMessage: String = ""
     @Published private(set) var assetPackRegistryCatalogEntries: [AssetPackRegistryCatalogEntry] = []
+    @Published private(set) var assetPackRegistrySubscriptions: [AssetPackRegistrySubscription] = []
     @Published var assetPackInstallMessage: String = ""
     @Published var questions: [ReflectionQuestion]
     @Published var quests: [Quest]
@@ -196,6 +197,7 @@ final class AppStore: ObservableObject {
     private let promptAssetSelectionRepository: PromptAssetSelectionRepository?
     private let promptAssetPackRepository: PromptAssetPackRepository?
     private let assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository?
+    private let assetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository?
     private let dataExportRepository: DataExportRepository?
     private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
     private let principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository?
@@ -205,6 +207,7 @@ final class AppStore: ObservableObject {
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
     private var runtimePromptAssetPacks: [PromptAssetPack] = []
     private var assetPackRegistryCatalogURL: URL?
+    private var assetPackRegistryCatalogEntrySourceURLs: [String: URL] = [:]
     private let persistenceUnavailableMessage: String?
     private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
@@ -275,6 +278,7 @@ final class AppStore: ObservableObject {
         promptAssetSelectionRepository: PromptAssetSelectionRepository? = nil,
         promptAssetPackRepository: PromptAssetPackRepository? = nil,
         assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository? = nil,
+        assetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository? = nil,
         dataExportRepository: DataExportRepository? = nil,
         historicalRetryCandidateRepository: HistoricalRetryCandidateRepository? = nil,
         principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository? = nil,
@@ -307,6 +311,7 @@ final class AppStore: ObservableObject {
         self.promptAssetSelectionRepository = promptAssetSelectionRepository
         self.promptAssetPackRepository = promptAssetPackRepository
         self.assetPackTrustPolicyRepository = assetPackTrustPolicyRepository
+        self.assetPackRegistrySubscriptionRepository = assetPackRegistrySubscriptionRepository
         self.dataExportRepository = dataExportRepository
         self.historicalRetryCandidateRepository = historicalRetryCandidateRepository
         self.principleRecallFeedbackRepository = principleRecallFeedbackRepository
@@ -359,6 +364,7 @@ final class AppStore: ObservableObject {
                 promptAssetSelectionRepository: SQLitePromptAssetSelectionRepository(database: database),
                 promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
                 assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+                assetPackRegistrySubscriptionRepository: SQLiteAssetPackRegistrySubscriptionRepository(database: database),
                 dataExportRepository: SQLiteDataExportRepository(database: database),
                 historicalRetryCandidateRepository: SQLiteHistoricalRetryCandidateRepository(database: database),
                 principleRecallFeedbackRepository: SQLitePrincipleRecallFeedbackRepository(database: database),
@@ -1718,7 +1724,7 @@ final class AppStore: ObservableObject {
     ) async throws -> AssetPackRegistryCatalog {
         let data: Data
         do {
-            data = try await fetcher.fetchInstallManifestData(from: url)
+            data = try await fetcher.fetchRegistryCatalogData(from: url)
         } catch {
             assetPackInstallMessage = "获取远程资产包目录失败：\(error.localizedDescription)"
             throw error
@@ -1728,14 +1734,75 @@ final class AppStore: ObservableObject {
             let catalog = try Self.assetPackJSONDecoder.decode(AssetPackRegistryCatalog.self, from: data)
             assetPackRegistryCatalogURL = url
             assetPackRegistryCatalogEntries = catalog.entries
+            assetPackRegistryCatalogEntrySourceURLs = catalog.entries.reduce(into: [String: URL]()) { result, entry in
+                result[entry.id] = url
+            }
             assetPackInstallMessage = "已获取 \(catalog.entries.count) 个远程资产包条目。"
             return catalog
         } catch {
             assetPackRegistryCatalogURL = nil
             assetPackRegistryCatalogEntries = []
+            assetPackRegistryCatalogEntrySourceURLs = [:]
             assetPackInstallMessage = "解析远程资产包目录失败：\(error.localizedDescription)"
             throw error
         }
+    }
+
+    @discardableResult
+    func syncAssetPackRegistrySubscriptions(
+        fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
+    ) async throws -> [AssetPackRegistryCatalogEntry] {
+        guard let assetPackRegistrySubscriptionRepository else {
+            assetPackInstallMessage = "资产包目录同步不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        let subscriptions = try await assetPackRegistrySubscriptionRepository.enabledSubscriptions()
+        assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+        guard !subscriptions.isEmpty else {
+            assetPackRegistryCatalogEntries = []
+            assetPackRegistryCatalogEntrySourceURLs = [:]
+            assetPackInstallMessage = "没有已启用的资产包目录订阅。"
+            return []
+        }
+
+        var entries: [AssetPackRegistryCatalogEntry] = []
+        var sourceURLs: [String: URL] = [:]
+        var failedCount = 0
+
+        for subscription in subscriptions {
+            do {
+                let data = try await fetcher.fetchRegistryCatalogData(from: subscription.catalogURL)
+                let catalog = try Self.assetPackJSONDecoder.decode(AssetPackRegistryCatalog.self, from: data)
+                entries.append(contentsOf: catalog.entries)
+                for entry in catalog.entries {
+                    sourceURLs[entry.id] = subscription.catalogURL
+                }
+                try await assetPackRegistrySubscriptionRepository.recordSyncResult(
+                    subscriptionId: subscription.id,
+                    status: .succeeded,
+                    message: "Fetched \(catalog.entries.count) entries.",
+                    syncedAt: .now
+                )
+            } catch {
+                failedCount += 1
+                try await assetPackRegistrySubscriptionRepository.recordSyncResult(
+                    subscriptionId: subscription.id,
+                    status: .failed,
+                    message: error.localizedDescription,
+                    syncedAt: .now
+                )
+            }
+        }
+
+        assetPackRegistryCatalogURL = subscriptions.first?.catalogURL
+        assetPackRegistryCatalogEntries = entries
+        assetPackRegistryCatalogEntrySourceURLs = sourceURLs
+        assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+        assetPackInstallMessage = failedCount == 0
+            ? "已同步 \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目。"
+            : "已同步 \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目；\(failedCount) 个失败。"
+        return entries
     }
 
     @discardableResult
@@ -1748,7 +1815,8 @@ final class AppStore: ObservableObject {
             throw PersistenceError.validationFailed("Asset pack registry entry not found: \(entryId)")
         }
 
-        let manifestURL = assetPackRegistryCatalogURL.map { entry.sourceURL(baseURL: $0) } ?? entry.manifestURL
+        let sourceURL = assetPackRegistryCatalogEntrySourceURLs[entry.id] ?? assetPackRegistryCatalogURL
+        let manifestURL = sourceURL.map { entry.sourceURL(baseURL: $0) } ?? entry.manifestURL
         let report = try await fetchAndInstallAssetPackInstallManifest(from: manifestURL, fetcher: fetcher)
         assetPackInstallMessage = "已从 \(entry.displayName) 安装：\(Self.assetPackInstallSummary(report))"
         return report

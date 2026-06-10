@@ -187,6 +187,18 @@ protocol AssetPackTrustPolicyRepository {
     func allDocuments() async throws -> [AssetPackTrustPolicyRecord]
 }
 
+protocol AssetPackRegistrySubscriptionRepository {
+    func saveSubscription(_ subscription: AssetPackRegistrySubscription) async throws
+    func allSubscriptions() async throws -> [AssetPackRegistrySubscription]
+    func enabledSubscriptions() async throws -> [AssetPackRegistrySubscription]
+    func recordSyncResult(
+        subscriptionId: String,
+        status: AssetPackRegistrySyncStatus,
+        message: String,
+        syncedAt: Date
+    ) async throws
+}
+
 struct DataExportPackage: Equatable {
     var data: Data
     var counts: [String: Int]
@@ -933,6 +945,34 @@ final class AppDatabase {
             try db.create(
                 index: "idx_asset_pack_trust_policies_updated_at",
                 on: "asset_pack_trust_policies",
+                columns: ["updated_at"]
+            )
+        }
+
+        migrator.registerMigration("v23_asset_pack_registry_subscriptions") { db in
+            try db.create(table: "asset_pack_registry_subscriptions", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("display_name", .text).notNull()
+                table.column("catalog_url", .text).notNull()
+                table.column("sync_policy_version", .text).notNull()
+                table.column("is_enabled", .integer).notNull()
+                table.column("last_synced_at", .text)
+                table.column("last_sync_status", .text).notNull()
+                table.column("last_sync_message", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_asset_pack_registry_subscriptions_enabled",
+                on: "asset_pack_registry_subscriptions",
+                columns: ["is_enabled"]
+            )
+            try db.create(
+                index: "idx_asset_pack_registry_subscriptions_updated_at",
+                on: "asset_pack_registry_subscriptions",
                 columns: ["updated_at"]
             )
         }
@@ -3076,6 +3116,71 @@ final class SQLiteAssetPackTrustPolicyRepository: AssetPackTrustPolicyRepository
     }
 }
 
+final class SQLiteAssetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveSubscription(_ subscription: AssetPackRegistrySubscription) async throws {
+        guard !subscription.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("AssetPackRegistrySubscription requires id")
+        }
+        guard !subscription.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("AssetPackRegistrySubscription requires displayName")
+        }
+        guard subscription.catalogURL.scheme != nil else {
+            throw PersistenceError.validationFailed("AssetPackRegistrySubscription requires absolute catalogURL")
+        }
+
+        try await database.dbQueue.write { db in
+            var row = AssetPackRegistrySubscriptionRow(subscription: subscription)
+            if let existing = try AssetPackRegistrySubscriptionRow.fetchOne(db, key: subscription.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func allSubscriptions() async throws -> [AssetPackRegistrySubscription] {
+        try await database.dbQueue.read { db in
+            try AssetPackRegistrySubscriptionRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func enabledSubscriptions() async throws -> [AssetPackRegistrySubscription] {
+        try await database.dbQueue.read { db in
+            try AssetPackRegistrySubscriptionRow
+                .filter(Column("deleted_at") == nil)
+                .filter(Column("is_enabled") == 1)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func recordSyncResult(
+        subscriptionId: String,
+        status: AssetPackRegistrySyncStatus,
+        message: String,
+        syncedAt: Date
+    ) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try AssetPackRegistrySubscriptionRow.fetchOne(db, key: subscriptionId) else { return }
+            row.lastSyncedAt = syncedAt.mingsiStorageString
+            row.lastSyncStatus = status.rawValue
+            row.lastSyncMessage = message
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+}
+
 struct AssetPackSignatureVerifier {
     private struct BuiltInVerificationPolicy {
         let trustedPublisherPublicKeys: [String: [String]]
@@ -3390,6 +3495,56 @@ struct AssetPackRegistryCatalogEntry: Codable, Equatable, Identifiable {
     }
 }
 
+enum AssetPackRegistrySyncStatus: String, Codable, Equatable, Identifiable {
+    case neverSynced = "never_synced"
+    case succeeded
+    case failed
+
+    var id: String { rawValue }
+}
+
+struct AssetPackRegistrySubscription: Codable, Equatable, Identifiable {
+    static let currentSyncPolicyVersion = "asset-pack-registry-sync.v1"
+
+    var id: String
+    var schemaVersion: Int
+    var displayName: String
+    var catalogURL: URL
+    var syncPolicyVersion: String
+    var isEnabled: Bool
+    var lastSyncedAt: Date?
+    var lastSyncStatus: AssetPackRegistrySyncStatus
+    var lastSyncMessage: String
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: String,
+        schemaVersion: Int = 1,
+        displayName: String,
+        catalogURL: URL,
+        syncPolicyVersion: String = Self.currentSyncPolicyVersion,
+        isEnabled: Bool = true,
+        lastSyncedAt: Date? = nil,
+        lastSyncStatus: AssetPackRegistrySyncStatus = .neverSynced,
+        lastSyncMessage: String = "",
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.schemaVersion = schemaVersion
+        self.displayName = displayName
+        self.catalogURL = catalogURL
+        self.syncPolicyVersion = syncPolicyVersion
+        self.isEnabled = isEnabled
+        self.lastSyncedAt = lastSyncedAt
+        self.lastSyncStatus = lastSyncStatus
+        self.lastSyncMessage = lastSyncMessage
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 struct AssetPackInstallManifest: Codable, Equatable {
     var trustPolicyURL: URL?
     var promptPacks: [PromptAssetPack]
@@ -3409,6 +3564,7 @@ struct AssetPackInstallManifest: Codable, Equatable {
 protocol AssetPackInstallManifestFetching {
     func fetchInstallManifestData(from url: URL) async throws -> Data
     func fetchTrustPolicyData(from url: URL) async throws -> Data
+    func fetchRegistryCatalogData(from url: URL) async throws -> Data
 }
 
 struct URLSessionAssetPackInstallManifestFetcher: AssetPackInstallManifestFetching {
@@ -3423,6 +3579,10 @@ struct URLSessionAssetPackInstallManifestFetcher: AssetPackInstallManifestFetchi
     }
 
     func fetchTrustPolicyData(from url: URL) async throws -> Data {
+        try await fetchData(from: url)
+    }
+
+    func fetchRegistryCatalogData(from url: URL) async throws -> Data {
         try await fetchData(from: url)
     }
 
@@ -3726,6 +3886,7 @@ enum DataExportSectionName: String, CaseIterable {
     case promptAssetPacks = "prompt_asset_packs"
     case lensAssetPacks = "lens_asset_packs"
     case assetPackTrustPolicies = "asset_pack_trust_policies"
+    case assetPackRegistrySubscriptions = "asset_pack_registry_subscriptions"
     case historicalRetryCandidates = "historical_retry_candidates"
 }
 
@@ -4558,6 +4719,63 @@ private struct AssetPackTrustPolicyRow: Codable, FetchableRecord, PersistableRec
             id: id,
             sourceURL: sourceUrl.flatMap(URL.init(string:)),
             document: document,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
+        )
+    }
+}
+
+private struct AssetPackRegistrySubscriptionRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "asset_pack_registry_subscriptions"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var displayName: String
+    var catalogUrl: String
+    var syncPolicyVersion: String
+    var isEnabled: Int
+    var lastSyncedAt: String?
+    var lastSyncStatus: String
+    var lastSyncMessage: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(subscription: AssetPackRegistrySubscription) {
+        let now = Date().mingsiStorageString
+        id = subscription.id
+        schemaVersion = subscription.schemaVersion
+        displayName = subscription.displayName
+        catalogUrl = subscription.catalogURL.absoluteString
+        syncPolicyVersion = subscription.syncPolicyVersion
+        isEnabled = subscription.isEnabled ? 1 : 0
+        lastSyncedAt = subscription.lastSyncedAt?.mingsiStorageString
+        lastSyncStatus = subscription.lastSyncStatus.rawValue
+        lastSyncMessage = subscription.lastSyncMessage
+        createdAt = subscription.createdAt.mingsiStorageString
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> AssetPackRegistrySubscription {
+        guard let url = URL(string: catalogUrl) else {
+            throw PersistenceError.invalidStoredValue("asset_pack_registry_subscriptions.catalog_url")
+        }
+        guard let status = AssetPackRegistrySyncStatus(rawValue: lastSyncStatus) else {
+            throw PersistenceError.invalidStoredValue("asset_pack_registry_subscriptions.last_sync_status")
+        }
+        return AssetPackRegistrySubscription(
+            id: id,
+            schemaVersion: schemaVersion,
+            displayName: displayName,
+            catalogURL: url,
+            syncPolicyVersion: syncPolicyVersion,
+            isEnabled: isEnabled != 0,
+            lastSyncedAt: lastSyncedAt.flatMap(Date.init(mingsiStorageString:)),
+            lastSyncStatus: status,
+            lastSyncMessage: lastSyncMessage,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
             updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
         )

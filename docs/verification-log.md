@@ -2,6 +2,51 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-10: Asset Pack Registry Subscription Sync Boundary
+
+Scope:
+
+- Persist remote asset-pack registry catalog subscriptions in SQLite through `asset_pack_registry_subscriptions`.
+- Add the v23 migration, `AssetPackRegistrySubscriptionRepository`, and `SQLiteAssetPackRegistrySubscriptionRepository`.
+- Add per-subscription sync status, message, and timestamp recording for enabled catalog sync.
+- Extend `AssetPackInstallManifestFetching` with `fetchRegistryCatalogData(from:)` so catalog fetches do not reuse the manifest fetch boundary.
+- Add `AppStore.syncAssetPackRegistrySubscriptions(fetcher:)` to explicitly sync enabled subscriptions and update catalog entries.
+- Export registry subscriptions through Data Export.
+
+Changed areas:
+
+- `Sources/Services/PersistenceCore.swift`
+- `Sources/App/AppStore.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistrySubscriptionRepository_saveLoadAndRecordSyncResult -only-testing:MingSiTests/PersistenceCoreTests/testMigration_v23_addsAssetPackRegistrySubscriptionsTableAndIndexes -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncAssetPackRegistrySubscriptions_fetchesEnabledCatalogsAndRecordsStatus
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testDataExport_includesAssetPackRegistrySubscriptions
+git diff --check
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistrySubscriptionRepository_saveLoadAndRecordSyncResult -only-testing:MingSiTests/PersistenceCoreTests/testMigration_v23_addsAssetPackRegistrySubscriptionsTableAndIndexes -only-testing:MingSiTests/PersistenceCoreTests/testDataExport_includesAssetPackRegistrySubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncAssetPackRegistrySubscriptions_fetchesEnabledCatalogsAndRecordsStatus
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+```
+
+Result:
+
+- RED first failed because `SQLiteAssetPackRegistrySubscriptionRepository`, `AssetPackRegistrySubscription`, and `AssetPackRegistrySyncStatus.succeeded` did not exist.
+- GREEN focused coverage passed with 3 tests and 0 failures after adding the subscription model, repository, v23 table, sync method, and catalog-fetch boundary.
+- Data Export RED failed because `sections["asset_pack_registry_subscriptions"]` was absent.
+- Data Export GREEN passed with 1 test and 0 failures after adding `DataExportSectionName.assetPackRegistrySubscriptions`.
+- Final branch verification passed after the docs update: `git diff --check`, the 4-test focused registry subscription suite, full `PersistenceCoreTests` with 124 tests and 0 failures, full `AppStoreStateMachineTests` with 252 tests and 0 failures, and full `MingSiTests` with 561 tests, 1 skipped, and 0 failures.
+
+Residual risk:
+
+- This is an explicit sync boundary only. There is no background timer, Settings subscription-management UI, real registry service, publisher onboarding flow, external key-distribution channel, or live external registry acceptance run yet.
+- Real BYOK GLM network success remains externally blocked until a user-provided key is configured and an external call window is approved.
+
 ## 2026-06-10: Settings Remote Asset Pack Registry Catalog Surface
 
 Scope:
