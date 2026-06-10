@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 import GRDB
 @testable import MingSi
@@ -293,6 +294,278 @@ final class PersistenceCoreTests: XCTestCase {
         let activePrinciples = try await principleRepo.activePrinciples()
         XCTAssertEqual(activePrinciples.count, 1)
         XCTAssertEqual(activePrinciples[0].title, "Active")
+    }
+
+    func testUpdatePrincipleStatus_archivedPrincipleIsHiddenFromVisibleReads() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Archive principle test", state: .sessionComplete)
+        try await entryRepo.saveDraft(draft)
+
+        let principle = PrincipleAsset(
+            title: "Visual QA - Meeting owner",
+            summary: "Clarify ownership before execution.",
+            triggerContext: "Meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: draft.id)
+
+        try await principleRepo.updatePrincipleStatus(.archived, principleId: principle.id)
+
+        let activePrinciples = try await principleRepo.activePrinciples()
+        let allPrinciples = try await principleRepo.allPrinciples()
+        let storedPrinciples = try await principleRepo.principles(for: draft.id)
+        XCTAssertTrue(activePrinciples.isEmpty)
+        XCTAssertTrue(allPrinciples.isEmpty)
+        XCTAssertTrue(storedPrinciples.isEmpty)
+    }
+
+    func testDeletePrinciple_removesPrincipleFromVisibleReadsAndExport() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let evidenceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Delete principle test", state: .sessionComplete)
+        try await entryRepo.saveDraft(draft)
+
+        let principle = PrincipleAsset(
+            title: "Visual QA - stale test rule",
+            summary: "This seed should be removable from the local principle library.",
+            triggerContext: "Manual test data cleanup",
+            actions: ["Delete stale seed"],
+            successCriteria: "The rule no longer appears in principle assets.",
+            exceptions: "None",
+            status: .needsReview
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: draft.id)
+        try await feedbackRepo.saveFeedback(
+            PrincipleRecallFeedback(
+                principleId: principle.id,
+                sourceDailyEntryId: draft.id,
+                promptId: .generateQuestions,
+                retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                retrievalReason: "manual cleanup regression",
+                feedback: .misrecalled
+            )
+        )
+        try await evidenceRepo.saveEvidence(
+            PrinciplePracticeEvidence(
+                principleId: principle.id,
+                sourceDailyEntryId: draft.id,
+                evidenceSource: .manual,
+                strength: .attempted,
+                evidenceSummary: "manual cleanup regression"
+            )
+        )
+
+        try await principleRepo.deletePrinciple(principle.id)
+
+        let activePrinciples = try await principleRepo.activePrinciples()
+        let allPrinciples = try await principleRepo.allPrinciples()
+        let storedPrinciples = try await principleRepo.principles(for: draft.id)
+        let feedback = try await feedbackRepo.feedback(for: principle.id, limit: 10)
+        let evidence = try await evidenceRepo.evidence(for: principle.id, limit: 10)
+        XCTAssertTrue(activePrinciples.isEmpty)
+        XCTAssertTrue(allPrinciples.isEmpty)
+        XCTAssertTrue(storedPrinciples.isEmpty)
+        XCTAssertTrue(feedback.isEmpty)
+        XCTAssertTrue(evidence.isEmpty)
+
+        let data = try await exportRepo.exportJSON()
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(payload["sections"] as? [String: Any])
+        let principleRows = try XCTUnwrap(sections["principle_assets"] as? [[String: Any]])
+        XCTAssertTrue(principleRows.isEmpty)
+    }
+
+    func testUpdatePrincipleStatus_movesActivePrincipleToNeedsReview() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Needs review principle test", state: .sessionComplete)
+        try await entryRepo.saveDraft(draft)
+
+        let principle = PrincipleAsset(
+            title: "Meeting owner rule",
+            summary: "Clarify ownership before execution.",
+            triggerContext: "Meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: draft.id)
+
+        try await principleRepo.updatePrincipleStatus(.needsReview, principleId: principle.id)
+
+        let activePrinciples = try await principleRepo.activePrinciples()
+        let storedPrinciples = try await principleRepo.principles(for: draft.id)
+        XCTAssertTrue(activePrinciples.isEmpty)
+        XCTAssertEqual(storedPrinciples.first?.status, .needsReview)
+    }
+
+    func testUpdatePrinciple_reactivatesNeedsReviewPrincipleAndPreservesSourceLink() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Repair principle test", state: .sessionComplete)
+        try await entryRepo.saveDraft(draft)
+
+        let needsReview = PrincipleAsset(
+            title: "Meeting owner rule",
+            summary: "Too broad.",
+            triggerContext: "Every meeting",
+            actions: ["Invite everyone"],
+            successCriteria: "Everyone aligned.",
+            exceptions: "",
+            status: .needsReview
+        )
+        try await principleRepo.savePrinciple(needsReview, sourceDailyEntryId: draft.id)
+
+        let repaired = PrincipleAsset(
+            id: needsReview.id,
+            title: "Clarify accountable owner",
+            summary: "Before a cross-functional meeting ends, name one accountable owner.",
+            triggerContext: "Cross-functional meeting",
+            actions: ["Name owner", "Name acceptance evidence"],
+            successCriteria: "Every action item has one owner and one evidence criterion.",
+            exceptions: "Pure FYI syncs can stay async.",
+            status: .active
+        )
+        try await principleRepo.updatePrinciple(repaired)
+
+        let activePrinciples = try await principleRepo.activePrinciples()
+        let allPrinciples = try await principleRepo.allPrinciples()
+        let storedForEntry = try await principleRepo.principles(for: draft.id)
+        XCTAssertEqual(activePrinciples.map(\.id), [needsReview.id])
+        XCTAssertEqual(allPrinciples.map(\.id), [needsReview.id])
+        XCTAssertEqual(storedForEntry.map(\.id), [needsReview.id])
+        XCTAssertEqual(storedForEntry.first?.title, "Clarify accountable owner")
+        XCTAssertEqual(storedForEntry.first?.actions, ["Name owner", "Name acceptance evidence"])
+        XCTAssertEqual(storedForEntry.first?.status, .active)
+    }
+
+    func testPrincipleRecallFeedback_persistsNotApplicableAndMisrecalledEvents() async throws {
+        let repo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let principleID = UUID()
+        let promptRunID = UUID()
+        let entryID = UUID()
+
+        let notApplicable = PrincipleRecallFeedback(
+            principleId: principleID,
+            promptRunId: promptRunID,
+            sourceDailyEntryId: entryID,
+            promptId: .generateQuestions,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
+            retrievalReason: "Matched meeting ownership with 会前明确负责人 using local keyword policy; score=4.",
+            feedback: .notApplicable,
+            note: "这次是临时同步，不需要负责人机制。",
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+        let misrecalled = PrincipleRecallFeedback(
+            principleId: principleID,
+            promptRunId: promptRunID,
+            sourceDailyEntryId: entryID,
+            promptId: .generateQuests,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
+            retrievalReason: "Matched keyword overlap with 会前明确负责人 using local keyword policy; score=2.",
+            feedback: .misrecalled,
+            note: "关键词撞上了，但场景不是会议。",
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+
+        try await repo.saveFeedback(notApplicable)
+        try await repo.saveFeedback(misrecalled)
+
+        let loaded = try await repo.feedback(for: principleID, limit: 10)
+        XCTAssertEqual(loaded.map(\.feedback), [.misrecalled, .notApplicable])
+        XCTAssertEqual(loaded.first?.promptId, .generateQuests)
+        XCTAssertEqual(loaded.first?.retrievalPolicyVersion, "principle-retrieval.local-keyword.v1")
+        XCTAssertEqual(loaded.first?.note, "关键词撞上了，但场景不是会议。")
+    }
+
+    func testPrinciplePracticeEvidence_persistsPracticeEvidenceForPrinciple() async throws {
+        let repo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let principleID = UUID()
+        let entryID = UUID()
+        let questID = UUID()
+        let verificationID = UUID()
+        let earlier = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            verificationId: verificationID,
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "用户在复盘中说明先写负责人再推进会议。",
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+        let later = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            verificationId: nil,
+            evidenceSource: .quest,
+            strength: .attempted,
+            evidenceSummary: "明日任务明确要求先确认负责人。",
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+
+        try await repo.saveEvidence(earlier)
+        try await repo.saveEvidence(later)
+
+        let loaded = try await repo.evidence(for: principleID, limit: 10)
+        XCTAssertEqual(loaded.map(\.strength), [.attempted, .intentionalPractice])
+        XCTAssertEqual(loaded.first?.evidenceSource, .quest)
+        XCTAssertEqual(loaded.first?.sourceDailyEntryId, entryID)
+        XCTAssertEqual(loaded.last?.verificationId, verificationID)
+        XCTAssertEqual(loaded.last?.evidenceSummary, "用户在复盘中说明先写负责人再推进会议。")
+    }
+
+    func testPrinciplePracticeEvidence_loadsVerificationEvidenceByBusinessKey() async throws {
+        let repo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let principleID = UUID()
+        let entryID = UUID()
+        let questID = UUID()
+        let verificationID = UUID()
+        let matching = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            verificationId: verificationID,
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证显示会前明确负责人被练习。"
+        )
+        let differentSource = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            verificationId: nil,
+            evidenceSource: .quest,
+            strength: .attempted,
+            evidenceSummary: "任务要求会前明确负责人。"
+        )
+
+        try await repo.saveEvidence(matching)
+        try await repo.saveEvidence(differentSource)
+
+        let loaded = try await repo.evidence(
+            for: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            evidenceSource: .verification
+        )
+
+        XCTAssertEqual(loaded?.id, matching.id)
+        XCTAssertEqual(loaded?.verificationId, verificationID)
+        XCTAssertEqual(loaded?.evidenceSource, .verification)
     }
 
     // MARK: - VerificationRepository
@@ -605,6 +878,10 @@ final class PersistenceCoreTests: XCTestCase {
         let run = PromptRun(
             promptId: PromptID.organizeCards.rawValue,
             promptVersion: "1.0.0",
+            promptSourceKind: .imported,
+            promptPackId: "imported.prompt.audit",
+            promptPackVersion: "2026.06",
+            promptPackDisplayName: "Imported Prompt Audit",
             inputSchemaVersion: 1,
             outputSchemaVersion: 1,
             modelProvider: "GLM",
@@ -621,6 +898,10 @@ final class PersistenceCoreTests: XCTestCase {
         let recent = try await repo.recentPromptRuns(limit: 5)
         XCTAssertEqual(recent.count, 1)
         XCTAssertEqual(recent.first?.promptId, PromptID.organizeCards.rawValue)
+        XCTAssertEqual(recent.first?.promptSourceKind, .imported)
+        XCTAssertEqual(recent.first?.promptPackId, "imported.prompt.audit")
+        XCTAssertEqual(recent.first?.promptPackVersion, "2026.06")
+        XCTAssertEqual(recent.first?.promptPackDisplayName, "Imported Prompt Audit")
         XCTAssertEqual(recent.first?.modelProvider, "GLM")
         XCTAssertEqual(recent.first?.modelName, "glm-test")
         XCTAssertEqual(recent.first?.sourceRecordIds, ["entry-1", "card-1"])
@@ -743,6 +1024,1723 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertTrue(failures.isEmpty)
     }
 
+    func testPromptRun_updateFeedbackPersistsUserDenial() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let run = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-1"],
+            requestSummary: "question generation",
+            responseJSON: #"{"questions":[{"question":"What evidence matters?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+
+        try await repo.savePromptRun(run)
+        try await repo.updatePromptRunFeedback(.denied, runId: run.id)
+
+        let recent = try await repo.recentPromptRuns(limit: 1)
+        XCTAssertEqual(recent.first?.userFeedback, .denied)
+    }
+
+    func testPromptRun_statsCalculatesFailureEmptyResultAndDenialRates() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        try await repo.savePromptRun(
+            PromptRun(
+                promptId: PromptID.organizeCards.rawValue,
+                promptVersion: "1.0.0",
+                inputSchemaVersion: 1,
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                sourceRecordIds: ["entry-1"],
+                requestSummary: "success",
+                responseJSON: #"{"cards":[{"title":"A"}]}"#,
+                createdAt: Date(timeIntervalSince1970: 1)
+            )
+        )
+        try await repo.savePromptRun(
+            PromptRun(
+                promptId: PromptID.organizeCards.rawValue,
+                promptVersion: "1.0.0",
+                inputSchemaVersion: 1,
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                sourceRecordIds: ["entry-2"],
+                requestSummary: "http failure",
+                error: "HTTP 500",
+                createdAt: Date(timeIntervalSince1970: 2)
+            )
+        )
+        let emptyResultRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-3"],
+            requestSummary: "empty model output",
+            error: "TodayAIParsingError.emptyResult",
+            createdAt: Date(timeIntervalSince1970: 3)
+        )
+        let deniedRun = PromptRun(
+            promptId: PromptID.generateQuests.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-4"],
+            requestSummary: "user rejected quest",
+            responseJSON: #"{"main_quest":{"title":"Low value busywork"}}"#,
+            createdAt: Date(timeIntervalSince1970: 4)
+        )
+        try await repo.savePromptRun(emptyResultRun)
+        try await repo.savePromptRun(deniedRun)
+        try await repo.updatePromptRunFeedback(.denied, runId: deniedRun.id)
+
+        let stats = try await repo.promptRunStats(limit: 10)
+
+        XCTAssertEqual(stats.totalCount, 4)
+        XCTAssertEqual(stats.successCount, 2)
+        XCTAssertEqual(stats.failureCount, 2)
+        XCTAssertEqual(stats.emptyResultCount, 1)
+        XCTAssertEqual(stats.userDeniedCount, 1)
+        XCTAssertEqual(stats.failureRate, 0.5, accuracy: 0.001)
+        XCTAssertEqual(stats.emptyResultRate, 0.25, accuracy: 0.001)
+        XCTAssertEqual(stats.userDenialRate, 0.25, accuracy: 0.001)
+    }
+
+    // MARK: - PromptEvalRunRepository
+
+    func testSavePromptEvalRun_andLoadRecent() async throws {
+        let repo = SQLitePromptEvalRunRepository(database: database)
+        let run = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "questions.1.0.0",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            runnerVersion: "prompt-eval-runner.test",
+            caseResults: [
+                PromptEvalCaseResult(
+                    caseId: "questions.concrete_lens_specific",
+                    name: "Concrete lens-specific questions",
+                    status: .passed,
+                    inputSummary: "Lens-specific question fixture from meeting evidence.",
+                    expectedBehavior: "Ask concrete questions tied to the selected lens.",
+                    actualObservation: "Parser returned concrete evidence and disconfirmation questions.",
+                    diagnosticReason: "fixed-suite pass: all assertions satisfied."
+                ),
+                PromptEvalCaseResult(
+                    caseId: "questions.rejects_generic",
+                    name: "Rejects generic questions",
+                    status: .failed,
+                    failureReason: "Expected at least one evidence-specific question.",
+                    inputSummary: "Generic question regression fixture.",
+                    expectedBehavior: "Reject generic prompts that ignore evidence.",
+                    actualObservation: "No evidence-specific question was found.",
+                    diagnosticReason: "fixed-suite failure: Expected at least one evidence-specific question."
+                )
+            ],
+            createdAt: Date(timeIntervalSince1970: 20)
+        )
+
+        try await repo.saveEvalRun(run)
+
+        let recent = try await repo.recentEvalRuns(limit: 5)
+        let loaded = try XCTUnwrap(recent.first)
+        XCTAssertEqual(loaded.id, run.id)
+        XCTAssertEqual(loaded.promptId, PromptID.generateQuestions.rawValue)
+        XCTAssertEqual(loaded.promptVersion, "questions.1.0.0")
+        XCTAssertEqual(loaded.contextPolicyVersion, "context.generateQuestions.v1")
+        XCTAssertEqual(loaded.evalSuiteVersion, "generateQuestions.eval.v1")
+        XCTAssertEqual(loaded.runnerVersion, "prompt-eval-runner.test")
+        XCTAssertEqual(loaded.totalCaseCount, 2)
+        XCTAssertEqual(loaded.passedCaseCount, 1)
+        XCTAssertEqual(loaded.failedCaseCount, 1)
+        XCTAssertEqual(loaded.passRate, 0.5, accuracy: 0.001)
+        XCTAssertEqual(loaded.status, .failed)
+        XCTAssertEqual(loaded.caseResults.last?.failureReason, "Expected at least one evidence-specific question.")
+        XCTAssertEqual(loaded.caseResults.first?.inputSummary, "Lens-specific question fixture from meeting evidence.")
+        XCTAssertEqual(loaded.caseResults.first?.expectedBehavior, "Ask concrete questions tied to the selected lens.")
+        XCTAssertEqual(loaded.caseResults.first?.actualObservation, "Parser returned concrete evidence and disconfirmation questions.")
+        XCTAssertEqual(loaded.caseResults.first?.diagnosticReason, "fixed-suite pass: all assertions satisfied.")
+    }
+
+    // MARK: - PromptAssetSelectionRepository
+
+    func testPromptAssetSelection_saveAndLoadSelectedVersions() async throws {
+        let repo = SQLitePromptAssetSelectionRepository(database: database)
+
+        try await repo.saveSelection(
+            PromptAssetSelection(
+                promptId: .generateQuestions,
+                selectedVersion: "0.9.0",
+                baseVersion: "1.0.0",
+                reason: .rollback
+            )
+        )
+
+        let selections = try await repo.allSelections()
+
+        XCTAssertEqual(selections.count, 1)
+        XCTAssertEqual(selections.first?.promptId, .generateQuestions)
+        XCTAssertEqual(selections.first?.selectedVersion, "0.9.0")
+        XCTAssertEqual(selections.first?.baseVersion, "1.0.0")
+        XCTAssertEqual(selections.first?.reason, .rollback)
+    }
+
+    // MARK: - PromptAssetPackRepository
+
+    func testPromptAssetPack_saveAndLoadEnabledPacks() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v1",
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            rollbackTargetVersion: "1.0.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let pack = try Self.trusted(
+            PromptAssetPack(
+            id: "marketplace.prompts.questions",
+            version: "2026.06",
+            displayName: "Question Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+            )
+        )
+
+        try await repo.savePack(pack)
+
+        let packs = try await repo.enabledPacks()
+        let loaded = try XCTUnwrap(packs.first)
+        XCTAssertEqual(loaded.id, "marketplace.prompts.questions")
+        XCTAssertEqual(loaded.version, "2026.06")
+        XCTAssertEqual(loaded.displayName, "Question Prompt Pack")
+        XCTAssertEqual(loaded.sourceKind, .marketplace)
+        XCTAssertTrue(loaded.isEnabled)
+        XCTAssertEqual(loaded.templates.map(\.id), [.generateQuestions])
+        XCTAssertEqual(loaded.templates.first?.version, "questions.registry.1.1.0")
+        XCTAssertEqual(loaded.templates.first?.rollbackTargetVersion, "1.0.0")
+        XCTAssertEqual(loaded.trustMetadata?.contentHash, try AssetPackIntegrity.expectedContentHash(for: loaded))
+    }
+
+    func testPromptAssetPack_disabledPacksPersistButDoNotLoadAsEnabled() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuests,
+            version: "quests.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate one verifiable quest.",
+            outputSchemaVersion: 1
+        )
+
+        try await repo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                id: "imported.prompts.disabled",
+                version: "2026.06",
+                displayName: "Disabled Prompt Pack",
+                sourceKind: .imported,
+                isEnabled: false,
+                templates: [template]
+                )
+            )
+        )
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPackIds = try await repo.allPacks().map(\.id)
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPackIds, ["imported.prompts.disabled"])
+    }
+
+    func testPromptAssetPack_externalPackRequiresTrustMetadata() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let pack = PromptAssetPack(
+            id: "marketplace.prompts.untrusted",
+            version: "2026.06",
+            displayName: "Untrusted Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testPromptAssetPack_externalPackRejectsMismatchedContentHash() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let pack = PromptAssetPack(
+            id: "marketplace.prompts.tampered",
+            version: "2026.06",
+            displayName: "Tampered Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template],
+            trustMetadata: Self.makeTrustMetadata(contentHash: Self.mismatchedContentHash)
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testPromptAssetPack_externalPackRejectsInvalidSignature() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let unsigned = PromptAssetPack(
+            id: "marketplace.prompts.invalid-signature",
+            version: "2026.06",
+            displayName: "Invalid Signature Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+        let pack = PromptAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            templates: unsigned.templates,
+            trustMetadata: Self.makeTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signature: "p256-sha256:invalid-signature"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testPromptAssetPack_externalPackRejectsUnknownVerificationPolicyVersion() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let unsigned = PromptAssetPack(
+            id: "marketplace.prompts.unknown-policy",
+            version: "2026.06",
+            displayName: "Unknown Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+        let pack = PromptAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            templates: unsigned.templates,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: unsigned),
+                verificationPolicyVersion: "asset-trust.unknown.v9"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testPromptAssetPack_externalPackRejectsRevokedPublisherForPolicyVersion() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.1.1.0",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let unsigned = PromptAssetPack(
+            id: "marketplace.prompts.revoked-publisher",
+            version: "2026.06",
+            displayName: "Revoked Publisher Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+        let pack = PromptAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            templates: unsigned.templates,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: unsigned),
+                verificationPolicyVersion: "asset-trust.test.revoked.v1"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testPromptAssetPack_verificationPolicyAllowsPublisherKeyRotationGracePeriod() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.rotated",
+            systemText: "System guardrails",
+            userText: "Generate concrete reflection questions.",
+            outputSchemaVersion: 1
+        )
+        let oldKeyUnsigned = PromptAssetPack(
+            id: "marketplace.prompts.rotated-old",
+            version: "2026.06",
+            displayName: "Rotated Old Key Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+        let newKeyUnsigned = PromptAssetPack(
+            id: "marketplace.prompts.rotated-new",
+            version: "2026.06",
+            displayName: "Rotated New Key Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [template]
+        )
+        let oldKeyPack = PromptAssetPack(
+            id: oldKeyUnsigned.id,
+            version: oldKeyUnsigned.version,
+            displayName: oldKeyUnsigned.displayName,
+            sourceKind: oldKeyUnsigned.sourceKind,
+            isEnabled: oldKeyUnsigned.isEnabled,
+            templates: oldKeyUnsigned.templates,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: oldKeyUnsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: oldKeyUnsigned),
+                verificationPolicyVersion: "asset-trust.test.rotated.v1"
+            )
+        )
+        let newKeyPack = PromptAssetPack(
+            id: newKeyUnsigned.id,
+            version: newKeyUnsigned.version,
+            displayName: newKeyUnsigned.displayName,
+            sourceKind: newKeyUnsigned.sourceKind,
+            isEnabled: newKeyUnsigned.isEnabled,
+            templates: newKeyUnsigned.templates,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: newKeyUnsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: newKeyUnsigned),
+                verificationPolicyVersion: "asset-trust.test.rotated.v1",
+                privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+            )
+        )
+
+        try await repo.savePack(oldKeyPack)
+        try await repo.savePack(newKeyPack)
+
+        let enabledPackIds = try await repo.enabledPacks().map(\.id)
+        XCTAssertEqual(Set(enabledPackIds), ["marketplace.prompts.rotated-old", "marketplace.prompts.rotated-new"])
+    }
+
+    func testAssetPackTrustPolicyDocumentSignatureVerifier_allowsSignedDocuments() throws {
+        let document = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: "asset-trust.remote.rotated.v1",
+                        trustedPublisherPublicKeys: [
+                            "mingsi.remote.publisher": ["remote-public-key"]
+                        ],
+                        revokedPublisherIds: ["mingsi.remote.revoked"]
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(
+            document.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.publisher",
+                verificationPolicyVersion: "asset-trust.remote.rotated.v1"
+            ),
+            ["remote-public-key"]
+        )
+        XCTAssertTrue(
+            document.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.revoked",
+                verificationPolicyVersion: "asset-trust.remote.rotated.v1"
+            ).isEmpty
+        )
+    }
+
+    func testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsUnsignedAndTamperedDocuments() throws {
+        let unsigned = AssetPackTrustPolicyDocument(
+            policies: [
+                AssetPackTrustPolicy(
+                    version: "asset-trust.remote.unsigned.v1",
+                    trustedPublisherPublicKeys: [
+                        "mingsi.remote.publisher": ["remote-public-key"]
+                    ]
+                )
+            ]
+        )
+        var tampered = try Self.signedTrustPolicyDocument(unsigned)
+        tampered.policies = [
+            AssetPackTrustPolicy(
+                version: "asset-trust.remote.unsigned.v1",
+                trustedPublisherPublicKeys: [
+                    "mingsi.remote.publisher": ["tampered-public-key"]
+                ]
+            )
+        ]
+
+        XCTAssertTrue(
+            unsigned.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.publisher",
+                verificationPolicyVersion: "asset-trust.remote.unsigned.v1"
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            tampered.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.publisher",
+                verificationPolicyVersion: "asset-trust.remote.unsigned.v1"
+            ).isEmpty
+        )
+    }
+
+    func testAssetPackTrustPolicyRepository_saveAndLoadDocuments() async throws {
+        let repo = SQLiteAssetPackTrustPolicyRepository(database: database)
+        let document = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: "asset-trust.remote.rotated.v1",
+                        trustedPublisherPublicKeys: [
+                            "mingsi.remote.publisher": ["remote-public-key"]
+                        ],
+                        revokedPublisherIds: ["mingsi.remote.revoked"]
+                    )
+                ]
+            )
+        )
+
+        try await repo.saveDocument(
+            document,
+            sourceURL: URL(string: "https://registry.mingsi.test/trust-policy.json")!
+        )
+
+        let documents = try await repo.allDocuments()
+        XCTAssertEqual(documents.map(\.sourceURL?.absoluteString), ["https://registry.mingsi.test/trust-policy.json"])
+        XCTAssertEqual(documents.first?.document, document)
+        XCTAssertEqual(
+            documents.first?.document.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.publisher",
+                verificationPolicyVersion: "asset-trust.remote.rotated.v1"
+            ),
+            ["remote-public-key"]
+        )
+        XCTAssertTrue(
+            documents.first?.document.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.revoked",
+                verificationPolicyVersion: "asset-trust.remote.rotated.v1"
+            ).isEmpty ?? false
+        )
+    }
+
+    func testPromptAssetPack_enabledPacksExcludeLegacyExternalPacksWithoutTrustMetadata() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.legacy",
+            systemText: "System guardrails",
+            userText: "Legacy external pack without trust proof.",
+            outputSchemaVersion: 1
+        )
+        let now = Self.storageString(Date(timeIntervalSince1970: 100))
+
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO prompt_asset_packs
+                (id, schema_version, version, display_name, source_kind, is_enabled, templates_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "marketplace.prompts.legacy",
+                    1,
+                    "2026.05",
+                    "Legacy Prompt Pack",
+                    PromptAssetSourceKind.marketplace.rawValue,
+                    1,
+                    try Self.encodedJSONString([template]),
+                    now,
+                    now
+                ]
+            )
+        }
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPacks = try await repo.allPacks()
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPacks.map(\.id), ["marketplace.prompts.legacy"])
+        XCTAssertNil(allPacks.first?.trustMetadata)
+    }
+
+    func testPromptAssetPack_enabledPacksExcludeLegacyExternalPacksWithMismatchedContentHash() async throws {
+        let repo = SQLitePromptAssetPackRepository(database: database)
+        let template = PromptTemplate(
+            id: .generateQuestions,
+            version: "questions.registry.legacy",
+            systemText: "System guardrails",
+            userText: "Legacy external pack with stale trust proof.",
+            outputSchemaVersion: 1
+        )
+        let now = Self.storageString(Date(timeIntervalSince1970: 100))
+
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO prompt_asset_packs
+                (id, schema_version, version, display_name, source_kind, is_enabled, templates_json, trust_metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "marketplace.prompts.stale-hash",
+                    1,
+                    "2026.05",
+                    "Stale Hash Prompt Pack",
+                    PromptAssetSourceKind.marketplace.rawValue,
+                    1,
+                    try Self.encodedJSONString([template]),
+                    try Self.encodedJSONString(Self.makeTrustMetadata(contentHash: Self.mismatchedContentHash)),
+                    now,
+                    now
+                ]
+            )
+        }
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPacks = try await repo.allPacks()
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPacks.map(\.id), ["marketplace.prompts.stale-hash"])
+        XCTAssertEqual(allPacks.first?.trustMetadata?.contentHash, Self.mismatchedContentHash)
+    }
+
+    // MARK: - LensAssetPackRepository
+
+    func testLensAssetPack_saveAndLoadEnabledPacks() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "role-coach",
+            promptId: "role_coach",
+            version: "role.v1",
+            title: "Coach Role",
+            subtitle: "Use a coaching voice.",
+            shortLabel: "Coach",
+            methodLine: "What would a coach ask first?",
+            promptGuidance: "Ask coaching-style reflection questions.",
+            symbolName: "person.wave.2",
+            recommendedReason: "Imported role card pack.",
+            questionSeeds: ["What would a coach ask first?"],
+            accentRole: .accent,
+            methodIndex: 10
+        )
+        let pack = try Self.trusted(
+            LensAssetPack(
+            id: "marketplace.roles.coach",
+            version: "2026.06",
+            displayName: "Coach Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+            )
+        )
+
+        try await repo.savePack(pack)
+
+        let packs = try await repo.enabledPacks()
+        let loaded = try XCTUnwrap(packs.first)
+        XCTAssertEqual(loaded.id, "marketplace.roles.coach")
+        XCTAssertEqual(loaded.version, "2026.06")
+        XCTAssertEqual(loaded.displayName, "Coach Role Cards")
+        XCTAssertEqual(loaded.sourceKind, .marketplace)
+        XCTAssertTrue(loaded.isEnabled)
+        XCTAssertEqual(loaded.items.map(\.lensId), ["role-coach"])
+        XCTAssertEqual(loaded.stampedItems.first?.packId, "marketplace.roles.coach")
+        XCTAssertEqual(loaded.trustMetadata?.contentHash, try AssetPackIntegrity.expectedContentHash(for: loaded))
+    }
+
+    func testLensAssetPack_disabledPacksPersistButDoNotLoadAsEnabled() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "disabled-role",
+            promptId: "disabled_role",
+            version: "role.v1",
+            title: "Disabled Role",
+            subtitle: "Should not appear.",
+            shortLabel: "Off",
+            methodLine: "Should not appear.",
+            promptGuidance: "Should not appear.",
+            symbolName: "nosign",
+            recommendedReason: "Disabled pack.",
+            questionSeeds: ["Should not appear."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+
+        try await repo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "marketplace.roles.disabled",
+                version: "2026.06",
+                displayName: "Disabled Role Cards",
+                sourceKind: .marketplace,
+                isEnabled: false,
+                items: [lens]
+                )
+            )
+        )
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPackIds = try await repo.allPacks().map(\.id)
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPackIds, ["marketplace.roles.disabled"])
+    }
+
+    func testLensAssetPack_externalPackRequiresTrustMetadata() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "untrusted-role",
+            promptId: "untrusted_role",
+            version: "role.v1",
+            title: "Untrusted Role",
+            subtitle: "Should not be saved.",
+            shortLabel: "NoTrust",
+            methodLine: "Should not be saved.",
+            promptGuidance: "Should not be saved.",
+            symbolName: "nosign",
+            recommendedReason: "Marketplace pack without trust proof.",
+            questionSeeds: ["Should not be saved."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let pack = LensAssetPack(
+            id: "marketplace.roles.untrusted",
+            version: "2026.06",
+            displayName: "Untrusted Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testLensAssetPack_externalPackRejectsMismatchedContentHash() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "tampered-role",
+            promptId: "tampered_role",
+            version: "role.v1",
+            title: "Tampered Role",
+            subtitle: "Should not be saved.",
+            shortLabel: "NoHash",
+            methodLine: "Should not be saved.",
+            promptGuidance: "Should not be saved.",
+            symbolName: "nosign",
+            recommendedReason: "Marketplace pack with a stale content hash.",
+            questionSeeds: ["Should not be saved."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let pack = LensAssetPack(
+            id: "marketplace.roles.tampered",
+            version: "2026.06",
+            displayName: "Tampered Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens],
+            trustMetadata: Self.makeTrustMetadata(contentHash: Self.mismatchedContentHash)
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testLensAssetPack_externalPackRejectsInvalidSignature() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "invalid-signature-role",
+            promptId: "invalid_signature_role",
+            version: "role.v1",
+            title: "Invalid Signature Role",
+            subtitle: "Should not be saved.",
+            shortLabel: "NoSig",
+            methodLine: "Should not be saved.",
+            promptGuidance: "Should not be saved.",
+            symbolName: "nosign",
+            recommendedReason: "Marketplace pack with an invalid signature.",
+            questionSeeds: ["Should not be saved."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let unsigned = LensAssetPack(
+            id: "marketplace.roles.invalid-signature",
+            version: "2026.06",
+            displayName: "Invalid Signature Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+        let pack = LensAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            items: unsigned.items,
+            trustMetadata: Self.makeTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signature: "p256-sha256:invalid-signature"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testLensAssetPack_externalPackRejectsUnknownVerificationPolicyVersion() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "unknown-policy-role",
+            promptId: "unknown_policy_role",
+            version: "role.v1",
+            title: "Unknown Policy Role",
+            subtitle: "Should not be saved.",
+            shortLabel: "NoPolicy",
+            methodLine: "Should not be saved.",
+            promptGuidance: "Should not be saved.",
+            symbolName: "nosign",
+            recommendedReason: "Marketplace pack with an unknown trust policy.",
+            questionSeeds: ["Should not be saved."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let unsigned = LensAssetPack(
+            id: "marketplace.roles.unknown-policy",
+            version: "2026.06",
+            displayName: "Unknown Policy Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+        let pack = LensAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            items: unsigned.items,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: unsigned),
+                verificationPolicyVersion: "asset-trust.unknown.v9"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testLensAssetPack_externalPackRejectsRevokedPublisherForPolicyVersion() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "revoked-publisher-role",
+            promptId: "revoked_publisher_role",
+            version: "role.v1",
+            title: "Revoked Publisher Role",
+            subtitle: "Should not be saved.",
+            shortLabel: "Revoked",
+            methodLine: "Should not be saved.",
+            promptGuidance: "Should not be saved.",
+            symbolName: "nosign",
+            recommendedReason: "Marketplace pack from a revoked publisher.",
+            questionSeeds: ["Should not be saved."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let unsigned = LensAssetPack(
+            id: "marketplace.roles.revoked-publisher",
+            version: "2026.06",
+            displayName: "Revoked Publisher Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+        let pack = LensAssetPack(
+            id: unsigned.id,
+            version: unsigned.version,
+            displayName: unsigned.displayName,
+            sourceKind: unsigned.sourceKind,
+            isEnabled: unsigned.isEnabled,
+            items: unsigned.items,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: unsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: unsigned),
+                verificationPolicyVersion: "asset-trust.test.revoked.v1"
+            )
+        )
+
+        try await assertValidationFailure {
+            try await repo.savePack(pack)
+        }
+
+        let packs = try await repo.allPacks()
+        XCTAssertTrue(packs.isEmpty)
+    }
+
+    func testLensAssetPack_verificationPolicyAllowsPublisherKeyRotationGracePeriod() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "rotated-role",
+            promptId: "rotated_role",
+            version: "role.v1",
+            title: "Rotated Role",
+            subtitle: "Should support key rotation grace.",
+            shortLabel: "Rotate",
+            methodLine: "Use a rotated publisher key.",
+            promptGuidance: "Use a rotated publisher key.",
+            symbolName: "key",
+            recommendedReason: "Marketplace pack signed during key rotation.",
+            questionSeeds: ["Which publisher key signed this pack?"],
+            accentRole: .brick,
+            methodIndex: 12
+        )
+        let oldKeyUnsigned = LensAssetPack(
+            id: "marketplace.roles.rotated-old",
+            version: "2026.06",
+            displayName: "Rotated Old Key Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+        let newKeyUnsigned = LensAssetPack(
+            id: "marketplace.roles.rotated-new",
+            version: "2026.06",
+            displayName: "Rotated New Key Role Cards",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [lens]
+        )
+        let oldKeyPack = LensAssetPack(
+            id: oldKeyUnsigned.id,
+            version: oldKeyUnsigned.version,
+            displayName: oldKeyUnsigned.displayName,
+            sourceKind: oldKeyUnsigned.sourceKind,
+            isEnabled: oldKeyUnsigned.isEnabled,
+            items: oldKeyUnsigned.items,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: oldKeyUnsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: oldKeyUnsigned),
+                verificationPolicyVersion: "asset-trust.test.rotated.v1"
+            )
+        )
+        let newKeyPack = LensAssetPack(
+            id: newKeyUnsigned.id,
+            version: newKeyUnsigned.version,
+            displayName: newKeyUnsigned.displayName,
+            sourceKind: newKeyUnsigned.sourceKind,
+            isEnabled: newKeyUnsigned.isEnabled,
+            items: newKeyUnsigned.items,
+            trustMetadata: try Self.signedTrustMetadata(
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: newKeyUnsigned),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: newKeyUnsigned),
+                verificationPolicyVersion: "asset-trust.test.rotated.v1",
+                privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+            )
+        )
+
+        try await repo.savePack(oldKeyPack)
+        try await repo.savePack(newKeyPack)
+
+        let enabledPackIds = try await repo.enabledPacks().map(\.id)
+        XCTAssertEqual(Set(enabledPackIds), ["marketplace.roles.rotated-old", "marketplace.roles.rotated-new"])
+    }
+
+    func testLensAssetPack_enabledPacksExcludeLegacyExternalPacksWithoutTrustMetadata() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "legacy-role",
+            promptId: "legacy_role",
+            version: "role.v1",
+            title: "Legacy Role",
+            subtitle: "Legacy external pack without trust proof.",
+            shortLabel: "Legacy",
+            methodLine: "Should not enter runtime.",
+            promptGuidance: "Should not enter runtime.",
+            symbolName: "nosign",
+            recommendedReason: "Legacy pack.",
+            questionSeeds: ["Should not enter runtime."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let now = Self.storageString(Date(timeIntervalSince1970: 100))
+
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO lens_asset_packs
+                (id, schema_version, version, display_name, source_kind, is_enabled, items_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "marketplace.roles.legacy",
+                    1,
+                    "2026.05",
+                    "Legacy Role Cards",
+                    LensAssetSourceKind.marketplace.rawValue,
+                    1,
+                    try Self.encodedJSONString([lens]),
+                    now,
+                    now
+                ]
+            )
+        }
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPacks = try await repo.allPacks()
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPacks.map(\.id), ["marketplace.roles.legacy"])
+        XCTAssertNil(allPacks.first?.trustMetadata)
+    }
+
+    func testLensAssetPack_enabledPacksExcludeLegacyExternalPacksWithMismatchedContentHash() async throws {
+        let repo = SQLiteLensAssetPackRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "stale-role",
+            promptId: "stale_role",
+            version: "role.v1",
+            title: "Stale Role",
+            subtitle: "Legacy external pack with stale trust proof.",
+            shortLabel: "Stale",
+            methodLine: "Should not enter runtime.",
+            promptGuidance: "Should not enter runtime.",
+            symbolName: "nosign",
+            recommendedReason: "Legacy pack.",
+            questionSeeds: ["Should not enter runtime."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let now = Self.storageString(Date(timeIntervalSince1970: 100))
+
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO lens_asset_packs
+                (id, schema_version, version, display_name, source_kind, is_enabled, items_json, trust_metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "marketplace.roles.stale-hash",
+                    1,
+                    "2026.05",
+                    "Stale Hash Role Cards",
+                    LensAssetSourceKind.marketplace.rawValue,
+                    1,
+                    try Self.encodedJSONString([lens]),
+                    try Self.encodedJSONString(Self.makeTrustMetadata(contentHash: Self.mismatchedContentHash)),
+                    now,
+                    now
+                ]
+            )
+        }
+
+        let enabledPacks = try await repo.enabledPacks()
+        let allPacks = try await repo.allPacks()
+
+        XCTAssertTrue(enabledPacks.isEmpty)
+        XCTAssertEqual(allPacks.map(\.id), ["marketplace.roles.stale-hash"])
+        XCTAssertEqual(allPacks.first?.trustMetadata?.contentHash, Self.mismatchedContentHash)
+    }
+
+    // MARK: - AssetPackInstallManifest
+
+    func testAssetPackRegistryCatalog_decodesManifestEntries() throws {
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let manifestURL = URL(string: "https://registry.mingsi.test/manifests/coach.json")!
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.coach",
+                    displayName: "Coach Starter Pack",
+                    summary: "Prompt and lens starter pack.",
+                    manifestURL: manifestURL,
+                    updatedAt: Date(timeIntervalSince1970: 1_804_032_000)
+                )
+            ]
+        )
+
+        let data = try Self.assetPackJSONEncoder.encode(catalog)
+        let decoded = try Self.assetPackJSONDecoder.decode(AssetPackRegistryCatalog.self, from: data)
+
+        XCTAssertEqual(decoded.version, "2026.06")
+        XCTAssertEqual(decoded.entries.map(\.id), ["marketplace.coach"])
+        XCTAssertEqual(decoded.entries.first?.displayName, "Coach Starter Pack")
+        XCTAssertEqual(decoded.entries.first?.manifestURL, manifestURL)
+        XCTAssertEqual(decoded.entries.first?.sourceURL(baseURL: catalogURL), manifestURL)
+    }
+
+    func testAssetPackRegistryCatalog_resolvesRelativeManifestURLsAgainstCatalogURL() throws {
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog/index.json")!
+        let entry = AssetPackRegistryCatalogEntry(
+            id: "marketplace.relative",
+            displayName: "Relative Manifest",
+            summary: "Uses a relative URL.",
+            manifestURL: URL(string: "manifests/relative.json")!,
+            updatedAt: nil
+        )
+
+        XCTAssertEqual(
+            entry.sourceURL(baseURL: catalogURL),
+            URL(string: "https://registry.mingsi.test/catalog/manifests/relative.json")!
+        )
+    }
+
+    func testAssetPackInstallManifest_filtersInstallablePromptAndLensPacksThroughTrustGate() throws {
+        let trustedPromptUnsigned = PromptAssetPack(
+            id: "marketplace.prompts.installable",
+            version: "2026.06",
+            displayName: "Installable Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                PromptTemplate(
+                    id: .generateQuestions,
+                    version: "questions.installable.v1",
+                    systemText: "System guardrails",
+                    userText: "Generate concrete reflection questions.",
+                    outputSchemaVersion: 1
+                )
+            ]
+        )
+        let unknownPolicyPromptUnsigned = PromptAssetPack(
+            id: "marketplace.prompts.unknown-policy",
+            version: "2026.06",
+            displayName: "Unknown Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: trustedPromptUnsigned.templates
+        )
+        let revokedLensUnsigned = LensAssetPack(
+            id: "marketplace.roles.revoked",
+            version: "2026.06",
+            displayName: "Revoked Lens Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [
+                LensCatalogItem(
+                    lensId: "manifest-revoked-role",
+                    promptId: "manifest_revoked_role",
+                    version: "role.v1",
+                    title: "Revoked Role",
+                    subtitle: "Should not be installable.",
+                    shortLabel: "Reject",
+                    methodLine: "Should not be installable.",
+                    promptGuidance: "Should not be installable.",
+                    symbolName: "nosign",
+                    recommendedReason: "Revoked publisher.",
+                    questionSeeds: ["Should not be installable."],
+                    accentRole: .brick,
+                    methodIndex: 13
+                )
+            ]
+        )
+        let trustedLensUnsigned = LensAssetPack(
+            id: "marketplace.roles.installable",
+            version: "2026.06",
+            displayName: "Installable Lens Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [
+                LensCatalogItem(
+                    lensId: "manifest-role",
+                    promptId: "manifest_role",
+                    version: "role.v1",
+                    title: "Manifest Role",
+                    subtitle: "Should be installable.",
+                    shortLabel: "Install",
+                    methodLine: "Should be installable.",
+                    promptGuidance: "Should be installable.",
+                    symbolName: "checkmark.seal",
+                    recommendedReason: "Trusted publisher.",
+                    questionSeeds: ["Should be installable."],
+                    accentRole: .accent,
+                    methodIndex: 14
+                )
+            ]
+        )
+
+        let manifest = AssetPackInstallManifest(
+            promptPacks: [
+                PromptAssetPack(
+                    id: trustedPromptUnsigned.id,
+                    version: trustedPromptUnsigned.version,
+                    displayName: trustedPromptUnsigned.displayName,
+                    sourceKind: trustedPromptUnsigned.sourceKind,
+                    isEnabled: trustedPromptUnsigned.isEnabled,
+                    templates: trustedPromptUnsigned.templates,
+                    trustMetadata: try Self.signedTrustMetadata(
+                        contentHash: try AssetPackIntegrity.expectedContentHash(for: trustedPromptUnsigned),
+                        signedPayload: AssetPackIntegrity.signaturePayload(for: trustedPromptUnsigned)
+                    )
+                ),
+                PromptAssetPack(
+                    id: unknownPolicyPromptUnsigned.id,
+                    version: unknownPolicyPromptUnsigned.version,
+                    displayName: unknownPolicyPromptUnsigned.displayName,
+                    sourceKind: unknownPolicyPromptUnsigned.sourceKind,
+                    isEnabled: unknownPolicyPromptUnsigned.isEnabled,
+                    templates: unknownPolicyPromptUnsigned.templates,
+                    trustMetadata: try Self.signedTrustMetadata(
+                        contentHash: try AssetPackIntegrity.expectedContentHash(for: unknownPolicyPromptUnsigned),
+                        signedPayload: AssetPackIntegrity.signaturePayload(for: unknownPolicyPromptUnsigned),
+                        verificationPolicyVersion: "asset-trust.unknown.v9"
+                    )
+                )
+            ],
+            lensPacks: [
+                LensAssetPack(
+                    id: revokedLensUnsigned.id,
+                    version: revokedLensUnsigned.version,
+                    displayName: revokedLensUnsigned.displayName,
+                    sourceKind: revokedLensUnsigned.sourceKind,
+                    isEnabled: revokedLensUnsigned.isEnabled,
+                    items: revokedLensUnsigned.items,
+                    trustMetadata: try Self.signedTrustMetadata(
+                        contentHash: try AssetPackIntegrity.expectedContentHash(for: revokedLensUnsigned),
+                        signedPayload: AssetPackIntegrity.signaturePayload(for: revokedLensUnsigned),
+                        verificationPolicyVersion: "asset-trust.test.revoked.v1"
+                    )
+                ),
+                LensAssetPack(
+                    id: trustedLensUnsigned.id,
+                    version: trustedLensUnsigned.version,
+                    displayName: trustedLensUnsigned.displayName,
+                    sourceKind: trustedLensUnsigned.sourceKind,
+                    isEnabled: trustedLensUnsigned.isEnabled,
+                    items: trustedLensUnsigned.items,
+                    trustMetadata: try Self.signedTrustMetadata(
+                        contentHash: try AssetPackIntegrity.expectedContentHash(for: trustedLensUnsigned),
+                        signedPayload: AssetPackIntegrity.signaturePayload(for: trustedLensUnsigned)
+                    )
+                )
+            ]
+        )
+
+        let report = AssetPackInstallManifestValidator().validate(manifest)
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.installable"])
+        XCTAssertEqual(report.installableLensPacks.map(\.id), ["marketplace.roles.installable"])
+        XCTAssertEqual(report.rejectedPromptPacks.first?.packId, "marketplace.prompts.unknown-policy")
+        XCTAssertEqual(report.rejectedPromptPacks.first?.reason, .invalidTrustProof)
+        XCTAssertEqual(report.rejectedLensPacks.first?.packId, "marketplace.roles.revoked")
+        XCTAssertEqual(report.rejectedLensPacks.first?.reason, .invalidTrustProof)
+    }
+
+    func testAssetPackInstallManifestInstaller_savesOnlyValidatedPromptAndLensPacks() async throws {
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let installablePromptUnsigned = PromptAssetPack(
+            id: "marketplace.prompts.installable-install",
+            version: "2026.06",
+            displayName: "Installable Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                PromptTemplate(
+                    id: .generateQuestions,
+                    version: "questions.installable-install.v1",
+                    systemText: "System guardrails",
+                    userText: "Generate concrete reflection questions.",
+                    outputSchemaVersion: 1
+                )
+            ]
+        )
+        let rejectedPrompt = PromptAssetPack(
+            id: "marketplace.prompts.rejected-install",
+            version: "2026.06",
+            displayName: "Rejected Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: installablePromptUnsigned.templates
+        )
+        let installableLensUnsigned = LensAssetPack(
+            id: "marketplace.roles.installable-install",
+            version: "2026.06",
+            displayName: "Installable Lens Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [
+                LensCatalogItem(
+                    lensId: "installable-install-role",
+                    promptId: "installable_install_role",
+                    version: "role.v1",
+                    title: "Installable Role",
+                    subtitle: "Should be installed.",
+                    shortLabel: "Install",
+                    methodLine: "Should be installed.",
+                    promptGuidance: "Should be installed.",
+                    symbolName: "checkmark.seal",
+                    recommendedReason: "Trusted publisher.",
+                    questionSeeds: ["Should be installed."],
+                    accentRole: .accent,
+                    methodIndex: 15
+                )
+            ]
+        )
+        let rejectedLens = LensAssetPack(
+            id: "marketplace.roles.rejected-install",
+            version: "2026.06",
+            displayName: "Rejected Lens Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: installableLensUnsigned.items
+        )
+        let manifest = AssetPackInstallManifest(
+            promptPacks: [
+                try Self.trusted(installablePromptUnsigned),
+                rejectedPrompt
+            ],
+            lensPacks: [
+                try Self.trusted(installableLensUnsigned),
+                rejectedLens
+            ]
+        )
+
+        let report = try await AssetPackInstallManifestInstaller(
+            promptAssetPackRepository: promptRepo,
+            lensAssetPackRepository: lensRepo
+        ).install(manifest)
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.installable-install"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.packId), ["marketplace.prompts.rejected-install"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [.missingTrustMetadata])
+        XCTAssertEqual(report.installableLensPacks.map(\.id), ["marketplace.roles.installable-install"])
+        XCTAssertEqual(report.rejectedLensPacks.map(\.packId), ["marketplace.roles.rejected-install"])
+        XCTAssertEqual(report.rejectedLensPacks.map(\.reason), [.missingTrustMetadata])
+
+        let savedPromptPackIds = try await promptRepo.allPacks().map(\.id)
+        let enabledPromptPackIds = try await promptRepo.enabledPacks().map(\.id)
+        let savedLensPackIds = try await lensRepo.allPacks().map(\.id)
+        let enabledLensPackIds = try await lensRepo.enabledPacks().map(\.id)
+        XCTAssertEqual(savedPromptPackIds, ["marketplace.prompts.installable-install"])
+        XCTAssertEqual(enabledPromptPackIds, ["marketplace.prompts.installable-install"])
+        XCTAssertEqual(savedLensPackIds, ["marketplace.roles.installable-install"])
+        XCTAssertEqual(enabledLensPackIds, ["marketplace.roles.installable-install"])
+    }
+
+    // MARK: - DataExportRepository
+
+    func testDataExport_includesSavedDraftAndPromptRun() async throws {
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let promptRepo = SQLitePromptRunRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let draft = DailyEntryDraft(
+            rawText: "Export should contain this local reflection.",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            selectedLens: .evidenceCheck,
+            state: .answerQuestions
+        )
+        let promptRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            promptSourceKind: .marketplace,
+            promptPackId: "marketplace.prompts.export",
+            promptPackVersion: "2026.06",
+            promptPackDisplayName: "Marketplace Prompt Export",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [draft.id.uuidString],
+            requestSummary: "question generation",
+            responseJSON: #"{"questions":[]}"#,
+            createdAt: Date(timeIntervalSince1970: 10)
+        )
+
+        try await dailyRepo.saveDraft(draft)
+        try await promptRepo.savePromptRun(promptRun)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let dailyEntries = try XCTUnwrap(sections["daily_entries"] as? [[String: Any]])
+        let promptRuns = try XCTUnwrap(sections["prompt_runs"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+
+        XCTAssertEqual(object["schema_version"] as? Int, 1)
+        XCTAssertEqual(dailyEntries.count, 1)
+        let exportedEntry = try XCTUnwrap(dailyEntries.first)
+        let exportedRawText = exportedEntry["raw_text"] as? String
+        let exportedLens = exportedEntry["selected_lens"] as? String
+        XCTAssertEqual(exportedRawText, "Export should contain this local reflection.")
+        XCTAssertEqual(exportedLens, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(promptRuns.count, 1)
+        let exportedPromptRun = try XCTUnwrap(promptRuns.first)
+        let exportedPromptId = exportedPromptRun["prompt_id"] as? String
+        let exportedResponse = exportedPromptRun["response_json"] as? String
+        XCTAssertEqual(exportedPromptId, PromptID.generateQuestions.rawValue)
+        XCTAssertEqual(exportedPromptRun["prompt_source_kind"] as? String, PromptAssetSourceKind.marketplace.rawValue)
+        XCTAssertEqual(exportedPromptRun["prompt_pack_id"] as? String, "marketplace.prompts.export")
+        XCTAssertEqual(exportedPromptRun["prompt_pack_version"] as? String, "2026.06")
+        XCTAssertEqual(exportedPromptRun["prompt_pack_display_name"] as? String, "Marketplace Prompt Export")
+        XCTAssertEqual(exportedResponse, #"{"questions":[]}"#)
+        XCTAssertEqual(exportedPromptRun["system_policy_version"] as? String, "system.v1")
+        XCTAssertEqual(exportedPromptRun["context_policy_version"] as? String, "context.v1")
+        XCTAssertEqual(exportedPromptRun["eval_suite_version"] as? String, "eval.v1")
+        XCTAssertEqual(exportedPromptRun["user_feedback"] as? String, PromptRunFeedback.none.rawValue)
+        XCTAssertEqual(counts["daily_entries"], 1)
+        XCTAssertEqual(counts["prompt_runs"], 1)
+    }
+
+    func testDataExport_includesPromptEvalRuns() async throws {
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let run = PromptEvalRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "cards.1.0.0",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.organizeCards.v1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "organizeCards.eval.v1",
+            runnerVersion: "prompt-eval-runner.test",
+            caseResults: [
+                PromptEvalCaseResult(
+                    caseId: "cards.messy_daily_input",
+                    name: "Messy daily input produces typed cards",
+                    status: .passed,
+                    inputSummary: "Messy daily input fixture with meeting coordination evidence.",
+                    expectedBehavior: "Produce typed cards with sensitivity classification.",
+                    actualObservation: "Parser returned communication, risk, and task cards.",
+                    diagnosticReason: "fixed-suite pass: all assertions satisfied."
+                )
+            ],
+            createdAt: Date(timeIntervalSince1970: 30)
+        )
+
+        try await evalRepo.saveEvalRun(run)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let evalRuns = try XCTUnwrap(sections["prompt_eval_runs"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+
+        XCTAssertEqual(evalRuns.count, 1)
+        let exportedRun = try XCTUnwrap(evalRuns.first)
+        XCTAssertEqual(exportedRun["prompt_id"] as? String, PromptID.organizeCards.rawValue)
+        XCTAssertEqual(exportedRun["eval_suite_version"] as? String, "organizeCards.eval.v1")
+        let exportedCases = try XCTUnwrap(exportedRun["case_results"] as? [[String: Any]])
+        let exportedCase = try XCTUnwrap(exportedCases.first)
+        XCTAssertEqual(exportedCase["inputSummary"] as? String, "Messy daily input fixture with meeting coordination evidence.")
+        XCTAssertEqual(exportedCase["expectedBehavior"] as? String, "Produce typed cards with sensitivity classification.")
+        XCTAssertEqual(exportedCase["actualObservation"] as? String, "Parser returned communication, risk, and task cards.")
+        XCTAssertEqual(exportedCase["diagnosticReason"] as? String, "fixed-suite pass: all assertions satisfied.")
+        XCTAssertEqual(exportedRun["runner_version"] as? String, "prompt-eval-runner.test")
+        XCTAssertEqual(exportedRun["total_case_count"] as? Int, 1)
+        XCTAssertEqual(exportedRun["passed_case_count"] as? Int, 1)
+        XCTAssertEqual(exportedRun["failed_case_count"] as? Int, 0)
+        XCTAssertEqual(counts["prompt_eval_runs"], 1)
+    }
+
+    func testDataExport_includesPromptAssetSelections() async throws {
+        let selectionRepo = SQLitePromptAssetSelectionRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+
+        try await selectionRepo.saveSelection(
+            PromptAssetSelection(
+                promptId: .generateQuestions,
+                selectedVersion: "0.9.0",
+                baseVersion: "1.0.0",
+                reason: .rollback
+            )
+        )
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let selections = try XCTUnwrap(sections["prompt_asset_selections"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+
+        XCTAssertEqual(selections.count, 1)
+        let exportedSelection = try XCTUnwrap(selections.first)
+        XCTAssertEqual(exportedSelection["prompt_id"] as? String, PromptID.generateQuestions.rawValue)
+        XCTAssertEqual(exportedSelection["selected_version"] as? String, "0.9.0")
+        XCTAssertEqual(exportedSelection["base_version"] as? String, "1.0.0")
+        XCTAssertEqual(exportedSelection["reason"] as? String, PromptAssetSelectionReason.rollback.rawValue)
+        XCTAssertEqual(counts["prompt_asset_selections"], 1)
+    }
+
+    func testDataExport_includesPromptAssetPacks() async throws {
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let template = PromptTemplate(
+            id: .extractPrinciple,
+            version: "principle.registry.1.1.0",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.extractPrinciple.v1",
+            evalSuiteVersion: "extractPrinciple.eval.v1",
+            systemText: "System guardrails",
+            userText: "Extract one reusable principle.",
+            outputSchemaVersion: 1
+        )
+        let pack = try Self.trusted(
+            PromptAssetPack(
+            id: "imported.prompts.principles",
+            version: "1.2.0",
+            displayName: "Principle Prompt Pack",
+            sourceKind: .imported,
+            isEnabled: true,
+            templates: [template]
+            )
+        )
+
+        try await packRepo.savePack(pack)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let packs = try XCTUnwrap(sections["prompt_asset_packs"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+        let exportedPack = try XCTUnwrap(packs.first)
+
+        XCTAssertEqual(packs.count, 1)
+        XCTAssertEqual(exportedPack["id"] as? String, "imported.prompts.principles")
+        XCTAssertEqual(exportedPack["version"] as? String, "1.2.0")
+        XCTAssertEqual(exportedPack["display_name"] as? String, "Principle Prompt Pack")
+        XCTAssertEqual(exportedPack["source_kind"] as? String, PromptAssetSourceKind.imported.rawValue)
+        XCTAssertEqual(exportedPack["is_enabled"] as? Int, 1)
+        let exportedTrustMetadataJSON = try XCTUnwrap(exportedPack["trust_metadata_json"] as? String)
+        XCTAssertTrue(exportedTrustMetadataJSON.contains("sha256:"))
+        XCTAssertTrue(try XCTUnwrap(exportedPack["templates_json"] as? String).contains("principle.registry.1.1.0"))
+        let exportedTemplates = try XCTUnwrap(exportedPack["templates"] as? [[String: Any]])
+        XCTAssertEqual(exportedTemplates.first?["id"] as? String, PromptID.extractPrinciple.rawValue)
+        XCTAssertEqual(exportedTemplates.first?["contextPolicyVersion"] as? String, "context.extractPrinciple.v1")
+        XCTAssertEqual(counts["prompt_asset_packs"], 1)
+    }
+
+    func testDataExport_includesLensAssetPacks() async throws {
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let lens = LensCatalogItem(
+            lensId: "framework-review",
+            promptId: "framework_review",
+            version: "framework.v1",
+            title: "Framework Review",
+            subtitle: "Review decisions through a framework.",
+            shortLabel: "Frame",
+            methodLine: "Which frame changes this decision?",
+            promptGuidance: "Ask framework-oriented reflection questions.",
+            symbolName: "rectangle.3.group",
+            recommendedReason: "Imported framework pack.",
+            questionSeeds: ["Which frame changes this decision?"],
+            accentRole: .graphite,
+            methodIndex: 12
+        )
+        let pack = try Self.trusted(
+            LensAssetPack(
+            id: "imported.frameworks.review",
+            version: "1.2.0",
+            displayName: "Review Frameworks",
+            sourceKind: .imported,
+            isEnabled: true,
+            items: [lens]
+            )
+        )
+
+        try await packRepo.savePack(pack)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let packs = try XCTUnwrap(sections["lens_asset_packs"] as? [[String: Any]])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+        let exportedPack = try XCTUnwrap(packs.first)
+
+        XCTAssertEqual(packs.count, 1)
+        XCTAssertEqual(exportedPack["id"] as? String, "imported.frameworks.review")
+        XCTAssertEqual(exportedPack["version"] as? String, "1.2.0")
+        XCTAssertEqual(exportedPack["display_name"] as? String, "Review Frameworks")
+        XCTAssertEqual(exportedPack["source_kind"] as? String, LensAssetSourceKind.imported.rawValue)
+        XCTAssertEqual(exportedPack["is_enabled"] as? Int, 1)
+        let exportedTrustMetadataJSON = try XCTUnwrap(exportedPack["trust_metadata_json"] as? String)
+        XCTAssertTrue(exportedTrustMetadataJSON.contains("sha256:"))
+        XCTAssertTrue(try XCTUnwrap(exportedPack["items_json"] as? String).contains("framework-review"))
+        XCTAssertEqual(counts["lens_asset_packs"], 1)
+    }
+
+    func testDataExport_emptyDatabaseStillReturnsStructuredSections() async throws {
+        let exportRepo = SQLiteDataExportRepository(database: database)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let counts = try XCTUnwrap(object["counts"] as? [String: Int])
+
+        XCTAssertEqual(object["schema_version"] as? Int, 1)
+        XCTAssertTrue((sections["daily_entries"] as? [[String: Any]])?.isEmpty == true)
+        XCTAssertTrue((sections["prompt_runs"] as? [[String: Any]])?.isEmpty == true)
+        XCTAssertEqual(counts["daily_entries"], 0)
+        XCTAssertEqual(counts["prompt_runs"], 0)
+        XCTAssertGreaterThan(data.count, 200)
+    }
+
+    func testDataExport_includesPrincipleRecallFeedback() async throws {
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let principleID = UUID()
+        let promptRunID = UUID()
+        let feedback = PrincipleRecallFeedback(
+            principleId: principleID,
+            promptRunId: promptRunID,
+            promptId: .generateQuestions,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
+            retrievalReason: "Matched meeting ownership.",
+            feedback: .notApplicable,
+            note: "当前场景不适用。"
+        )
+
+        try await feedbackRepo.saveFeedback(feedback)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let feedbackRows = try XCTUnwrap(sections["principle_recall_feedback"] as? [[String: Any]])
+        let exported = try XCTUnwrap(feedbackRows.first)
+
+        XCTAssertEqual(feedbackRows.count, 1)
+        XCTAssertEqual(exported["principle_id"] as? String, principleID.uuidString)
+        XCTAssertEqual(exported["prompt_run_id"] as? String, promptRunID.uuidString)
+        XCTAssertEqual(exported["feedback"] as? String, PrincipleRecallFeedbackValue.notApplicable.rawValue)
+        XCTAssertEqual(exported["retrieval_policy_version"] as? String, "principle-retrieval.local-keyword.v1")
+    }
+
+    func testDataExport_includesPrinciplePracticeEvidence() async throws {
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let principleID = UUID()
+        let entryID = UUID()
+        let questID = UUID()
+        let evidence = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: entryID,
+            questId: questID,
+            evidenceSource: .quest,
+            strength: .intentionalPractice,
+            evidenceSummary: "任务证据显示用户主动练习了该原则。"
+        )
+
+        try await practiceRepo.saveEvidence(evidence)
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let evidenceRows = try XCTUnwrap(sections["principle_practice_evidence"] as? [[String: Any]])
+        let exported = try XCTUnwrap(evidenceRows.first)
+
+        XCTAssertEqual(evidenceRows.count, 1)
+        XCTAssertEqual(exported["principle_id"] as? String, principleID.uuidString)
+        XCTAssertEqual(exported["source_daily_entry_id"] as? String, entryID.uuidString)
+        XCTAssertEqual(exported["quest_id"] as? String, questID.uuidString)
+        XCTAssertEqual(exported["evidence_source"] as? String, PrinciplePracticeEvidenceSource.quest.rawValue)
+        XCTAssertEqual(exported["strength"] as? String, PrinciplePracticeEvidenceStrength.intentionalPractice.rawValue)
+    }
+
     func testPromptTracingLLMClient_recordsSuccessAndFailure() async throws {
         let repo = SQLitePromptRunRepository(database: database)
         let request = LLMRequest(
@@ -754,7 +2752,9 @@ final class PersistenceCoreTests: XCTestCase {
                 outputSchemaVersion: 1
             ),
             inputSummary: "mode=standard; rawText=demo",
-            jsonPayload: ["sessionMode": SessionMode.standard.rawValue],
+            contextPayload: PromptContextPayload(
+                userChoice: .init(sessionMode: SessionMode.standard.rawValue)
+            ),
             sourceRecordIDs: ["entry-1"],
             contextRecordIDs: ["entry-1", "principle-1"]
         )
@@ -788,6 +2788,182 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertTrue(recent.allSatisfy { $0.contextRecordIds == ["entry-1", "principle-1"] })
     }
 
+    func testPromptTracingLLMClient_recordsPromptAssetVersions() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.2.1.0",
+                systemPolicyVersion: "system.2026-06",
+                contextPolicyVersion: "context.today.v2",
+                evalSuiteVersion: "questions.eval.v3",
+                rollbackTargetVersion: "questions.2.0.0",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 3
+            ),
+            inputSummary: "mode=deep; prompt asset audit",
+            contextPayload: PromptContextPayload(
+                userChoice: .init(sessionMode: SessionMode.deep.rawValue)
+            ),
+            sourceRecordIDs: ["entry-asset"],
+            contextRecordIDs: ["principle-asset"]
+        )
+        let client = PromptTracingLLMClient(
+            base: MockLLMClient(),
+            repository: repo,
+            modelProvider: "mock",
+            modelName: "asset-audit"
+        )
+
+        _ = try await client.complete(request)
+
+        let recent = try await repo.recentPromptRuns(limit: 1)
+        let run = try XCTUnwrap(recent.first)
+        XCTAssertEqual(run.promptVersion, "questions.2.1.0")
+        XCTAssertEqual(run.promptSourceKind, .builtin)
+        XCTAssertEqual(run.promptPackId, "mingsi.builtin.prompts")
+        XCTAssertEqual(run.promptPackVersion, "builtin.v1")
+        XCTAssertEqual(run.promptPackDisplayName, "MingSi Built-in Prompt Pack")
+        XCTAssertEqual(run.systemPolicyVersion, "system.2026-06")
+        XCTAssertEqual(run.contextPolicyVersion, "context.today.v2")
+        XCTAssertEqual(run.evalSuiteVersion, "questions.eval.v3")
+        XCTAssertEqual(run.rollbackTargetVersion, "questions.2.0.0")
+        XCTAssertEqual(run.outputSchemaVersion, 3)
+    }
+
+    func testPromptTracingLLMClient_prefersStructuredContextSessionModeOverLegacyPayload() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.structured-context",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "mode=deep; structured context should drive prompt run audit",
+            contextPayload: PromptContextPayload(
+                userChoice: .init(sessionMode: SessionMode.deep.rawValue)
+            ),
+            sourceRecordIDs: ["entry-context-session"],
+            contextRecordIDs: ["entry-context-session"]
+        )
+        let client = PromptTracingLLMClient(
+            base: MockLLMClient(),
+            repository: repo,
+            modelProvider: "mock",
+            modelName: "structured-context-audit"
+        )
+
+        _ = try await client.complete(request)
+
+        let recent = try await repo.recentPromptRuns(limit: 1)
+        XCTAssertEqual(recent.first?.sessionMode, SessionMode.deep.rawValue)
+    }
+
+    func testPromptTracingLLMClient_withoutStructuredContextDoesNotAuditLegacySessionMode() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.no-legacy-session-mode",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "legacy session mode should not drive prompt run audit",
+            sourceRecordIDs: ["entry-no-structured-context"],
+            contextRecordIDs: ["entry-no-structured-context"]
+        )
+        let client = PromptTracingLLMClient(
+            base: MockLLMClient(),
+            repository: repo,
+            modelProvider: "mock",
+            modelName: "structured-context-audit"
+        )
+
+        _ = try await client.complete(request)
+
+        let recent = try await repo.recentPromptRuns(limit: 1)
+        XCTAssertEqual(recent.first?.sessionMode, "unknown")
+    }
+
+    func testLLMRequest_hasNoStoredLegacyPayloadField() {
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.no-stored-legacy",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "request should only store structured context"
+        )
+
+        let legacyFieldName = ["json", "Payload"].joined()
+        XCTAssertFalse(Mirror(reflecting: request).children.contains { $0.label == legacyFieldName })
+    }
+
+    func testLLMRequest_exposesStructuredContextForLegacyCompatibilityExport() throws {
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.derived-legacy",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "structured context derives legacy compatibility",
+            contextPayload: PromptContextPayload(
+                currentInput: .init(rawText: "current structured input"),
+                userChoice: .init(sessionMode: SessionMode.deep.rawValue)
+            )
+        )
+        let legacy = try XCTUnwrap(request.contextPayload?.legacyKeyValues)
+
+        XCTAssertEqual(legacy["sessionMode"], SessionMode.deep.rawValue)
+        XCTAssertEqual(legacy["rawText"], "current structured input")
+        XCTAssertNil(legacy["purpose"])
+    }
+
+    func testLLMRequest_allowsStructuredContextWithoutCallerLegacyPayload() {
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.no-caller-legacy",
+                systemText: "Return JSON only.",
+                userText: "Return questions.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "structured context omits caller legacy dictionary",
+            contextPayload: PromptContextPayload(
+                currentInput: .init(rawText: "typed source of truth"),
+                userChoice: .init(sessionMode: SessionMode.deep.rawValue)
+            )
+        )
+        let legacy = request.contextPayload?.legacyKeyValues
+
+        XCTAssertEqual(legacy?["sessionMode"], SessionMode.deep.rawValue)
+        XCTAssertEqual(legacy?["rawText"], "typed source of truth")
+    }
+
+    func testPromptContextPayloadLegacyExportUsesOnlyStructuredFields() {
+        let payload = PromptContextPayload(
+            currentInput: .init(rawText: "typed source of truth"),
+            userChoice: .init(sessionMode: SessionMode.deep.rawValue),
+            privacy: .init(rules: "typed privacy rules"),
+            directives: .init(streamProtocol: "MINGSI_STREAM_V1")
+        )
+
+        let legacy = payload.legacyKeyValues
+
+        XCTAssertEqual(legacy["rawText"], "typed source of truth")
+        XCTAssertEqual(legacy["sessionMode"], SessionMode.deep.rawValue)
+        XCTAssertEqual(legacy["streamProtocol"], "MINGSI_STREAM_V1")
+        XCTAssertNil(legacy["purpose"])
+    }
+
     func testPromptTracingLLMClient_recordsMissingAPIKeyAsFailure() async throws {
         let repo = SQLitePromptRunRepository(database: database)
         let request = LLMRequest(
@@ -799,7 +2975,9 @@ final class PersistenceCoreTests: XCTestCase {
                 outputSchemaVersion: 1
             ),
             inputSummary: "connection requires BYOK",
-            jsonPayload: ["sessionMode": SessionMode.standard.rawValue],
+            contextPayload: PromptContextPayload(
+                userChoice: .init(sessionMode: SessionMode.standard.rawValue)
+            ),
             sourceRecordIDs: ["entry-missing-key"],
             contextRecordIDs: ["entry-missing-key"]
         )
@@ -955,6 +3133,192 @@ final class PersistenceCoreTests: XCTestCase {
         }
     }
 
+    func testMigration_v13_addsPromptRunFeedback() throws {
+        try dbQueue.read { db in
+            let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
+            XCTAssertTrue(promptRunColumns.contains("user_feedback"))
+        }
+    }
+
+    func testMigration_v14_addsPrincipleRecallFeedbackTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("principle_recall_feedback"))
+
+            let columns = Set(try db.columns(in: "principle_recall_feedback").map(\.name))
+            XCTAssertTrue(columns.contains("principle_id"))
+            XCTAssertTrue(columns.contains("prompt_run_id"))
+            XCTAssertTrue(columns.contains("source_daily_entry_id"))
+            XCTAssertTrue(columns.contains("prompt_id"))
+            XCTAssertTrue(columns.contains("retrieval_policy_version"))
+            XCTAssertTrue(columns.contains("retrieval_reason"))
+            XCTAssertTrue(columns.contains("feedback"))
+            XCTAssertTrue(columns.contains("note"))
+
+            let indexes = try db.indexes(on: "principle_recall_feedback").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_principle_id"))
+            XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_prompt_run_id"))
+            XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_feedback"))
+        }
+    }
+
+    func testMigration_v16_addsPromptEvalRunsTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("prompt_eval_runs"))
+
+            let columns = Set(try db.columns(in: "prompt_eval_runs").map(\.name))
+            XCTAssertTrue(columns.contains("prompt_id"))
+            XCTAssertTrue(columns.contains("prompt_version"))
+            XCTAssertTrue(columns.contains("system_policy_version"))
+            XCTAssertTrue(columns.contains("context_policy_version"))
+            XCTAssertTrue(columns.contains("input_schema_version"))
+            XCTAssertTrue(columns.contains("output_schema_version"))
+            XCTAssertTrue(columns.contains("eval_suite_version"))
+            XCTAssertTrue(columns.contains("runner_version"))
+            XCTAssertTrue(columns.contains("status"))
+            XCTAssertTrue(columns.contains("total_case_count"))
+            XCTAssertTrue(columns.contains("passed_case_count"))
+            XCTAssertTrue(columns.contains("failed_case_count"))
+            XCTAssertTrue(columns.contains("case_results_json"))
+
+            let indexes = try db.indexes(on: "prompt_eval_runs").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_prompt_eval_runs_prompt_id"))
+            XCTAssertTrue(indexes.contains("idx_prompt_eval_runs_eval_suite_version"))
+            XCTAssertTrue(indexes.contains("idx_prompt_eval_runs_created_at"))
+        }
+    }
+
+    func testMigration_v21_addsPromptAssetPackProvenanceColumns() throws {
+        try dbQueue.read { db in
+            let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
+            XCTAssertTrue(promptRunColumns.contains("prompt_source_kind"))
+            XCTAssertTrue(promptRunColumns.contains("prompt_pack_id"))
+            XCTAssertTrue(promptRunColumns.contains("prompt_pack_version"))
+            XCTAssertTrue(promptRunColumns.contains("prompt_pack_display_name"))
+
+            let evalRunColumns = Set(try db.columns(in: "prompt_eval_runs").map(\.name))
+            XCTAssertTrue(evalRunColumns.contains("prompt_source_kind"))
+            XCTAssertTrue(evalRunColumns.contains("prompt_pack_id"))
+            XCTAssertTrue(evalRunColumns.contains("prompt_pack_version"))
+            XCTAssertTrue(evalRunColumns.contains("prompt_pack_display_name"))
+        }
+    }
+
+    func testMigration_v22_addsAssetPackTrustPoliciesTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("asset_pack_trust_policies"))
+
+            let columns = Set(try db.columns(in: "asset_pack_trust_policies").map(\.name))
+            XCTAssertTrue(columns.contains("id"))
+            XCTAssertTrue(columns.contains("schema_version"))
+            XCTAssertTrue(columns.contains("source_url"))
+            XCTAssertTrue(columns.contains("document_json"))
+            XCTAssertTrue(columns.contains("created_at"))
+            XCTAssertTrue(columns.contains("updated_at"))
+            XCTAssertTrue(columns.contains("deleted_at"))
+
+            let indexes = try db.indexes(on: "asset_pack_trust_policies").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_asset_pack_trust_policies_source_url"))
+            XCTAssertTrue(indexes.contains("idx_asset_pack_trust_policies_updated_at"))
+        }
+    }
+
+    func testMigration_v17_addsPromptAssetSelectionsTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("prompt_asset_selections"))
+
+            let columns = Set(try db.columns(in: "prompt_asset_selections").map(\.name))
+            XCTAssertTrue(columns.contains("prompt_id"))
+            XCTAssertTrue(columns.contains("schema_version"))
+            XCTAssertTrue(columns.contains("selected_version"))
+            XCTAssertTrue(columns.contains("base_version"))
+            XCTAssertTrue(columns.contains("reason"))
+            XCTAssertTrue(columns.contains("created_at"))
+            XCTAssertTrue(columns.contains("updated_at"))
+            XCTAssertTrue(columns.contains("deleted_at"))
+
+            let indexes = try db.indexes(on: "prompt_asset_selections").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_prompt_asset_selections_updated_at"))
+        }
+    }
+
+    func testMigration_v18_addsLensAssetPacksTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("lens_asset_packs"))
+
+            let columns = Set(try db.columns(in: "lens_asset_packs").map(\.name))
+            XCTAssertTrue(columns.contains("id"))
+            XCTAssertTrue(columns.contains("schema_version"))
+            XCTAssertTrue(columns.contains("version"))
+            XCTAssertTrue(columns.contains("display_name"))
+            XCTAssertTrue(columns.contains("source_kind"))
+            XCTAssertTrue(columns.contains("is_enabled"))
+            XCTAssertTrue(columns.contains("items_json"))
+            XCTAssertTrue(columns.contains("trust_metadata_json"))
+            XCTAssertTrue(columns.contains("created_at"))
+            XCTAssertTrue(columns.contains("updated_at"))
+            XCTAssertTrue(columns.contains("deleted_at"))
+
+            let indexes = try db.indexes(on: "lens_asset_packs").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_lens_asset_packs_source_kind"))
+            XCTAssertTrue(indexes.contains("idx_lens_asset_packs_enabled"))
+            XCTAssertTrue(indexes.contains("idx_lens_asset_packs_updated_at"))
+        }
+    }
+
+    func testMigration_v19_addsPromptAssetPacksTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("prompt_asset_packs"))
+
+            let columns = Set(try db.columns(in: "prompt_asset_packs").map(\.name))
+            XCTAssertTrue(columns.contains("id"))
+            XCTAssertTrue(columns.contains("schema_version"))
+            XCTAssertTrue(columns.contains("version"))
+            XCTAssertTrue(columns.contains("display_name"))
+            XCTAssertTrue(columns.contains("source_kind"))
+            XCTAssertTrue(columns.contains("is_enabled"))
+            XCTAssertTrue(columns.contains("templates_json"))
+            XCTAssertTrue(columns.contains("trust_metadata_json"))
+            XCTAssertTrue(columns.contains("created_at"))
+            XCTAssertTrue(columns.contains("updated_at"))
+            XCTAssertTrue(columns.contains("deleted_at"))
+
+            let indexes = try db.indexes(on: "prompt_asset_packs").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_prompt_asset_packs_source_kind"))
+            XCTAssertTrue(indexes.contains("idx_prompt_asset_packs_enabled"))
+            XCTAssertTrue(indexes.contains("idx_prompt_asset_packs_updated_at"))
+        }
+    }
+
+    func testMigration_v20_addsAssetPackTrustMetadataColumns() throws {
+        try dbQueue.read { db in
+            let promptColumns = Set(try db.columns(in: "prompt_asset_packs").map(\.name))
+            let lensColumns = Set(try db.columns(in: "lens_asset_packs").map(\.name))
+
+            XCTAssertTrue(promptColumns.contains("trust_metadata_json"))
+            XCTAssertTrue(lensColumns.contains("trust_metadata_json"))
+        }
+    }
+
+    func testMigration_v15_addsPrinciplePracticeEvidenceTableAndIndexes() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("principle_practice_evidence"))
+
+            let columns = Set(try db.columns(in: "principle_practice_evidence").map(\.name))
+            XCTAssertTrue(columns.contains("principle_id"))
+            XCTAssertTrue(columns.contains("source_daily_entry_id"))
+            XCTAssertTrue(columns.contains("quest_id"))
+            XCTAssertTrue(columns.contains("verification_id"))
+            XCTAssertTrue(columns.contains("evidence_source"))
+            XCTAssertTrue(columns.contains("strength"))
+            XCTAssertTrue(columns.contains("evidence_summary"))
+
+            let indexes = try db.indexes(on: "principle_practice_evidence").map(\.name)
+            XCTAssertTrue(indexes.contains("idx_principle_practice_evidence_principle_id"))
+            XCTAssertTrue(indexes.contains("idx_principle_practice_evidence_source_daily_entry_id"))
+            XCTAssertTrue(indexes.contains("idx_principle_practice_evidence_strength"))
+        }
+    }
+
     func testMigration_v8_addsHistoricalRetryCandidatesTableAndIndexes() throws {
         try dbQueue.read { db in
             XCTAssertTrue(try db.tableExists("historical_retry_candidates"))
@@ -975,12 +3339,168 @@ final class PersistenceCoreTests: XCTestCase {
         }
     }
 
+    func testMigration_v9_addsSelectedCustomLensIdForDatabasesAlreadyPastV2() throws {
+        let legacyQueue = try DatabaseQueue()
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE daily_entries (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    raw_text TEXT NOT NULL,
+                    session_mode TEXT NOT NULL,
+                    has_selected_session_mode BOOLEAN NOT NULL DEFAULT 0,
+                    selected_lens TEXT,
+                    yesterday_completion TEXT,
+                    yesterday_value_rating TEXT,
+                    state TEXT NOT NULL,
+                    privacy_flags_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            XCTAssertTrue(dailyEntryColumns.contains("selected_custom_lens_id"))
+        }
+    }
+
+    func testMigration_v10_addsCustomLensItemsForDatabasesAlreadyPastV2() throws {
+        let legacyQueue = try DatabaseQueue()
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE daily_entries (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    raw_text TEXT NOT NULL,
+                    session_mode TEXT NOT NULL,
+                    has_selected_session_mode BOOLEAN NOT NULL DEFAULT 0,
+                    selected_lens TEXT,
+                    selected_custom_lens_id TEXT,
+                    yesterday_completion TEXT,
+                    yesterday_value_rating TEXT,
+                    state TEXT NOT NULL,
+                    privacy_flags_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates",
+                "v9_daily_entry_custom_lens_id"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            XCTAssertTrue(dailyEntryColumns.contains("custom_lens_items_json"))
+        }
+    }
+
+    func testMigration_v11_addsCustomLensQuestionsForDatabasesAlreadyPastV2() throws {
+        let legacyQueue = try DatabaseQueue()
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE daily_entries (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    raw_text TEXT NOT NULL,
+                    session_mode TEXT NOT NULL,
+                    has_selected_session_mode BOOLEAN NOT NULL DEFAULT 0,
+                    selected_lens TEXT,
+                    selected_custom_lens_id TEXT,
+                    custom_lens_items_json TEXT,
+                    yesterday_completion TEXT,
+                    yesterday_value_rating TEXT,
+                    state TEXT NOT NULL,
+                    privacy_flags_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates",
+                "v9_daily_entry_custom_lens_id",
+                "v10_daily_entry_custom_lens_items"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            XCTAssertTrue(dailyEntryColumns.contains("custom_lens_questions_json"))
+        }
+    }
+
     func testMigration_v2_addsDailyLoopFields() throws {
         try dbQueue.read { db in
             let columns = try db.columns(in: "daily_entries")
             let columnNames = Set(columns.map(\.name))
             XCTAssertTrue(columnNames.contains("has_selected_session_mode"))
             XCTAssertTrue(columnNames.contains("selected_lens"))
+            XCTAssertTrue(columnNames.contains("selected_custom_lens_id"))
+            XCTAssertTrue(columnNames.contains("custom_lens_items_json"))
+            XCTAssertTrue(columnNames.contains("custom_lens_questions_json"))
             XCTAssertTrue(columnNames.contains("yesterday_completion"))
             XCTAssertTrue(columnNames.contains("yesterday_value_rating"))
         }
@@ -1546,6 +4066,115 @@ final class PersistenceCoreTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    private static let mismatchedContentHash = "sha256:" + String(repeating: "0", count: 64)
+
+    private static func trusted(_ pack: PromptAssetPack) throws -> PromptAssetPack {
+        let contentHash = try AssetPackIntegrity.expectedContentHash(for: pack)
+        return PromptAssetPack(
+            id: pack.id,
+            version: pack.version,
+            displayName: pack.displayName,
+            sourceKind: pack.sourceKind,
+            isEnabled: pack.isEnabled,
+            templates: pack.templates,
+            trustMetadata: try signedTrustMetadata(
+                contentHash: contentHash,
+                signedPayload: AssetPackIntegrity.signaturePayload(for: pack)
+            )
+        )
+    }
+
+    private static func trusted(_ pack: LensAssetPack) throws -> LensAssetPack {
+        let contentHash = try AssetPackIntegrity.expectedContentHash(for: pack)
+        return LensAssetPack(
+            id: pack.id,
+            version: pack.version,
+            displayName: pack.displayName,
+            sourceKind: pack.sourceKind,
+            isEnabled: pack.isEnabled,
+            items: pack.items,
+            trustMetadata: try signedTrustMetadata(
+                contentHash: contentHash,
+                signedPayload: AssetPackIntegrity.signaturePayload(for: pack)
+            )
+        )
+    }
+
+    private static func makeTrustMetadata(
+        publisherId: String = "mingsi.test.publisher",
+        contentHash: String,
+        signature: String = "p256-sha256:invalid-test-signature",
+        verificationPolicyVersion: String = "asset-trust.test.v1"
+    ) -> AssetTrustMetadata {
+        AssetTrustMetadata(
+            publisherId: publisherId,
+            contentHash: contentHash,
+            signature: signature,
+            trustedAt: "2026-06-10T00:00:00Z",
+            verificationPolicyVersion: verificationPolicyVersion
+        )
+    }
+
+    private static func signedTrustMetadata(
+        publisherId: String = "mingsi.test.publisher",
+        contentHash: String,
+        signedPayload: Data,
+        verificationPolicyVersion: String = "asset-trust.test.v1",
+        privateKeyBase64: String = testPublisherPrivateKeyBase64
+    ) throws -> AssetTrustMetadata {
+        makeTrustMetadata(
+            publisherId: publisherId,
+            contentHash: contentHash,
+            signature: try signature(for: signedPayload, privateKeyBase64: privateKeyBase64),
+            verificationPolicyVersion: verificationPolicyVersion
+        )
+    }
+
+    private static func signedTrustPolicyDocument(
+        _ document: AssetPackTrustPolicyDocument,
+        privateKeyBase64: String = testRegistryRootPrivateKeyBase64
+    ) throws -> AssetPackTrustPolicyDocument {
+        AssetPackTrustPolicyDocument(
+            policies: document.policies,
+            expiresAt: document.expiresAt,
+            trustMetadata: try signedTrustMetadata(
+                publisherId: "mingsi.test.registry",
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: document),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: document),
+                verificationPolicyVersion: "asset-trust-policy-root.test.v1",
+                privateKeyBase64: privateKeyBase64
+            )
+        )
+    }
+
+    private static func signature(for payload: Data, privateKeyBase64: String = testPublisherPrivateKeyBase64) throws -> String {
+        let keyData = try XCTUnwrap(Data(base64Encoded: privateKeyBase64))
+        let privateKey = try P256.Signing.PrivateKey(rawRepresentation: keyData)
+        let signature = try privateKey.signature(for: payload)
+        return "p256-sha256:" + signature.derRepresentation.base64EncodedString()
+    }
+
+    private static let testPublisherPrivateKeyBase64 = "Zcl0fRH+ywPs2LCNnRt4Jgkkg2IQWBwb0X42sTsVrKc="
+    private static let rotatedPublisherPrivateKeyBase64 = "XevPucFuvG6Qc3pJsFZIrGxO/SyZ0h7joKaZCTq4F84="
+    private static let testRegistryRootPrivateKeyBase64 = "khu517UBQX2f62ROBcl1XuforsMkVw7gbkhzHpGPug4="
+
+    private static let assetPackJSONEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private static let assetPackJSONDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    private static func encodedJSONString<T: Encodable>(_ value: T) throws -> String {
+        let data = try JSONEncoder().encode(value)
+        return try XCTUnwrap(String(data: data, encoding: .utf8))
     }
 
     private func assertValidationFailure(

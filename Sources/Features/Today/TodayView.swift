@@ -2,15 +2,57 @@ import SwiftUI
 import UIKit
 
 enum TodayAutomationID {
+    static let primaryAction = "today.primary-action"
+    static let primaryActionHint = "today.primary-action-hint"
+    static let previousAction = "today.previous-action"
+    static let supplementCaptureAction = "today.supplement-capture-action"
+    static let retryCurrentStepAction = "today.retry-current-step-action"
+    static let skipPrincipleAction = "today.skip-principle-action"
+    static let resetAction = "today.reset-action"
     static let cardConfirmAction = "today.card.confirm-action"
     static let cardExcludeAction = "today.card.exclude-action"
     static let questionAnswerField = "today.question.answer-field"
     static let questEditAction = "today.quest.edit-action"
+    static let principleFeedbackHelpfulAction = "today.principle.feedback.helpful-action"
+    static let principleFeedbackNotApplicableAction = "today.principle.feedback.not-applicable-action"
+    static let principleFeedbackMisrecalledAction = "today.principle.feedback.misrecalled-action"
+    static let lensGenerateAction = "today.lens.generate-action"
+    static let lensCustomAction = "today.lens.custom-action"
+    static let customLensSheet = "today.custom-lens.sheet"
+    static let customLensTitleField = "today.custom-lens.title-field"
+    static let customLensMethodField = "today.custom-lens.method-field"
+    static let customLensQuestionField = "today.custom-lens.question-field"
+    static let customLensSaveAction = "today.custom-lens.save-action"
+
+    static func state(_ state: DailyLoopState) -> String {
+        let stateID: String
+        switch state {
+        case .verifyYesterday: stateID = "verify_yesterday"
+        case .capture: stateID = "capture"
+        case .organizing: stateID = "organizing"
+        case .reviewCards: stateID = "review_cards"
+        case .selectMode: stateID = "select_mode"
+        case .selectLens: stateID = "select_lens"
+        case .answerQuestions: stateID = "answer_questions"
+        case .reviewQuests: stateID = "review_quests"
+        case .extractPrinciple: stateID = "extract_principle"
+        case .sessionComplete: stateID = "session_complete"
+        }
+        return "today.state.\(stateID)"
+    }
+
+    static func lensAction(_ item: LensCatalogItem) -> String {
+        "today.lens.\(item.id)-action"
+    }
 }
 
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
     @State private var isCaptureFocused = false
+    @State private var isCustomLensSheetPresented = false
+    @State private var customLensTitle = ""
+    @State private var customLensMethodLine = ""
+    @State private var customLensQuestion = ""
 
     var body: some View {
         NavigationStack {
@@ -60,6 +102,15 @@ struct TodayView: View {
             }
         }
         .topSafeAreaScrim()
+        .sheet(isPresented: $isCustomLensSheetPresented) {
+            customLensSheet
+        }
+        .onAppear {
+            presentVisualQACustomLensSheetIfNeeded()
+        }
+        .onChange(of: store.todayDraft.state) { _, _ in
+            presentVisualQACustomLensSheetIfNeeded()
+        }
     }
 
     // MARK: - Header
@@ -75,6 +126,7 @@ struct TodayView: View {
                 Text(store.currentStateTitle)
                     .font(.system(size: 31, weight: .bold, design: .rounded))
                     .foregroundStyle(DS.ink)
+                    .accessibilityIdentifier(TodayAutomationID.state(store.todayDraft.state))
 
                 Spacer()
 
@@ -321,19 +373,66 @@ struct TodayView: View {
 
     // MARK: - Select Lens
 
-    // Purpose: Pick a thinking lens to challenge assumptions
-    // Design: Lens name + one-line reason, feels like choosing a perspective
+    // Purpose: Pick, generate, or write a thinking lens to challenge assumptions
+    // Design: Today-core method board; recommendation is the anchor, custom entry is visible
     private var selectLensSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            stepLabel("思考透镜", subtitle: "选择一个角度，让问题从另一面被看见。")
+        let confirmedCards = store.thinkingCards.filter(\.isConfirmed)
+        let recommendedItem = BuiltinLensCatalog.library.recommendedItem(
+            for: confirmedCards,
+            mode: store.todayDraft.sessionMode
+        )
+        let builtInItems = ThinkingLens.allCases
+            .sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }
+            .map(\.catalogItem)
 
-            let recommendedLensId = BuiltinLensCatalog.library.recommendedItem(
-                for: store.thinkingCards.filter(\.isConfirmed),
-                mode: store.todayDraft.sessionMode
-            )?.lensId
+        return VStack(alignment: .leading, spacing: 14) {
+            stepLabel("思考透镜", subtitle: "先选方法，再回答问题。")
 
-            ForEach(ThinkingLens.allCases.sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }) { lens in
-                lensCard(lens, isRecommended: lens.rawValue == recommendedLensId)
+            todayLensCoreCard(confirmedCount: confirmedCards.count)
+
+            if let recommendedItem {
+                recommendedLensCard(recommendedItem)
+            }
+
+            HStack(spacing: 10) {
+                lensActionCard(
+                    icon: "wand.and.stars",
+                    title: "主动生成透镜",
+                    body: "基于已确认卡片生成本次专属方法卡。",
+                    tint: DS.brick
+                ) {
+                    let item = store.generateCustomLensFromConfirmedCards()
+                    store.selectCustomLens(item.id)
+                }
+                .accessibilityIdentifier(TodayAutomationID.lensGenerateAction)
+
+                lensActionCard(
+                    icon: "square.and.pencil",
+                    title: "自定义透镜",
+                    body: "手写标题、方法线和第一问。",
+                    tint: DS.success
+                ) {
+                    openCustomLensSheet()
+                }
+                .accessibilityIdentifier(TodayAutomationID.lensCustomAction)
+            }
+
+            if !store.customLensItems.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("我的透镜")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                        .textCase(.uppercase)
+                    ForEach(store.customLensItems, id: \.id) { item in
+                        customLensCard(item)
+                    }
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 10)], spacing: 10) {
+                ForEach(builtInItems, id: \.id) { item in
+                    lensMethodTile(item, isRecommended: item.id == recommendedItem?.id)
+                }
             }
         }
     }
@@ -347,7 +446,10 @@ struct TodayView: View {
             stepLabel("回答问题", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
 
             if !store.referencedPrinciples.isEmpty {
-                ReferencedPrinciplesView(principles: store.referencedPrinciples)
+                ReferencedPrinciplesView(
+                    principles: store.referencedPrinciples,
+                    onFeedback: recordReferencedPrincipleFeedback
+                )
             }
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
@@ -365,7 +467,10 @@ struct TodayView: View {
             stepLabel("明日任务", subtitle: "主线任务必须有明确完成标准。")
 
             if !store.referencedPrinciples.isEmpty {
-                ReferencedPrinciplesView(principles: store.referencedPrinciples)
+                ReferencedPrinciplesView(
+                    principles: store.referencedPrinciples,
+                    onFeedback: recordReferencedPrincipleFeedback
+                )
             }
 
             ForEach(store.quests) { quest in
@@ -521,15 +626,25 @@ struct TodayView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(DS.accent)
-            .disabled(store.isAIRunning)
+            .disabled(store.todayPrimaryActionBlocker != nil)
+            .accessibilityIdentifier(TodayAutomationID.primaryAction)
+
+            if let blocker = store.todayPrimaryActionBlocker {
+                Text(blocker)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(TodayAutomationID.primaryActionHint)
+            }
 
             HStack(spacing: 18) {
-                if let previousState {
+                if canNavigateToPreviousUserStep {
                     Button("上一步") {
-                        store.navigateTodayLoop(to: previousState)
+                        store.navigateTodayLoopToPreviousUserStep()
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
+                    .accessibilityIdentifier(TodayAutomationID.previousAction)
                 }
 
                 if canSupplementCapture {
@@ -538,6 +653,7 @@ struct TodayView: View {
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(DS.accent)
+                    .accessibilityIdentifier(TodayAutomationID.supplementCaptureAction)
                 }
 
                 if store.canRetryCurrentAI {
@@ -546,6 +662,7 @@ struct TodayView: View {
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(DS.accent)
+                    .accessibilityIdentifier(TodayAutomationID.retryCurrentStepAction)
                 }
 
                 if store.todayDraft.state == .extractPrinciple {
@@ -553,6 +670,7 @@ struct TodayView: View {
                         store.skipPrinciple()
                     }
                     .font(.subheadline)
+                    .accessibilityIdentifier(TodayAutomationID.skipPrincipleAction)
                 }
 
                 Button("重置今日") {
@@ -560,6 +678,7 @@ struct TodayView: View {
                 }
                 .font(.footnote)
                 .foregroundStyle(DS.mutedInk)
+                .accessibilityIdentifier(TodayAutomationID.resetAction)
             }
         }
         .padding(.horizontal, DS.pagePadding)
@@ -601,6 +720,17 @@ struct TodayView: View {
         else { return nil }
         let candidate = DailyLoopState.allCases[currentIndex - 1]
         return store.canNavigateTodayLoop(to: candidate) ? candidate : nil
+    }
+
+    private var canNavigateToPreviousUserStep: Bool {
+        switch store.todayDraft.state {
+        case .reviewCards:
+            return store.canNavigateTodayLoop(to: .capture)
+        case .selectLens, .answerQuestions, .reviewQuests, .extractPrinciple, .sessionComplete:
+            return true
+        case .verifyYesterday, .capture, .organizing, .selectMode:
+            return previousState != nil
+        }
     }
 
     private var progressCaption: String {
@@ -669,7 +799,9 @@ struct TodayView: View {
     private func bindingForQuestion(questionID: ReflectionQuestion.ID, fallbackIndex index: Int) -> Binding<String> {
         Binding(
             get: {
-                store.questions.first(where: { $0.id == questionID })?.answer ?? store.questions[index].answer
+                store.questions.first(where: { $0.id == questionID })?.answer ??
+                    store.questions[safe: index]?.answer ??
+                    ""
             },
             set: { store.updateQuestionAnswer(questionID: questionID, answer: $0) }
         )
@@ -729,80 +861,415 @@ struct TodayView: View {
         .modeSurface(isSelected: store.todayDraft.hasSelectedSessionMode && store.todayDraft.sessionMode == mode)
     }
 
-    private func lensCard(_ lens: ThinkingLens, isRecommended: Bool) -> some View {
-        let item = lens.catalogItem
-        let isSelected = store.todayDraft.selectedLens == lens
+    private func todayLensCoreCard(confirmedCount: Int) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Today Core Card")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                Spacer()
+                Text("\(store.todayDraft.sessionMode.title) · \(confirmedCount) 已确认")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
 
-        return Button(action: { store.selectThinkingLens(lens) }) {
-            HStack(alignment: .top, spacing: 13) {
-                LensGlyph(lens: lens, isSelected: isSelected)
+            Text(lensCoreTitle)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("[\(item.methodIndex)]")
-                            .font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(lens.tint.opacity(0.82))
-                        Text(item.title)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(DS.ink)
-                        Text(item.shortLabel)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(lens.tint)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(lens.tint.opacity(0.10), in: Capsule())
-                        if isRecommended {
-                            Text("推荐")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(DS.accentInk)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(DS.accent.opacity(0.10), in: Capsule())
-                        }
-                    }
+            Text("透镜会决定下一组追问的角度。推荐可以直接选，也可以生成或手写一个本次专属方法卡。")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(DS.cardInnerPadding)
+        .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
 
-                    Text(item.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var lensCoreTitle: String {
+        guard let first = store.thinkingCards.first(where: \.isConfirmed) else {
+            return "先选择看问题的方法。"
+        }
+        return "围绕「\(first.title)」换一个角度看。"
+    }
 
-                    Text(item.methodLine)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(lens.tint)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if isRecommended {
-                        Text(item.recommendedReason)
-                            .font(.caption2)
-                            .foregroundStyle(DS.mutedInk)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+    private func recommendedLensCard(_ item: LensCatalogItem) -> some View {
+        Button(action: { selectLensItem(item) }) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("METHOD \(String(format: "%02d", item.methodIndex)) · 推荐")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(lensTint(for: item))
+                    Spacer()
+                    Image(systemName: isLensItemSelected(item) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isLensItemSelected(item) ? lensTint(for: item) : DS.mutedInk.opacity(0.45))
                 }
 
-                Spacer(minLength: 10)
+                Text(item.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(DS.ink)
 
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isSelected ? DS.accent : DS.mutedInk.opacity(0.42))
+                Text(item.recommendedReason)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(item.methodLine)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(lensTint(for: item))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(DS.hairline)
+                            .frame(height: 1)
+                    }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(TodayAutomationID.lensAction(item))
         .padding(DS.cardInnerPadding)
-        .background(
-            isSelected ? lens.tint.opacity(0.055) : Color(.systemBackground),
-            in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-        )
+        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(lens.tint)
-                .frame(width: isRecommended || isSelected ? 4 : 3)
+                .fill(lensTint(for: item))
+                .frame(width: 5)
         }
         .clipShape(RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(isSelected ? lens.tint.opacity(0.42) : (isRecommended ? lens.tint.opacity(0.24) : Color.primary.opacity(0.05)), lineWidth: isSelected ? 1.25 : 1)
+                .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.42) : lensTint(for: item).opacity(0.22), lineWidth: isLensItemSelected(item) ? 1.25 : 1)
         )
+    }
+
+    private func lensActionCard(
+        icon: String,
+        title: String,
+        body: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(tint.opacity(0.38), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(DS.ink)
+                    Text(body)
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func customLensCard(_ item: LensCatalogItem) -> some View {
+        Button(action: { selectLensItem(item) }) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "wand.and.stars")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.brick)
+                    .frame(width: 34, height: 34)
+                    .background(DS.brick.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        Text(item.title)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(DS.ink)
+                        Text(item.shortLabel)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(DS.brick)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(DS.brick.opacity(0.08), in: Capsule())
+                    }
+                    Text(item.methodLine)
+                        .font(.caption)
+                        .foregroundStyle(DS.brick)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(item.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+                Image(systemName: isLensItemSelected(item) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isLensItemSelected(item) ? DS.brick : DS.mutedInk.opacity(0.42))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .background(DS.brick.opacity(isLensItemSelected(item) ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(DS.brick.opacity(isLensItemSelected(item) ? 0.34 : 0.16), lineWidth: 1)
+        )
+    }
+
+    private func lensMethodTile(_ item: LensCatalogItem, isRecommended: Bool) -> some View {
+        Button(action: { selectLensItem(item) }) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    Text(String(format: "%02d", item.methodIndex))
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(lensTint(for: item))
+                    Spacer()
+                    if isRecommended {
+                        Text("推荐")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(DS.accentInk)
+                    }
+                }
+
+                Text(item.title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+
+                Text(item.questionSeeds.first ?? item.methodLine)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(TodayAutomationID.lensAction(item))
+        .padding(12)
+        .background(isLensItemSelected(item) ? lensTint(for: item).opacity(0.07) : Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.34) : Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var customLensSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(DS.success)
+                                .frame(width: 38, height: 38)
+                                .background(DS.success.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("自定义透镜")
+                                    .font(.title3.weight(.bold))
+                                    .foregroundStyle(DS.ink)
+                                Text("把你自己的思考方法写成一张 Today 方法卡。保存后会出现在「我的透镜」。")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        Text("Custom Lens Card")
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .foregroundStyle(DS.mutedInk)
+                            .textCase(.uppercase)
+                    }
+                    .padding(DS.cardInnerPadding)
+                    .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                            .stroke(DS.hairline, lineWidth: 1)
+                    )
+
+                    customLensFieldCard(
+                        title: "标题",
+                        hint: "给这个透镜一个短名字。",
+                        placeholder: "我的透镜",
+                        text: $customLensTitle,
+                        minHeight: 46,
+                        automationID: TodayAutomationID.customLensTitleField
+                    )
+
+                    customLensFieldCard(
+                        title: "方法线",
+                        hint: "写清楚它如何迫使你换角度。",
+                        placeholder: "先问：这件事最需要被换个角度看的是什么？",
+                        text: $customLensMethodLine,
+                        minHeight: 82,
+                        automationID: TodayAutomationID.customLensMethodField
+                    )
+
+                    customLensFieldCard(
+                        title: "第一问",
+                        hint: "进入透镜后最先回答的问题。",
+                        placeholder: "这件事最需要被换个角度看的是什么？",
+                        text: $customLensQuestion,
+                        minHeight: 82,
+                        automationID: TodayAutomationID.customLensQuestionField
+                    )
+
+                    Button {
+                        saveCustomLens()
+                    } label: {
+                        Label("保存并选择", systemImage: "checkmark.circle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.success)
+                    .controlSize(.regular)
+                    .accessibilityIdentifier(TodayAutomationID.customLensSaveAction)
+                }
+                .padding(.horizontal, DS.pagePadding)
+                .padding(.top, DS.primaryScrollTopPadding)
+                .padding(.bottom, 28)
+            }
+            .pageBackground()
+            .navigationTitle("自定义透镜")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        isCustomLensSheetPresented = false
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier(TodayAutomationID.customLensSheet)
+    }
+
+    private func customLensFieldCard(
+        title: String,
+        hint: String,
+        placeholder: String,
+        text: Binding<String>,
+        minHeight: CGFloat,
+        automationID: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(DS.ink)
+                Spacer()
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            TextField(placeholder, text: text, axis: .vertical)
+                .font(.subheadline)
+                .foregroundStyle(DS.ink)
+                .lineLimit(1...4)
+                .padding(12)
+                .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+                .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                )
+                .accessibilityIdentifier(automationID)
+        }
+        .padding(DS.cardInnerPadding)
+        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    private func openCustomLensSheet() {
+        customLensTitle = "我的透镜"
+        customLensMethodLine = "先问：这件事最需要被换个角度看的是什么？"
+        customLensQuestion = "这件事最需要被换个角度看的是什么？"
+        isCustomLensSheetPresented = true
+    }
+
+    private func presentVisualQACustomLensSheetIfNeeded() {
+#if DEBUG
+        guard store.todayDraft.state == .selectLens,
+              AppStore.shouldPresentVisualQACustomLensSheet(),
+              !isCustomLensSheetPresented else { return }
+        openCustomLensSheet()
+#endif
+    }
+
+    private func recordReferencedPrincipleFeedback(
+        principle: PrincipleAsset,
+        feedback: PrincipleRecallFeedbackValue
+    ) {
+        Task {
+            await store.recordReferencedPrincipleFeedback(
+                for: principle.id,
+                feedback: feedback
+            )
+        }
+    }
+
+    private func saveCustomLens() {
+        let item = store.upsertCustomLens(
+            title: customLensTitle,
+            subtitle: "手写方法卡，服务于当前 Today。",
+            shortLabel: "自定",
+            methodLine: customLensMethodLine,
+            promptGuidance: "Use the user's manually written lens to generate concrete reflection questions.",
+            firstQuestion: customLensQuestion
+        )
+        store.selectCustomLens(item.id)
+        isCustomLensSheetPresented = false
+    }
+
+    private func selectLensItem(_ item: LensCatalogItem) {
+        if let lens = ThinkingLens(rawValue: item.id) {
+            store.selectThinkingLens(lens)
+        } else {
+            store.selectCustomLens(item.id)
+        }
+    }
+
+    private func isLensItemSelected(_ item: LensCatalogItem) -> Bool {
+        store.todayDraft.selectedLens?.rawValue == item.id || store.todayDraft.selectedCustomLensId == item.id
+    }
+
+    private func lensTint(for item: LensCatalogItem) -> Color {
+        switch item.accentRole {
+        case .graphite: return DS.graphite
+        case .brick: return DS.brick
+        case .accent: return DS.accent
+        case .principle: return DS.note
+        }
     }
 
     private func completionCard(icon: String, title: String, body: String) -> some View {
@@ -1550,6 +2017,7 @@ private struct EmptyStateCard: View {
 
 private struct ReferencedPrinciplesView: View {
     let principles: [PrincipleAsset]
+    let onFeedback: (PrincipleAsset, PrincipleRecallFeedbackValue) -> Void
 
     @ViewBuilder
     var body: some View {
@@ -1572,7 +2040,7 @@ private struct ReferencedPrinciplesView: View {
                 }
 
                 ForEach(principles) { principle in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 7) {
                         Text(principle.title)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
@@ -1580,6 +2048,31 @@ private struct ReferencedPrinciplesView: View {
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                             .lineLimit(2)
+                        HStack(spacing: 8) {
+                            Button {
+                                onFeedback(principle, .helpful)
+                            } label: {
+                                Label("有帮助", systemImage: "hand.thumbsup")
+                            }
+                            .accessibilityIdentifier(TodayAutomationID.principleFeedbackHelpfulAction)
+
+                            Button {
+                                onFeedback(principle, .notApplicable)
+                            } label: {
+                                Label("不适用", systemImage: "xmark.circle")
+                            }
+                            .accessibilityIdentifier(TodayAutomationID.principleFeedbackNotApplicableAction)
+
+                            Button {
+                                onFeedback(principle, .misrecalled)
+                            } label: {
+                                Label("误召回", systemImage: "exclamationmark.bubble")
+                            }
+                            .accessibilityIdentifier(TodayAutomationID.principleFeedbackMisrecalledAction)
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
                     }
                     .padding(.vertical, 2)
                 }
@@ -1591,5 +2084,11 @@ private struct ReferencedPrinciplesView: View {
                     .stroke(DS.accent.opacity(0.14), lineWidth: 1)
             )
         }
+    }
+}
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

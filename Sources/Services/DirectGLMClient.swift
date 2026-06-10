@@ -312,7 +312,7 @@ private struct GLMChatCompletionRequest: Encodable {
     }
 
     private static func userContent(for request: LLMRequest) -> String {
-        let payloadText = request.contextPayload?.renderedJSON() ?? legacyPayloadLines(for: request)
+        let payloadText = request.contextPayload?.renderedJSON() ?? "{}"
 
         return """
         Prompt ID: \(request.prompt.id.rawValue)
@@ -329,13 +329,6 @@ private struct GLMChatCompletionRequest: Encodable {
         Payload:
         \(payloadText.isEmpty ? "{}" : payloadText)
         """
-    }
-
-    private static func legacyPayloadLines(for request: LLMRequest) -> String {
-        request.jsonPayload
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key): \($0.value)" }
-            .joined(separator: "\n")
     }
 }
 

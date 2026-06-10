@@ -1,7 +1,7 @@
 import Foundation
 import UserNotifications
 
-enum PromptID: String, CaseIterable, Identifiable {
+enum PromptID: String, Codable, CaseIterable, Identifiable {
     case organizeCards
     case recommendLenses
     case generateQuestions
@@ -33,32 +33,178 @@ enum PromptID: String, CaseIterable, Identifiable {
     }
 }
 
-struct PromptTemplate: Hashable {
+struct PromptTemplate: Codable, Hashable {
     let id: PromptID
     let version: String
+    var systemPolicyVersion: String = "system.v1"
+    var contextPolicyVersion: String = "context.v1"
+    var evalSuiteVersion: String = "eval.v1"
+    var rollbackTargetVersion: String?
+    var sourceKind: PromptAssetSourceKind = .builtin
+    var packId: String = "mingsi.builtin.prompts"
+    var packVersion: String = "builtin.v1"
+    var packDisplayName: String = "MingSi Built-in Prompt Pack"
     let systemText: String
     let userText: String
     let outputSchemaVersion: Int
+
+    func applyingPackMetadata(_ pack: PromptAssetPack) -> PromptTemplate {
+        var copy = self
+        copy.sourceKind = pack.sourceKind
+        copy.packId = pack.id
+        copy.packVersion = pack.version
+        copy.packDisplayName = pack.displayName
+        return copy
+    }
 }
 
 struct LLMRequest: Hashable {
     let prompt: PromptTemplate
     let inputSummary: String
-    let jsonPayload: [String: String]
     var contextPayload: PromptContextPayload?
     var sourceRecordIDs: [String] = []
     var contextVersion: Int = 1
     var contextRecordIDs: [String] = []
+
+    init(
+        prompt: PromptTemplate,
+        inputSummary: String,
+        contextPayload: PromptContextPayload? = nil,
+        sourceRecordIDs: [String] = [],
+        contextVersion: Int = 1,
+        contextRecordIDs: [String] = []
+    ) {
+        self.prompt = prompt
+        self.inputSummary = inputSummary
+        self.contextPayload = contextPayload
+        self.sourceRecordIDs = sourceRecordIDs
+        self.contextVersion = contextVersion
+        self.contextRecordIDs = contextRecordIDs
+    }
 }
 
 struct PromptContextPayload: Codable, Hashable {
     struct LensCatalogContext: Codable, Hashable {
+        struct UIMetadata: Codable, Hashable {
+            var symbolName: String
+            var accentRole: LensAccentRole
+            var methodIndex: Int
+        }
+
         var localId: String
         var promptId: String
         var version: String
         var title: String
         var methodLine: String
         var promptGuidance: String
+        var purpose: String
+        var questionStrategy: String
+        var taskSelectionRule: String
+        var applicability: String
+        var disableConditions: [String]
+        var uiMetadata: UIMetadata
+        var sourceKind: LensAssetSourceKind
+        var packId: String
+        var packVersion: String
+        var packDisplayName: String
+
+        init(
+            localId: String,
+            promptId: String,
+            version: String,
+            title: String,
+            methodLine: String,
+            promptGuidance: String,
+            purpose: String,
+            questionStrategy: String,
+            taskSelectionRule: String,
+            applicability: String,
+            disableConditions: [String],
+            uiMetadata: UIMetadata,
+            sourceKind: LensAssetSourceKind = .localCustom,
+            packId: String = "local.custom-lenses",
+            packVersion: String? = nil,
+            packDisplayName: String = "Local Custom Lenses"
+        ) {
+            self.localId = localId
+            self.promptId = promptId
+            self.version = version
+            self.title = title
+            self.methodLine = methodLine
+            self.promptGuidance = promptGuidance
+            self.purpose = purpose
+            self.questionStrategy = questionStrategy
+            self.taskSelectionRule = taskSelectionRule
+            self.applicability = applicability
+            self.disableConditions = disableConditions
+            self.uiMetadata = uiMetadata
+            self.sourceKind = sourceKind
+            self.packId = packId
+            self.packVersion = packVersion ?? version
+            self.packDisplayName = packDisplayName
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let localId = try container.decode(String.self, forKey: .localId)
+            let promptId = try container.decode(String.self, forKey: .promptId)
+            let version = try container.decode(String.self, forKey: .version)
+            let sourceKind = try container.decodeIfPresent(LensAssetSourceKind.self, forKey: .sourceKind)
+                ?? Self.defaultSourceKind(localId: localId, promptId: promptId)
+            self.init(
+                localId: localId,
+                promptId: promptId,
+                version: version,
+                title: try container.decode(String.self, forKey: .title),
+                methodLine: try container.decode(String.self, forKey: .methodLine),
+                promptGuidance: try container.decode(String.self, forKey: .promptGuidance),
+                purpose: try container.decode(String.self, forKey: .purpose),
+                questionStrategy: try container.decode(String.self, forKey: .questionStrategy),
+                taskSelectionRule: try container.decode(String.self, forKey: .taskSelectionRule),
+                applicability: try container.decode(String.self, forKey: .applicability),
+                disableConditions: try container.decode([String].self, forKey: .disableConditions),
+                uiMetadata: try container.decode(UIMetadata.self, forKey: .uiMetadata),
+                sourceKind: sourceKind,
+                packId: try container.decodeIfPresent(String.self, forKey: .packId)
+                    ?? Self.defaultPackId(sourceKind: sourceKind, localId: localId, promptId: promptId),
+                packVersion: try container.decodeIfPresent(String.self, forKey: .packVersion)
+                    ?? Self.defaultPackVersion(sourceKind: sourceKind, localId: localId, promptId: promptId),
+                packDisplayName: try container.decodeIfPresent(String.self, forKey: .packDisplayName)
+                    ?? Self.defaultPackDisplayName(sourceKind: sourceKind, localId: localId, promptId: promptId)
+            )
+        }
+
+        private static func defaultSourceKind(localId: String, promptId: String) -> LensAssetSourceKind {
+            builtinItem(localId: localId, promptId: promptId)?.sourceKind ?? .localCustom
+        }
+
+        private static func defaultPackId(sourceKind: LensAssetSourceKind, localId: String, promptId: String) -> String {
+            if sourceKind == .builtin,
+               let item = builtinItem(localId: localId, promptId: promptId) {
+                return item.packId
+            }
+            return "local.custom-lenses"
+        }
+
+        private static func defaultPackVersion(sourceKind: LensAssetSourceKind, localId: String, promptId: String) -> String {
+            if sourceKind == .builtin,
+               let item = builtinItem(localId: localId, promptId: promptId) {
+                return item.packVersion
+            }
+            return "session.v1"
+        }
+
+        private static func defaultPackDisplayName(sourceKind: LensAssetSourceKind, localId: String, promptId: String) -> String {
+            if sourceKind == .builtin,
+               let item = builtinItem(localId: localId, promptId: promptId) {
+                return item.packDisplayName
+            }
+            return "Local Custom Lenses"
+        }
+
+        private static func builtinItem(localId: String, promptId: String) -> LensCatalogItem? {
+            BuiltinLensCatalog.item(localId: localId) ?? BuiltinLensCatalog.item(promptId: promptId)
+        }
     }
 
     struct CurrentInput: Codable, Hashable {
@@ -103,10 +249,47 @@ struct PromptContextPayload: Codable, Hashable {
         var successCriteria: String
         var exceptions: String
         var status: PrincipleStatus
+        var retrievalReason: String
+        var retrievalPolicyVersion: String
+
+        init(
+            id: String,
+            title: String,
+            summary: String,
+            triggerContext: String,
+            successCriteria: String,
+            exceptions: String,
+            status: PrincipleStatus,
+            retrievalReason: String = "",
+            retrievalPolicyVersion: String = ""
+        ) {
+            self.id = id
+            self.title = title
+            self.summary = summary
+            self.triggerContext = triggerContext
+            self.successCriteria = successCriteria
+            self.exceptions = exceptions
+            self.status = status
+            self.retrievalReason = retrievalReason
+            self.retrievalPolicyVersion = retrievalPolicyVersion
+        }
     }
 
     struct Privacy: Codable, Hashable {
         var rules: String?
+    }
+
+    struct PromptDirectives: Codable, Hashable {
+        var privacyRules: String?
+        var streamProtocol: String?
+        var principleUsageRule: String?
+    }
+
+    struct VerificationContext: Codable, Hashable {
+        var questTitle: String
+        var completionCriteria: String
+        var completion: String
+        var valueRating: String
     }
 
     struct GrowthRecordContext: Codable, Hashable {
@@ -158,6 +341,23 @@ struct PromptContextPayload: Codable, Hashable {
     struct ActiveProjectContext: Codable, Hashable {
         var id: String
         var name: String
+        var goal: String?
+        var successCriteria: String?
+        var status: String?
+    }
+
+    struct ProjectEvidenceContext: Codable, Hashable {
+        var id: String
+        var type: String
+        var title: String
+        var body: String
+    }
+
+    struct ProjectLinkContext: Codable, Hashable {
+        var projectId: String
+        var sourceId: String
+        var sourceType: String
+        var linkType: String
     }
 
     struct ProjectContext: Codable, Hashable {
@@ -166,6 +366,13 @@ struct PromptContextPayload: Codable, Hashable {
         var quests: [ProjectQuestContext]
         var activeProjects: [ActiveProjectContext]
         var existingLinkSourceIds: [String]
+        var projectId: String?
+        var projectName: String?
+        var projectGoal: String?
+        var projectSuccessCriteria: String?
+        var confirmedEvidence: [ProjectEvidenceContext] = []
+        var acceptedInsightCount: Int?
+        var confirmedProjectLinks: [ProjectLinkContext] = []
     }
 
     var currentInput: CurrentInput
@@ -176,9 +383,10 @@ struct PromptContextPayload: Codable, Hashable {
     var principles: [PrincipleContext]
     var existingPrinciples: [PrincipleContext]
     var privacy: Privacy
+    var directives: PromptDirectives
+    var verification: VerificationContext?
     var growth: GrowthContext?
     var project: ProjectContext?
-    var extra: [String: String]
 
     var rawText: String {
         currentInput.rawText ?? ""
@@ -213,9 +421,10 @@ struct PromptContextPayload: Codable, Hashable {
         principles: [PrincipleContext] = [],
         existingPrinciples: [PrincipleContext] = [],
         privacy: Privacy = Privacy(),
+        directives: PromptDirectives = PromptDirectives(),
+        verification: VerificationContext? = nil,
         growth: GrowthContext? = nil,
-        project: ProjectContext? = nil,
-        extra: [String: String] = [:]
+        project: ProjectContext? = nil
     ) {
         self.currentInput = currentInput
         self.userChoice = userChoice
@@ -225,22 +434,29 @@ struct PromptContextPayload: Codable, Hashable {
         self.principles = principles
         self.existingPrinciples = existingPrinciples
         self.privacy = privacy
+        self.directives = directives
+        self.verification = verification
         self.growth = growth
         self.project = project
-        self.extra = extra
     }
 
-    func mergingExtra(_ values: [String: String]) -> PromptContextPayload {
+    func applyingDirectives(_ directives: PromptDirectives) -> PromptContextPayload {
         var copy = self
-        copy.extra.merge(values) { _, new in new }
-        if let privacyRules = values["privacyRules"] {
+        if let privacyRules = directives.privacyRules {
             copy.privacy.rules = privacyRules
+            copy.directives.privacyRules = privacyRules
+        }
+        if let streamProtocol = directives.streamProtocol {
+            copy.directives.streamProtocol = streamProtocol
+        }
+        if let principleUsageRule = directives.principleUsageRule {
+            copy.directives.principleUsageRule = principleUsageRule
         }
         return copy
     }
 
     var legacyKeyValues: [String: String] {
-        var values = extra
+        var values: [String: String] = [:]
         values["sessionMode"] = userChoice.sessionMode
 
         if let promptId = userChoice.lensCatalog?.promptId {
@@ -252,6 +468,15 @@ struct PromptContextPayload: Codable, Hashable {
             values["lensTitle"] = lensCatalog.title
             values["lensMethodLine"] = lensCatalog.methodLine
             values["lensPromptGuidance"] = lensCatalog.promptGuidance
+            values["lensPurpose"] = lensCatalog.purpose
+            values["lensQuestionStrategy"] = lensCatalog.questionStrategy
+            values["lensTaskSelectionRule"] = lensCatalog.taskSelectionRule
+            values["lensApplicability"] = lensCatalog.applicability
+            values["lensDisableConditions"] = lensCatalog.disableConditions.joined(separator: "\n")
+            values["lensSourceKind"] = lensCatalog.sourceKind.rawValue
+            values["lensPackId"] = lensCatalog.packId
+            values["lensPackVersion"] = lensCatalog.packVersion
+            values["lensPackDisplayName"] = lensCatalog.packDisplayName
         }
         if let rawText = currentInput.rawText {
             values["rawText"] = rawText
@@ -288,10 +513,126 @@ struct PromptContextPayload: Codable, Hashable {
         if !existingPrinciples.isEmpty {
             values["existingPrinciples"] = legacyPrinciples(existingPrinciples)
         }
+        if let principleUsageRule = directives.principleUsageRule {
+            values["principleUsageRule"] = principleUsageRule
+        }
+        if let streamProtocol = directives.streamProtocol {
+            values["streamProtocol"] = streamProtocol
+        }
+        if let privacyRules = directives.privacyRules {
+            values["privacyRules"] = privacyRules
+        }
         if let privacyRules = privacy.rules {
             values["privacyRules"] = privacyRules
         }
+        if let verification {
+            values["questTitle"] = verification.questTitle
+            values["completionCriteria"] = verification.completionCriteria
+            values["completion"] = verification.completion
+            values["valueRating"] = verification.valueRating
+        }
+        if let growth {
+            mergeGrowthLegacyValues(growth, into: &values)
+        }
+        if let project {
+            mergeProjectLegacyValues(project, into: &values)
+        }
         return values
+    }
+
+    private func mergeGrowthLegacyValues(_ growth: GrowthContext, into values: inout [String: String]) {
+        values["period"] = growth.period
+        values["complete_loop_count"] = String(growth.completeLoopCount)
+        values["record_count"] = String(growth.records.count)
+        values["evidence_summaries"] = growth.records.map { record in
+            var parts = ["entry=\(record.dailyEntryId)"]
+            parts.append("cards=\(record.confirmedCardCount)")
+            if let title = record.mainQuestTitle {
+                parts.append("quest=\(title)")
+            }
+            if let completion = record.verificationCompletion {
+                parts.append("completion=\(completion)")
+            }
+            if let rating = record.verificationValueRating {
+                parts.append("value=\(rating)")
+            }
+            return parts.joined(separator: "; ")
+        }
+        .joined(separator: "\n")
+
+        if let previous = growth.previousSnapshot {
+            values["previous_clarity"] = String(format: "%.1f", previous.clarity)
+            values["previous_value_judgment"] = String(format: "%.1f", previous.valueJudgment)
+            values["previous_execution_reliability"] = String(format: "%.1f", previous.executionReliability)
+            values["previous_calibration"] = String(format: "%.1f", previous.calibration)
+            values["previous_reflection_depth"] = String(format: "%.1f", previous.reflectionDepth)
+        }
+
+        if !growth.dismissedContributionTitles.isEmpty {
+            values["dismissed_contributions"] = growth.dismissedContributionTitles.joined(separator: "; ")
+        }
+    }
+
+    private func mergeProjectLegacyValues(_ project: ProjectContext, into values: inout [String: String]) {
+        if !project.dailyEntryId.isEmpty {
+            values["daily_entry_id"] = project.dailyEntryId
+            values["confirmed_cards_count"] = String(project.confirmedCards.count)
+        }
+        if let projectId = project.projectId {
+            values["project_id"] = projectId
+        }
+        if let projectName = project.projectName {
+            values["project_name"] = projectName
+        }
+        if let projectGoal = project.projectGoal {
+            values["project_goal"] = projectGoal
+        }
+        if let projectSuccessCriteria = project.projectSuccessCriteria {
+            values["project_success_criteria"] = projectSuccessCriteria
+        }
+        if let acceptedInsightCount = project.acceptedInsightCount {
+            values["accepted_insight_count"] = String(acceptedInsightCount)
+        }
+
+        if !project.confirmedCards.isEmpty {
+            values["confirmed_cards"] = project.confirmedCards.map { card in
+                "id: \(card.id), type: \(card.type), title: \(card.title), body: \(card.body)"
+            }.joined(separator: "\n")
+        }
+        if !project.quests.isEmpty {
+            values["quests"] = project.quests.map { quest in
+                "id: \(quest.id), type: \(quest.type), title: \(quest.title), completionCriteria: \(quest.completionCriteria)"
+            }.joined(separator: "\n")
+        }
+        if !project.activeProjects.isEmpty {
+            values["active_projects_count"] = String(project.activeProjects.count)
+            values["active_projects"] = project.activeProjects.map { activeProject in
+                var parts = ["id: \(activeProject.id)", "name: \(activeProject.name)"]
+                if let goal = activeProject.goal {
+                    parts.append("goal: \(goal)")
+                }
+                if let successCriteria = activeProject.successCriteria {
+                    parts.append("success_criteria: \(successCriteria)")
+                }
+                if let status = activeProject.status {
+                    parts.append("status: \(status)")
+                }
+                return parts.joined(separator: ", ")
+            }.joined(separator: "\n")
+        }
+        if !project.existingLinkSourceIds.isEmpty {
+            values["existing_link_source_ids"] = project.existingLinkSourceIds.joined(separator: ", ")
+        }
+        if !project.confirmedEvidence.isEmpty {
+            values["confirmed_evidence"] = project.confirmedEvidence.map { evidence in
+                "id: \(evidence.id), type: \(evidence.type), title: \(evidence.title), body: \(evidence.body)"
+            }.joined(separator: "\n")
+        }
+        if !project.confirmedProjectLinks.isEmpty {
+            values["confirmed_project_links"] = project.confirmedProjectLinks.map { link in
+                "project_id: \(link.projectId), source_id: \(link.sourceId), source_type: \(link.sourceType), link_type: \(link.linkType)"
+            }.joined(separator: "\n")
+        }
     }
 
     private func legacyPrinciples(_ principles: [PrincipleContext]) -> String {
@@ -303,7 +644,9 @@ struct PromptContextPayload: Codable, Hashable {
                 "triggerContext": principle.triggerContext,
                 "successCriteria": principle.successCriteria,
                 "exceptions": principle.exceptions,
-                "status": principle.status.rawValue
+                "status": principle.status.rawValue,
+                "retrievalReason": principle.retrievalReason,
+                "retrievalPolicyVersion": principle.retrievalPolicyVersion
             ]
             .map { "\($0.key): \($0.value)" }
             .sorted()
@@ -330,6 +673,14 @@ enum LLMClientError: Error {
 
 protocol PromptProvider {
     func template(for id: PromptID, mode: SessionMode) -> PromptTemplate
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate?
+}
+
+extension PromptProvider {
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        let template = template(for: id, mode: mode)
+        return template.version == version ? template : nil
+    }
 }
 
 protocol LLMClient {
@@ -399,8 +750,16 @@ final class PromptTracingLLMClient: LLMClient {
         let run = PromptRun(
             promptId: request.prompt.id.rawValue,
             promptVersion: request.prompt.version,
+            promptSourceKind: request.prompt.sourceKind,
+            promptPackId: request.prompt.packId,
+            promptPackVersion: request.prompt.packVersion,
+            promptPackDisplayName: request.prompt.packDisplayName,
+            systemPolicyVersion: request.prompt.systemPolicyVersion,
+            contextPolicyVersion: request.prompt.contextPolicyVersion,
             inputSchemaVersion: 1,
             outputSchemaVersion: request.prompt.outputSchemaVersion,
+            evalSuiteVersion: request.prompt.evalSuiteVersion,
+            rollbackTargetVersion: request.prompt.rollbackTargetVersion,
             modelProvider: modelProvider,
             modelName: modelName,
             sessionMode: sessionMode(from: request),
@@ -415,7 +774,8 @@ final class PromptTracingLLMClient: LLMClient {
     }
 
     private func sessionMode(from request: LLMRequest) -> String {
-        request.jsonPayload["sessionMode"] ?? "unknown"
+        request.contextPayload?.userChoice.sessionMode
+            ?? "unknown"
     }
 }
 
@@ -460,6 +820,468 @@ extension PromptTracingLLMClient: StreamingLLMClient {
     }
 }
 
+struct PromptEvalRunner {
+    static let currentRunnerVersion = "prompt-eval-runner.v1"
+
+    private let promptProvider: PromptProvider
+    private let parser: TodayAIResponseParser
+
+    init(promptProvider: PromptProvider, parser: TodayAIResponseParser = TodayAIResponseParser()) {
+        self.promptProvider = promptProvider
+        self.parser = parser
+    }
+
+    func runFixedSuite(mode: SessionMode = .standard, createdAt: Date = .now) -> [PromptEvalRun] {
+        PromptEvalCase.fixedSuite
+            .groupedByPromptId()
+            .map { promptId, cases in
+                let template = promptProvider.template(for: promptId, mode: mode)
+                let results = cases.map(runCase)
+                return PromptEvalRun(
+                    promptId: promptId.rawValue,
+                    promptVersion: template.version,
+                    promptSourceKind: template.sourceKind,
+                    promptPackId: template.packId,
+                    promptPackVersion: template.packVersion,
+                    promptPackDisplayName: template.packDisplayName,
+                    systemPolicyVersion: template.systemPolicyVersion,
+                    contextPolicyVersion: template.contextPolicyVersion,
+                    inputSchemaVersion: 1,
+                    outputSchemaVersion: template.outputSchemaVersion,
+                    evalSuiteVersion: template.evalSuiteVersion,
+                    runnerVersion: Self.currentRunnerVersion,
+                    caseResults: results,
+                    createdAt: createdAt
+                )
+            }
+            .sorted { $0.promptId < $1.promptId }
+    }
+
+    private func runCase(_ evalCase: PromptEvalCase) -> PromptEvalCaseResult {
+        do {
+            try evalCase.assertion(parser)
+            return PromptEvalCaseResult(
+                caseId: evalCase.caseId,
+                name: evalCase.name,
+                status: .passed,
+                inputSummary: evalCase.inputSummary,
+                expectedBehavior: evalCase.expectedBehavior,
+                actualObservation: "passed: fixed-suite assertions satisfied.",
+                diagnosticReason: "fixed-suite pass: \(evalCase.caseId)"
+            )
+        } catch {
+            let reason = String(describing: error)
+            return PromptEvalCaseResult(
+                caseId: evalCase.caseId,
+                name: evalCase.name,
+                status: .failed,
+                failureReason: reason,
+                inputSummary: evalCase.inputSummary,
+                expectedBehavior: evalCase.expectedBehavior,
+                actualObservation: "failed: \(reason)",
+                diagnosticReason: "fixed-suite failure: \(reason)"
+            )
+        }
+    }
+}
+
+private struct PromptEvalFailure: Error, CustomStringConvertible {
+    var description: String
+}
+
+private struct PromptEvalCase {
+    var promptId: PromptID
+    var caseId: String
+    var name: String
+    var inputSummary: String
+    var expectedBehavior: String
+    var assertion: (TodayAIResponseParser) throws -> Void
+
+    static let fixedSuite: [PromptEvalCase] = [
+        PromptEvalCase(
+            promptId: .organizeCards,
+            caseId: "cards.messy_daily_input",
+            name: "Messy daily input produces typed sensitive cards",
+            inputSummary: "Messy meeting coordination input with one sensitive internal-project card.",
+            expectedBehavior: "Produce communication, risk, and task cards while preserving sensitivity classification."
+        ) { _ in
+            let assembler = XMLStreamingCardAssembler()
+            _ = assembler.append(
+                """
+                <MINGSI_STREAM version="1">
+                <CARD>
+                <TYPE>communication</TYPE>
+                <TITLE>会前没有明确要确认的决策</TITLE>
+                <BODY>会议推进时先讨论细节，最后才发现负责人和验收标准没有写清。</BODY>
+                <IMPORTANCE>high</IMPORTANCE>
+                <SENSITIVITY>normal</SENSITIVITY>
+                <CONFIDENCE>high</CONFIDENCE>
+                <REASON>这是可复用的沟通流程问题。</REASON>
+                </CARD>
+                <CARD>
+                <TYPE>risk</TYPE>
+                <TITLE>内部项目名需要抽象化</TITLE>
+                <BODY>用户提到具体内部项目和客户语境，后续模型调用应避免重复细节。</BODY>
+                <IMPORTANCE>medium</IMPORTANCE>
+                <SENSITIVITY>possibly_sensitive</SENSITIVITY>
+                <CONFIDENCE>medium</CONFIDENCE>
+                <REASON>符合隐私边界要求。</REASON>
+                </CARD>
+                <CARD>
+                <TYPE>task</TYPE>
+                <TITLE>下次会议前写出决策清单</TITLE>
+                <BODY>列出本次会议要确认的事项、负责人和完成标准。</BODY>
+                <IMPORTANCE>high</IMPORTANCE>
+                <SENSITIVITY>normal</SENSITIVITY>
+                <CONFIDENCE>high</CONFIDENCE>
+                <REASON>可转化为明日任务。</REASON>
+                </CARD>
+                </MINGSI_STREAM>
+                """
+            )
+            _ = assembler.finish()
+            let cards = assembler.currentCards.compactMap(\.domainCard)
+            try expect(cards.count == 3, "Expected three cards.")
+            try expect(cards.map(\.type) == [.communication, .risk, .task], "Expected communication/risk/task cards.")
+            try expect(cards.contains { $0.sensitivity == .possiblySensitive }, "Expected a possibly sensitive card.")
+        },
+        PromptEvalCase(
+            promptId: .recommendLenses,
+            caseId: "lenses.recommends_supported_default",
+            name: "Lens recommendations include supported default",
+            inputSummary: "Meeting reflection where facts and interpretation are mixed.",
+            expectedBehavior: "Recommend at most two supported lens ids and choose a supported default lens."
+        ) { _ in
+            let object = try jsonObject(Self.recommendLensesFixture)
+            guard let recommendations = object["recommended_lenses"] as? [[String: Any]],
+                  let first = recommendations.first,
+                  let defaultLens = object["default_lens"] as? String,
+                  let id = first["id"] as? String else {
+                throw PromptEvalFailure(description: "Expected recommended_lenses and default_lens.")
+            }
+            let supported = Set(BuiltinLensCatalog.library.items.map(\.promptId))
+            try expect(supported.contains(id), "Expected supported lens id.")
+            try expect(supported.contains(defaultLens), "Expected supported default lens.")
+            try expect(recommendations.count <= 2, "Expected at most two recommendations.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.concrete_lens_specific",
+            name: "Questions are concrete and lens-specific",
+            inputSummary: "First-principles and evidence-check meeting cards requiring lens-specific follow-up questions.",
+            expectedBehavior: "Generate concrete, lens-specific questions including fact-vs-judgment and disconfirmation checks."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.questionsFixture.utf8))
+            try expect(questions.count == 3, "Expected three questions.")
+            try expect(questions.contains { $0.question.contains("事实") && $0.question.contains("判断") }, "Expected fact-vs-judgment question.")
+            try expect(questions.contains { $0.question.contains("最可能") && $0.question.contains("推翻") }, "Expected disconfirming evidence question.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuests,
+            caseId: "quests.main_quest_verifiable",
+            name: "Main quest has verifiable criteria",
+            inputSummary: "Meeting preparation card and reflection answers about reducing rework.",
+            expectedBehavior: "Generate one main quest with observable completion criteria and an owner signal."
+        ) { parser in
+            let quests = try parser.parseQuests(from: Data(Self.questsFixture.utf8))
+            try expect(quests.count == 1, "Expected exactly one quest.")
+            try expect(quests[0].type == .main, "Expected main quest.")
+            try expect(quests[0].completionCriteria.contains("负责人"), "Expected owner in completion criteria.")
+            try expect(quests[0].completionCriteria.count > quests[0].title.count, "Expected detailed completion criteria.")
+        },
+        PromptEvalCase(
+            promptId: .verifyQuest,
+            caseId: "verify.calibration_note_required",
+            name: "Verification requires a calibration note",
+            inputSummary: "Quest verification result where the user completed work but criteria were unclear.",
+            expectedBehavior: "Return a calibration note and recommendation tied to the quest's acceptance criteria."
+        ) { parser in
+            let result = try parser.parseVerification(from: Data(Self.verificationFixture.utf8))
+            try expect(result.calibrationNote.contains("验收标准"), "Expected calibration note to reference criteria.")
+            try expect(result.recommendation?.isEmpty == false, "Expected recommendation.")
+        },
+        PromptEvalCase(
+            promptId: .extractPrinciple,
+            caseId: "principle.behavior_rule_not_slogan",
+            name: "Principle is a behavior rule rather than a slogan",
+            inputSummary: "Repeated meeting ownership pattern suitable for a reusable behavior rule.",
+            expectedBehavior: "Extract a principle with concrete actions and success criteria rather than a vague slogan."
+        ) { parser in
+            let principles = try parser.parsePrinciples(from: Data(Self.principleFixture.utf8))
+            try expect(principles.count == 1, "Expected one principle.")
+            try expect(principles[0].actions.count >= 3, "Expected concrete actions.")
+            try expect(principles[0].successCriteria.contains("负责人"), "Expected success criteria.")
+        },
+        PromptEvalCase(
+            promptId: .suggestProjectLinks,
+            caseId: "project_links.evidence_backed_candidates",
+            name: "Project link suggestions keep evidence refs",
+            inputSummary: "Daily project evidence containing one active-project blocker and one new long-running project candidate.",
+            expectedBehavior: "Preserve evidence refs on both project link candidates and new project candidates."
+        ) { parser in
+            let result = try parser.parseProjectSuggestions(from: Data(Self.projectLinksFixture.utf8))
+            try expect(result.projectLinks.count == 1, "Expected one link candidate.")
+            try expect(result.projectLinks[0].sourceId == "card-123", "Expected source evidence id.")
+            try expect(result.projectCandidates.first?.sourceRefs == ["card-456", "quest-789"], "Expected new project source refs.")
+        },
+        PromptEvalCase(
+            promptId: .generateProjectInsights,
+            caseId: "project_insights.source_refs_required",
+            name: "Project insights preserve source refs",
+            inputSummary: "Project insight fixture with a single quest-backed progress signal.",
+            expectedBehavior: "Return only insights with valid source refs."
+        ) { parser in
+            let result = try parser.parseProjectInsights(from: Data(Self.projectInsightsFixture.utf8))
+            try expect(result.insights.count == 1, "Expected one project insight.")
+            try expect(result.insights[0].sourceRefs == ["quest-123"], "Expected source refs.")
+        },
+        PromptEvalCase(
+            promptId: .suggestProjectMerges,
+            caseId: "project_merges.overlap_evidence_required",
+            name: "Project merge candidates require overlap evidence",
+            inputSummary: "Two project candidates with explicit overlapping evidence links.",
+            expectedBehavior: "Return merge candidates only when overlap evidence refs are present."
+        ) { parser in
+            let candidates = try parser.parseProjectMergeCandidates(from: Data(Self.projectMergesFixture.utf8))
+            try expect(candidates.count == 1, "Expected one merge candidate.")
+            try expect(candidates[0].overlappingEvidenceRefs == ["link-1", "verification-2"], "Expected overlap refs.")
+        },
+        PromptEvalCase(
+            promptId: .weeklyCalibration,
+            caseId: "growth.weekly_contributions_have_evidence",
+            name: "Weekly growth contributions have evidence refs",
+            inputSummary: "Weekly growth fixture with evidence-backed positive and negative metric contributions.",
+            expectedBehavior: "Produce a draft-review weekly snapshot and metric contributions with source ids."
+        ) { parser in
+            let result = try parser.parseGrowthReport(from: Data(Self.growthFixture.utf8), period: "weekly", completeLoopCount: 5)
+            try expect(result.snapshot.status == .draftReview, "Expected draft review growth snapshot.")
+            try expect(result.contributions.count == 2, "Expected two metric contributions.")
+            try expect(result.contributions.allSatisfy { !$0.sourceId.isEmpty }, "Expected contribution source ids.")
+        },
+        PromptEvalCase(
+            promptId: .monthlyGrowth,
+            caseId: "growth.monthly_contributions_have_evidence",
+            name: "Monthly growth contributions have evidence refs",
+            inputSummary: "Monthly growth fixture reusing evidence-backed metric contributions.",
+            expectedBehavior: "Produce a monthly snapshot and contributions linked to source daily entries."
+        ) { parser in
+            let result = try parser.parseGrowthReport(from: Data(Self.growthFixture.utf8), period: "monthly", completeLoopCount: 6)
+            try expect(result.snapshot.period == "monthly", "Expected monthly period.")
+            try expect(result.contributions.allSatisfy { !$0.sourceDailyEntryId.uuidString.isEmpty }, "Expected source daily entry ids.")
+        }
+    ]
+
+    private static let recommendLensesFixture = """
+    {
+      "recommended_lenses": [
+        {
+          "id": "evidence_check",
+          "name": "证据校验",
+          "why_recommended": "今天的会议判断混合了事实和解释。"
+        }
+      ],
+      "default_lens": "evidence_check"
+    }
+    """
+
+    private static let questionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "这次会议中，哪些内容是事实，哪些只是你对对方意图的判断？",
+          "why_this_matters": "证据校验透镜要求先分开事实和解释，避免把感觉当结论。",
+          "expected_answer_type": "fact"
+        },
+        {
+          "question": "如果你对会议低效的判断是错的，最可能被哪条证据推翻？",
+          "why_this_matters": "反方问题可以阻止只证明自己原本的看法。",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天只做一件事时，哪一个动作最能减少后续返工？",
+          "why_this_matters": "杠杆分析必须把思考落到可执行取舍。",
+          "expected_answer_type": "tradeoff"
+        }
+      ]
+    }
+    """
+
+    private static let questsFixture = """
+    {
+      "main_quest": {
+        "type": "main",
+        "title": "会前写出决策清单并确认负责人",
+        "why_it_matters": "这是减少会议返工的最高杠杆动作。",
+        "completion_criteria": "会议开始前完成一页清单，包含要确认的决策、负责人、验收标准，并在会后发出确认摘要。",
+        "expected_resistance": "临时事项会诱导你直接开会而不先写清楚目标。",
+        "reflection_question": "这次准备是否让会议少绕了一轮？",
+        "linked_cards": ["会前没有明确要确认的决策"]
+      },
+      "side_quests": [],
+      "observation_quest": null,
+      "rejected_low_value_tasks": ["先把会议纪要排版得更完整"]
+    }
+    """
+
+    private static let verificationFixture = """
+    {
+      "calibration_note": "任务完成，但验收标准一开始还不够可观察。",
+      "likely_issue": "unclear_criteria",
+      "recommendation": "明天的主任务先写出可验收的完成标准。"
+    }
+    """
+
+    private static let principleFixture = """
+    {
+      "principle_candidate": {
+        "title": "会议前先定义要确认的决策",
+        "summary": "重要会议前先写清要确认什么、谁负责、什么算完成。",
+        "trigger_context": "跨角色会议或需要推进协作时。",
+        "actions": ["写出要确认的决策", "标出负责人", "写出验收标准", "会后发送确认摘要"],
+        "success_criteria": "参会者能复述下一步负责人和完成标准。",
+        "exceptions": "低风险同步会可以只写一句目标。"
+      }
+    }
+    """
+
+    private static let projectLinksFixture = """
+    {
+      "project_link_candidates": [
+        {
+          "project_id": "11111111-1111-1111-1111-111111111111",
+          "candidate_project_name": null,
+          "link_type": "blocker",
+          "source_type": "thinking_card",
+          "source_id": "card-123",
+          "reason": "The blocker matches an active project.",
+          "confidence": "high",
+          "requires_user_confirmation": true
+        }
+      ],
+      "new_project_candidates": [
+        {
+          "candidate_project_name": "Cross-team ownership clarity",
+          "goal": "Make ownership explicit before implementation work starts.",
+          "current_bottleneck": "Responsibility boundaries keep surfacing after meetings.",
+          "success_criteria": "Every cross-team decision has one owner and visible acceptance criteria.",
+          "why_this_is_long_running": "The same ownership ambiguity appears across multiple planning loops.",
+          "source_refs": [
+            {
+              "source_type": "thinking_card",
+              "source_id": "card-456"
+            },
+            {
+              "source_type": "quest",
+              "source_id": "quest-789"
+            }
+          ],
+          "privacy_safe_name_required": true,
+          "confidence": "medium"
+        }
+      ]
+    }
+    """
+
+    private static let projectInsightsFixture = """
+    {
+      "project_insights": [
+        {
+          "project_id": "22222222-2222-2222-2222-222222222222",
+          "insight_type": "progress",
+          "title": "Decision owner is now explicit",
+          "summary": "The latest quest names the owner before implementation starts.",
+          "before": null,
+          "after": null,
+          "source_refs": ["quest-123"],
+          "confidence": "high"
+        }
+      ],
+      "insufficient_evidence_reason": null
+    }
+    """
+
+    private static let projectMergesFixture = """
+    {
+      "merge_candidates": [
+        {
+          "source_project_id": "33333333-3333-3333-3333-333333333333",
+          "target_project_id": "44444444-4444-4444-4444-444444444444",
+          "reason": "Both projects track the same repeated ownership ambiguity.",
+          "overlapping_evidence_refs": ["link-1", "verification-2"],
+          "risks_if_merged": ["One narrow context may get hidden."],
+          "risks_if_kept_separate": ["Evidence remains split across duplicate projects."],
+          "confidence": "high"
+        }
+      ]
+    }
+    """
+
+    private static let growthFixture = """
+    {
+      "insufficient_evidence": false,
+      "summary": "会议目标和验收标准比上周更清晰。",
+      "metrics": {
+        "clarity": {"value": 3.8, "delta": 0.2, "reason": "多次任务先定义负责人和验收标准。"},
+        "value_judgment": {"value": 3.4, "delta": 0.1, "reason": "开始拒绝低价值排版任务。"},
+        "execution_reliability": {"value": 3.2, "delta": 0.1, "reason": "主任务完成率稳定。"},
+        "calibration": {"value": 3.1, "delta": 0.1, "reason": "复盘能识别标准不清。"},
+        "reflection_depth": {"value": 3.6, "delta": 0.2, "reason": "能区分事实和判断。"}
+      },
+      "metric_contributions": [
+        {
+          "metric": "clarity",
+          "direction": "positive",
+          "delta": 0.20,
+          "title": "会议目标更清晰",
+          "reason": "用户在任务中明确要求会前写出决策、负责人和验收标准。",
+          "source_type": "quest",
+          "source_id": "quest-001",
+          "source_daily_entry_id": "55555555-5555-5555-5555-555555555555"
+        },
+        {
+          "metric": "reflection_depth",
+          "direction": "positive",
+          "delta": 0.10,
+          "title": "能拆分事实和判断",
+          "reason": "复盘记录了哪些是事实、哪些是对方意图的解释。",
+          "source_type": "thinking_card",
+          "source_id": "card-002",
+          "source_daily_entry_id": "55555555-5555-5555-5555-555555555555"
+        }
+      ],
+      "next_training_focus": "继续把会议任务写成可验收标准。"
+    }
+    """
+
+    private static func jsonObject(_ json: String) throws -> [String: Any] {
+        guard
+            let data = json.data(using: .utf8),
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            throw PromptEvalFailure(description: "Invalid JSON object fixture.")
+        }
+        return object
+    }
+}
+
+private extension Array where Element == PromptEvalCase {
+    func groupedByPromptId() -> [(PromptID, [PromptEvalCase])] {
+        var grouped: [PromptID: [PromptEvalCase]] = [:]
+        for evalCase in self {
+            grouped[evalCase.promptId, default: []].append(evalCase)
+        }
+        return grouped
+            .map { ($0.key, $0.value.sorted { $0.caseId < $1.caseId }) }
+            .sorted { $0.0.rawValue < $1.0.rawValue }
+    }
+}
+
+private func expect(_ condition: Bool, _ message: String) throws {
+    guard condition else {
+        throw PromptEvalFailure(description: message)
+    }
+}
+
 protocol ReminderService {
     func requestPermission() async throws -> ReminderPermissionStatus
     func schedule(_ request: ReminderRequest) async throws
@@ -496,13 +1318,76 @@ struct ReminderRequest: Hashable {
 
 final class LocalPromptProvider: PromptProvider {
     func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
-        let version = "1.0.0"
+        let asset = Self.assetMetadata(for: id)
+        return PromptTemplate(
+            id: id,
+            version: asset.promptVersion,
+            systemPolicyVersion: asset.systemPolicyVersion,
+            contextPolicyVersion: asset.contextPolicyVersion,
+            evalSuiteVersion: asset.evalSuiteVersion,
+            rollbackTargetVersion: asset.rollbackTargetVersion,
+            systemText: id == .organizeCards ? Self.streamingCardsSystemText(for: mode) : Self.systemText(for: mode),
+            userText: Self.userText(for: id, mode: mode),
+            outputSchemaVersion: asset.outputSchemaVersion
+        )
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        let current = template(for: id, mode: mode)
+        if current.version == version {
+            return current
+        }
+        return Self.historicalTemplate(for: id, mode: mode, version: version, current: current)
+    }
+
+    private struct PromptAssetMetadata {
+        var promptVersion: String
+        var systemPolicyVersion: String
+        var contextPolicyVersion: String
+        var outputSchemaVersion: Int
+        var evalSuiteVersion: String
+        var rollbackTargetVersion: String?
+    }
+
+    private static func assetMetadata(for id: PromptID) -> PromptAssetMetadata {
+        let rollbackTargetVersion: String?
+        switch id {
+        case .generateQuestions:
+            rollbackTargetVersion = "0.9.0"
+        default:
+            rollbackTargetVersion = nil
+        }
+
+        return PromptAssetMetadata(
+            promptVersion: "1.0.0",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.\(id.rawValue).v1",
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "\(id.rawValue).eval.v1",
+            rollbackTargetVersion: rollbackTargetVersion
+        )
+    }
+
+    private static func historicalTemplate(
+        for id: PromptID,
+        mode: SessionMode,
+        version: String,
+        current: PromptTemplate
+    ) -> PromptTemplate? {
+        guard id == .generateQuestions, version == "0.9.0" else {
+            return nil
+        }
+
         return PromptTemplate(
             id: id,
             version: version,
-            systemText: id == .organizeCards ? Self.streamingCardsSystemText(for: mode) : Self.systemText(for: mode),
-            userText: Self.userText(for: id, mode: mode),
-            outputSchemaVersion: 1
+            systemPolicyVersion: current.systemPolicyVersion,
+            contextPolicyVersion: current.contextPolicyVersion,
+            evalSuiteVersion: current.evalSuiteVersion,
+            rollbackTargetVersion: nil,
+            systemText: current.systemText,
+            userText: Self.generateQuestionsV090UserText(for: mode),
+            outputSchemaVersion: current.outputSchemaVersion
         )
     }
 
@@ -531,6 +1416,30 @@ final class LocalPromptProvider: PromptProvider {
         Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
         Session mode: \(mode.rawValue). Quick is shortest path, standard is the default full loop, and deep uses more scrutiny.
         Return only MINGSI_STREAM_V1 XML-like tags. Do not return JSON, Markdown, comments, or explanations outside the allowed tags.
+        """
+    }
+
+    private static func generateQuestionsV090UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate concrete reflection questions from the confirmed cards.
+        Questions must be specific to the user's actual situation.
+        Do not ask generic self-help questions.
+        Include at least one question that tests an assumption or missing fact.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
         """
     }
 

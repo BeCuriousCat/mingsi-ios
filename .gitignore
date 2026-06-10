@@ -1,6 +1,8 @@
 .DS_Store
 .cache/
 .claude/
+.omo/
+.superpowers/
 *.xcuserdata
 xcuserdata/
 DerivedData/

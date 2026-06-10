@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import GRDB
 
@@ -30,8 +31,28 @@ protocol QuestRepository {
 protocol PrincipleRepository {
     func savePrinciple(_ principle: PrincipleAsset, sourceDailyEntryId: UUID) async throws
     func savePrinciples(_ principles: [PrincipleAsset], sourceDailyEntryId: UUID) async throws
+    func allPrinciples() async throws -> [PrincipleAsset]
     func activePrinciples() async throws -> [PrincipleAsset]
     func principles(for dailyEntryId: UUID) async throws -> [PrincipleAsset]
+    func updatePrinciple(_ principle: PrincipleAsset) async throws
+    func updatePrincipleStatus(_ status: PrincipleStatus, principleId: UUID) async throws
+    func deletePrinciple(_ principleId: UUID) async throws
+}
+
+protocol PrincipleRecallFeedbackRepository {
+    func saveFeedback(_ feedback: PrincipleRecallFeedback) async throws
+    func feedback(for principleId: UUID, limit: Int) async throws -> [PrincipleRecallFeedback]
+}
+
+protocol PrinciplePracticeEvidenceRepository {
+    func saveEvidence(_ evidence: PrinciplePracticeEvidence) async throws
+    func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence]
+    func evidence(
+        for principleId: UUID,
+        sourceDailyEntryId: UUID,
+        questId: UUID,
+        evidenceSource: PrinciplePracticeEvidenceSource
+    ) async throws -> PrinciplePracticeEvidence?
 }
 
 protocol VerificationRepository {
@@ -98,6 +119,89 @@ protocol PromptRunRepository {
     func savePromptRun(_ run: PromptRun) async throws
     func recentPromptRuns(limit: Int) async throws -> [PromptRun]
     func unresolvedFailures(limit: Int) async throws -> [PromptRun]
+    func updatePromptRunFeedback(_ feedback: PromptRunFeedback, runId: UUID) async throws
+    func promptRunStats(limit: Int) async throws -> PromptRunStats
+}
+
+protocol PromptEvalRunRepository {
+    func saveEvalRun(_ run: PromptEvalRun) async throws
+    func recentEvalRuns(limit: Int) async throws -> [PromptEvalRun]
+}
+
+enum PromptAssetSelectionReason: String, Codable, Equatable {
+    case rollback
+}
+
+struct PromptAssetSelection: Equatable {
+    var promptId: PromptID
+    var selectedVersion: String
+    var baseVersion: String
+    var reason: PromptAssetSelectionReason
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        promptId: PromptID,
+        selectedVersion: String,
+        baseVersion: String,
+        reason: PromptAssetSelectionReason,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.promptId = promptId
+        self.selectedVersion = selectedVersion
+        self.baseVersion = baseVersion
+        self.reason = reason
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+protocol PromptAssetSelectionRepository {
+    func saveSelection(_ selection: PromptAssetSelection) async throws
+    func allSelections() async throws -> [PromptAssetSelection]
+}
+
+protocol PromptAssetPackRepository {
+    func savePack(_ pack: PromptAssetPack) async throws
+    func allPacks() async throws -> [PromptAssetPack]
+    func enabledPacks() async throws -> [PromptAssetPack]
+}
+
+protocol LensAssetPackRepository {
+    func savePack(_ pack: LensAssetPack) async throws
+    func allPacks() async throws -> [LensAssetPack]
+    func enabledPacks() async throws -> [LensAssetPack]
+}
+
+struct AssetPackTrustPolicyRecord: Equatable {
+    var id: String
+    var sourceURL: URL?
+    var document: AssetPackTrustPolicyDocument
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+protocol AssetPackTrustPolicyRepository {
+    func saveDocument(_ document: AssetPackTrustPolicyDocument, sourceURL: URL?) async throws
+    func allDocuments() async throws -> [AssetPackTrustPolicyRecord]
+}
+
+struct DataExportPackage: Equatable {
+    var data: Data
+    var counts: [String: Int]
+    var createdAt: Date
+
+    var summary: String {
+        DataExportSectionName.allCases
+            .map { "\($0.rawValue): \(counts[$0.rawValue, default: 0])" }
+            .joined(separator: " · ")
+    }
+}
+
+protocol DataExportRepository {
+    func exportJSON() async throws -> Data
+    func exportPackage() async throws -> DataExportPackage
 }
 
 protocol HistoricalRetryCandidateRepository {
@@ -242,8 +346,16 @@ final class AppDatabase {
                 table.column("schema_version", .integer).notNull()
                 table.column("prompt_id", .text).notNull()
                 table.column("prompt_version", .text).notNull()
+                table.column("prompt_source_kind", .text).notNull().defaults(to: PromptAssetSourceKind.builtin.rawValue)
+                table.column("prompt_pack_id", .text).notNull().defaults(to: "mingsi.builtin.prompts")
+                table.column("prompt_pack_version", .text).notNull().defaults(to: "builtin.v1")
+                table.column("prompt_pack_display_name", .text).notNull().defaults(to: "MingSi Built-in Prompt Pack")
+                table.column("system_policy_version", .text).notNull().defaults(to: "system.v1")
+                table.column("context_policy_version", .text).notNull().defaults(to: "context.v1")
                 table.column("input_schema_version", .integer).notNull()
                 table.column("output_schema_version", .integer).notNull()
+                table.column("eval_suite_version", .text).notNull().defaults(to: "eval.v1")
+                table.column("rollback_target_version", .text)
                 table.column("model_provider", .text).notNull()
                 table.column("model_name", .text).notNull()
                 table.column("session_mode", .text).notNull()
@@ -252,6 +364,7 @@ final class AppDatabase {
                 table.column("request_summary", .text)
                 table.column("response_json", .text)
                 table.column("error", .text)
+                table.column("user_feedback", .text).notNull().defaults(to: PromptRunFeedback.none.rawValue)
                 table.column("created_at", .text).notNull()
             }
         }
@@ -260,6 +373,9 @@ final class AppDatabase {
             try db.alter(table: "daily_entries") { table in
                 table.add(column: "has_selected_session_mode", .boolean).notNull().defaults(to: false)
                 table.add(column: "selected_lens", .text)
+                table.add(column: "selected_custom_lens_id", .text)
+                table.add(column: "custom_lens_items_json", .text)
+                table.add(column: "custom_lens_questions_json", .text)
                 table.add(column: "yesterday_completion", .text)
                 table.add(column: "yesterday_value_rating", .text)
             }
@@ -485,6 +601,338 @@ final class AppDatabase {
             try db.create(
                 index: "idx_historical_retry_candidates_updated_at",
                 on: "historical_retry_candidates",
+                columns: ["updated_at"]
+            )
+        }
+
+        migrator.registerMigration("v9_daily_entry_custom_lens_id") { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            guard !dailyEntryColumns.contains("selected_custom_lens_id") else { return }
+
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "selected_custom_lens_id", .text)
+            }
+        }
+
+        migrator.registerMigration("v10_daily_entry_custom_lens_items") { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            guard !dailyEntryColumns.contains("custom_lens_items_json") else { return }
+
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "custom_lens_items_json", .text)
+            }
+        }
+
+        migrator.registerMigration("v11_daily_entry_custom_lens_questions") { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            guard !dailyEntryColumns.contains("custom_lens_questions_json") else { return }
+
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "custom_lens_questions_json", .text)
+            }
+        }
+
+        migrator.registerMigration("v12_prompt_run_asset_versions") { db in
+            guard try db.tableExists("prompt_runs") else { return }
+            let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
+
+            try db.alter(table: "prompt_runs") { table in
+                if !promptRunColumns.contains("system_policy_version") {
+                    table.add(column: "system_policy_version", .text).notNull().defaults(to: "system.v1")
+                }
+                if !promptRunColumns.contains("context_policy_version") {
+                    table.add(column: "context_policy_version", .text).notNull().defaults(to: "context.v1")
+                }
+                if !promptRunColumns.contains("eval_suite_version") {
+                    table.add(column: "eval_suite_version", .text).notNull().defaults(to: "eval.v1")
+                }
+                if !promptRunColumns.contains("rollback_target_version") {
+                    table.add(column: "rollback_target_version", .text)
+                }
+            }
+        }
+
+        migrator.registerMigration("v13_prompt_run_feedback") { db in
+            guard try db.tableExists("prompt_runs") else { return }
+            let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
+            guard !promptRunColumns.contains("user_feedback") else { return }
+
+            try db.alter(table: "prompt_runs") { table in
+                table.add(column: "user_feedback", .text).notNull().defaults(to: PromptRunFeedback.none.rawValue)
+            }
+        }
+
+        migrator.registerMigration("v14_principle_recall_feedback") { db in
+            try db.create(table: "principle_recall_feedback", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("principle_id", .text).notNull()
+                table.column("prompt_run_id", .text)
+                table.column("source_daily_entry_id", .text)
+                table.column("prompt_id", .text).notNull()
+                table.column("retrieval_policy_version", .text).notNull()
+                table.column("retrieval_reason", .text).notNull()
+                table.column("feedback", .text).notNull()
+                table.column("note", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_principle_recall_feedback_principle_id",
+                on: "principle_recall_feedback",
+                columns: ["principle_id"]
+            )
+            try db.create(
+                index: "idx_principle_recall_feedback_prompt_run_id",
+                on: "principle_recall_feedback",
+                columns: ["prompt_run_id"]
+            )
+            try db.create(
+                index: "idx_principle_recall_feedback_feedback",
+                on: "principle_recall_feedback",
+                columns: ["feedback"]
+            )
+        }
+
+        migrator.registerMigration("v15_principle_practice_evidence") { db in
+            try db.create(table: "principle_practice_evidence", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("principle_id", .text).notNull()
+                table.column("source_daily_entry_id", .text).notNull()
+                table.column("quest_id", .text)
+                table.column("verification_id", .text)
+                table.column("evidence_source", .text).notNull()
+                table.column("strength", .text).notNull()
+                table.column("evidence_summary", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_principle_practice_evidence_principle_id",
+                on: "principle_practice_evidence",
+                columns: ["principle_id"]
+            )
+            try db.create(
+                index: "idx_principle_practice_evidence_source_daily_entry_id",
+                on: "principle_practice_evidence",
+                columns: ["source_daily_entry_id"]
+            )
+            try db.create(
+                index: "idx_principle_practice_evidence_strength",
+                on: "principle_practice_evidence",
+                columns: ["strength"]
+            )
+        }
+
+        migrator.registerMigration("v16_prompt_eval_runs") { db in
+            try db.create(table: "prompt_eval_runs", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("prompt_id", .text).notNull()
+                table.column("prompt_version", .text).notNull()
+                table.column("prompt_source_kind", .text).notNull().defaults(to: PromptAssetSourceKind.builtin.rawValue)
+                table.column("prompt_pack_id", .text).notNull().defaults(to: "mingsi.builtin.prompts")
+                table.column("prompt_pack_version", .text).notNull().defaults(to: "builtin.v1")
+                table.column("prompt_pack_display_name", .text).notNull().defaults(to: "MingSi Built-in Prompt Pack")
+                table.column("system_policy_version", .text).notNull()
+                table.column("context_policy_version", .text).notNull()
+                table.column("input_schema_version", .integer).notNull()
+                table.column("output_schema_version", .integer).notNull()
+                table.column("eval_suite_version", .text).notNull()
+                table.column("runner_version", .text).notNull()
+                table.column("status", .text).notNull()
+                table.column("total_case_count", .integer).notNull()
+                table.column("passed_case_count", .integer).notNull()
+                table.column("failed_case_count", .integer).notNull()
+                table.column("case_results_json", .text).notNull()
+                table.column("created_at", .text).notNull()
+            }
+
+            try db.create(
+                index: "idx_prompt_eval_runs_prompt_id",
+                on: "prompt_eval_runs",
+                columns: ["prompt_id"]
+            )
+            try db.create(
+                index: "idx_prompt_eval_runs_eval_suite_version",
+                on: "prompt_eval_runs",
+                columns: ["eval_suite_version"]
+            )
+            try db.create(
+                index: "idx_prompt_eval_runs_created_at",
+                on: "prompt_eval_runs",
+                columns: ["created_at"]
+            )
+        }
+
+        migrator.registerMigration("v17_prompt_asset_selections") { db in
+            try db.create(table: "prompt_asset_selections", ifNotExists: true) { table in
+                table.column("prompt_id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("selected_version", .text).notNull()
+                table.column("base_version", .text).notNull()
+                table.column("reason", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_prompt_asset_selections_updated_at",
+                on: "prompt_asset_selections",
+                columns: ["updated_at"]
+            )
+        }
+
+        migrator.registerMigration("v18_lens_asset_packs") { db in
+            try db.create(table: "lens_asset_packs", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("version", .text).notNull()
+                table.column("display_name", .text).notNull()
+                table.column("source_kind", .text).notNull()
+                table.column("is_enabled", .integer).notNull()
+                table.column("items_json", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_lens_asset_packs_source_kind",
+                on: "lens_asset_packs",
+                columns: ["source_kind"]
+            )
+            try db.create(
+                index: "idx_lens_asset_packs_enabled",
+                on: "lens_asset_packs",
+                columns: ["is_enabled"]
+            )
+            try db.create(
+                index: "idx_lens_asset_packs_updated_at",
+                on: "lens_asset_packs",
+                columns: ["updated_at"]
+            )
+        }
+
+        migrator.registerMigration("v19_prompt_asset_packs") { db in
+            try db.create(table: "prompt_asset_packs", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("version", .text).notNull()
+                table.column("display_name", .text).notNull()
+                table.column("source_kind", .text).notNull()
+                table.column("is_enabled", .integer).notNull()
+                table.column("templates_json", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_prompt_asset_packs_source_kind",
+                on: "prompt_asset_packs",
+                columns: ["source_kind"]
+            )
+            try db.create(
+                index: "idx_prompt_asset_packs_enabled",
+                on: "prompt_asset_packs",
+                columns: ["is_enabled"]
+            )
+            try db.create(
+                index: "idx_prompt_asset_packs_updated_at",
+                on: "prompt_asset_packs",
+                columns: ["updated_at"]
+            )
+        }
+
+        migrator.registerMigration("v20_asset_pack_trust_metadata") { db in
+            try db.alter(table: "prompt_asset_packs") { table in
+                table.add(column: "trust_metadata_json", .text)
+            }
+            try db.alter(table: "lens_asset_packs") { table in
+                table.add(column: "trust_metadata_json", .text)
+            }
+        }
+
+        migrator.registerMigration("v21_prompt_asset_pack_provenance") { db in
+            if try db.tableExists("prompt_runs") {
+                let promptRunColumns = Set(try db.columns(in: "prompt_runs").map(\.name))
+                try db.alter(table: "prompt_runs") { table in
+                    if !promptRunColumns.contains("prompt_source_kind") {
+                        table.add(column: "prompt_source_kind", .text)
+                            .notNull()
+                            .defaults(to: PromptAssetSourceKind.builtin.rawValue)
+                    }
+                    if !promptRunColumns.contains("prompt_pack_id") {
+                        table.add(column: "prompt_pack_id", .text)
+                            .notNull()
+                            .defaults(to: "mingsi.builtin.prompts")
+                    }
+                    if !promptRunColumns.contains("prompt_pack_version") {
+                        table.add(column: "prompt_pack_version", .text)
+                            .notNull()
+                            .defaults(to: "builtin.v1")
+                    }
+                    if !promptRunColumns.contains("prompt_pack_display_name") {
+                        table.add(column: "prompt_pack_display_name", .text)
+                            .notNull()
+                            .defaults(to: "MingSi Built-in Prompt Pack")
+                    }
+                }
+            }
+
+            if try db.tableExists("prompt_eval_runs") {
+                let evalRunColumns = Set(try db.columns(in: "prompt_eval_runs").map(\.name))
+                try db.alter(table: "prompt_eval_runs") { table in
+                    if !evalRunColumns.contains("prompt_source_kind") {
+                        table.add(column: "prompt_source_kind", .text)
+                            .notNull()
+                            .defaults(to: PromptAssetSourceKind.builtin.rawValue)
+                    }
+                    if !evalRunColumns.contains("prompt_pack_id") {
+                        table.add(column: "prompt_pack_id", .text)
+                            .notNull()
+                            .defaults(to: "mingsi.builtin.prompts")
+                    }
+                    if !evalRunColumns.contains("prompt_pack_version") {
+                        table.add(column: "prompt_pack_version", .text)
+                            .notNull()
+                            .defaults(to: "builtin.v1")
+                    }
+                    if !evalRunColumns.contains("prompt_pack_display_name") {
+                        table.add(column: "prompt_pack_display_name", .text)
+                            .notNull()
+                            .defaults(to: "MingSi Built-in Prompt Pack")
+                    }
+                }
+            }
+        }
+
+        migrator.registerMigration("v22_asset_pack_trust_policies") { db in
+            try db.create(table: "asset_pack_trust_policies", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("schema_version", .integer).notNull()
+                table.column("source_url", .text)
+                table.column("document_json", .text).notNull()
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull()
+                table.column("deleted_at", .text)
+            }
+
+            try db.create(
+                index: "idx_asset_pack_trust_policies_source_url",
+                on: "asset_pack_trust_policies",
+                columns: ["source_url"]
+            )
+            try db.create(
+                index: "idx_asset_pack_trust_policies_updated_at",
+                on: "asset_pack_trust_policies",
                 columns: ["updated_at"]
             )
         }
@@ -715,14 +1163,159 @@ final class SQLitePrincipleRepository: PrincipleRepository {
         }
     }
 
+    func allPrinciples() async throws -> [PrincipleAsset] {
+        try await database.dbQueue.read { db in
+            try PrincipleAssetRow
+                .filter(Column("status") != PrincipleStatus.archived.rawValue)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
     func principles(for dailyEntryId: UUID) async throws -> [PrincipleAsset] {
         try await database.dbQueue.read { db in
             try PrincipleAssetRow
                 .filter(Column("source_daily_entry_ids_json").like("%\(dailyEntryId.uuidString)%"))
+                .filter(Column("status") != PrincipleStatus.archived.rawValue)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("created_at").asc)
                 .fetchAll(db)
                 .map { try $0.domainModel() }
+        }
+    }
+
+    func updatePrinciple(_ principle: PrincipleAsset) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try PrincipleAssetRow.fetchOne(db, key: principle.id.uuidString) else { return }
+            row.title = principle.title
+            row.summary = principle.summary
+            row.triggerContext = principle.triggerContext
+            row.actionsJson = (try? PersistenceJSON.encode(principle.actions)) ?? "[]"
+            row.successCriteria = principle.successCriteria
+            row.exceptions = principle.exceptions
+            row.status = principle.status.rawValue
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+
+    func updatePrincipleStatus(_ status: PrincipleStatus, principleId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try PrincipleAssetRow.fetchOne(db, key: principleId.uuidString) else { return }
+            row.status = status.rawValue
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+
+    func deletePrinciple(_ principleId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try PrincipleAssetRow.fetchOne(db, key: principleId.uuidString) else { return }
+            let now = Date().mingsiStorageString
+            row.updatedAt = now
+            row.deletedAt = now
+            try row.upsert(db)
+
+            var feedbackRows = try PrincipleRecallFeedbackRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .fetchAll(db)
+            for index in feedbackRows.indices {
+                feedbackRows[index].updatedAt = now
+                feedbackRows[index].deletedAt = now
+                try feedbackRows[index].upsert(db)
+            }
+
+            var evidenceRows = try PrinciplePracticeEvidenceRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .fetchAll(db)
+            for index in evidenceRows.indices {
+                evidenceRows[index].updatedAt = now
+                evidenceRows[index].deletedAt = now
+                try evidenceRows[index].upsert(db)
+            }
+        }
+    }
+}
+
+final class SQLitePrincipleRecallFeedbackRepository: PrincipleRecallFeedbackRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveFeedback(_ feedback: PrincipleRecallFeedback) async throws {
+        try await database.dbQueue.write { db in
+            var row = PrincipleRecallFeedbackRow(feedback: feedback)
+            if let existing = try PrincipleRecallFeedbackRow.fetchOne(db, key: row.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func feedback(for principleId: UUID, limit: Int) async throws -> [PrincipleRecallFeedback] {
+        try await database.dbQueue.read { db in
+            try PrincipleRecallFeedbackRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+}
+
+final class SQLitePrinciplePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveEvidence(_ evidence: PrinciplePracticeEvidence) async throws {
+        try await database.dbQueue.write { db in
+            var row = PrinciplePracticeEvidenceRow(evidence: evidence)
+            if let existing = try PrinciplePracticeEvidenceRow.fetchOne(db, key: row.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
+        try await database.dbQueue.read { db in
+            try PrinciplePracticeEvidenceRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func evidence(
+        for principleId: UUID,
+        sourceDailyEntryId: UUID,
+        questId: UUID,
+        evidenceSource: PrinciplePracticeEvidenceSource
+    ) async throws -> PrinciplePracticeEvidence? {
+        try await database.dbQueue.read { db in
+            try PrinciplePracticeEvidenceRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("source_daily_entry_id") == sourceDailyEntryId.uuidString)
+                .filter(Column("quest_id") == questId.uuidString)
+                .filter(Column("evidence_source") == evidenceSource.rawValue)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").desc)
+                .fetchOne(db)?
+                .domainModel()
         }
     }
 }
@@ -1070,6 +1663,9 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
     var sessionMode: String
     var hasSelectedSessionMode: Bool
     var selectedLens: String?
+    var selectedCustomLensId: String?
+    var customLensItemsJson: String?
+    var customLensQuestionsJson: String?
     var yesterdayCompletion: String?
     var yesterdayValueRating: String?
     var state: String
@@ -1091,6 +1687,9 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         sessionMode = draft.sessionMode.rawValue
         hasSelectedSessionMode = draft.hasSelectedSessionMode
         selectedLens = draft.selectedLens?.rawValue
+        selectedCustomLensId = draft.selectedCustomLensId
+        customLensItemsJson = try? PersistenceJSON.encode(draft.customLensItems)
+        customLensQuestionsJson = try? PersistenceJSON.encode(draft.customLensQuestions)
         yesterdayCompletion = draft.yesterdayCompletion?.rawValue
         yesterdayValueRating = draft.yesterdayValueRating?.rawValue
         state = draft.state.rawValue
@@ -1119,6 +1718,8 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         } else {
             lens = nil
         }
+        let customLensItems: [LensCatalogItem] = try PersistenceJSON.decode(customLensItemsJson) ?? []
+        let customLensQuestions: [ReflectionQuestion] = try PersistenceJSON.decode(customLensQuestionsJson) ?? []
         let completion: YesterdayCompletion?
         if let yesterdayCompletion {
             guard let parsedCompletion = YesterdayCompletion(rawValue: yesterdayCompletion) else {
@@ -1144,6 +1745,9 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
             sessionMode: mode,
             hasSelectedSessionMode: hasSelectedSessionMode,
             selectedLens: lens,
+            selectedCustomLensId: selectedCustomLensId,
+            customLensItems: customLensItems,
+            customLensQuestions: customLensQuestions,
             yesterdayCompletion: completion,
             yesterdayValueRating: valueRating,
             state: state
@@ -1348,6 +1952,162 @@ private struct PrincipleAssetRow: Codable, FetchableRecord, PersistableRecord {
             successCriteria: successCriteria,
             exceptions: exceptions ?? "",
             status: status
+        )
+    }
+}
+
+private struct PrincipleRecallFeedbackRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "principle_recall_feedback"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var principleId: String
+    var promptRunId: String?
+    var sourceDailyEntryId: String?
+    var promptId: String
+    var retrievalPolicyVersion: String
+    var retrievalReason: String
+    var feedback: String
+    var note: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(feedback: PrincipleRecallFeedback) {
+        let now = Date().mingsiStorageString
+        id = feedback.id.uuidString
+        schemaVersion = feedback.schemaVersion
+        principleId = feedback.principleId.uuidString
+        promptRunId = feedback.promptRunId?.uuidString
+        sourceDailyEntryId = feedback.sourceDailyEntryId?.uuidString
+        promptId = feedback.promptId.rawValue
+        retrievalPolicyVersion = feedback.retrievalPolicyVersion
+        retrievalReason = feedback.retrievalReason
+        self.feedback = feedback.feedback.rawValue
+        note = feedback.note
+        createdAt = feedback.createdAt.mingsiStorageString
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> PrincipleRecallFeedback {
+        guard let uuid = UUID(uuidString: id) else {
+            throw PersistenceError.invalidStoredValue("principle_recall_feedback.id")
+        }
+        guard let principleUUID = UUID(uuidString: principleId) else {
+            throw PersistenceError.invalidStoredValue("principle_recall_feedback.principle_id")
+        }
+        let promptRunUUID = try promptRunId.map { value in
+            guard let uuid = UUID(uuidString: value) else {
+                throw PersistenceError.invalidStoredValue("principle_recall_feedback.prompt_run_id")
+            }
+            return uuid
+        }
+        let sourceEntryUUID = try sourceDailyEntryId.map { value in
+            guard let uuid = UUID(uuidString: value) else {
+                throw PersistenceError.invalidStoredValue("principle_recall_feedback.source_daily_entry_id")
+            }
+            return uuid
+        }
+        guard let prompt = PromptID(rawValue: promptId) else {
+            throw PersistenceError.invalidStoredValue("principle_recall_feedback.prompt_id")
+        }
+        guard let feedbackValue = PrincipleRecallFeedbackValue(rawValue: feedback) else {
+            throw PersistenceError.invalidStoredValue("principle_recall_feedback.feedback")
+        }
+        return PrincipleRecallFeedback(
+            id: uuid,
+            schemaVersion: schemaVersion,
+            principleId: principleUUID,
+            promptRunId: promptRunUUID,
+            sourceDailyEntryId: sourceEntryUUID,
+            promptId: prompt,
+            retrievalPolicyVersion: retrievalPolicyVersion,
+            retrievalReason: retrievalReason,
+            feedback: feedbackValue,
+            note: note,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
+        )
+    }
+}
+
+private struct PrinciplePracticeEvidenceRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "principle_practice_evidence"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var principleId: String
+    var sourceDailyEntryId: String
+    var questId: String?
+    var verificationId: String?
+    var evidenceSource: String
+    var strength: String
+    var evidenceSummary: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(evidence: PrinciplePracticeEvidence) {
+        let now = Date().mingsiStorageString
+        id = evidence.id.uuidString
+        schemaVersion = evidence.schemaVersion
+        principleId = evidence.principleId.uuidString
+        sourceDailyEntryId = evidence.sourceDailyEntryId.uuidString
+        questId = evidence.questId?.uuidString
+        verificationId = evidence.verificationId?.uuidString
+        evidenceSource = evidence.evidenceSource.rawValue
+        strength = evidence.strength.rawValue
+        evidenceSummary = evidence.evidenceSummary
+        createdAt = evidence.createdAt.mingsiStorageString
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> PrinciplePracticeEvidence {
+        guard let uuid = UUID(uuidString: id) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.id")
+        }
+        guard let principleUUID = UUID(uuidString: principleId) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.principle_id")
+        }
+        guard let sourceEntryUUID = UUID(uuidString: sourceDailyEntryId) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.source_daily_entry_id")
+        }
+        let questUUID = try questId.map { value in
+            guard let uuid = UUID(uuidString: value) else {
+                throw PersistenceError.invalidStoredValue("principle_practice_evidence.quest_id")
+            }
+            return uuid
+        }
+        let verificationUUID = try verificationId.map { value in
+            guard let uuid = UUID(uuidString: value) else {
+                throw PersistenceError.invalidStoredValue("principle_practice_evidence.verification_id")
+            }
+            return uuid
+        }
+        guard let source = PrinciplePracticeEvidenceSource(rawValue: evidenceSource) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.evidence_source")
+        }
+        guard let strength = PrinciplePracticeEvidenceStrength(rawValue: strength) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.strength")
+        }
+        return PrinciplePracticeEvidence(
+            id: uuid,
+            schemaVersion: schemaVersion,
+            principleId: principleUUID,
+            sourceDailyEntryId: sourceEntryUUID,
+            questId: questUUID,
+            verificationId: verificationUUID,
+            evidenceSource: source,
+            strength: strength,
+            evidenceSummary: evidenceSummary,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
         )
     }
 }
@@ -1971,6 +2731,1089 @@ final class SQLitePromptRunRepository: PromptRunRepository {
             return failures
         }
     }
+
+    func updatePromptRunFeedback(_ feedback: PromptRunFeedback, runId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try PromptRunRow.fetchOne(db, key: runId.uuidString) else { return }
+            row.userFeedback = feedback.rawValue
+            try row.upsert(db)
+        }
+    }
+
+    func promptRunStats(limit: Int) async throws -> PromptRunStats {
+        try await database.dbQueue.read { db in
+            let rows = try PromptRunRow
+                .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+            let total = rows.count
+            let failures = rows.filter { $0.responseJson == nil && $0.error != nil }
+            let emptyResults = failures.filter { row in
+                guard let error = row.error?.lowercased() else { return false }
+                return error.contains("emptyresult") || error.contains("empty result")
+            }
+            let denied = rows.filter { $0.userFeedback == PromptRunFeedback.denied.rawValue }
+            return PromptRunStats(
+                totalCount: total,
+                successCount: rows.filter { $0.responseJson != nil && $0.error == nil }.count,
+                failureCount: failures.count,
+                emptyResultCount: emptyResults.count,
+                userDeniedCount: denied.count
+            )
+        }
+    }
+}
+
+final class SQLitePromptEvalRunRepository: PromptEvalRunRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveEvalRun(_ run: PromptEvalRun) async throws {
+        try await database.dbQueue.write { db in
+            try PromptEvalRunRow(run: run).upsert(db)
+        }
+    }
+
+    func recentEvalRuns(limit: Int) async throws -> [PromptEvalRun] {
+        try await database.dbQueue.read { db in
+            try PromptEvalRunRow
+                .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+}
+
+final class SQLitePromptAssetSelectionRepository: PromptAssetSelectionRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveSelection(_ selection: PromptAssetSelection) async throws {
+        guard !selection.selectedVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetSelection requires selectedVersion")
+        }
+        guard !selection.baseVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetSelection requires baseVersion")
+        }
+        try await database.dbQueue.write { db in
+            var row = PromptAssetSelectionRow(selection: selection)
+            if let existing = try PromptAssetSelectionRow.fetchOne(db, key: selection.promptId.rawValue) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func allSelections() async throws -> [PromptAssetSelection] {
+        try await database.dbQueue.read { db in
+            try PromptAssetSelectionRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+}
+
+final class SQLitePromptAssetPackRepository: PromptAssetPackRepository {
+    private let database: AppDatabase
+    private let signatureVerifier: AssetPackSignatureVerifier
+
+    init(
+        database: AppDatabase,
+        signatureVerifier: AssetPackSignatureVerifier = .default
+    ) {
+        self.database = database
+        self.signatureVerifier = signatureVerifier
+    }
+
+    func savePack(_ pack: PromptAssetPack) async throws {
+        try await savePack(pack, signatureVerifier: signatureVerifier)
+    }
+
+    func savePack(
+        _ pack: PromptAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) async throws {
+        guard !pack.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires id")
+        }
+        guard !pack.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires version")
+        }
+        guard !pack.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires displayName")
+        }
+        guard !pack.templates.isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires at least one template")
+        }
+        try Self.validateTrustMetadata(pack, signatureVerifier: signatureVerifier)
+
+        try await database.dbQueue.write { db in
+            var row = try PromptAssetPackRow(pack: pack)
+            if let existing = try PromptAssetPackRow.fetchOne(db, key: pack.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func allPacks() async throws -> [PromptAssetPack] {
+        try await database.dbQueue.read { db in
+            try PromptAssetPackRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func enabledPacks() async throws -> [PromptAssetPack] {
+        try await enabledPacks(signatureVerifier: signatureVerifier)
+    }
+
+    func enabledPacks(signatureVerifier: AssetPackSignatureVerifier) async throws -> [PromptAssetPack] {
+        try await database.dbQueue.read { db in
+            try PromptAssetPackRow
+                .filter(Column("deleted_at") == nil)
+                .filter(Column("is_enabled") == 1)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+                .filter { Self.canUseAsRuntimePack($0, signatureVerifier: signatureVerifier) }
+        }
+    }
+
+    private static func validateTrustMetadata(
+        _ pack: PromptAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) throws {
+        guard let metadata = pack.trustMetadata else {
+            if pack.sourceKind.requiresTrustMetadata {
+                throw PersistenceError.validationFailed("PromptAssetPack requires trust metadata for external sources")
+            }
+            return
+        }
+
+        let missingFields = metadata.missingRequiredFields
+        guard missingFields.isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack trust metadata missing \(missingFields.joined(separator: ", "))")
+        }
+
+        if pack.sourceKind.requiresTrustMetadata {
+            guard try AssetPackIntegrity.hasValidContentHash(pack) else {
+                throw PersistenceError.validationFailed("PromptAssetPack trust metadata contentHash does not match pack contents")
+            }
+            guard try signatureVerifier.hasValidSignature(pack) else {
+                throw PersistenceError.validationFailed("PromptAssetPack trust metadata signature is invalid")
+            }
+        }
+    }
+
+    private static func canUseAsRuntimePack(
+        _ pack: PromptAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) -> Bool {
+        guard pack.sourceKind.requiresTrustMetadata else { return true }
+        guard let metadata = pack.trustMetadata else { return false }
+        guard metadata.missingRequiredFields.isEmpty else { return false }
+        guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return false }
+        return (try? signatureVerifier.hasValidSignature(pack)) == true
+    }
+}
+
+final class SQLiteLensAssetPackRepository: LensAssetPackRepository {
+    private let database: AppDatabase
+    private let signatureVerifier: AssetPackSignatureVerifier
+
+    init(
+        database: AppDatabase,
+        signatureVerifier: AssetPackSignatureVerifier = .default
+    ) {
+        self.database = database
+        self.signatureVerifier = signatureVerifier
+    }
+
+    func savePack(_ pack: LensAssetPack) async throws {
+        try await savePack(pack, signatureVerifier: signatureVerifier)
+    }
+
+    func savePack(
+        _ pack: LensAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) async throws {
+        guard !pack.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires id")
+        }
+        guard !pack.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires version")
+        }
+        guard !pack.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires displayName")
+        }
+        try Self.validateTrustMetadata(pack, signatureVerifier: signatureVerifier)
+
+        try await database.dbQueue.write { db in
+            var row = try LensAssetPackRow(pack: pack)
+            if let existing = try LensAssetPackRow.fetchOne(db, key: pack.id) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func allPacks() async throws -> [LensAssetPack] {
+        try await database.dbQueue.read { db in
+            try LensAssetPackRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func enabledPacks() async throws -> [LensAssetPack] {
+        try await enabledPacks(signatureVerifier: signatureVerifier)
+    }
+
+    func enabledPacks(signatureVerifier: AssetPackSignatureVerifier) async throws -> [LensAssetPack] {
+        try await database.dbQueue.read { db in
+            try LensAssetPackRow
+                .filter(Column("deleted_at") == nil)
+                .filter(Column("is_enabled") == 1)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+                .filter { Self.canUseAsRuntimePack($0, signatureVerifier: signatureVerifier) }
+        }
+    }
+
+    private static func validateTrustMetadata(
+        _ pack: LensAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) throws {
+        guard let metadata = pack.trustMetadata else {
+            if pack.sourceKind.requiresTrustMetadata {
+                throw PersistenceError.validationFailed("LensAssetPack requires trust metadata for external sources")
+            }
+            return
+        }
+
+        let missingFields = metadata.missingRequiredFields
+        guard missingFields.isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack trust metadata missing \(missingFields.joined(separator: ", "))")
+        }
+
+        if pack.sourceKind.requiresTrustMetadata {
+            guard try AssetPackIntegrity.hasValidContentHash(pack) else {
+                throw PersistenceError.validationFailed("LensAssetPack trust metadata contentHash does not match pack contents")
+            }
+            guard try signatureVerifier.hasValidSignature(pack) else {
+                throw PersistenceError.validationFailed("LensAssetPack trust metadata signature is invalid")
+            }
+        }
+    }
+
+    private static func canUseAsRuntimePack(
+        _ pack: LensAssetPack,
+        signatureVerifier: AssetPackSignatureVerifier
+    ) -> Bool {
+        guard pack.sourceKind.requiresTrustMetadata else { return true }
+        guard let metadata = pack.trustMetadata else { return false }
+        guard metadata.missingRequiredFields.isEmpty else { return false }
+        guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return false }
+        return (try? signatureVerifier.hasValidSignature(pack)) == true
+    }
+}
+
+final class SQLiteAssetPackTrustPolicyRepository: AssetPackTrustPolicyRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func saveDocument(_ document: AssetPackTrustPolicyDocument, sourceURL: URL?) async throws {
+        let rowId = try Self.id(for: sourceURL, document: document)
+        try await database.dbQueue.write { db in
+            var row = try AssetPackTrustPolicyRow(
+                id: rowId,
+                sourceURL: sourceURL,
+                document: document
+            )
+            if let existing = try AssetPackTrustPolicyRow.fetchOne(db, key: rowId) {
+                row.createdAt = existing.createdAt
+            }
+            try row.upsert(db)
+        }
+    }
+
+    func allDocuments() async throws -> [AssetPackTrustPolicyRecord] {
+        try await database.dbQueue.read { db in
+            try AssetPackTrustPolicyRow
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    private static func id(for sourceURL: URL?, document: AssetPackTrustPolicyDocument) throws -> String {
+        if let sourceURL {
+            return sourceURL.absoluteString
+        }
+
+        let documentJSON = try PersistenceJSON.encode(document)
+        let digest = SHA256.hash(data: Data(documentJSON.utf8))
+        return "inline:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+struct AssetPackSignatureVerifier {
+    private struct BuiltInVerificationPolicy {
+        let trustedPublisherPublicKeys: [String: [String]]
+        let revokedPublisherIds: Set<String>
+
+        init(
+            trustedPublisherPublicKeys: [String: [String]],
+            revokedPublisherIds: Set<String>
+        ) {
+            self.trustedPublisherPublicKeys = trustedPublisherPublicKeys
+            self.revokedPublisherIds = revokedPublisherIds
+        }
+
+        init(
+            trustedPublisherPublicKeys: [String: String],
+            revokedPublisherIds: Set<String>
+        ) {
+            self.trustedPublisherPublicKeys = trustedPublisherPublicKeys.mapValues { [$0] }
+            self.revokedPublisherIds = revokedPublisherIds
+        }
+
+        func publicKeys(for publisherId: String) -> [String] {
+            guard !revokedPublisherIds.contains(publisherId) else { return [] }
+            return trustedPublisherPublicKeys[publisherId] ?? []
+        }
+    }
+
+    private static let signaturePrefix = "p256-sha256:"
+    private static let testPublisherPublicKey = "3TmqtDQiTBTbdQHJZnqdMNkGY/JYqivqOrPDddCt9wIm01rcx/P0Dm5oLHvDYqA0vuPueGqGmYW+uunV17nuxw=="
+    private static let rotatedPublisherPublicKey = "oWMff09DdO3X4j8sTNyVyvkyBPwE1u92V6uWUXwja11I+NWsO9JcXodn+3AKjS5V79HtI/FVX3fObaehVz7zKw=="
+    private static let verificationPolicies: [String: BuiltInVerificationPolicy] = [
+        "asset-trust.test.v1": BuiltInVerificationPolicy(
+            trustedPublisherPublicKeys: [
+                "mingsi.test.publisher": testPublisherPublicKey
+            ],
+            revokedPublisherIds: []
+        ),
+        "asset-trust.test.revoked.v1": BuiltInVerificationPolicy(
+            trustedPublisherPublicKeys: [
+                "mingsi.test.publisher": testPublisherPublicKey
+            ],
+            revokedPublisherIds: ["mingsi.test.publisher"]
+        ),
+        "asset-trust.test.rotated.v1": BuiltInVerificationPolicy(
+            trustedPublisherPublicKeys: [
+                "mingsi.test.publisher": [
+                    testPublisherPublicKey,
+                    rotatedPublisherPublicKey
+                ]
+            ],
+            revokedPublisherIds: []
+        )
+    ]
+
+    static let `default` = AssetPackSignatureVerifier(
+        publicKeysForPublisher: { publisherId, verificationPolicyVersion in
+            verificationPolicies[verificationPolicyVersion]?.publicKeys(for: publisherId) ?? []
+        }
+    )
+
+    static func combining(_ verifiers: [AssetPackSignatureVerifier]) -> AssetPackSignatureVerifier {
+        AssetPackSignatureVerifier(
+            publicKeysForPublisher: { publisherId, verificationPolicyVersion in
+                verifiers.flatMap {
+                    $0.publicKeyStrings(
+                        for: publisherId,
+                        verificationPolicyVersion: verificationPolicyVersion
+                    )
+                }
+            }
+        )
+    }
+
+    private let publicKeysForPublisher: (String, String) -> [String]
+
+    init(publicKeyForPublisher: @escaping (String, String) -> String?) {
+        self.publicKeysForPublisher = { publisherId, verificationPolicyVersion in
+            publicKeyForPublisher(publisherId, verificationPolicyVersion).map { [$0] } ?? []
+        }
+    }
+
+    init(publicKeysForPublisher: @escaping (String, String) -> [String]) {
+        self.publicKeysForPublisher = publicKeysForPublisher
+    }
+
+    func hasValidSignature(_ pack: PromptAssetPack) throws -> Bool {
+        guard let metadata = pack.trustMetadata else { return false }
+        return try hasValidSignature(metadata: metadata, signedPayload: AssetPackIntegrity.signaturePayload(for: pack))
+    }
+
+    func hasValidSignature(_ pack: LensAssetPack) throws -> Bool {
+        guard let metadata = pack.trustMetadata else { return false }
+        return try hasValidSignature(metadata: metadata, signedPayload: AssetPackIntegrity.signaturePayload(for: pack))
+    }
+
+    func publicKeyStrings(
+        for publisherId: String,
+        verificationPolicyVersion: String
+    ) -> [String] {
+        publicKeysForPublisher(publisherId, verificationPolicyVersion)
+    }
+
+    private func hasValidSignature(
+        metadata: AssetTrustMetadata,
+        signedPayload: Data
+    ) throws -> Bool {
+        guard metadata.signature.hasPrefix(Self.signaturePrefix),
+              let signatureData = Data(base64Encoded: String(metadata.signature.dropFirst(Self.signaturePrefix.count)))
+        else {
+            return false
+        }
+
+        let publicKeys = try publicKeys(
+                for: metadata.publisherId,
+                verificationPolicyVersion: metadata.verificationPolicyVersion
+        )
+        guard !publicKeys.isEmpty else {
+            return false
+        }
+
+        let signature = try P256.Signing.ECDSASignature(derRepresentation: signatureData)
+        return publicKeys.contains { $0.isValidSignature(signature, for: signedPayload) }
+    }
+
+    private func publicKeys(
+        for publisherId: String,
+        verificationPolicyVersion: String
+    ) throws -> [P256.Signing.PublicKey] {
+        try publicKeysForPublisher(publisherId, verificationPolicyVersion).compactMap { publicKeyBase64 in
+            guard let publicKeyData = Data(base64Encoded: publicKeyBase64) else { return nil }
+            return try P256.Signing.PublicKey(rawRepresentation: publicKeyData)
+        }
+    }
+}
+
+struct AssetPackTrustPolicySignatureVerifier {
+    private struct BuiltInVerificationPolicy {
+        let trustedRegistryPublicKeys: [String: [String]]
+
+        init(trustedRegistryPublicKeys: [String: [String]]) {
+            self.trustedRegistryPublicKeys = trustedRegistryPublicKeys
+        }
+
+        func publicKeys(for registryId: String) -> [String] {
+            trustedRegistryPublicKeys[registryId] ?? []
+        }
+    }
+
+    private static let signaturePrefix = "p256-sha256:"
+    private static let testRegistryRootPublicKey = "VBEHsDDSoPIZMUwMi5RsxnVESPHEinFu9F+4GQh/uuJF7KAJzPPQmjY/Z5uhG1fhjEe6shSs6wW2xWz6sXHmxQ=="
+    private static let verificationPolicies: [String: BuiltInVerificationPolicy] = [
+        "asset-trust-policy-root.test.v1": BuiltInVerificationPolicy(
+            trustedRegistryPublicKeys: [
+                "mingsi.test.registry": [testRegistryRootPublicKey]
+            ]
+        )
+    ]
+
+    static let `default` = AssetPackTrustPolicySignatureVerifier(
+        publicKeysForRegistry: { registryId, verificationPolicyVersion in
+            verificationPolicies[verificationPolicyVersion]?.publicKeys(for: registryId) ?? []
+        }
+    )
+
+    private let publicKeysForRegistry: (String, String) -> [String]
+
+    init(publicKeysForRegistry: @escaping (String, String) -> [String]) {
+        self.publicKeysForRegistry = publicKeysForRegistry
+    }
+
+    func hasValidSignature(_ document: AssetPackTrustPolicyDocument) throws -> Bool {
+        guard let metadata = document.trustMetadata,
+              metadata.missingRequiredFields.isEmpty,
+              metadata.contentHash.hasPrefix("sha256:")
+        else {
+            return false
+        }
+        guard metadata.contentHash == (try AssetPackIntegrity.expectedContentHash(for: document)) else {
+            return false
+        }
+        return try hasValidSignature(metadata: metadata, signedPayload: AssetPackIntegrity.signaturePayload(for: document))
+    }
+
+    private func hasValidSignature(
+        metadata: AssetTrustMetadata,
+        signedPayload: Data
+    ) throws -> Bool {
+        guard metadata.signature.hasPrefix(Self.signaturePrefix),
+              let signatureData = Data(base64Encoded: String(metadata.signature.dropFirst(Self.signaturePrefix.count)))
+        else {
+            return false
+        }
+
+        let publicKeys = try publicKeys(
+            for: metadata.publisherId,
+            verificationPolicyVersion: metadata.verificationPolicyVersion
+        )
+        guard !publicKeys.isEmpty else {
+            return false
+        }
+
+        let signature = try P256.Signing.ECDSASignature(derRepresentation: signatureData)
+        return publicKeys.contains { $0.isValidSignature(signature, for: signedPayload) }
+    }
+
+    private func publicKeys(
+        for registryId: String,
+        verificationPolicyVersion: String
+    ) throws -> [P256.Signing.PublicKey] {
+        try publicKeysForRegistry(registryId, verificationPolicyVersion).compactMap { publicKeyBase64 in
+            guard let publicKeyData = Data(base64Encoded: publicKeyBase64) else { return nil }
+            return try P256.Signing.PublicKey(rawRepresentation: publicKeyData)
+        }
+    }
+}
+
+struct AssetPackTrustPolicy: Codable, Equatable {
+    var version: String
+    var trustedPublisherPublicKeys: [String: [String]]
+    var revokedPublisherIds: [String]
+
+    init(
+        version: String,
+        trustedPublisherPublicKeys: [String: [String]],
+        revokedPublisherIds: [String] = []
+    ) {
+        self.version = version
+        self.trustedPublisherPublicKeys = trustedPublisherPublicKeys
+        self.revokedPublisherIds = revokedPublisherIds
+    }
+
+    func publicKeys(for publisherId: String) -> [String] {
+        guard !Set(revokedPublisherIds).contains(publisherId) else { return [] }
+        return trustedPublisherPublicKeys[publisherId] ?? []
+    }
+}
+
+struct AssetPackTrustPolicyDocument: Codable, Equatable {
+    var policies: [AssetPackTrustPolicy]
+    var expiresAt: Date?
+    var trustMetadata: AssetTrustMetadata?
+
+    init(
+        policies: [AssetPackTrustPolicy],
+        expiresAt: Date? = nil,
+        trustMetadata: AssetTrustMetadata? = nil
+    ) {
+        self.policies = policies
+        self.expiresAt = expiresAt
+        self.trustMetadata = trustMetadata
+    }
+
+    func isExpired(at now: Date = .now) -> Bool {
+        guard let expiresAt else { return false }
+        return expiresAt <= now
+    }
+
+    var hasValidTrustSignature: Bool {
+        (try? AssetPackTrustPolicySignatureVerifier.default.hasValidSignature(self)) == true
+    }
+
+    var signatureVerifier: AssetPackSignatureVerifier {
+        guard !isExpired(), hasValidTrustSignature else {
+            return AssetPackSignatureVerifier(publicKeysForPublisher: { _, _ in [] })
+        }
+
+        let policiesByVersion = policies.reduce(into: [String: AssetPackTrustPolicy]()) { result, policy in
+            result[policy.version] = policy
+        }
+        return AssetPackSignatureVerifier(
+            publicKeysForPublisher: { publisherId, verificationPolicyVersion in
+                policiesByVersion[verificationPolicyVersion]?.publicKeys(for: publisherId) ?? []
+            }
+        )
+    }
+}
+
+struct AssetPackRegistryCatalog: Codable, Equatable {
+    var version: String
+    var entries: [AssetPackRegistryCatalogEntry]
+
+    init(version: String, entries: [AssetPackRegistryCatalogEntry] = []) {
+        self.version = version
+        self.entries = entries
+    }
+}
+
+struct AssetPackRegistryCatalogEntry: Codable, Equatable, Identifiable {
+    var id: String
+    var displayName: String
+    var summary: String
+    var manifestURL: URL
+    var updatedAt: Date?
+
+    init(
+        id: String,
+        displayName: String,
+        summary: String,
+        manifestURL: URL,
+        updatedAt: Date? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.summary = summary
+        self.manifestURL = manifestURL
+        self.updatedAt = updatedAt
+    }
+
+    func sourceURL(baseURL: URL) -> URL {
+        guard manifestURL.scheme == nil else { return manifestURL }
+        return URL(string: manifestURL.relativeString, relativeTo: baseURL)?.absoluteURL ?? manifestURL
+    }
+}
+
+struct AssetPackInstallManifest: Codable, Equatable {
+    var trustPolicyURL: URL?
+    var promptPacks: [PromptAssetPack]
+    var lensPacks: [LensAssetPack]
+
+    init(
+        trustPolicyURL: URL? = nil,
+        promptPacks: [PromptAssetPack] = [],
+        lensPacks: [LensAssetPack] = []
+    ) {
+        self.trustPolicyURL = trustPolicyURL
+        self.promptPacks = promptPacks
+        self.lensPacks = lensPacks
+    }
+}
+
+protocol AssetPackInstallManifestFetching {
+    func fetchInstallManifestData(from url: URL) async throws -> Data
+    func fetchTrustPolicyData(from url: URL) async throws -> Data
+}
+
+struct URLSessionAssetPackInstallManifestFetcher: AssetPackInstallManifestFetching {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func fetchInstallManifestData(from url: URL) async throws -> Data {
+        try await fetchData(from: url)
+    }
+
+    func fetchTrustPolicyData(from url: URL) async throws -> Data {
+        try await fetchData(from: url)
+    }
+
+    private func fetchData(from url: URL) async throws -> Data {
+        let (data, response) = try await session.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return data
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+}
+
+enum AssetPackInstallRejectionReason: String, Equatable {
+    case missingTrustMetadata
+    case incompleteTrustMetadata
+    case mismatchedContentHash
+    case invalidTrustProof
+}
+
+struct AssetPackInstallRejection: Equatable {
+    var packId: String
+    var packVersion: String
+    var displayName: String
+    var reason: AssetPackInstallRejectionReason
+}
+
+struct AssetPackInstallValidationReport: Equatable {
+    var installablePromptPacks: [PromptAssetPack]
+    var installableLensPacks: [LensAssetPack]
+    var rejectedPromptPacks: [AssetPackInstallRejection]
+    var rejectedLensPacks: [AssetPackInstallRejection]
+}
+
+struct AssetPackInstallManifestValidator {
+    private let signatureVerifier: AssetPackSignatureVerifier
+
+    init(signatureVerifier: AssetPackSignatureVerifier = .default) {
+        self.signatureVerifier = signatureVerifier
+    }
+
+    func validate(_ manifest: AssetPackInstallManifest) -> AssetPackInstallValidationReport {
+        let promptResults = manifest.promptPacks.map(validatePromptPack)
+        let lensResults = manifest.lensPacks.map(validateLensPack)
+        return AssetPackInstallValidationReport(
+            installablePromptPacks: promptResults.compactMap(\.pack),
+            installableLensPacks: lensResults.compactMap(\.pack),
+            rejectedPromptPacks: promptResults.compactMap(\.rejection),
+            rejectedLensPacks: lensResults.compactMap(\.rejection)
+        )
+    }
+
+    private func validatePromptPack(_ pack: PromptAssetPack) -> (pack: PromptAssetPack?, rejection: AssetPackInstallRejection?) {
+        if let reason = rejectionReason(for: pack) {
+            return (nil, rejection(pack: pack, reason: reason))
+        }
+        return (pack, nil)
+    }
+
+    private func validateLensPack(_ pack: LensAssetPack) -> (pack: LensAssetPack?, rejection: AssetPackInstallRejection?) {
+        if let reason = rejectionReason(for: pack) {
+            return (nil, rejection(pack: pack, reason: reason))
+        }
+        return (pack, nil)
+    }
+
+    private func rejectionReason(for pack: PromptAssetPack) -> AssetPackInstallRejectionReason? {
+        guard pack.sourceKind.requiresTrustMetadata else { return nil }
+        guard let metadata = pack.trustMetadata else { return .missingTrustMetadata }
+        guard metadata.missingRequiredFields.isEmpty else { return .incompleteTrustMetadata }
+        guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return .mismatchedContentHash }
+        guard (try? signatureVerifier.hasValidSignature(pack)) == true else { return .invalidTrustProof }
+        return nil
+    }
+
+    private func rejectionReason(for pack: LensAssetPack) -> AssetPackInstallRejectionReason? {
+        guard pack.sourceKind.requiresTrustMetadata else { return nil }
+        guard let metadata = pack.trustMetadata else { return .missingTrustMetadata }
+        guard metadata.missingRequiredFields.isEmpty else { return .incompleteTrustMetadata }
+        guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return .mismatchedContentHash }
+        guard (try? signatureVerifier.hasValidSignature(pack)) == true else { return .invalidTrustProof }
+        return nil
+    }
+
+    private func rejection(pack: PromptAssetPack, reason: AssetPackInstallRejectionReason) -> AssetPackInstallRejection {
+        AssetPackInstallRejection(
+            packId: pack.id,
+            packVersion: pack.version,
+            displayName: pack.displayName,
+            reason: reason
+        )
+    }
+
+    private func rejection(pack: LensAssetPack, reason: AssetPackInstallRejectionReason) -> AssetPackInstallRejection {
+        AssetPackInstallRejection(
+            packId: pack.id,
+            packVersion: pack.version,
+            displayName: pack.displayName,
+            reason: reason
+        )
+    }
+}
+
+struct AssetPackInstallManifestInstaller {
+    private let promptAssetPackRepository: PromptAssetPackRepository
+    private let lensAssetPackRepository: LensAssetPackRepository
+    private let validator: AssetPackInstallManifestValidator
+    private let signatureVerifier: AssetPackSignatureVerifier?
+
+    init(
+        promptAssetPackRepository: PromptAssetPackRepository,
+        lensAssetPackRepository: LensAssetPackRepository,
+        validator: AssetPackInstallManifestValidator = AssetPackInstallManifestValidator(),
+        signatureVerifier: AssetPackSignatureVerifier? = nil
+    ) {
+        self.promptAssetPackRepository = promptAssetPackRepository
+        self.lensAssetPackRepository = lensAssetPackRepository
+        self.validator = validator
+        self.signatureVerifier = signatureVerifier
+    }
+
+    func install(_ manifest: AssetPackInstallManifest) async throws -> AssetPackInstallValidationReport {
+        let report = validator.validate(manifest)
+        for pack in report.installablePromptPacks {
+            try await savePromptPack(pack)
+        }
+        for pack in report.installableLensPacks {
+            try await saveLensPack(pack)
+        }
+        return report
+    }
+
+    private func savePromptPack(_ pack: PromptAssetPack) async throws {
+        guard let signatureVerifier else {
+            try await promptAssetPackRepository.savePack(pack)
+            return
+        }
+        guard let repository = promptAssetPackRepository as? SQLitePromptAssetPackRepository else {
+            try await promptAssetPackRepository.savePack(pack)
+            return
+        }
+        try await repository.savePack(pack, signatureVerifier: signatureVerifier)
+    }
+
+    private func saveLensPack(_ pack: LensAssetPack) async throws {
+        guard let signatureVerifier else {
+            try await lensAssetPackRepository.savePack(pack)
+            return
+        }
+        guard let repository = lensAssetPackRepository as? SQLiteLensAssetPackRepository else {
+            try await lensAssetPackRepository.savePack(pack)
+            return
+        }
+        try await repository.savePack(pack, signatureVerifier: signatureVerifier)
+    }
+}
+
+enum AssetPackIntegrity {
+    private struct PromptContentSnapshot: Encodable {
+        let id: String
+        let version: String
+        let displayName: String
+        let sourceKind: PromptAssetSourceKind
+        let templates: [PromptTemplate]
+    }
+
+    private struct LensContentSnapshot: Encodable {
+        let id: String
+        let version: String
+        let displayName: String
+        let sourceKind: LensAssetSourceKind
+        let items: [LensCatalogItem]
+    }
+
+    private struct TrustPolicyDocumentSnapshot: Encodable {
+        let policies: [AssetPackTrustPolicy]
+        let expiresAt: Date?
+    }
+
+    static func expectedContentHash(for pack: PromptAssetPack) throws -> String {
+        try sha256String(
+            PromptContentSnapshot(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                templates: pack.templates
+            )
+        )
+    }
+
+    static func expectedContentHash(for pack: LensAssetPack) throws -> String {
+        try sha256String(
+            LensContentSnapshot(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                items: pack.items
+            )
+        )
+    }
+
+    static func expectedContentHash(for document: AssetPackTrustPolicyDocument) throws -> String {
+        try sha256String(
+            TrustPolicyDocumentSnapshot(
+                policies: document.policies,
+                expiresAt: document.expiresAt
+            )
+        )
+    }
+
+    static func hasValidContentHash(_ pack: PromptAssetPack) throws -> Bool {
+        guard let metadata = pack.trustMetadata,
+              metadata.contentHash.hasPrefix("sha256:")
+        else { return false }
+
+        return metadata.contentHash == (try expectedContentHash(for: pack))
+    }
+
+    static func hasValidContentHash(_ pack: LensAssetPack) throws -> Bool {
+        guard let metadata = pack.trustMetadata,
+              metadata.contentHash.hasPrefix("sha256:")
+        else { return false }
+
+        return metadata.contentHash == (try expectedContentHash(for: pack))
+    }
+
+    static func signaturePayload(for pack: PromptAssetPack) throws -> Data {
+        try canonicalEncoder.encode(
+            PromptContentSnapshot(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                templates: pack.templates
+            )
+        )
+    }
+
+    static func signaturePayload(for pack: LensAssetPack) throws -> Data {
+        try canonicalEncoder.encode(
+            LensContentSnapshot(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                items: pack.items
+            )
+        )
+    }
+
+    static func signaturePayload(for document: AssetPackTrustPolicyDocument) throws -> Data {
+        try canonicalEncoder.encode(
+            TrustPolicyDocumentSnapshot(
+                policies: document.policies,
+                expiresAt: document.expiresAt
+            )
+        )
+    }
+
+    private static func sha256String<T: Encodable>(_ value: T) throws -> String {
+        let data = try canonicalEncoder.encode(value)
+        let digest = SHA256.hash(data: data)
+        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static var canonicalEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if #available(iOS 13.0, *) {
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        } else {
+            encoder.outputFormatting = [.sortedKeys]
+        }
+        return encoder
+    }
+}
+
+enum DataExportSectionName: String, CaseIterable {
+    case dailyEntries = "daily_entries"
+    case thinkingCards = "thinking_cards"
+    case quests
+    case principleAssets = "principle_assets"
+    case principleRecallFeedback = "principle_recall_feedback"
+    case principlePracticeEvidence = "principle_practice_evidence"
+    case verifications
+    case lensSessions = "lens_sessions"
+    case projects
+    case projectCandidates = "project_candidates"
+    case projectLinks = "project_links"
+    case projectMergeCandidates = "project_merge_candidates"
+    case projectInsights = "project_insights"
+    case metricSnapshots = "metric_snapshots"
+    case metricContributions = "metric_contributions"
+    case promptRuns = "prompt_runs"
+    case promptEvalRuns = "prompt_eval_runs"
+    case promptAssetSelections = "prompt_asset_selections"
+    case promptAssetPacks = "prompt_asset_packs"
+    case lensAssetPacks = "lens_asset_packs"
+    case assetPackTrustPolicies = "asset_pack_trust_policies"
+    case historicalRetryCandidates = "historical_retry_candidates"
+}
+
+final class SQLiteDataExportRepository: DataExportRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
+
+    func exportJSON() async throws -> Data {
+        try await exportPackage().data
+    }
+
+    func exportPackage() async throws -> DataExportPackage {
+        let createdAt = Date()
+        let sections = try await database.dbQueue.read { db -> [String: [[String: Any]]] in
+            var result: [String: [[String: Any]]] = [:]
+            for section in DataExportSectionName.allCases {
+                result[section.rawValue] = try Self.rows(in: section.rawValue, db: db)
+            }
+            return result
+        }
+        let counts = Dictionary(uniqueKeysWithValues: sections.map { ($0.key, $0.value.count) })
+        let payload: [String: Any] = [
+            "schema_version": 1,
+            "created_at": createdAt.mingsiStorageString,
+            "sections": sections,
+            "counts": counts
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        return DataExportPackage(data: data, counts: counts, createdAt: createdAt)
+    }
+
+    private static func rows(in tableName: String, db: Database) throws -> [[String: Any]] {
+        let columns = try db.columns(in: tableName).map(\.name)
+        guard !columns.isEmpty else { return [] }
+        let quotedTable = tableName.replacingOccurrences(of: "\"", with: "\"\"")
+        let sql = if tableName == DataExportSectionName.principleAssets.rawValue {
+            "SELECT * FROM \"\(quotedTable)\" WHERE deleted_at IS NULL"
+        } else {
+            "SELECT * FROM \"\(quotedTable)\""
+        }
+        let rows = try Row.fetchAll(db, sql: sql)
+        return rows.map { row in
+            var exported = columns.reduce(into: [String: Any]()) { result, column in
+                result[column] = exportValue(row[column])
+            }
+            if tableName == DataExportSectionName.promptEvalRuns.rawValue,
+               let caseResultsJSON = exported["case_results_json"] as? String,
+               let caseResults = decodeExportJSONValue(caseResultsJSON) {
+                exported["case_results"] = caseResults
+            }
+            if tableName == DataExportSectionName.promptAssetPacks.rawValue,
+               let templatesJSON = exported["templates_json"] as? String,
+               let templates = decodeExportJSONValue(templatesJSON) {
+                exported["templates"] = templates
+            }
+            return exported
+        }
+    }
+
+    private static func exportValue(_ value: DatabaseValue) -> Any {
+        if value.isNull {
+            return NSNull()
+        }
+        if let string = String.fromDatabaseValue(value) {
+            return string
+        }
+        if let bool = Bool.fromDatabaseValue(value) {
+            return bool
+        }
+        if let int64 = Int64.fromDatabaseValue(value) {
+            return int64
+        }
+        if let double = Double.fromDatabaseValue(value) {
+            return double
+        }
+        if let data = Data.fromDatabaseValue(value) {
+            return data.base64EncodedString()
+        }
+        return "\(value)"
+    }
+
+    private static func decodeExportJSONValue(_ json: String) -> Any? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
 }
 
 final class SQLiteHistoricalRetryCandidateRepository: HistoricalRetryCandidateRepository {
@@ -2352,8 +4195,16 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
     var schemaVersion: Int
     var promptId: String
     var promptVersion: String
+    var promptSourceKind: String
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
     var inputSchemaVersion: Int
     var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+    var rollbackTargetVersion: String?
     var modelProvider: String
     var modelName: String
     var sessionMode: String
@@ -2362,6 +4213,7 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
     var requestSummary: String?
     var responseJson: String?
     var error: String?
+    var userFeedback: String
     var createdAt: String
 
     var resolutionKey: String {
@@ -2381,8 +4233,16 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
         schemaVersion = run.schemaVersion
         promptId = run.promptId
         promptVersion = run.promptVersion
+        promptSourceKind = run.promptSourceKind.rawValue
+        promptPackId = run.promptPackId
+        promptPackVersion = run.promptPackVersion
+        promptPackDisplayName = run.promptPackDisplayName
+        systemPolicyVersion = run.systemPolicyVersion
+        contextPolicyVersion = run.contextPolicyVersion
         inputSchemaVersion = run.inputSchemaVersion
         outputSchemaVersion = run.outputSchemaVersion
+        evalSuiteVersion = run.evalSuiteVersion
+        rollbackTargetVersion = run.rollbackTargetVersion
         modelProvider = run.modelProvider
         modelName = run.modelName
         sessionMode = run.sessionMode
@@ -2391,6 +4251,7 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
         requestSummary = run.requestSummary
         responseJson = run.responseJSON
         error = run.error
+        userFeedback = run.userFeedback.rawValue
         createdAt = run.createdAt.mingsiStorageString
     }
 
@@ -2400,13 +4261,27 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
         }
         let sourceIds: [String] = try PersistenceJSON.decode(sourceRecordIdsJson) ?? []
         let contextIds: [String] = try PersistenceJSON.decode(contextRecordIdsJson) ?? sourceIds
+        guard let feedback = PromptRunFeedback(rawValue: userFeedback) else {
+            throw PersistenceError.invalidStoredValue("prompt_runs.user_feedback")
+        }
+        guard let sourceKind = PromptAssetSourceKind(rawValue: promptSourceKind) else {
+            throw PersistenceError.invalidStoredValue("prompt_runs.prompt_source_kind")
+        }
         return PromptRun(
             id: uuid,
             schemaVersion: schemaVersion,
             promptId: promptId,
             promptVersion: promptVersion,
+            promptSourceKind: sourceKind,
+            promptPackId: promptPackId,
+            promptPackVersion: promptPackVersion,
+            promptPackDisplayName: promptPackDisplayName,
+            systemPolicyVersion: systemPolicyVersion,
+            contextPolicyVersion: contextPolicyVersion,
             inputSchemaVersion: inputSchemaVersion,
             outputSchemaVersion: outputSchemaVersion,
+            evalSuiteVersion: evalSuiteVersion,
+            rollbackTargetVersion: rollbackTargetVersion,
             modelProvider: modelProvider,
             modelName: modelName,
             sessionMode: sessionMode,
@@ -2415,14 +4290,291 @@ private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
             requestSummary: requestSummary ?? "",
             responseJSON: responseJson,
             error: error,
+            userFeedback: feedback,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now
         )
     }
 }
 
+private struct PromptEvalRunRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "prompt_eval_runs"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var promptId: String
+    var promptVersion: String
+    var promptSourceKind: String
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
+    var inputSchemaVersion: Int
+    var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+    var runnerVersion: String
+    var status: String
+    var totalCaseCount: Int
+    var passedCaseCount: Int
+    var failedCaseCount: Int
+    var caseResultsJson: String
+    var createdAt: String
+
+    init(run: PromptEvalRun) throws {
+        id = run.id.uuidString
+        schemaVersion = run.schemaVersion
+        promptId = run.promptId
+        promptVersion = run.promptVersion
+        promptSourceKind = run.promptSourceKind.rawValue
+        promptPackId = run.promptPackId
+        promptPackVersion = run.promptPackVersion
+        promptPackDisplayName = run.promptPackDisplayName
+        systemPolicyVersion = run.systemPolicyVersion
+        contextPolicyVersion = run.contextPolicyVersion
+        inputSchemaVersion = run.inputSchemaVersion
+        outputSchemaVersion = run.outputSchemaVersion
+        evalSuiteVersion = run.evalSuiteVersion
+        runnerVersion = run.runnerVersion
+        status = run.status.rawValue
+        totalCaseCount = run.totalCaseCount
+        passedCaseCount = run.passedCaseCount
+        failedCaseCount = run.failedCaseCount
+        caseResultsJson = try PersistenceJSON.encode(run.caseResults)
+        createdAt = run.createdAt.mingsiStorageString
+    }
+
+    func domainModel() throws -> PromptEvalRun {
+        guard let uuid = UUID(uuidString: id) else {
+            throw PersistenceError.invalidStoredValue("prompt_eval_runs.id")
+        }
+        guard PromptEvalStatus(rawValue: status) != nil else {
+            throw PersistenceError.invalidStoredValue("prompt_eval_runs.status")
+        }
+        guard let sourceKind = PromptAssetSourceKind(rawValue: promptSourceKind) else {
+            throw PersistenceError.invalidStoredValue("prompt_eval_runs.prompt_source_kind")
+        }
+        let caseResults: [PromptEvalCaseResult] = try PersistenceJSON.decode(caseResultsJson) ?? []
+        return PromptEvalRun(
+            id: uuid,
+            schemaVersion: schemaVersion,
+            promptId: promptId,
+            promptVersion: promptVersion,
+            promptSourceKind: sourceKind,
+            promptPackId: promptPackId,
+            promptPackVersion: promptPackVersion,
+            promptPackDisplayName: promptPackDisplayName,
+            systemPolicyVersion: systemPolicyVersion,
+            contextPolicyVersion: contextPolicyVersion,
+            inputSchemaVersion: inputSchemaVersion,
+            outputSchemaVersion: outputSchemaVersion,
+            evalSuiteVersion: evalSuiteVersion,
+            runnerVersion: runnerVersion,
+            caseResults: caseResults,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now
+        )
+    }
+}
+
+private struct PromptAssetSelectionRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "prompt_asset_selections"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var promptId: String
+    var schemaVersion: Int
+    var selectedVersion: String
+    var baseVersion: String
+    var reason: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(selection: PromptAssetSelection) {
+        let now = Date().mingsiStorageString
+        promptId = selection.promptId.rawValue
+        schemaVersion = 1
+        selectedVersion = selection.selectedVersion
+        baseVersion = selection.baseVersion
+        reason = selection.reason.rawValue
+        createdAt = selection.createdAt.mingsiStorageString
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> PromptAssetSelection {
+        guard let prompt = PromptID(rawValue: promptId) else {
+            throw PersistenceError.invalidStoredValue("prompt_asset_selections.prompt_id")
+        }
+        guard let selectionReason = PromptAssetSelectionReason(rawValue: reason) else {
+            throw PersistenceError.invalidStoredValue("prompt_asset_selections.reason")
+        }
+        return PromptAssetSelection(
+            promptId: prompt,
+            selectedVersion: selectedVersion,
+            baseVersion: baseVersion,
+            reason: selectionReason,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
+        )
+    }
+}
+
+private struct PromptAssetPackRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "prompt_asset_packs"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var version: String
+    var displayName: String
+    var sourceKind: String
+    var isEnabled: Int
+    var templatesJson: String
+    var trustMetadataJson: String?
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(pack: PromptAssetPack) throws {
+        let now = Date().mingsiStorageString
+        id = pack.id
+        schemaVersion = 1
+        version = pack.version
+        displayName = pack.displayName
+        sourceKind = pack.sourceKind.rawValue
+        isEnabled = pack.isEnabled ? 1 : 0
+        templatesJson = try PersistenceJSON.encode(pack.templates)
+        trustMetadataJson = try PersistenceJSON.encodeOptional(pack.trustMetadata)
+        createdAt = now
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> PromptAssetPack {
+        guard let source = PromptAssetSourceKind(rawValue: sourceKind) else {
+            throw PersistenceError.invalidStoredValue("prompt_asset_packs.source_kind")
+        }
+        let templates: [PromptTemplate] = try PersistenceJSON.decode(templatesJson) ?? []
+        let trustMetadata: AssetTrustMetadata? = try PersistenceJSON.decode(trustMetadataJson)
+        return PromptAssetPack(
+            id: id,
+            version: version,
+            displayName: displayName,
+            sourceKind: source,
+            isEnabled: isEnabled != 0,
+            templates: templates,
+            trustMetadata: trustMetadata
+        )
+    }
+}
+
+private struct LensAssetPackRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "lens_asset_packs"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var version: String
+    var displayName: String
+    var sourceKind: String
+    var isEnabled: Int
+    var itemsJson: String
+    var trustMetadataJson: String?
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(pack: LensAssetPack) throws {
+        let now = Date().mingsiStorageString
+        id = pack.id
+        schemaVersion = 1
+        version = pack.version
+        displayName = pack.displayName
+        sourceKind = pack.sourceKind.rawValue
+        isEnabled = pack.isEnabled ? 1 : 0
+        itemsJson = try PersistenceJSON.encode(pack.items)
+        trustMetadataJson = try PersistenceJSON.encodeOptional(pack.trustMetadata)
+        createdAt = now
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> LensAssetPack {
+        guard let source = LensAssetSourceKind(rawValue: sourceKind) else {
+            throw PersistenceError.invalidStoredValue("lens_asset_packs.source_kind")
+        }
+        let items: [LensCatalogItem] = try PersistenceJSON.decode(itemsJson) ?? []
+        let trustMetadata: AssetTrustMetadata? = try PersistenceJSON.decode(trustMetadataJson)
+        return LensAssetPack(
+            id: id,
+            version: version,
+            displayName: displayName,
+            sourceKind: source,
+            isEnabled: isEnabled != 0,
+            items: items,
+            trustMetadata: trustMetadata
+        )
+    }
+}
+
+private struct AssetPackTrustPolicyRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "asset_pack_trust_policies"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+
+    var id: String
+    var schemaVersion: Int
+    var sourceUrl: String?
+    var documentJson: String
+    var createdAt: String
+    var updatedAt: String
+    var deletedAt: String?
+
+    init(
+        id: String,
+        sourceURL: URL?,
+        document: AssetPackTrustPolicyDocument
+    ) throws {
+        let now = Date().mingsiStorageString
+        self.id = id
+        schemaVersion = 1
+        self.sourceUrl = sourceURL?.absoluteString
+        documentJson = try PersistenceJSON.encode(document)
+        createdAt = now
+        updatedAt = now
+        deletedAt = nil
+    }
+
+    func domainModel() throws -> AssetPackTrustPolicyRecord {
+        guard let document: AssetPackTrustPolicyDocument = try PersistenceJSON.decode(documentJson) else {
+            throw PersistenceError.invalidStoredValue("asset_pack_trust_policies.document_json")
+        }
+
+        return AssetPackTrustPolicyRecord(
+            id: id,
+            sourceURL: sourceUrl.flatMap(URL.init(string:)),
+            document: document,
+            createdAt: Date(mingsiStorageString: createdAt) ?? .now,
+            updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
+        )
+    }
+}
+
 private enum PersistenceJSON {
-    static let encoder = JSONEncoder()
-    static let decoder = JSONDecoder()
+    static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+    static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
 
     static func encode<T: Encodable>(_ value: T) throws -> String {
         let data = try encoder.encode(value)
@@ -2430,6 +4582,11 @@ private enum PersistenceJSON {
             throw PersistenceError.invalidStoredValue("json_encoding")
         }
         return string
+    }
+
+    static func encodeOptional<T: Encodable>(_ value: T?) throws -> String? {
+        guard let value else { return nil }
+        return try encode(value)
     }
 
     static func decode<T: Decodable>(_ json: String?) throws -> T? {

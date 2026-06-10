@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0DE633A74E1A2F7334510BEF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = C9A0CF3E56523CA50EB41DB2 /* GRDB */; };
 		16522709C3B31FAEEBCA6911 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743E18DE6B198844B50711E6 /* TodayView.swift */; };
+		1A2B3C4D5E6F708192A3B4C5 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3C4D5E6F708192A3B4C5D6 /* MingSiUITests.swift */; };
 		33AC926B599A2DE5C9C257DF /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8658334444C5886A2AC844B /* AppRootView.swift */; };
 		344FD5566DDE9C8ADB7044E9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D770BD95F9E48F6885FB10 /* Theme.swift */; };
 		4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */; };
@@ -23,6 +24,7 @@
 		972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */; };
 		9D2CCE4DD30860C3C85FED04 /* TodayAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05560A573D382BC7E7992F /* TodayAIService.swift */; };
 		9E61418EA710A150EAC4073F /* DirectGLMClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* LiveGLMAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* LiveGLMAcceptanceTests.swift */; };
 		AFCBD37EA4C5C6DEF322A382 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E464B20FAB39B0E755A7452 /* Models.swift */; };
 		C1B52292286CE211107DC5E9 /* TodayAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3BAA6E015127F933E5EB576 /* TodayAIServiceContextTests.swift */; };
 		C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */; };
@@ -41,6 +43,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		1234567890ABCDEF12345678 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D1DD927CD5CDE8DB87AE0D01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BE96164958419772CBF2B720;
+			remoteInfo = MingSi;
+		};
 		B4F1E5624DE3969A7DBE3B74 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D1DD927CD5CDE8DB87AE0D01 /* Project object */;
@@ -55,7 +64,9 @@
 		0E464B20FAB39B0E755A7452 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureTabs.swift; sourceTree = "<group>"; };
 		1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryFeatureTests.swift; sourceTree = "<group>"; };
+		1B2C3D4E5F60718293A4B5C6 /* MingSiUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MingSiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectAIServiceContextTests.swift; sourceTree = "<group>"; };
+		2B3C4D5E6F708192A3B4C5D6 /* MingSiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MingSiUITests.swift; sourceTree = "<group>"; };
 		2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptEvalFixtureTests.swift; sourceTree = "<group>"; };
 		35993467B43FF5E9C4147855 /* MockLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockLLMClient.swift; sourceTree = "<group>"; };
 		3D05560A573D382BC7E7992F /* TodayAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIService.swift; sourceTree = "<group>"; };
@@ -77,6 +88,7 @@
 		9FC5DF0F04313A3F701061FA /* ProjectAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectAIService.swift; sourceTree = "<group>"; };
 		A3BAA6E015127F933E5EB576 /* TodayAIServiceContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIServiceContextTests.swift; sourceTree = "<group>"; };
 		A6C764CB14212DEF1533C0FB /* CoreProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreProtocols.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A4B5C6D /* LiveGLMAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGLMAcceptanceTests.swift; sourceTree = "<group>"; };
 		CCD6A2B64408B88C776FEECD /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		DB8CC1E79E7545E4967805D6 /* MingSiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MingSiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DD972A22ECB9F1DD3ECEC9A2 /* XMLStreamingCardAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLStreamingCardAssembler.swift; sourceTree = "<group>"; };
@@ -91,6 +103,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCB4DBEBF0E48CE273B4A6B5 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E5F60718293A4B5C6D7E8F9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,8 +130,17 @@
 				A52DEE22FDEEFB6724093699 /* App */,
 				57B8CDAE4E336CCA40D3B4F1 /* Features */,
 				FFAF67C082B3C918D8603FA6 /* Services */,
+				3C4D5E6F708192A3B4C5D6E7 /* UI */,
 			);
 			path = Tests;
+			sourceTree = "<group>";
+		};
+		3C4D5E6F708192A3B4C5D6E7 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				2B3C4D5E6F708192A3B4C5D6 /* MingSiUITests.swift */,
+			);
+			path = UI;
 			sourceTree = "<group>";
 		};
 		0D55F3810721DADDCF71F6C5 = {
@@ -220,6 +248,7 @@
 			children = (
 				744D664F5D847C09A2809E68 /* MingSi.app */,
 				DB8CC1E79E7545E4967805D6 /* MingSiTests.xctest */,
+				1B2C3D4E5F60718293A4B5C6 /* MingSiUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -236,6 +265,7 @@
 			isa = PBXGroup;
 			children = (
 				56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */,
+				B2C3D4E5F60718293A4B5C6D /* LiveGLMAcceptanceTests.swift */,
 				0BBC269BFC4C140D49F82ECC /* LocalPromptProviderTests.swift */,
 				4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */,
 				2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */,
@@ -250,6 +280,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1C2D3E4F5061728394A5B6C7 /* MingSiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2C3D4E5F60718293A4B5C6D7 /* Build configuration list for PBXNativeTarget "MingSiUITests" */;
+			buildPhases = (
+				3D4E5F60718293A4B5C6D7E8 /* Sources */,
+				4E5F60718293A4B5C6D7E8F9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				234567890ABCDEF123456789 /* PBXTargetDependency */,
+			);
+			name = MingSiUITests;
+			packageProductDependencies = (
+			);
+			productName = MingSiUITests;
+			productReference = 1B2C3D4E5F60718293A4B5C6 /* MingSiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		4F45A3AFA1FE5FEA51909761 /* MingSiTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DAD0056BE30322371FD5086E /* Build configuration list for PBXNativeTarget "MingSiTests" */;
@@ -323,6 +372,7 @@
 			targets = (
 				BE96164958419772CBF2B720 /* MingSi */,
 				4F45A3AFA1FE5FEA51909761 /* MingSiTests */,
+				1C2D3E4F5061728394A5B6C7 /* MingSiUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -340,6 +390,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3D4E5F60718293A4B5C6D7E8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A2B3C4D5E6F708192A3B4C5 /* MingSiUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EDF178238AFAC0DE742BAB0C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -347,6 +405,7 @@
 				77F18F8B99867060A51EC282 /* AppStoreStateMachineTests.swift in Sources */,
 				9E61418EA710A150EAC4073F /* DirectGLMClientTests.swift in Sources */,
 				DD8C78A7885EB0919AAB77A4 /* HistoryFeatureTests.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* LiveGLMAcceptanceTests.swift in Sources */,
 				E0E0D15117BD3F36245533F8 /* LocalPromptProviderTests.swift in Sources */,
 				972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */,
 				4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */,
@@ -384,6 +443,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		234567890ABCDEF123456789 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BE96164958419772CBF2B720 /* MingSi */;
+			targetProxy = 1234567890ABCDEF12345678 /* PBXContainerItemProxy */;
+		};
 		DB0FD47840E28520082E670C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = BE96164958419772CBF2B720 /* MingSi */;
@@ -426,6 +490,23 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MingSi.app/MingSi";
+			};
+			name = Debug;
+		};
+		6F708192A3B4C5D6E7F8091A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.mingsi.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MingSi;
 			};
 			name = Debug;
 		};
@@ -589,6 +670,23 @@
 			};
 			name = Release;
 		};
+		7F8091A2B3C4D5E6F708192B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.mingsi.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MingSi;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -606,6 +704,15 @@
 			buildConfigurations = (
 				4D044F6BEC8A59C6B2F74F18 /* Debug */,
 				7F0801AD60D2C33449CDA277 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2C3D4E5F60718293A4B5C6D7 /* Build configuration list for PBXNativeTarget "MingSiUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6F708192A3B4C5D6E7F8091A /* Debug */,
+				7F8091A2B3C4D5E6F708192B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -590,7 +590,7 @@ Rules:
 - Include dismissed contributions from prior rounds as context only.
 ```
 
-Context payload (passed via jsonPayload):
+Context payload (rendered from typed `PromptContextPayload.growth`):
 
 | Key | Type | Description |
 |-----|------|-------------|

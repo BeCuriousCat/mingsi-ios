@@ -5,6 +5,13 @@ private struct HistoricalRetryCandidatePayload: Codable {
     var cards: [HistoricalRetryCardPayload]
 }
 
+struct PreparedDataExport: Identifiable, Equatable {
+    let id = UUID()
+    var fileURL: URL
+    var summary: String
+    var createdAt: Date
+}
+
 private struct HistoricalRetryCardPayload: Codable {
     var id: String
     var type: String
@@ -31,16 +38,83 @@ private struct HistoricalRetryCardPayload: Codable {
     }
 }
 
+private struct PromptRollbackOverrideProvider: PromptProvider {
+    let base: PromptProvider
+    let overrides: [PromptID: PromptTemplate]
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        overrides[id] ?? base.template(for: id, mode: mode)
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        if let override = overrides[id], override.version == version {
+            return override
+        }
+        return base.template(for: id, mode: mode, version: version)
+    }
+}
+
+private struct PromptAssetPackProvider: PromptProvider {
+    let base: PromptProvider
+    private let currentTemplates: [PromptID: PromptTemplate]
+    private let versionedTemplates: [PromptID: [String: PromptTemplate]]
+
+    init(base: PromptProvider, packs: [PromptAssetPack]) {
+        self.base = base
+
+        var currentTemplates: [PromptID: PromptTemplate] = [:]
+        var versionedTemplates: [PromptID: [String: PromptTemplate]] = [:]
+        for pack in packs where pack.isEnabled {
+            for template in pack.templates {
+                let stampedTemplate = template.applyingPackMetadata(pack)
+                if currentTemplates[stampedTemplate.id] == nil {
+                    currentTemplates[stampedTemplate.id] = stampedTemplate
+                }
+
+                var versions = versionedTemplates[stampedTemplate.id] ?? [:]
+                if versions[stampedTemplate.version] == nil {
+                    versions[stampedTemplate.version] = stampedTemplate
+                }
+                versionedTemplates[stampedTemplate.id] = versions
+            }
+        }
+
+        self.currentTemplates = currentTemplates
+        self.versionedTemplates = versionedTemplates
+    }
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        currentTemplates[id] ?? base.template(for: id, mode: mode)
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        versionedTemplates[id]?[version] ?? base.template(for: id, mode: mode, version: version)
+    }
+}
+
 @MainActor
 final class AppStore: ObservableObject {
     @Published var selectedTab: AppTab = .today
     @Published var todayDraft: DailyEntryDraft
     @Published var thinkingCards: [ThinkingCard]
+    @Published var customLensItems: [LensCatalogItem] = [] {
+        didSet {
+            todayDraft.customLensItems = customLensItems
+        }
+    }
+    @Published private(set) var runtimeLensItems: [LensCatalogItem] = []
+    @Published private(set) var lensAssetPacks: [LensAssetPack] = []
+    @Published var lensAssetPackMessage: String = ""
+    @Published private(set) var promptAssetPacks: [PromptAssetPack] = []
+    @Published var promptAssetPackMessage: String = ""
+    @Published private(set) var assetPackRegistryCatalogEntries: [AssetPackRegistryCatalogEntry] = []
+    @Published var assetPackInstallMessage: String = ""
     @Published var questions: [ReflectionQuestion]
     @Published var quests: [Quest]
     @Published var principles: [PrincipleAsset]
     @Published private(set) var activePrinciples: [PrincipleAsset]
     @Published private(set) var referencedPrinciples: [PrincipleAsset] = []
+    @Published private(set) var principleTrainingSummaries: [PrincipleTrainingSummary] = []
     @Published var historyRecords: [HistoryRecord] = []
     @Published var projectNames: [UUID: String] = [:]
     @Published var projectsById: [UUID: Project] = [:]
@@ -51,6 +125,8 @@ final class AppStore: ObservableObject {
     @Published var historyDeepLink: HistoryDeepLink?
     @Published var apiKeyConfigured: Bool = false
     @Published var settingsMessage: String = ""
+    @Published var dataExportMessage: String = ""
+    @Published var preparedDataExport: PreparedDataExport?
     @Published var isTestingGLMConnection: Bool = false
     @Published var todayLoopMessage: String = ""
     @Published var lastAIFailureMessage: String?
@@ -60,7 +136,12 @@ final class AppStore: ObservableObject {
     @Published var streamingCards: [StreamingCardDraft] = []
     @Published var streamingStatusText: String = ""
     @Published var recentPromptRuns: [PromptRun] = []
+    @Published var promptRunStats: PromptRunStats?
     @Published var promptRunAuditMessage: String = ""
+    @Published var recentPromptEvalRuns: [PromptEvalRun] = []
+    @Published private(set) var promptRollbackOverrides: [PromptID: PromptTemplate] = [:]
+    @Published var promptEvalReleaseGate: PromptEvalReleaseGate = .blocked(promptProvider: LocalPromptProvider())
+    @Published var promptEvalMessage: String = ""
     @Published private(set) var pendingAIRepairCount: Int = 0
     @Published private(set) var reminderStatusMessage: String = "明日 09:00 本地提醒将在保存主线任务后请求授权。"
     @Published var projectCandidates: [ProjectCandidate] = []
@@ -77,6 +158,24 @@ final class AppStore: ObservableObject {
     @Published var isGeneratingProjectMerges: Bool = false
     @Published var projectMergeMessage: String = ""
 
+    var availableLensChoices: [LensCatalogItem] {
+        customLensItems + runtimeLensItems + ThinkingLens.allCases
+            .sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }
+            .map(\.catalogItem)
+    }
+
+    var selectedLensTitle: String {
+        selectedLensItem?.title ?? todayDraft.selectedLens?.title ?? "当前透镜"
+    }
+
+    var selectedLensItem: LensCatalogItem? {
+        if let customId = todayDraft.selectedCustomLensId,
+           let item = (customLensItems + runtimeLensItems).first(where: { $0.lensId == customId }) {
+            return item
+        }
+        return todayDraft.selectedLens?.catalogItem
+    }
+
     private let apiKeyStore: KeychainAPIKeyStore
     private let dailyEntryRepository: DailyEntryRepository?
     private let thinkingCardRepository: ThinkingCardRepository?
@@ -84,6 +183,7 @@ final class AppStore: ObservableObject {
     private let principleRepository: PrincipleRepository?
     private let verificationRepository: VerificationRepository?
     private let lensSessionRepository: LensSessionRepository?
+    private let lensAssetPackRepository: LensAssetPackRepository?
     private let metricSnapshotRepository: MetricSnapshotRepository?
     private let metricContributionRepository: MetricContributionRepository?
     private let projectLinkRepository: ProjectLinkRepository?
@@ -92,15 +192,33 @@ final class AppStore: ObservableObject {
     private let projectMergeCandidateRepository: ProjectMergeCandidateRepository?
     private let projectInsightRepository: ProjectInsightRepository?
     private let promptRunRepository: PromptRunRepository?
+    private let promptEvalRunRepository: PromptEvalRunRepository?
+    private let promptAssetSelectionRepository: PromptAssetSelectionRepository?
+    private let promptAssetPackRepository: PromptAssetPackRepository?
+    private let assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository?
+    private let dataExportRepository: DataExportRepository?
     private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
+    private let principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository?
+    private let principlePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository?
     private let reminderService: ReminderService?
     private let promptProvider: PromptProvider
+    private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
+    private var runtimePromptAssetPacks: [PromptAssetPack] = []
+    private var assetPackRegistryCatalogURL: URL?
     private let persistenceUnavailableMessage: String?
     private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
     private var growthAIService: GrowthAIService?
+    private var runtimePromptProvider: PromptProvider {
+        PromptAssetPackProvider(base: promptProvider, packs: runtimePromptAssetPacks)
+    }
+    private var effectivePromptProvider: PromptProvider {
+        PromptRollbackOverrideProvider(base: runtimePromptProvider, overrides: promptRollbackOverrides)
+    }
     private var apiKeyStatusMessage: String = ""
     private var glmConnectionMessage: String = ""
+    private let principleNeedsReviewNegativeFeedbackThreshold = 2
+    private var referencedPrincipleRetrievals: [UUID: RetrievedPrinciple] = [:]
     private var scheduledReminderIDs: Set<String> = []
     private var persistenceChain: Task<Void, Never>?
     private var persistenceChainGeneration = 0
@@ -110,9 +228,23 @@ final class AppStore: ObservableObject {
         }
     }
     private var activeAIRequestCount: Int = 0
+    private static let exportTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+    private static let assetPackJSONDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
     #if DEBUG
     private(set) var loadsPersistedStateOnLaunch: Bool = true
     private(set) var visualQAProjectDetailDirectEntryProjectID: UUID?
+    private var visualQASettingsAuditProofActive = false
     #endif
 
     init(
@@ -130,6 +262,7 @@ final class AppStore: ObservableObject {
         principleRepository: PrincipleRepository? = nil,
         verificationRepository: VerificationRepository? = nil,
         lensSessionRepository: LensSessionRepository? = nil,
+        lensAssetPackRepository: LensAssetPackRepository? = nil,
         metricSnapshotRepository: MetricSnapshotRepository? = nil,
         metricContributionRepository: MetricContributionRepository? = nil,
         projectLinkRepository: ProjectLinkRepository? = nil,
@@ -138,9 +271,17 @@ final class AppStore: ObservableObject {
         projectMergeCandidateRepository: ProjectMergeCandidateRepository? = nil,
         projectInsightRepository: ProjectInsightRepository? = nil,
         promptRunRepository: PromptRunRepository? = nil,
+        promptEvalRunRepository: PromptEvalRunRepository? = nil,
+        promptAssetSelectionRepository: PromptAssetSelectionRepository? = nil,
+        promptAssetPackRepository: PromptAssetPackRepository? = nil,
+        assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository? = nil,
+        dataExportRepository: DataExportRepository? = nil,
         historicalRetryCandidateRepository: HistoricalRetryCandidateRepository? = nil,
+        principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository? = nil,
+        principlePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository? = nil,
         reminderService: ReminderService? = nil,
         promptProvider: PromptProvider = LocalPromptProvider(),
+        promptEvalSchedulePolicy: PromptEvalSchedulePolicy = PromptEvalSchedulePolicy(),
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
         refreshesAIServiceFromKeychain: Bool = true,
@@ -153,6 +294,7 @@ final class AppStore: ObservableObject {
         self.principleRepository = principleRepository
         self.verificationRepository = verificationRepository
         self.lensSessionRepository = lensSessionRepository
+        self.lensAssetPackRepository = lensAssetPackRepository
         self.metricSnapshotRepository = metricSnapshotRepository
         self.metricContributionRepository = metricContributionRepository
         self.projectLinkRepository = projectLinkRepository
@@ -161,9 +303,17 @@ final class AppStore: ObservableObject {
         self.projectMergeCandidateRepository = projectMergeCandidateRepository
         self.projectInsightRepository = projectInsightRepository
         self.promptRunRepository = promptRunRepository
+        self.promptEvalRunRepository = promptEvalRunRepository
+        self.promptAssetSelectionRepository = promptAssetSelectionRepository
+        self.promptAssetPackRepository = promptAssetPackRepository
+        self.assetPackTrustPolicyRepository = assetPackTrustPolicyRepository
+        self.dataExportRepository = dataExportRepository
         self.historicalRetryCandidateRepository = historicalRetryCandidateRepository
+        self.principleRecallFeedbackRepository = principleRecallFeedbackRepository
+        self.principlePracticeEvidenceRepository = principlePracticeEvidenceRepository
         self.reminderService = reminderService
         self.promptProvider = promptProvider
+        self.promptEvalSchedulePolicy = promptEvalSchedulePolicy
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
@@ -176,6 +326,8 @@ final class AppStore: ObservableObject {
         self.activePrinciples = principles?.filter { $0.status == .active } ?? []
         self.historyRecords = historyRecords ?? []
         self.growthSnapshot = growthSnapshot ?? Self.makeEmptyGrowth()
+        self.customLensItems = self.todayDraft.customLensItems
+        self.promptEvalReleaseGate = PromptEvalReleaseGate.blocked(promptProvider: effectivePromptProvider)
         refreshAPIKeyStatus()
     }
 
@@ -185,14 +337,7 @@ final class AppStore: ObservableObject {
         do {
             let database = try AppDatabase(url: AppDatabase.defaultURL())
             let promptRunRepository = SQLitePromptRunRepository(database: database)
-            let todayAIService = makeTodayAIService(
-                apiKeyStore: apiKeyStore,
-                promptRunRepository: promptRunRepository
-            )
-            let growthService = makeGrowthAIService(
-                apiKeyStore: apiKeyStore,
-                promptRunRepository: promptRunRepository
-            )
+            let promptEvalRunRepository = SQLitePromptEvalRunRepository(database: database)
             return AppStore(
                 apiKeyStore: apiKeyStore,
                 dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
@@ -201,6 +346,7 @@ final class AppStore: ObservableObject {
                 principleRepository: SQLitePrincipleRepository(database: database),
                 verificationRepository: SQLiteVerificationRepository(database: database),
                 lensSessionRepository: SQLiteLensSessionRepository(database: database),
+                lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
                 metricSnapshotRepository: SQLiteMetricSnapshotRepository(database: database),
                 metricContributionRepository: SQLiteMetricContributionRepository(database: database),
                 projectLinkRepository: SQLiteProjectLinkRepository(database: database),
@@ -209,17 +355,20 @@ final class AppStore: ObservableObject {
                 projectMergeCandidateRepository: SQLiteProjectMergeCandidateRepository(database: database),
                 projectInsightRepository: SQLiteProjectInsightRepository(database: database),
                 promptRunRepository: promptRunRepository,
+                promptEvalRunRepository: promptEvalRunRepository,
+                promptAssetSelectionRepository: SQLitePromptAssetSelectionRepository(database: database),
+                promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+                assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+                dataExportRepository: SQLiteDataExportRepository(database: database),
                 historicalRetryCandidateRepository: SQLiteHistoricalRetryCandidateRepository(database: database),
-                reminderService: LocalNotificationReminder(),
-                todayAIService: todayAIService,
-                growthAIService: growthService
+                principleRecallFeedbackRepository: SQLitePrincipleRecallFeedbackRepository(database: database),
+                principlePracticeEvidenceRepository: SQLitePrinciplePracticeEvidenceRepository(database: database),
+                reminderService: LocalNotificationReminder()
             )
         } catch {
-            let todayAIService = makeTodayAIService(apiKeyStore: apiKeyStore, promptRunRepository: nil)
             return AppStore(
                 apiKeyStore: apiKeyStore,
                 reminderService: LocalNotificationReminder(),
-                todayAIService: todayAIService,
                 persistenceUnavailableMessage: "本地数据库初始化失败，当前使用临时内存数据。"
             )
         }
@@ -259,6 +408,50 @@ final class AppStore: ObservableObject {
             return
         }
         selectedTab = visualQATab
+    }
+
+    static func isVisualQASettingsAuditProof(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF"] != nil
+    }
+
+    func applyVisualQASettingsAuditProof(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        guard Self.isVisualQASettingsAuditProof(environment: environment) else { return }
+
+        selectedTab = .settings
+        apiKeyConfigured = true
+        apiKeyStatusMessage = "GLM API Key 已配置。"
+        glmConnectionMessage = "GLM 连接测试失败：Debug 视觉验证使用本地失败样本。"
+        recentPromptRuns = [Self.makeVisualQASettingsAuditProofRun()]
+        promptRunAuditMessage = ""
+        visualQASettingsAuditProofActive = true
+        loadsPersistedStateOnLaunch = false
+        updateSettingsMessage()
+    }
+
+    private static func makeVisualQASettingsAuditProofRun() -> PromptRun {
+        PromptRun(
+            promptId: PromptID.organizeCards.rawValue,
+            promptVersion: "connection-test",
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "debug-settings-audit-proof",
+            sessionMode: SessionMode.standard.rawValue,
+            requestSummary: "Debug Settings BYOK/PromptRun rendered proof",
+            error: "Debug 视觉验证：本地连接失败样本。",
+            createdAt: Date(timeIntervalSince1970: 1_804_032_000)
+        )
+    }
+
+    static func shouldUseVisualQASettingsAssetPackManifestFixture(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST"] != nil
     }
 
     static func resolveVisualQATodayInput(
@@ -323,6 +516,13 @@ final class AppStore: ObservableObject {
         return VisualQATodayStage(rawValue: normalized) ?? .capture
     }
 
+    static func shouldPresentVisualQACustomLensSheet(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_TODAY_CUSTOM_LENS_SHEET"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_CUSTOM_LENS_SHEET"] != nil
+    }
+
     func applyVisualQATodaySeed(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -362,11 +562,13 @@ final class AppStore: ObservableObject {
 
         case .answerQuestions:
             seedVisualQAQuestions(from: input, answered: false)
+            seedVisualQAReferencedPrinciple(promptID: .generateQuestions)
             todayDraft.state = .answerQuestions
 
         case .reviewQuests:
             seedVisualQAQuestions(from: input, answered: true)
             generateLocalQuests()
+            seedVisualQAReferencedPrinciple(promptID: .generateQuests)
             todayDraft.state = .reviewQuests
 
         case .extractPrinciple:
@@ -409,6 +611,28 @@ final class AppStore: ObservableObject {
             updated.answer = "先回到最小事实：明天只验证一个会改变判断的关键假设。"
             return updated
         }
+    }
+
+    private func seedVisualQAReferencedPrinciple(promptID: PromptID) {
+        let principle = PrincipleAsset(
+            title: "Visual QA - 会前确认负责人",
+            summary: "协作任务开始前先确认唯一负责人和验收标准。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人", "写出验收标准"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "低风险同步可简化",
+            status: .active
+        )
+        referencedPrinciples = [principle]
+        referencedPrincipleRetrievals = [
+            principle.id: RetrievedPrinciple(
+                principle: principle,
+                score: 4,
+                retrievalReason: "Visual QA seed matched meeting ownership with 会前确认负责人 using local keyword policy; score=4.",
+                policyVersion: LocalPrincipleRetriever.policyVersion
+            )
+        ]
+        activePrinciples = [principle]
     }
 
     private func activateVisualQAMainQuest() {
@@ -483,6 +707,9 @@ final class AppStore: ObservableObject {
             return false
         }
         if resolveVisualQATodayInput(environment: environment) != nil {
+            return false
+        }
+        if isVisualQASettingsAuditProof(environment: environment) {
             return false
         }
         return isVisualQAProjectDetailLaunch(
@@ -947,6 +1174,7 @@ final class AppStore: ObservableObject {
         principles = fixture.principles
         activePrinciples = fixture.activePrinciples
         referencedPrinciples = fixture.referencedPrinciples
+        referencedPrincipleRetrievals = [:]
         historyRecords = fixture.historyRecords
         projectNames = fixture.projectNames
         projectsById = fixture.projectsById
@@ -1112,6 +1340,49 @@ final class AppStore: ObservableObject {
         quests.first { $0.type == .main }
     }
 
+    var todayPrimaryActionBlocker: String? {
+        if isAIRunning {
+            return "AI 正在运行，完成后会继续。"
+        }
+
+        switch todayDraft.state {
+        case .verifyYesterday, .organizing, .selectMode, .extractPrinciple, .sessionComplete:
+            return nil
+        case .capture:
+            let trimmedInput = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedInput.isEmpty {
+                return "先写下一段今天的事实、困惑或行动。"
+            }
+            if !todayDraft.hasSelectedSessionMode {
+                return "先选择 Quick、Standard 或 Deep 训练深度。"
+            }
+            return nil
+        case .reviewCards:
+            if thinkingCards.contains(where: { $0.isConfirmed }) {
+                return nil
+            }
+            return "确认至少一张卡片后再继续。"
+        case .selectLens:
+            if todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil {
+                return nil
+            }
+            return "先选择一个思考透镜。"
+        case .answerQuestions:
+            if hasAnsweredReflectionQuestion {
+                return nil
+            }
+            return "至少回答一个问题后再生成任务。"
+        case .reviewQuests:
+            guard let mainQuest else {
+                return "先保留一个主线任务。"
+            }
+            if mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "给主线任务补上可验证的完成标准。"
+            }
+            return nil
+        }
+    }
+
     var canCreateProjectFromCurrentFocus: Bool {
         guard let mainQuest,
               projectRepository != nil,
@@ -1121,6 +1392,11 @@ final class AppStore: ObservableObject {
     }
 
     func loadPersistedState() async {
+        await loadRuntimePromptAssetPacks()
+        await loadPromptAssetSelections()
+        await loadRuntimeLensPacks()
+        await runScheduledPromptEvalIfNeeded()
+
         guard let dailyEntryRepository else {
             updateSettingsMessage()
             return
@@ -1144,7 +1420,7 @@ final class AppStore: ObservableObject {
                 questions = []
                 quests = []
                 principles = []
-                referencedPrinciples = []
+                clearReferencedPrinciples()
                 pendingAIRepairPrompts = []
                 await initializeFromLastActiveQuest()
                 persistDraft()
@@ -1158,6 +1434,10 @@ final class AppStore: ObservableObject {
             }
 
             todayDraft = draft
+            customLensItems = draft.customLensItems
+            if draft.selectedCustomLensId != nil, !draft.customLensQuestions.isEmpty {
+                questions = draft.customLensQuestions
+            }
             if let cards = try await thinkingCardRepository?.cards(for: draft.id) {
                 thinkingCards = cards
             }
@@ -1168,8 +1448,9 @@ final class AppStore: ObservableObject {
                 principles = storedPrinciples
             }
             await loadActivePrinciples()
-            referencedPrinciples = []
-            if let session = try await lensSessionRepository?.lensSession(for: draft.id) {
+            clearReferencedPrinciples()
+            if todayDraft.selectedCustomLensId == nil,
+               let session = try await lensSessionRepository?.lensSession(for: draft.id) {
                 questions = session.questions
                 if draft.selectedLens == nil {
                     todayDraft.selectedLens = session.selectedLens
@@ -1192,6 +1473,551 @@ final class AppStore: ObservableObject {
         updateSettingsMessage()
     }
 
+    private func runScheduledPromptEvalIfNeeded(now: Date = .now) async {
+        guard let promptEvalRunRepository else { return }
+
+        do {
+            recentPromptEvalRuns = try await promptEvalRunRepository.recentEvalRuns(limit: 100)
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: recentPromptEvalRuns,
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+
+            let decision = promptEvalSchedulePolicy.decision(
+                runs: recentPromptEvalRuns,
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion,
+                now: now
+            )
+            guard decision.shouldRun else {
+                promptEvalMessage = recentPromptEvalRuns.isEmpty ? "还没有固定评测记录。" : promptEvalGateSummaryMessage
+                return
+            }
+
+            await runPromptEvalSuite()
+            promptEvalMessage = "自动固定评测：\(promptEvalMessage)"
+        } catch {
+            recentPromptEvalRuns = []
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: [],
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+            promptEvalMessage = "读取 Prompt 固定评测失败。"
+        }
+    }
+
+    private func loadPromptAssetSelections() async {
+        guard let promptAssetSelectionRepository else { return }
+
+        do {
+            let selections = try await promptAssetSelectionRepository.allSelections()
+            var restoredOverrides: [PromptID: PromptTemplate] = [:]
+            for selection in selections {
+                guard let template = runtimePromptProvider.template(
+                    for: selection.promptId,
+                    mode: .standard,
+                    version: selection.selectedVersion
+                ) else {
+                    continue
+                }
+                restoredOverrides[selection.promptId] = template
+            }
+            promptRollbackOverrides = restoredOverrides
+            refreshAIServiceFromKeychainIfNeeded()
+        } catch {
+            promptEvalMessage = "读取 Prompt 资产选择失败，已使用当前本地版本。"
+        }
+    }
+
+    private func loadRuntimePromptAssetPacks() async {
+        guard let promptAssetPackRepository else {
+            promptAssetPacks = []
+            runtimePromptAssetPacks = []
+            return
+        }
+
+        do {
+            let verifier = await assetPackSignatureVerifierFromPersistedPolicies()
+            let packs = try await promptAssetPackRepository.allPacks()
+            promptAssetPacks = Self.sortedPromptAssetPacks(packs)
+            if let repository = promptAssetPackRepository as? SQLitePromptAssetPackRepository {
+                runtimePromptAssetPacks = try await repository.enabledPacks(signatureVerifier: verifier)
+            } else {
+                runtimePromptAssetPacks = try await promptAssetPackRepository.enabledPacks()
+            }
+        } catch {
+            promptAssetPacks = []
+            runtimePromptAssetPacks = []
+        }
+        refreshAIServiceFromKeychainIfNeeded()
+    }
+
+    private func loadRuntimeLensPacks() async {
+        guard let lensAssetPackRepository else {
+            lensAssetPacks = []
+            runtimeLensItems = []
+            return
+        }
+
+        do {
+            let verifier = await assetPackSignatureVerifierFromPersistedPolicies()
+            let packs = try await lensAssetPackRepository.allPacks()
+            lensAssetPacks = Self.sortedLensAssetPacks(packs)
+            let runtimePacks: [LensAssetPack]
+            if let repository = lensAssetPackRepository as? SQLiteLensAssetPackRepository {
+                runtimePacks = try await repository.enabledPacks(signatureVerifier: verifier)
+            } else {
+                runtimePacks = try await lensAssetPackRepository.enabledPacks()
+            }
+            runtimeLensItems = Self.sortedRuntimeLensItems(from: runtimePacks)
+        } catch {
+            lensAssetPacks = []
+            runtimeLensItems = []
+        }
+    }
+
+    private func assetPackSignatureVerifierFromPersistedPolicies() async -> AssetPackSignatureVerifier {
+        guard let assetPackTrustPolicyRepository else { return .default }
+
+        do {
+            let records = try await assetPackTrustPolicyRepository.allDocuments()
+            return AssetPackSignatureVerifier.combining(
+                records
+                    .map(\.document)
+                    .filter { !$0.isExpired() && $0.hasValidTrustSignature }
+                    .map(\.signatureVerifier) + [.default]
+            )
+        } catch {
+            return .default
+        }
+    }
+
+    func loadLensAssetPacks() async {
+        guard let lensAssetPackRepository else {
+            lensAssetPacks = []
+            runtimeLensItems = []
+            lensAssetPackMessage = "透镜包管理不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            let packs = try await lensAssetPackRepository.allPacks()
+            applyLensAssetPacks(packs)
+            lensAssetPackMessage = "已加载 \(lensAssetPacks.count) 个透镜包，启用 \(lensAssetPacks.filter(\.isEnabled).count) 个。"
+        } catch {
+            lensAssetPacks = []
+            runtimeLensItems = []
+            lensAssetPackMessage = "读取透镜包失败：\(error.localizedDescription)"
+        }
+    }
+
+    func loadPromptAssetPacks() async {
+        guard let promptAssetPackRepository else {
+            promptAssetPacks = []
+            runtimePromptAssetPacks = []
+            refreshPromptRuntimeState()
+            promptAssetPackMessage = "Prompt 包管理不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            let packs = try await promptAssetPackRepository.allPacks()
+            applyPromptAssetPacks(packs)
+            promptAssetPackMessage = "已加载 \(promptAssetPacks.count) 个 Prompt 包，启用 \(promptAssetPacks.filter(\.isEnabled).count) 个。"
+        } catch {
+            promptAssetPacks = []
+            runtimePromptAssetPacks = []
+            refreshPromptRuntimeState()
+            promptAssetPackMessage = "读取 Prompt 包失败：\(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func importAssetPackInstallManifest(from data: Data) async throws -> AssetPackInstallValidationReport {
+        guard promptAssetPackRepository != nil, lensAssetPackRepository != nil else {
+            assetPackInstallMessage = "资产包安装不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        do {
+            let manifest = try JSONDecoder().decode(AssetPackInstallManifest.self, from: data)
+            let report = try await installAssetPackManifest(manifest)
+            assetPackInstallMessage = Self.assetPackInstallSummary(report)
+            return report
+        } catch {
+            assetPackInstallMessage = "安装资产包清单失败：\(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    @discardableResult
+    func fetchAndInstallAssetPackInstallManifest(
+        from url: URL,
+        fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
+    ) async throws -> AssetPackInstallValidationReport {
+        let data: Data
+        do {
+            data = try await fetcher.fetchInstallManifestData(from: url)
+        } catch {
+            assetPackInstallMessage = "获取远程资产包清单失败：\(error.localizedDescription)"
+            throw error
+        }
+
+        do {
+            let manifest = try Self.assetPackJSONDecoder.decode(AssetPackInstallManifest.self, from: data)
+            let signatureVerifier: AssetPackSignatureVerifier?
+            if let trustPolicyURL = manifest.trustPolicyURL {
+                let trustPolicyData: Data
+                do {
+                    trustPolicyData = try await fetcher.fetchTrustPolicyData(from: trustPolicyURL)
+                } catch {
+                    assetPackInstallMessage = "获取远程资产包信任策略失败：\(error.localizedDescription)"
+                    throw error
+                }
+                let trustPolicyDocument = try Self.assetPackJSONDecoder.decode(AssetPackTrustPolicyDocument.self, from: trustPolicyData)
+                let persistedVerifier = await assetPackSignatureVerifierFromPersistedPolicies()
+                if trustPolicyDocument.hasValidTrustSignature {
+                    try await assetPackTrustPolicyRepository?.saveDocument(
+                        trustPolicyDocument,
+                        sourceURL: trustPolicyURL
+                    )
+                    signatureVerifier = AssetPackSignatureVerifier.combining([
+                        trustPolicyDocument.signatureVerifier,
+                        persistedVerifier
+                    ])
+                } else {
+                    signatureVerifier = persistedVerifier
+                }
+            } else {
+                signatureVerifier = nil
+            }
+
+            let report = try await installAssetPackManifest(
+                manifest,
+                signatureVerifier: signatureVerifier
+            )
+            assetPackInstallMessage = "已从远程清单安装：\(Self.assetPackInstallSummary(report))"
+            return report
+        } catch {
+            if assetPackInstallMessage.isEmpty || assetPackInstallMessage.hasPrefix("已") {
+                assetPackInstallMessage = "安装资产包清单失败：\(error.localizedDescription)"
+            }
+            throw error
+        }
+    }
+
+    @discardableResult
+    func fetchAssetPackRegistryCatalog(
+        from url: URL,
+        fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
+    ) async throws -> AssetPackRegistryCatalog {
+        let data: Data
+        do {
+            data = try await fetcher.fetchInstallManifestData(from: url)
+        } catch {
+            assetPackInstallMessage = "获取远程资产包目录失败：\(error.localizedDescription)"
+            throw error
+        }
+
+        do {
+            let catalog = try Self.assetPackJSONDecoder.decode(AssetPackRegistryCatalog.self, from: data)
+            assetPackRegistryCatalogURL = url
+            assetPackRegistryCatalogEntries = catalog.entries
+            assetPackInstallMessage = "已获取 \(catalog.entries.count) 个远程资产包条目。"
+            return catalog
+        } catch {
+            assetPackRegistryCatalogURL = nil
+            assetPackRegistryCatalogEntries = []
+            assetPackInstallMessage = "解析远程资产包目录失败：\(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    @discardableResult
+    func installAssetPackRegistryCatalogEntry(
+        entryId: String,
+        fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
+    ) async throws -> AssetPackInstallValidationReport {
+        guard let entry = assetPackRegistryCatalogEntries.first(where: { $0.id == entryId }) else {
+            assetPackInstallMessage = "未找到远程资产包条目：\(entryId)。"
+            throw PersistenceError.validationFailed("Asset pack registry entry not found: \(entryId)")
+        }
+
+        let manifestURL = assetPackRegistryCatalogURL.map { entry.sourceURL(baseURL: $0) } ?? entry.manifestURL
+        let report = try await fetchAndInstallAssetPackInstallManifest(from: manifestURL, fetcher: fetcher)
+        assetPackInstallMessage = "已从 \(entry.displayName) 安装：\(Self.assetPackInstallSummary(report))"
+        return report
+    }
+
+    private func installAssetPackManifest(
+        _ manifest: AssetPackInstallManifest,
+        signatureVerifier: AssetPackSignatureVerifier? = nil
+    ) async throws -> AssetPackInstallValidationReport {
+        guard let promptAssetPackRepository, let lensAssetPackRepository else {
+            assetPackInstallMessage = "资产包安装不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        let validator = signatureVerifier.map(AssetPackInstallManifestValidator.init(signatureVerifier:))
+            ?? AssetPackInstallManifestValidator()
+        let report = try await AssetPackInstallManifestInstaller(
+            promptAssetPackRepository: promptAssetPackRepository,
+            lensAssetPackRepository: lensAssetPackRepository,
+            validator: validator,
+            signatureVerifier: signatureVerifier
+        ).install(manifest)
+
+        applyPromptAssetPacks(try await promptAssetPackRepository.allPacks())
+        applyLensAssetPacks(try await lensAssetPackRepository.allPacks())
+        promptAssetPackMessage = "资产包清单安装后已刷新 Prompt 包。"
+        lensAssetPackMessage = "资产包清单安装后已刷新透镜包。"
+        return report
+    }
+
+    func setPromptAssetPack(_ packId: String, isEnabled: Bool) async {
+        guard let promptAssetPackRepository else {
+            promptAssetPackMessage = "Prompt 包管理不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            let packs = promptAssetPacks.isEmpty ? try await promptAssetPackRepository.allPacks() : promptAssetPacks
+            guard let pack = packs.first(where: { $0.id == packId }) else {
+                promptAssetPackMessage = "未找到 Prompt 包 \(packId)。"
+                return
+            }
+
+            let updatedPack = PromptAssetPack(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                isEnabled: isEnabled,
+                templates: pack.templates,
+                trustMetadata: pack.trustMetadata
+            )
+            try await promptAssetPackRepository.savePack(updatedPack)
+
+            let reloadedPacks = try await promptAssetPackRepository.allPacks()
+            applyPromptAssetPacks(reloadedPacks)
+            promptAssetPackMessage = isEnabled ? "已启用 \(pack.displayName)。" : "已停用 \(pack.displayName)。"
+        } catch {
+            promptAssetPackMessage = "更新 Prompt 包失败：\(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func importPromptAssetPack(from data: Data) async throws -> PromptAssetPack {
+        guard let promptAssetPackRepository else {
+            promptAssetPackMessage = "Prompt 包管理不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        do {
+            let decodedPack = try JSONDecoder().decode(PromptAssetPack.self, from: data)
+            try validatePromptAssetPackForImport(decodedPack)
+            try await promptAssetPackRepository.savePack(decodedPack)
+            let packs = try await promptAssetPackRepository.allPacks()
+            applyPromptAssetPacks(packs)
+            promptAssetPackMessage = "已导入 \(decodedPack.displayName)，包含 \(decodedPack.templates.count) 个 Prompt 模板。"
+            return decodedPack
+        } catch {
+            promptAssetPackMessage = "导入 Prompt 包失败：\(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    func setLensAssetPack(_ packId: String, isEnabled: Bool) async {
+        guard let lensAssetPackRepository else {
+            lensAssetPackMessage = "透镜包管理不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            let packs = lensAssetPacks.isEmpty ? try await lensAssetPackRepository.allPacks() : lensAssetPacks
+            guard let pack = packs.first(where: { $0.id == packId }) else {
+                lensAssetPackMessage = "未找到透镜包 \(packId)。"
+                return
+            }
+
+            let updatedPack = LensAssetPack(
+                id: pack.id,
+                version: pack.version,
+                displayName: pack.displayName,
+                sourceKind: pack.sourceKind,
+                isEnabled: isEnabled,
+                items: pack.items,
+                trustMetadata: pack.trustMetadata
+            )
+            try await lensAssetPackRepository.savePack(updatedPack)
+
+            if !isEnabled {
+                clearRuntimeLensSelectionIfNeeded(from: pack)
+            }
+
+            let reloadedPacks = try await lensAssetPackRepository.allPacks()
+            applyLensAssetPacks(reloadedPacks)
+            lensAssetPackMessage = isEnabled ? "已启用 \(pack.displayName)。" : "已停用 \(pack.displayName)。"
+        } catch {
+            lensAssetPackMessage = "更新透镜包失败：\(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func importLensAssetPack(from data: Data) async throws -> LensAssetPack {
+        guard let lensAssetPackRepository else {
+            lensAssetPackMessage = "透镜包管理不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        do {
+            let decodedPack = try JSONDecoder().decode(LensAssetPack.self, from: data)
+            try validateLensAssetPackForImport(decodedPack)
+            try await lensAssetPackRepository.savePack(decodedPack)
+            let packs = try await lensAssetPackRepository.allPacks()
+            applyLensAssetPacks(packs)
+            lensAssetPackMessage = "已导入 \(decodedPack.displayName)，包含 \(decodedPack.items.count) 个透镜。"
+            return decodedPack
+        } catch {
+            lensAssetPackMessage = "导入透镜包失败：\(error.localizedDescription)"
+            throw error
+        }
+    }
+
+    private func applyLensAssetPacks(_ packs: [LensAssetPack]) {
+        lensAssetPacks = Self.sortedLensAssetPacks(packs)
+        runtimeLensItems = Self.sortedRuntimeLensItems(from: lensAssetPacks.filter(Self.canUseAsRuntimeLensPack))
+    }
+
+    private func applyPromptAssetPacks(_ packs: [PromptAssetPack]) {
+        promptAssetPacks = Self.sortedPromptAssetPacks(packs)
+        runtimePromptAssetPacks = promptAssetPacks.filter(Self.canUseAsRuntimePromptPack)
+        refreshPromptRuntimeState()
+    }
+
+    private func refreshPromptRuntimeState() {
+        refreshAIServiceFromKeychainIfNeeded()
+        promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+            runs: recentPromptEvalRuns,
+            promptProvider: effectivePromptProvider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+    }
+
+    private func clearRuntimeLensSelectionIfNeeded(from pack: LensAssetPack) {
+        guard let selectedId = todayDraft.selectedCustomLensId,
+              pack.items.contains(where: { $0.lensId == selectedId })
+        else { return }
+
+        todayDraft.selectedCustomLensId = nil
+        todayDraft.customLensQuestions = []
+        questions = []
+        persistDraft()
+    }
+
+    private func validateLensAssetPackForImport(_ pack: LensAssetPack) throws {
+        guard !pack.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires id")
+        }
+        guard !pack.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires version")
+        }
+        guard !pack.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires displayName")
+        }
+        guard !pack.items.isEmpty else {
+            throw PersistenceError.validationFailed("LensAssetPack requires at least one lens")
+        }
+        guard !pack.sourceKind.requiresTrustMetadata || pack.trustMetadata != nil else {
+            throw PersistenceError.validationFailed("LensAssetPack requires trust metadata for external sources")
+        }
+    }
+
+    private func validatePromptAssetPackForImport(_ pack: PromptAssetPack) throws {
+        guard !pack.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires id")
+        }
+        guard !pack.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires version")
+        }
+        guard !pack.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires displayName")
+        }
+        guard !pack.templates.isEmpty else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires at least one template")
+        }
+        guard !pack.sourceKind.requiresTrustMetadata || pack.trustMetadata != nil else {
+            throw PersistenceError.validationFailed("PromptAssetPack requires trust metadata for external sources")
+        }
+    }
+
+    private static func sortedPromptAssetPacks(_ packs: [PromptAssetPack]) -> [PromptAssetPack] {
+        packs.sorted { lhs, rhs in
+            if lhs.isEnabled != rhs.isEnabled {
+                return lhs.isEnabled && !rhs.isEnabled
+            }
+            let lhsName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            if lhsName != .orderedSame {
+                return lhsName == .orderedAscending
+            }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func sortedLensAssetPacks(_ packs: [LensAssetPack]) -> [LensAssetPack] {
+        packs.sorted { lhs, rhs in
+            if lhs.isEnabled != rhs.isEnabled {
+                return lhs.isEnabled && !rhs.isEnabled
+            }
+            let lhsName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            if lhsName != .orderedSame {
+                return lhsName == .orderedAscending
+            }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func sortedRuntimeLensItems(from packs: [LensAssetPack]) -> [LensCatalogItem] {
+        LensLibrary(packs: packs).items.sorted { lhs, rhs in
+            if lhs.methodIndex != rhs.methodIndex {
+                return lhs.methodIndex < rhs.methodIndex
+            }
+            return lhs.lensId < rhs.lensId
+        }
+    }
+
+    private static func assetPackInstallSummary(_ report: AssetPackInstallValidationReport) -> String {
+        let installedPromptCount = report.installablePromptPacks.count
+        let installedLensCount = report.installableLensPacks.count
+        let rejectedPromptCount = report.rejectedPromptPacks.count
+        let rejectedLensCount = report.rejectedLensPacks.count
+        return "已安装 \(installedPromptCount) 个 Prompt 包、\(installedLensCount) 个透镜包；拒绝 \(rejectedPromptCount) 个 Prompt 包、\(rejectedLensCount) 个透镜包。"
+    }
+
+    private static func canUseAsRuntimeLensPack(_ pack: LensAssetPack) -> Bool {
+        guard pack.isEnabled else { return false }
+        guard pack.sourceKind.requiresTrustMetadata else { return true }
+        guard let metadata = pack.trustMetadata,
+              metadata.missingRequiredFields.isEmpty
+        else { return false }
+        return (try? AssetPackIntegrity.hasValidContentHash(pack)) == true
+    }
+
+    private static func canUseAsRuntimePromptPack(_ pack: PromptAssetPack) -> Bool {
+        guard pack.isEnabled else { return false }
+        guard pack.sourceKind.requiresTrustMetadata else { return true }
+        guard let metadata = pack.trustMetadata,
+              metadata.missingRequiredFields.isEmpty
+        else { return false }
+        return (try? AssetPackIntegrity.hasValidContentHash(pack)) == true
+    }
+
     private func restorePendingAIRepairsFromPromptRuns() async {
         guard let promptRunRepository else { return }
         do {
@@ -1211,23 +2037,187 @@ final class AppStore: ObservableObject {
     }
 
     func loadRecentPromptRuns(limit: Int = 12) async {
+        #if DEBUG
+        if visualQASettingsAuditProofActive {
+            recentPromptRuns = [Self.makeVisualQASettingsAuditProofRun()]
+            promptRunStats = PromptRunStats(
+                totalCount: 1,
+                successCount: 0,
+                failureCount: 1,
+                emptyResultCount: 0,
+                userDeniedCount: 0
+            )
+            promptRunAuditMessage = ""
+            return
+        }
+        #endif
+
         guard let promptRunRepository else {
             recentPromptRuns = []
+            promptRunStats = nil
             promptRunAuditMessage = "AI 调用记录暂不可用。"
             return
         }
 
         do {
             recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
+            promptRunStats = try await promptRunRepository.promptRunStats(limit: limit)
             promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
         } catch {
             recentPromptRuns = []
+            promptRunStats = nil
             promptRunAuditMessage = "读取 AI 调用记录失败。"
         }
     }
 
+    func loadRecentPromptEvalRuns(limit: Int = 100) async {
+        guard let promptEvalRunRepository else {
+            recentPromptEvalRuns = []
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: [],
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+            promptEvalMessage = "Prompt 固定评测记录暂不可用。"
+            return
+        }
+
+        do {
+            recentPromptEvalRuns = try await promptEvalRunRepository.recentEvalRuns(limit: limit)
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: recentPromptEvalRuns,
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+            promptEvalMessage = recentPromptEvalRuns.isEmpty ? "还没有固定评测记录。" : promptEvalGateSummaryMessage
+        } catch {
+            recentPromptEvalRuns = []
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: [],
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+            promptEvalMessage = "读取 Prompt 固定评测失败。"
+        }
+    }
+
+    func runPromptEvalSuite() async {
+        let runner = PromptEvalRunner(promptProvider: effectivePromptProvider)
+        let runs = runner.runFixedSuite()
+        recentPromptEvalRuns = runs
+
+        do {
+            if let promptEvalRunRepository {
+                for run in runs {
+                    try await promptEvalRunRepository.saveEvalRun(run)
+                }
+                recentPromptEvalRuns = try await promptEvalRunRepository.recentEvalRuns(limit: 100)
+            }
+
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: recentPromptEvalRuns,
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+
+            let persistenceNote = promptEvalRunRepository == nil ? "（未持久化）" : ""
+            promptEvalMessage = "\(promptEvalGateSummaryMessage)\(persistenceNote)"
+        } catch {
+            promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+                runs: runs,
+                promptProvider: effectivePromptProvider,
+                mode: .standard,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion
+            )
+            promptEvalMessage = "固定评测已运行，但保存记录失败。"
+        }
+    }
+
+    @discardableResult
+    func applyPromptRollback(_ candidate: PromptEvalRollbackCandidate) async -> Bool {
+        guard promptEvalReleaseGate.rollbackCandidates.contains(candidate) else {
+            promptEvalMessage = "回滚失败：候选记录已过期，请重新加载固定评测。"
+            return false
+        }
+        guard let promptID = PromptID(rawValue: candidate.promptId) else {
+            promptEvalMessage = "回滚失败：未知 Prompt。"
+            return false
+        }
+        guard let rollbackTemplate = runtimePromptProvider.template(
+            for: promptID,
+            mode: .standard,
+            version: candidate.rollbackTargetVersion
+        ) else {
+            promptEvalMessage = "回滚失败：本地没有 \(candidate.rollbackTargetVersion) 版本的 Prompt 资产。"
+            return false
+        }
+
+        if let promptAssetSelectionRepository {
+            do {
+                try await promptAssetSelectionRepository.saveSelection(
+                    PromptAssetSelection(
+                        promptId: promptID,
+                        selectedVersion: candidate.rollbackTargetVersion,
+                        baseVersion: candidate.currentVersion,
+                        reason: .rollback
+                    )
+                )
+            } catch {
+                promptEvalMessage = "回滚失败：无法保存 Prompt 资产选择。"
+                return false
+            }
+        }
+        promptRollbackOverrides[promptID] = rollbackTemplate
+        refreshAIServiceFromKeychainIfNeeded()
+        promptEvalReleaseGate = PromptEvalReleaseGate.evaluate(
+            runs: recentPromptEvalRuns,
+            promptProvider: effectivePromptProvider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        promptEvalMessage = "已回滚 \(promptID.displayName)：\(candidate.currentVersion) → \(candidate.rollbackTargetVersion)。\(promptEvalGateSummaryMessage)"
+        return true
+    }
+
+    private var promptEvalGateSummaryMessage: String {
+        switch promptEvalReleaseGate.status {
+        case .passed:
+            return "固定评测通过：\(promptEvalReleaseGate.passedPromptCount)/\(promptEvalReleaseGate.totalPromptCount) 个 Prompt 可发布。"
+        case .blocked:
+            let issueCount = promptEvalReleaseGate.blockingIssues.count
+            return "固定评测阻塞：\(issueCount) 项需要处理。可回滚 \(promptEvalReleaseGate.rollbackReadyCount) · 需人工处理 \(promptEvalReleaseGate.manualReviewCount)。"
+        }
+    }
+
+    @discardableResult
+    func prepareDataExport() async throws -> PreparedDataExport {
+        guard let dataExportRepository else {
+            dataExportMessage = "数据导出不可用：本地数据库未初始化。"
+            throw PersistenceError.unimplemented
+        }
+
+        await waitForPendingPersistence()
+        let package = try await dataExportRepository.exportPackage()
+        let fileName = "mingsi-export-\(Self.exportTimestampFormatter.string(from: package.createdAt)).json"
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        try package.data.write(to: fileURL, options: .atomic)
+
+        let prepared = PreparedDataExport(
+            fileURL: fileURL,
+            summary: package.summary,
+            createdAt: package.createdAt
+        )
+        preparedDataExport = prepared
+        dataExportMessage = "已准备数据导出文件。"
+        return prepared
+    }
+
     func promptTemplate(for promptID: PromptID, mode: SessionMode) -> PromptTemplate {
-        promptProvider.template(for: promptID, mode: mode)
+        effectivePromptProvider.template(for: promptID, mode: mode)
     }
 
     func repairablePromptRuns(for dailyEntryId: UUID, limit: Int = 100) async -> [PromptRun] {
@@ -2201,6 +3191,27 @@ final class AppStore: ObservableObject {
         moveTodayLoop(to: state, message: "已回到\(state.title)，后续内容会在确认后重新生成。")
     }
 
+    func navigateTodayLoopToPreviousUserStep() {
+        switch todayDraft.state {
+        case .reviewCards:
+            moveTodayLoop(to: .capture, message: "已回到今日输入，已生成的卡片会保留到你重新整理。")
+        case .selectLens:
+            navigateTodayLoop(to: .reviewCards)
+        case .answerQuestions:
+            navigateTodayLoop(to: .selectLens)
+        case .reviewQuests:
+            navigateTodayLoop(to: .answerQuestions)
+        case .extractPrinciple:
+            navigateTodayLoop(to: .reviewQuests)
+        case .sessionComplete:
+            navigateTodayLoop(to: .extractPrinciple)
+        case .capture, .verifyYesterday, .organizing, .selectMode:
+            if let previousState = previousNavigableTodayLoopState() {
+                navigateTodayLoop(to: previousState)
+            }
+        }
+    }
+
     func selectYesterdayCompletion(_ completion: YesterdayCompletion) {
         todayDraft.yesterdayCompletion = completion
         clearTodayLoopMessage()
@@ -2222,6 +3233,10 @@ final class AppStore: ObservableObject {
             clearTodayLoopMessage()
         }
         persistDraft()
+    }
+
+    func updateDraftText(_ text: String) {
+        updateTodayCapture(text)
     }
 
     func supplementTodayCapture(_ text: String) {
@@ -2289,6 +3304,7 @@ final class AppStore: ObservableObject {
 
     func selectThinkingLens(_ lens: ThinkingLens) {
         todayDraft.selectedLens = lens
+        todayDraft.selectedCustomLensId = nil
         trimDerivedState(after: .selectLens)
         Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
         clearTodayLoopMessage()
@@ -2296,10 +3312,112 @@ final class AppStore: ObservableObject {
         persistLensSession()
     }
 
+    @discardableResult
+    func generateCustomLensFromConfirmedCards() -> LensCatalogItem {
+        let confirmedCards = thinkingCards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        let primaryCard = confirmedCards.first
+        let title: String
+        let methodLine: String
+        let promptGuidance: String
+        let firstQuestion: String
+
+        if let primaryCard {
+            switch primaryCard.type {
+            case .problem, .risk:
+                title = "卡点拆解"
+                methodLine = "先问：这个卡点背后真正没有被确认的是什么？"
+                promptGuidance = "Use the user's confirmed cards to isolate the unresolved blocker and convert it into a testable next question."
+                firstQuestion = "这个卡点背后真正没有被确认的是什么？"
+            case .task, .decision:
+                title = "行动校准"
+                methodLine = "先问：这一步完成后，哪个判断会被验证？"
+                promptGuidance = "Use the user's confirmed actions and decisions to ask for verifiable outcomes and tradeoffs."
+                firstQuestion = "这一步完成后，哪个判断会被验证？"
+            case .fact:
+                title = "事实延展"
+                methodLine = "先问：这条事实还能支持哪两个不同解释？"
+                promptGuidance = "Use the confirmed fact to generate multiple plausible interpretations before choosing one."
+                firstQuestion = "这条事实还能支持哪两个不同解释？"
+            case .idea, .communication:
+                title = "意图澄清"
+                methodLine = "先问：我真正想改变谁的什么理解？"
+                promptGuidance = "Use the user's ideas or communication cards to clarify intent, audience, and desired change."
+                firstQuestion = "我真正想改变谁的什么理解？"
+            }
+        } else {
+            title = "自定义透镜"
+            methodLine = "先问：这次复盘最需要被重新看见的是什么？"
+            promptGuidance = "Ask the user to name the missing angle and turn it into a concrete reflection question."
+            firstQuestion = "这次复盘最需要被重新看见的是什么？"
+        }
+
+        let safeSuffix = (primaryCard?.id.uuidString.prefix(8)).map(String.init) ?? String(todayDraft.id.uuidString.prefix(8))
+        return upsertCustomLens(
+            title: title,
+            subtitle: primaryCard.map { "由「\($0.title)」生成，服务于本次 Today。" } ?? "为当前 Today 临时生成。",
+            shortLabel: "自定",
+            methodLine: methodLine,
+            promptGuidance: promptGuidance,
+            firstQuestion: firstQuestion,
+            idSuffix: safeSuffix
+        )
+    }
+
+    @discardableResult
+    func upsertCustomLens(
+        title: String,
+        subtitle: String,
+        shortLabel: String,
+        methodLine: String,
+        promptGuidance: String,
+        firstQuestion: String,
+        idSuffix: String? = nil
+    ) -> LensCatalogItem {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = trimmedTitle.isEmpty ? "自定义透镜" : trimmedTitle
+        let trimmedQuestion = firstQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedQuestion = trimmedQuestion.isEmpty ? "这次复盘最需要被重新看见的是什么？" : trimmedQuestion
+        let safeId = (idSuffix ?? UUID().uuidString.prefix(8).description)
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        let item = LensCatalogItem(
+            lensId: "custom-\(safeId.isEmpty ? UUID().uuidString.prefix(8) : Substring(safeId))",
+            promptId: "custom_lens",
+            version: "session.v1",
+            title: resolvedTitle,
+            subtitle: subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "本次 Today 的临时方法卡。" : subtitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            shortLabel: shortLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "自定" : shortLabel.trimmingCharacters(in: .whitespacesAndNewlines),
+            methodLine: methodLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "先问：\(resolvedQuestion)" : methodLine.trimmingCharacters(in: .whitespacesAndNewlines),
+            promptGuidance: promptGuidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Use the user's custom lens to generate concrete reflection questions." : promptGuidance.trimmingCharacters(in: .whitespacesAndNewlines),
+            symbolName: "wand.and.stars",
+            recommendedReason: "由当前卡片或手写规则生成。",
+            questionSeeds: [resolvedQuestion],
+            accentRole: .brick,
+            methodIndex: 0
+        )
+        customLensItems.removeAll { $0.lensId == item.lensId }
+        customLensItems.insert(item, at: 0)
+        persistDraft()
+        return item
+    }
+
+    func selectCustomLens(_ lensId: String) {
+        guard (customLensItems + runtimeLensItems).contains(where: { $0.lensId == lensId }) else { return }
+        todayDraft.selectedCustomLensId = lensId
+        todayDraft.selectedLens = nil
+        trimDerivedState(after: .selectLens)
+        clearTodayLoopMessage()
+        persistDraft()
+    }
+
     func updateQuestionAnswer(questionID: ReflectionQuestion.ID, answer: String) {
         guard let index = questions.firstIndex(where: { $0.id == questionID }) else { return }
         questions[index].answer = answer
         trimDerivedState(after: .answerQuestions)
+        if todayDraft.selectedCustomLensId != nil {
+            todayDraft.customLensQuestions = questions
+            persistDraft()
+        }
         if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             clearTodayLoopMessage()
         }
@@ -2390,6 +3508,108 @@ final class AppStore: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func repairPrinciple(
+        _ principleID: PrincipleAsset.ID,
+        title: String,
+        summary: String,
+        triggerContext: String,
+        actions: [String],
+        successCriteria: String,
+        exceptions: String
+    ) async -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedSummary.isEmpty else {
+            todayLoopMessage = "原则标题和摘要不能为空。"
+            return false
+        }
+
+        guard let existing = principleTrainingSummaries.map(\.principle).first(where: { $0.id == principleID }) ??
+            activePrinciples.first(where: { $0.id == principleID }) ??
+            principles.first(where: { $0.id == principleID })
+        else {
+            todayLoopMessage = "没有找到要复审的原则。"
+            return false
+        }
+
+        let repaired = PrincipleAsset(
+            id: existing.id,
+            title: trimmedTitle,
+            summary: trimmedSummary,
+            triggerContext: triggerContext.trimmingCharacters(in: .whitespacesAndNewlines),
+            actions: actions
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty },
+            successCriteria: successCriteria.trimmingCharacters(in: .whitespacesAndNewlines),
+            exceptions: exceptions.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: .active
+        )
+
+        do {
+            if let principleRepository {
+                try await principleRepository.updatePrinciple(repaired)
+            }
+        } catch {
+            todayLoopMessage = "保存原则复审失败。"
+            return false
+        }
+
+        if let todayIndex = principles.firstIndex(where: { $0.id == repaired.id }) {
+            principles[todayIndex] = repaired
+        }
+        if let activeIndex = activePrinciples.firstIndex(where: { $0.id == repaired.id }) {
+            activePrinciples[activeIndex] = repaired
+        } else {
+            activePrinciples.insert(repaired, at: 0)
+        }
+        await loadActivePrinciples()
+        todayLoopMessage = principleRepository == nil ? "原则已复审并重新启用（当前未启用持久化）。" : "原则已复审并重新启用。"
+        return true
+    }
+
+    @discardableResult
+    func archivePrinciple(_ principleID: PrincipleAsset.ID) async -> Bool {
+        do {
+            if let principleRepository {
+                try await principleRepository.updatePrincipleStatus(.archived, principleId: principleID)
+            }
+        } catch {
+            todayLoopMessage = "归档原则失败。"
+            return false
+        }
+
+        principles.removeAll { $0.id == principleID }
+        activePrinciples.removeAll { $0.id == principleID }
+        referencedPrinciples.removeAll { $0.id == principleID }
+        referencedPrincipleRetrievals[principleID] = nil
+        principleTrainingSummaries.removeAll { $0.principle.id == principleID }
+        await refreshPrincipleTrainingSummaries()
+        todayLoopMessage = principleRepository == nil ? "原则已从当前会话移除（当前未启用持久化）。" : "原则已归档。"
+        return true
+    }
+
+    @discardableResult
+    func deletePrinciple(_ principleID: PrincipleAsset.ID) async -> Bool {
+        do {
+            if let principleRepository {
+                try await principleRepository.deletePrinciple(principleID)
+            }
+        } catch {
+            todayLoopMessage = "删除原则失败。"
+            return false
+        }
+
+        principles.removeAll { $0.id == principleID }
+        activePrinciples.removeAll { $0.id == principleID }
+        referencedPrinciples.removeAll { $0.id == principleID }
+        referencedPrincipleRetrievals[principleID] = nil
+        principleTrainingSummaries.removeAll { $0.principle.id == principleID }
+        await refreshPrincipleTrainingSummaries()
+        todayLoopMessage = principleRepository == nil ? "原则已从当前会话删除（当前未启用持久化）。" : "原则已删除。"
+        return true
+    }
+
     func skipPrinciple() {
         principles = []
         persistPrinciples()
@@ -2404,7 +3624,7 @@ final class AppStore: ObservableObject {
         questions = []
         quests = []
         principles = []
-        referencedPrinciples = []
+        clearReferencedPrinciples()
         todayLoopMessage = ""
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
@@ -2506,10 +3726,87 @@ final class AppStore: ObservableObject {
                 return updated
             }
             try await questRepository?.updateQuestStatus(resolvedStatus, questId: quest.id)
+            await recordPrinciplePracticeEvidenceIfNeeded(
+                quest: quest,
+                verification: verification,
+                sourceDailyEntryId: sourceDailyEntryId
+            )
             await refreshGrowthEvidenceAfterTodayChange()
         } catch {
             todayLoopMessage = "校准记录保存失败，但已继续下一步。"
         }
+    }
+
+    private func recordPrinciplePracticeEvidenceIfNeeded(
+        quest: Quest,
+        verification: Verification,
+        sourceDailyEntryId: UUID
+    ) async {
+        guard let principlePracticeEvidenceRepository else { return }
+
+        let candidatePrinciples: [PrincipleAsset]
+        do {
+            if let storedPrinciples = try await principleRepository?.activePrinciples() {
+                candidatePrinciples = storedPrinciples
+            } else {
+                candidatePrinciples = activePrinciples
+            }
+        } catch {
+            candidatePrinciples = activePrinciples
+        }
+
+        let practiceText = [
+            quest.title,
+            quest.whyItMatters,
+            quest.completionCriteria,
+            quest.reflectionQuestion,
+            verification.calibrationNote,
+            verification.likelyIssue,
+            verification.recommendation,
+            todayDraft.rawText
+        ]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+
+        for principle in candidatePrinciples where Self.practiceText(practiceText, matches: principle) {
+            do {
+                let existing = try await principlePracticeEvidenceRepository.evidence(
+                    for: principle.id,
+                    sourceDailyEntryId: sourceDailyEntryId,
+                    questId: quest.id,
+                    evidenceSource: .verification
+                )
+                guard existing == nil else { continue }
+
+                let evidence = PrinciplePracticeEvidence(
+                    principleId: principle.id,
+                    sourceDailyEntryId: sourceDailyEntryId,
+                    questId: quest.id,
+                    verificationId: verification.id,
+                    evidenceSource: .verification,
+                    strength: .intentionalPractice,
+                    evidenceSummary: "验证任务显示原则「\(principle.title)」被实际练习：\(quest.title)"
+                )
+                try await principlePracticeEvidenceRepository.saveEvidence(evidence)
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private static func practiceText(_ text: String, matches principle: PrincipleAsset) -> Bool {
+        let normalizedText = normalizePracticeMatchText(text)
+        let candidates = ([principle.title, principle.summary, principle.triggerContext, principle.successCriteria] + principle.actions)
+            .map(normalizePracticeMatchText)
+            .filter { $0.count >= 4 }
+        return candidates.contains { normalizedText.contains($0) }
+    }
+
+    private static func normalizePracticeMatchText(_ text: String) -> String {
+        text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .filter { !$0.isWhitespace && !$0.isPunctuation }
     }
 
     private func questStatus(for completion: YesterdayCompletion) -> QuestStatus {
@@ -2579,13 +3876,18 @@ final class AppStore: ObservableObject {
     }
 
     private func confirmSelectedLens() {
-        guard todayDraft.selectedLens != nil else {
+        guard todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil else {
             todayLoopMessage = "请选择一个思考透镜。"
             return
         }
         if questions.isEmpty {
             let draftID = todayDraft.id
             todayLoopMessage = "正在生成追问。"
+            if todayDraft.selectedCustomLensId != nil {
+                generateLocalQuestions(from: todayDraft.rawText)
+                moveTodayLoop(to: .answerQuestions)
+                return
+            }
             guard todayAIService != nil else {
                 generateLocalQuestions(from: todayDraft.rawText)
                 Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
@@ -2850,43 +4152,54 @@ final class AppStore: ObservableObject {
         case .verifyYesterday:
             todayDraft.rawText = ""
             thinkingCards = []
+            customLensItems = []
             streamingCards = []
             streamingStatusText = ""
             todayDraft.hasSelectedSessionMode = false
             todayDraft.sessionMode = .standard
             todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+            todayDraft.customLensQuestions = []
             questions = []
             quests = []
             principles = []
-            referencedPrinciples = []
+            clearReferencedPrinciples()
         case .capture, .organizing:
             thinkingCards = []
+            customLensItems = []
             streamingCards = []
             streamingStatusText = ""
             todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+            todayDraft.customLensQuestions = []
             questions = []
             quests = []
             principles = []
-            referencedPrinciples = []
+            clearReferencedPrinciples()
         case .reviewCards:
             todayDraft.hasSelectedSessionMode = false
             todayDraft.sessionMode = .standard
             todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+            todayDraft.customLensQuestions = []
             questions = []
             quests = []
             principles = []
-            referencedPrinciples = []
+            clearReferencedPrinciples()
         case .selectMode:
             todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+            todayDraft.customLensQuestions = []
             questions = []
             quests = []
             principles = []
-            referencedPrinciples = []
+            clearReferencedPrinciples()
         case .selectLens:
+            todayDraft.customLensQuestions = []
             questions = []
             quests = []
             principles = []
-            referencedPrinciples = []
+            clearReferencedPrinciples()
         case .answerQuestions:
             quests = []
             principles = []
@@ -2898,6 +4211,17 @@ final class AppStore: ObservableObject {
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         persistDraft()
+    }
+
+    private func previousNavigableTodayLoopState() -> DailyLoopState? {
+        guard
+            let currentIndex = DailyLoopState.allCases.firstIndex(of: todayDraft.state),
+            currentIndex > 0
+        else { return nil }
+
+        return DailyLoopState.allCases[..<currentIndex]
+            .reversed()
+            .first { canNavigateTodayLoop(to: $0) }
     }
 
     private func handleAIFailure(
@@ -3165,12 +4489,15 @@ final class AppStore: ObservableObject {
         if let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
+                let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
                 questions = try await todayAIService.generateQuestions(
                     for: TodayAIContext(
                         draft: todayDraft,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
-                        principles: contextPrinciples
+                        principles: contextPrinciples,
+                        principleRecallFeedback: recallFeedback,
+                        selectedLensItem: selectedLensItem
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
@@ -3213,12 +4540,15 @@ final class AppStore: ObservableObject {
         if let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
+                let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
                 quests = try await todayAIService.generateQuests(
                     for: TodayAIContext(
                         draft: todayDraft,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
-                        principles: contextPrinciples
+                        principles: contextPrinciples,
+                        principleRecallFeedback: recallFeedback,
+                        selectedLensItem: selectedLensItem
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
@@ -3264,7 +4594,8 @@ final class AppStore: ObservableObject {
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
                         quests: quests,
-                        principles: await existingPrinciplesForDedupe()
+                        principles: await existingPrinciplesForDedupe(),
+                        selectedLensItem: selectedLensItem
                     )
                 )
                 persistPrinciples()
@@ -3324,6 +4655,7 @@ final class AppStore: ObservableObject {
 
     private func generateLocalQuestions(from input: String) {
         let focus = inputSummary(from: input)
+        let lensItem = selectedLensItem
         let modeQuestion: String
         switch todayDraft.sessionMode {
         case .quick:
@@ -3334,13 +4666,30 @@ final class AppStore: ObservableObject {
             modeQuestion = "这件事背后反复出现的思维模式是什么？"
         }
 
+        if let customLensId = todayDraft.selectedCustomLensId,
+           let customLens = (customLensItems + runtimeLensItems).first(where: { $0.lensId == customLensId }) {
+            questions = [
+                ReflectionQuestion(
+                    question: customLens.questionSeeds.first ?? customLens.methodLine,
+                    whyItMatters: customLens.methodLine
+                ),
+                ReflectionQuestion(
+                    question: "\(customLens.title) 会如何改写你对这件事的判断？",
+                    whyItMatters: focus
+                )
+            ]
+            todayDraft.customLensQuestions = questions
+            persistDraft()
+            return
+        }
+
         questions = [
             ReflectionQuestion(
                 question: modeQuestion,
                 whyItMatters: "让任务从泛泛而谈变成可验证行动。"
             ),
             ReflectionQuestion(
-                question: "\(todayDraft.selectedLens?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
+                question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
                 whyItMatters: focus
             )
         ]
@@ -3507,8 +4856,9 @@ final class AppStore: ObservableObject {
 
     private func contextPrinciplesForAI() async -> [PrincipleAsset] {
         do {
-            if let activePrinciples = try await principleRepository?.activePrinciples() {
-                return activePrinciples
+            if let storedPrinciples = try await principleRepository?.activePrinciples() {
+                let reviewedPrinciples = await markPrinciplesNeedingReviewIfNeeded(storedPrinciples)
+                return reviewedPrinciples.filter { $0.status == .active }
             }
         } catch {
             todayLoopMessage = "读取历史原则失败，已继续当前流程。"
@@ -3518,8 +4868,12 @@ final class AppStore: ObservableObject {
 
     private func loadActivePrinciples() async {
         do {
-            if let storedPrinciples = try await principleRepository?.activePrinciples() {
-                activePrinciples = storedPrinciples
+            if let principleRepository {
+                let storedPrinciples = try await principleRepository.allPrinciples()
+                let reviewedPrinciples = await markPrinciplesNeedingReviewIfNeeded(storedPrinciples)
+                activePrinciples = reviewedPrinciples.filter { $0.status == .active }
+                await refreshPrincipleTrainingSummaries(from: reviewedPrinciples)
+                return
             } else {
                 activePrinciples = principles.filter { $0.status == .active }
             }
@@ -3527,6 +4881,74 @@ final class AppStore: ObservableObject {
             activePrinciples = principles.filter { $0.status == .active }
             todayLoopMessage = "读取历史原则失败，已继续当前流程。"
         }
+        await refreshPrincipleTrainingSummaries()
+    }
+
+    func refreshPrincipleTrainingSummaries() async {
+        let visiblePrinciples: [PrincipleAsset]
+        do {
+            visiblePrinciples = try await principleRepository?.allPrinciples() ?? activePrinciples
+        } catch {
+            visiblePrinciples = activePrinciples
+        }
+        await refreshPrincipleTrainingSummaries(from: visiblePrinciples)
+    }
+
+    private func refreshPrincipleTrainingSummaries(from principles: [PrincipleAsset]) async {
+        let visiblePrinciples = principles.filter { $0.status != .archived }
+        guard !visiblePrinciples.isEmpty else {
+            principleTrainingSummaries = []
+            return
+        }
+
+        var practiceEvidence: [PrinciplePracticeEvidence] = []
+        var recallFeedback: [PrincipleRecallFeedback] = []
+
+        for principle in visiblePrinciples {
+            do {
+                let evidence = try await principlePracticeEvidenceRepository?.evidence(for: principle.id, limit: 20) ?? []
+                practiceEvidence.append(contentsOf: evidence)
+            } catch {
+                continue
+            }
+            do {
+                let feedback = try await principleRecallFeedbackRepository?.feedback(for: principle.id, limit: 20) ?? []
+                recallFeedback.append(contentsOf: feedback)
+            } catch {
+                continue
+            }
+        }
+
+        principleTrainingSummaries = PrincipleTrainingSummary.summaries(
+            for: visiblePrinciples,
+            practiceEvidence: practiceEvidence,
+            recallFeedback: recallFeedback
+        )
+    }
+
+    private func markPrinciplesNeedingReviewIfNeeded(_ principles: [PrincipleAsset]) async -> [PrincipleAsset] {
+        guard let principleRepository, let principleRecallFeedbackRepository else { return principles }
+
+        var reviewedPrinciples = principles
+        for index in reviewedPrinciples.indices where reviewedPrinciples[index].status == .active {
+            let principle = reviewedPrinciples[index]
+            do {
+                let feedback = try await principleRecallFeedbackRepository.feedback(
+                    for: principle.id,
+                    limit: principleNeedsReviewNegativeFeedbackThreshold
+                )
+                let negativeCount = feedback.filter {
+                    $0.feedback == .notApplicable || $0.feedback == .misrecalled
+                }.count
+                guard negativeCount >= principleNeedsReviewNegativeFeedbackThreshold else { continue }
+
+                try await principleRepository.updatePrincipleStatus(.needsReview, principleId: principle.id)
+                reviewedPrinciples[index].status = .needsReview
+            } catch {
+                continue
+            }
+        }
+        return reviewedPrinciples
     }
 
     private func upsertManualPrincipleInMemory(_ principle: PrincipleAsset) {
@@ -3550,24 +4972,94 @@ final class AppStore: ObservableObject {
         return Array(merged.values).sorted { $0.title < $1.title }
     }
 
-    private func refreshReferencedPrinciplesForCurrentContext(promptID: PromptID) async {
-        let contextPrinciples = await contextPrinciplesForAI()
-        refreshReferencedPrinciples(promptID: promptID, from: contextPrinciples)
+    private func principleRecallFeedbackForAI(principles: [PrincipleAsset]) async -> [PrincipleRecallFeedback] {
+        guard let principleRecallFeedbackRepository else { return [] }
+        var feedback: [PrincipleRecallFeedback] = []
+        for principle in principles {
+            do {
+                let loaded = try await principleRecallFeedbackRepository.feedback(for: principle.id, limit: 5)
+                feedback.append(contentsOf: loaded)
+            } catch {
+                continue
+            }
+        }
+        return feedback
     }
 
-    private func refreshReferencedPrinciples(promptID: PromptID, from contextPrinciples: [PrincipleAsset]) {
+    private func refreshReferencedPrinciplesForCurrentContext(promptID: PromptID) async {
+        let contextPrinciples = await contextPrinciplesForAI()
+        let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
+        refreshReferencedPrinciples(
+            promptID: promptID,
+            from: contextPrinciples,
+            recallFeedback: recallFeedback
+        )
+    }
+
+    private func refreshReferencedPrinciples(
+        promptID: PromptID,
+        from contextPrinciples: [PrincipleAsset],
+        recallFeedback: [PrincipleRecallFeedback] = []
+    ) {
         let context = TodayAIContext(
             draft: todayDraft,
             confirmedCards: confirmedCardsForAI,
             questions: questions,
             quests: quests,
-            principles: contextPrinciples
+            principles: contextPrinciples,
+            principleRecallFeedback: recallFeedback,
+            selectedLensItem: selectedLensItem
         )
-        referencedPrinciples = LocalPrincipleRetriever().relevantPrinciples(
+        let retrieved = LocalPrincipleRetriever().retrievePrinciples(
             for: context,
             promptID: promptID,
             limit: 3
         )
+        referencedPrinciples = retrieved.map(\.principle)
+        referencedPrincipleRetrievals = Dictionary(
+            uniqueKeysWithValues: retrieved.map { ($0.principle.id, $0) }
+        )
+    }
+
+    private func clearReferencedPrinciples() {
+        referencedPrinciples = []
+        referencedPrincipleRetrievals = [:]
+    }
+
+    func recordReferencedPrincipleFeedback(
+        for principleId: UUID,
+        feedback: PrincipleRecallFeedbackValue,
+        note: String = ""
+    ) async {
+        guard let retrieved = referencedPrincipleRetrievals[principleId],
+              let principleRecallFeedbackRepository
+        else {
+            return
+        }
+
+        let promptId: PromptID = todayDraft.state == .reviewQuests ? .generateQuests : .generateQuestions
+        let event = PrincipleRecallFeedback(
+            principleId: principleId,
+            sourceDailyEntryId: todayDraft.id,
+            promptId: promptId,
+            retrievalPolicyVersion: retrieved.policyVersion,
+            retrievalReason: retrieved.retrievalReason,
+            feedback: feedback,
+            note: note
+        )
+
+        do {
+            try await principleRecallFeedbackRepository.saveFeedback(event)
+            if feedback == .notApplicable || feedback == .misrecalled {
+                referencedPrinciples.removeAll { $0.id == principleId }
+                referencedPrincipleRetrievals[principleId] = nil
+                await loadActivePrinciples()
+            } else {
+                await refreshPrincipleTrainingSummaries()
+            }
+        } catch {
+            todayLoopMessage = "保存原则反馈失败，已保留当前流程。"
+        }
     }
 
     private var currentHistoryRecord: HistoryRecord {
@@ -3585,20 +5077,22 @@ final class AppStore: ObservableObject {
 
     private static func makeTodayAIService(
         apiKeyStore: KeychainAPIKeyStore,
-        promptRunRepository: PromptRunRepository?
+        promptRunRepository: PromptRunRepository?,
+        promptProvider: PromptProvider = LocalPromptProvider()
     ) -> TodayAIService {
         TodayAIService(
-            promptProvider: LocalPromptProvider(),
+            promptProvider: promptProvider,
             llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
         )
     }
 
     private static func makeGrowthAIService(
         apiKeyStore: KeychainAPIKeyStore,
-        promptRunRepository: PromptRunRepository?
+        promptRunRepository: PromptRunRepository?,
+        promptProvider: PromptProvider = LocalPromptProvider()
     ) -> GrowthAIService {
         GrowthAIService(
-            promptProvider: LocalPromptProvider(),
+            promptProvider: promptProvider,
             llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
         )
     }
@@ -3658,11 +5152,13 @@ final class AppStore: ObservableObject {
         guard refreshesAIServiceFromKeychain else { return }
         todayAIService = Self.makeTodayAIService(
             apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository
+            promptRunRepository: promptRunRepository,
+            promptProvider: effectivePromptProvider
         )
         growthAIService = Self.makeGrowthAIService(
             apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository
+            promptRunRepository: promptRunRepository,
+            promptProvider: effectivePromptProvider
         )
     }
 
@@ -3818,6 +5314,10 @@ final class AppStore: ObservableObject {
         updateSettingsMessage()
 
         let client = Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        let contextPayload = PromptContextPayload(
+            currentInput: .init(rawText: "connection test"),
+            userChoice: .init(sessionMode: SessionMode.standard.rawValue)
+        )
         let request = LLMRequest(
             prompt: PromptTemplate(
                 id: .organizeCards,
@@ -3827,7 +5327,7 @@ final class AppStore: ObservableObject {
                 outputSchemaVersion: 1
             ),
             inputSummary: "connection test",
-            jsonPayload: ["purpose": "test"]
+            contextPayload: contextPayload
         )
 
         Task {
@@ -4265,7 +5765,7 @@ final class AppStore: ObservableObject {
         else { return nil }
 
         return ProjectAIService(
-            promptProvider: LocalPromptProvider(),
+            promptProvider: effectivePromptProvider,
             llmClient: Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
         )
     }

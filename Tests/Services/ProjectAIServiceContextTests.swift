@@ -45,12 +45,52 @@ final class ProjectAIServiceContextTests: XCTestCase {
         XCTAssertEqual(project.confirmedCards.map(\.id), [cardID.uuidString])
         XCTAssertEqual(project.quests.map(\.id), [questID.uuidString])
         XCTAssertEqual(project.activeProjects.map(\.id), [existingProjectID.uuidString])
-        XCTAssertTrue(payload.extra["confirmed_cards_count"] == "1")
-        XCTAssertTrue(payload.extra["active_projects_count"] == "1")
+        let legacy = payload.legacyKeyValues
+        XCTAssertEqual(legacy["daily_entry_id"], entryID.uuidString)
+        XCTAssertEqual(legacy["confirmed_cards_count"], "1")
+        XCTAssertEqual(legacy["active_projects_count"], "1")
+        XCTAssertTrue(try XCTUnwrap(legacy["confirmed_cards"]).contains("接口归属不清"))
+        XCTAssertTrue(try XCTUnwrap(legacy["quests"]).contains("确认接口归属"))
+        XCTAssertTrue(try XCTUnwrap(legacy["active_projects"]).contains("接口归属确认"))
         XCTAssertTrue(request.sourceRecordIDs.contains(entryID.uuidString))
         XCTAssertTrue(request.sourceRecordIDs.contains(cardID.uuidString))
         XCTAssertTrue(request.sourceRecordIDs.contains(questID.uuidString))
         XCTAssertTrue(request.contextRecordIDs.contains(existingProjectID.uuidString))
+    }
+
+    func testSuggestProjectLinks_usesStructuredContextAsLegacyPayloadSource() async throws {
+        let entryID = UUID()
+        let cardID = UUID()
+        let existingProjectID = UUID()
+        let client = CapturingProjectLLMClient(response: Self.projectSuggestionsResponse(
+            entryID: entryID,
+            cardID: cardID,
+            existingProjectID: existingProjectID
+        ))
+        let service = ProjectAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        _ = try await service.suggestProjectLinks(
+            context: ProjectSuggestionContext(
+                dailyEntryId: entryID,
+                confirmedCards: [
+                    .init(id: cardID.uuidString, type: "problem", title: "接口归属不清", body: "会议后仍无明确负责人。")
+                ],
+                quests: [],
+                activeProjects: [
+                    .init(id: existingProjectID.uuidString, name: "接口归属确认")
+                ],
+                existingLinkSourceIds: [cardID.uuidString]
+            )
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let payload = try XCTUnwrap(request.contextPayload)
+        let legacy = payload.legacyKeyValues
+        XCTAssertEqual(legacy, payload.legacyKeyValues)
+        XCTAssertEqual(legacy["existing_link_source_ids"], cardID.uuidString)
     }
 
     func testSuggestProjectLinks_responseContainsCandidatesWithSourceRefs() async throws {
@@ -126,6 +166,13 @@ final class ProjectAIServiceContextTests: XCTestCase {
 
         let payload = try XCTUnwrap(request.contextPayload)
         let project = try XCTUnwrap(payload.project)
+        let legacy = payload.legacyKeyValues
+        XCTAssertEqual(legacy["project_id"], projectID.uuidString)
+        XCTAssertEqual(legacy["project_name"], "接口归属确认")
+        XCTAssertEqual(legacy["project_goal"], "明确各接口的负责人和验收标准")
+        XCTAssertEqual(legacy["project_success_criteria"], "所有接口都有明确负责人和验收文档")
+        XCTAssertEqual(legacy["accepted_insight_count"], "0")
+        XCTAssertTrue(try XCTUnwrap(legacy["confirmed_evidence"]).contains("接口归属不清"))
         XCTAssertEqual(project.confirmedCards.map(\.id), [cardID.uuidString])
         XCTAssertEqual(project.quests.map(\.id), [questID.uuidString])
         XCTAssertTrue(request.sourceRecordIDs.contains(cardID.uuidString))
@@ -329,6 +376,10 @@ final class ProjectAIServiceContextTests: XCTestCase {
         let payload = try XCTUnwrap(request.contextPayload)
         let project = try XCTUnwrap(payload.project)
         XCTAssertEqual(project.activeProjects.map(\.id), [project1ID.uuidString, project2ID.uuidString])
+        let legacy = payload.legacyKeyValues
+        XCTAssertEqual(legacy["active_projects_count"], "2")
+        XCTAssertTrue(try XCTUnwrap(legacy["active_projects"]).contains("success_criteria: 所有接口都有明确负责人和验收文档"))
+        XCTAssertTrue(try XCTUnwrap(legacy["confirmed_project_links"]).contains(linkCardID.uuidString))
 
         XCTAssertTrue(request.sourceRecordIDs.contains(linkCardID.uuidString))
         XCTAssertTrue(request.sourceRecordIDs.contains(linkQuestID.uuidString))

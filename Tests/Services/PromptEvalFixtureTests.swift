@@ -228,7 +228,335 @@ final class PromptEvalFixtureTests: XCTestCase {
         }
     }
 
+    func testPromptEvalRunner_recordsSuiteMetadataAndCaseResults() throws {
+        let provider = LocalPromptProvider()
+        let runner = PromptEvalRunner(promptProvider: provider, parser: parser)
+
+        let runs = runner.runFixedSuite()
+
+        XCTAssertFalse(runs.isEmpty)
+        XCTAssertTrue(runs.contains { $0.promptId == PromptID.organizeCards.rawValue })
+        XCTAssertTrue(runs.contains { $0.promptId == PromptID.generateQuestions.rawValue })
+        XCTAssertTrue(runs.contains { $0.promptId == PromptID.generateQuests.rawValue })
+        XCTAssertTrue(runs.contains { $0.promptId == PromptID.extractPrinciple.rawValue })
+        XCTAssertTrue(runs.contains { $0.promptId == PromptID.weeklyCalibration.rawValue })
+        XCTAssertTrue(runs.allSatisfy { !$0.promptVersion.isEmpty })
+        XCTAssertTrue(runs.allSatisfy { !$0.systemPolicyVersion.isEmpty })
+        XCTAssertTrue(runs.allSatisfy { !$0.contextPolicyVersion.isEmpty })
+        XCTAssertTrue(runs.allSatisfy { !$0.evalSuiteVersion.isEmpty })
+        XCTAssertTrue(runs.allSatisfy { !$0.caseResults.isEmpty })
+        XCTAssertTrue(runs.allSatisfy { $0.status == .passed })
+        XCTAssertTrue(runs.flatMap(\.caseResults).allSatisfy { !$0.inputSummary.isEmpty })
+        XCTAssertTrue(runs.flatMap(\.caseResults).allSatisfy { !$0.expectedBehavior.isEmpty })
+        XCTAssertTrue(runs.flatMap(\.caseResults).allSatisfy { !$0.actualObservation.isEmpty })
+        XCTAssertTrue(runs.flatMap(\.caseResults).allSatisfy { !$0.diagnosticReason.isEmpty })
+
+        let questionsRun = runs.first { $0.promptId == PromptID.generateQuestions.rawValue }
+        XCTAssertEqual(questionsRun?.evalSuiteVersion, provider.template(for: .generateQuestions, mode: .standard).evalSuiteVersion)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.concrete_lens_specific" } ?? false)
+        let questionsCase = try XCTUnwrap(questionsRun?.caseResults.first { $0.caseId == "questions.concrete_lens_specific" })
+        XCTAssertTrue(questionsCase.inputSummary.contains("meeting"))
+        XCTAssertTrue(questionsCase.expectedBehavior.contains("lens-specific"))
+        XCTAssertTrue(questionsCase.actualObservation.contains("passed"))
+        XCTAssertTrue(questionsCase.diagnosticReason.contains("fixed-suite"))
+    }
+
+    func testPromptEvalReleaseGate_blocksMissingStaleAndFailedRuns() throws {
+        let provider = LocalPromptProvider()
+        let runner = PromptEvalRunner(promptProvider: provider, parser: parser)
+        let passingRuns = runner.runFixedSuite(createdAt: Date(timeIntervalSince1970: 200))
+
+        let passingGate = PromptEvalReleaseGate.evaluate(
+            runs: passingRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        XCTAssertEqual(passingGate.status, .passed)
+        XCTAssertTrue(passingGate.canShipPromptAssets)
+        XCTAssertEqual(passingGate.totalPromptCount, PromptID.allCases.count)
+        XCTAssertEqual(passingGate.passedPromptCount, PromptID.allCases.count)
+        XCTAssertEqual(passingGate.failedPromptCount, 0)
+        XCTAssertEqual(passingGate.missingPromptCount, 0)
+        XCTAssertEqual(passingGate.stalePromptCount, 0)
+        XCTAssertEqual(passingGate.runnerMismatchCount, 0)
+        XCTAssertTrue(passingGate.blockingIssues.isEmpty)
+
+        let missingRun = passingRuns.filter { $0.promptId != PromptID.generateQuestions.rawValue }
+        let missingGate = PromptEvalReleaseGate.evaluate(
+            runs: missingRun,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        XCTAssertEqual(missingGate.status, .blocked)
+        XCTAssertFalse(missingGate.canShipPromptAssets)
+        XCTAssertEqual(missingGate.missingPromptCount, 1)
+        XCTAssertTrue(missingGate.blockingIssues.contains { $0.promptId == PromptID.generateQuestions.rawValue && $0.reason == .missingRun })
+
+        var staleRuns = passingRuns
+        let staleIndex = try XCTUnwrap(staleRuns.firstIndex { $0.promptId == PromptID.generateQuests.rawValue })
+        staleRuns[staleIndex].promptVersion = "quests.old"
+        let staleGate = PromptEvalReleaseGate.evaluate(
+            runs: staleRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        XCTAssertEqual(staleGate.status, .blocked)
+        XCTAssertEqual(staleGate.stalePromptCount, 1)
+        XCTAssertTrue(staleGate.blockingIssues.contains { $0.promptId == PromptID.generateQuests.rawValue && $0.reason == .staleVersion })
+
+        var failedRuns = passingRuns
+        let failedIndex = try XCTUnwrap(failedRuns.firstIndex { $0.promptId == PromptID.extractPrinciple.rawValue })
+        failedRuns[failedIndex].caseResults = [
+            PromptEvalCaseResult(
+                caseId: "principle.behavior_rule_not_slogan",
+                name: "Principle is a behavior rule rather than a slogan",
+                status: .failed,
+                failureReason: "Expected concrete actions."
+            )
+        ]
+        let failedGate = PromptEvalReleaseGate.evaluate(
+            runs: failedRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        XCTAssertEqual(failedGate.status, .blocked)
+        XCTAssertEqual(failedGate.failedPromptCount, 1)
+        XCTAssertTrue(failedGate.blockingIssues.contains { $0.promptId == PromptID.extractPrinciple.rawValue && $0.reason == .failedCases })
+
+        var runnerMismatchRuns = passingRuns
+        let mismatchIndex = try XCTUnwrap(runnerMismatchRuns.firstIndex { $0.promptId == PromptID.weeklyCalibration.rawValue })
+        runnerMismatchRuns[mismatchIndex].runnerVersion = "prompt-eval-runner.old"
+        let runnerMismatchGate = PromptEvalReleaseGate.evaluate(
+            runs: runnerMismatchRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+        XCTAssertEqual(runnerMismatchGate.status, .blocked)
+        XCTAssertEqual(runnerMismatchGate.runnerMismatchCount, 1)
+        XCTAssertTrue(runnerMismatchGate.blockingIssues.contains { $0.promptId == PromptID.weeklyCalibration.rawValue && $0.reason == .runnerMismatch })
+    }
+
+    func testPromptEvalReleaseGate_findsRollbackCandidatesFromPassingHistory() throws {
+        let provider = RollbackFixturePromptProvider()
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let currentFailedRun = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: template.version,
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(
+                    caseId: "questions.current_failure",
+                    name: "Current prompt version failed",
+                    status: .failed,
+                    failureReason: "Regression in current questions prompt."
+                )
+            ],
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+        let rollbackPassingRun = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(
+                    caseId: "questions.previous_pass",
+                    name: "Previous prompt version passed",
+                    status: .passed
+                )
+            ],
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+
+        let gate = PromptEvalReleaseGate.evaluate(
+            runs: [currentFailedRun, rollbackPassingRun],
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+
+        XCTAssertEqual(gate.status, .blocked)
+        XCTAssertEqual(gate.failedPromptCount, 1)
+        XCTAssertEqual(gate.rollbackReadyCount, 1)
+        XCTAssertEqual(gate.manualReviewCount, PromptID.allCases.count - 1)
+        let candidate = try XCTUnwrap(gate.rollbackCandidates.first)
+        XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
+        XCTAssertEqual(candidate.currentVersion, "1.0.0")
+        XCTAssertEqual(candidate.rollbackTargetVersion, "0.9.0")
+        XCTAssertEqual(candidate.lastPassingRunId, rollbackPassingRun.id)
+        XCTAssertEqual(candidate.reason, .failedCases)
+        XCTAssertTrue(gate.blockingIssues.contains {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+            $0.reason == .failedCases &&
+                $0.rollbackCandidate?.rollbackTargetVersion == "0.9.0"
+        })
+    }
+
+    func testPromptEvalReleaseGate_passesAfterPromptAssetRollbackUsesTargetVersionHistory() throws {
+        let provider = AppliedRollbackFixturePromptProvider()
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        XCTAssertEqual(template.version, "0.9.0")
+
+        let priorPassingRun = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.previous_pass", name: "Previous pass", status: .passed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+        let supersededFailedRun = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.current_failure", name: "Current failure", status: .failed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+        let otherRuns = PromptID.allCases
+            .filter { $0 != .generateQuestions }
+            .map { promptID -> PromptEvalRun in
+                let prompt = provider.template(for: promptID, mode: .standard)
+                return PromptEvalRun(
+                    promptId: promptID.rawValue,
+                    promptVersion: prompt.version,
+                    systemPolicyVersion: prompt.systemPolicyVersion,
+                    contextPolicyVersion: prompt.contextPolicyVersion,
+                    inputSchemaVersion: 1,
+                    outputSchemaVersion: prompt.outputSchemaVersion,
+                    evalSuiteVersion: prompt.evalSuiteVersion,
+                    runnerVersion: PromptEvalRunner.currentRunnerVersion,
+                    caseResults: [
+                        PromptEvalCaseResult(caseId: "\(promptID.rawValue).pass", name: "\(promptID.displayName) pass", status: .passed)
+                    ],
+                    createdAt: Date(timeIntervalSince1970: 250)
+                )
+            }
+
+        let gate = PromptEvalReleaseGate.evaluate(
+            runs: otherRuns + [priorPassingRun, supersededFailedRun],
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+
+        XCTAssertEqual(gate.status, .passed)
+        XCTAssertEqual(gate.passedPromptCount, PromptID.allCases.count)
+        XCTAssertEqual(gate.failedPromptCount, 0)
+        XCTAssertEqual(gate.rollbackReadyCount, 0)
+    }
+
+    func testPromptEvalSchedulePolicy_runsForMissingOrExpiredHistoryAndSkipsFreshPassingHistory() {
+        let provider = LocalPromptProvider()
+        let now = Date(timeIntervalSince1970: 1_000)
+        let policy = PromptEvalSchedulePolicy(minimumRunInterval: 60)
+
+        let missingDecision = policy.decision(
+            runs: [],
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            now: now
+        )
+
+        XCTAssertTrue(missingDecision.shouldRun)
+        XCTAssertEqual(missingDecision.reason, .missingRequiredRun)
+
+        let freshRuns = PromptEvalRunner(promptProvider: provider)
+            .runFixedSuite(mode: .standard, createdAt: now.addingTimeInterval(-30))
+        let freshDecision = policy.decision(
+            runs: freshRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            now: now
+        )
+
+        XCTAssertFalse(freshDecision.shouldRun)
+        XCTAssertNil(freshDecision.reason)
+
+        let expiredRuns = PromptEvalRunner(promptProvider: provider)
+            .runFixedSuite(mode: .standard, createdAt: now.addingTimeInterval(-61))
+        let expiredDecision = policy.decision(
+            runs: expiredRuns,
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            now: now
+        )
+
+        XCTAssertTrue(expiredDecision.shouldRun)
+        XCTAssertEqual(expiredDecision.reason, .minimumIntervalElapsed)
+    }
+
     private func fixtureData(_ json: String) -> Data {
         Data(json.utf8)
+    }
+}
+
+private struct RollbackFixturePromptProvider: PromptProvider {
+    private let base = LocalPromptProvider()
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        var template = base.template(for: id, mode: mode)
+        if id == .generateQuestions {
+            template.rollbackTargetVersion = "0.9.0"
+        }
+        return template
+    }
+}
+
+private struct AppliedRollbackFixturePromptProvider: PromptProvider {
+    private let base = LocalPromptProvider()
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        if id == .generateQuestions {
+            return template(for: id, mode: mode, version: "0.9.0")!
+        }
+        return base.template(for: id, mode: mode)
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        let template = base.template(for: id, mode: mode)
+        guard id == .generateQuestions, version == "0.9.0" else {
+            return template.version == version ? template : nil
+        }
+        return PromptTemplate(
+            id: template.id,
+            version: "0.9.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            rollbackTargetVersion: nil,
+            systemText: template.systemText,
+            userText: template.userText,
+            outputSchemaVersion: template.outputSchemaVersion
+        )
     }
 }

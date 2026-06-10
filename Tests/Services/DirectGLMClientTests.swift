@@ -144,6 +144,65 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertFalse(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
     }
 
+    func testComplete_prefersStructuredContextPayloadOverLegacyFlattenedPayload() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: #"{"choices":[{"message":{"content":"{\"ok\":true}"}}]}"#
+            )
+        ]
+        let request = LLMRequest(
+            prompt: PromptTemplate(
+                id: .generateQuestions,
+                version: "questions.test",
+                systemText: "Return JSON only.",
+                userText: "Return {\"ok\":true}.",
+                outputSchemaVersion: 1
+            ),
+            inputSummary: "structured context test",
+            contextPayload: PromptContextPayload(
+                currentInput: .init(dailyEntryId: "entry-1", rawText: "raw evidence"),
+                userChoice: .init(sessionMode: SessionMode.standard.rawValue, selectedLens: ThinkingLens.firstPrinciples.rawValue),
+                cards: [
+                    .init(
+                        id: "card-1",
+                        type: "assumption",
+                        title: "Owner unclear",
+                        body: "The meeting had no owner.",
+                        priority: "high",
+                        sensitivity: "normal",
+                        isExcludedFromModel: false
+                    )
+                ],
+                privacy: .init(rules: "Use structured evidence only.")
+            )
+        )
+
+        _ = try await makeClient().complete(request)
+
+        let body = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+        let userContent = try userMessageContent(from: body)
+        XCTAssertTrue(userContent.contains(#""currentInput":{"dailyEntryId":"entry-1","rawText":"raw evidence"}"#))
+        XCTAssertTrue(userContent.contains(#""cards":[{"body":"The meeting had no owner.""#))
+        XCTAssertFalse(userContent.contains("purpose: legacy fallback only"))
+    }
+
+    func testComplete_withoutStructuredContextDoesNotRenderLegacyPayloadLines() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: #"{"choices":[{"message":{"content":"{\"ok\":true}"}}]}"#
+            )
+        ]
+
+        _ = try await makeClient().complete(makeRequest())
+
+        let body = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+        let userContent = try userMessageContent(from: body)
+        XCTAssertTrue(userContent.contains("Payload:\n{}"))
+        XCTAssertFalse(userContent.contains("purpose: test"))
+    }
+
     func testStream_preservesErrorBodyForNonSuccessStatus() async {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
@@ -190,8 +249,16 @@ final class DirectGLMClientTests: XCTestCase {
                 outputSchemaVersion: 1
             ),
             inputSummary: "connection test",
-            jsonPayload: ["purpose": "test"]
+            contextPayload: nil
         )
+    }
+
+    private func userMessageContent(from requestBody: String) throws -> String {
+        let data = Data(requestBody.utf8)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let messages = try XCTUnwrap(object?["messages"] as? [[String: Any]])
+        let userMessage = try XCTUnwrap(messages.first { $0["role"] as? String == "user" })
+        return try XCTUnwrap(userMessage["content"] as? String)
     }
 }
 

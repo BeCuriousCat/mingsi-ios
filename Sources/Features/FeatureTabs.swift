@@ -1,6 +1,47 @@
 import SwiftUI
 import UIKit
 
+enum SettingsAutomationID {
+    static let assetPackManifestCard = "settings.asset-pack-manifest.card"
+    static let assetPackManifestImportField = "settings.asset-pack-manifest.import-field"
+    static let assetPackManifestPasteAction = "settings.asset-pack-manifest.paste-action"
+    static let assetPackManifestInstallAction = "settings.asset-pack-manifest.install-action"
+    static let assetPackManifestRemoteURLField = "settings.asset-pack-manifest.remote-url-field"
+    static let assetPackManifestRemoteInstallAction = "settings.asset-pack-manifest.remote-install-action"
+    static let assetPackRegistryCatalogURLField = "settings.asset-pack-registry.catalog-url-field"
+    static let assetPackRegistryCatalogFetchAction = "settings.asset-pack-registry.catalog-fetch-action"
+    static let assetPackManifestMessage = "settings.asset-pack-manifest.message"
+    static let lensPackCard = "settings.lens-pack.card"
+    static let lensPackRefreshAction = "settings.lens-pack.refresh-action"
+    static let lensPackImportField = "settings.lens-pack.import-field"
+    static let lensPackPasteAction = "settings.lens-pack.paste-action"
+    static let lensPackImportAction = "settings.lens-pack.import-action"
+    static let promptPackCard = "settings.prompt-pack.card"
+    static let promptPackRefreshAction = "settings.prompt-pack.refresh-action"
+    static let promptPackImportField = "settings.prompt-pack.import-field"
+    static let promptPackPasteAction = "settings.prompt-pack.paste-action"
+    static let promptPackImportAction = "settings.prompt-pack.import-action"
+
+    static func lensPackToggleAction(packId: String) -> String {
+        "settings.lens-pack.\(sanitized(packId)).toggle-action"
+    }
+
+    static func promptPackToggleAction(packId: String) -> String {
+        "settings.prompt-pack.\(sanitized(packId)).toggle-action"
+    }
+
+    static func assetPackRegistryCatalogEntryInstallAction(entryId: String) -> String {
+        "settings.asset-pack-registry.\(sanitized(entryId)).install-action"
+    }
+
+    private static func sanitized(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        return value.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : "_" }
+            .reduce(into: "") { $0.append($1) }
+    }
+}
+
 enum HistoryFilterChipKind {
     case project
     case lens
@@ -1516,6 +1557,7 @@ struct GrowthView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedMetric: GrowthMetric?
     @State private var isPresentingAddPrinciple = false
+    @State private var principleRepairTarget: PrincipleAsset?
 
     var body: some View {
         FeatureContainer(title: "成长", subtitle: "用趋势和证据看见自己的变化。") {
@@ -1570,7 +1612,12 @@ struct GrowthView: View {
                     }
                 }
 
-                GrowthPrincipleAssetSection(isPresentingAddPrinciple: $isPresentingAddPrinciple)
+                GrowthPrincipleAssetSection(
+                    isPresentingAddPrinciple: $isPresentingAddPrinciple,
+                    onRepairPrinciple: { principle in
+                        principleRepairTarget = principle
+                    }
+                )
             }
         }
         .sheet(item: $selectedMetric) { metric in
@@ -1614,12 +1661,16 @@ struct GrowthView: View {
         .sheet(isPresented: $isPresentingAddPrinciple) {
             ManualPrincipleFormSheet()
         }
+        .sheet(item: $principleRepairTarget) { principle in
+            ManualPrincipleFormSheet(repairing: principle)
+        }
     }
 }
 
 private struct GrowthPrincipleAssetSection: View {
     @EnvironmentObject private var store: AppStore
     @Binding var isPresentingAddPrinciple: Bool
+    var onRepairPrinciple: (PrincipleAsset) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1637,11 +1688,43 @@ private struct GrowthPrincipleAssetSection: View {
                 .tint(DS.accent)
             }
 
-            if store.activePrinciples.isEmpty {
+            if !store.principleTrainingSummaries.isEmpty {
+                ForEach(store.principleTrainingSummaries) { summary in
+                    PrincipleArchiveRow(
+                        principle: summary.principle,
+                        trainingSummary: summary,
+                        onRepair: summary.state == .needsReview ? {
+                            onRepairPrinciple(summary.principle)
+                        } : nil,
+                        onArchive: {
+                            Task {
+                                await store.archivePrinciple(summary.principle.id)
+                            }
+                        },
+                        onDelete: {
+                            Task {
+                                await store.deletePrinciple(summary.principle.id)
+                            }
+                        }
+                    )
+                }
+            } else if store.activePrinciples.isEmpty {
                 EmptyStateLine(text: "还没有原则资产。可以手工保存一条可复用的行为规则。")
             } else {
                 ForEach(store.activePrinciples) { principle in
-                    PrincipleArchiveRow(principle: principle)
+                    PrincipleArchiveRow(
+                        principle: principle,
+                        onArchive: {
+                            Task {
+                                await store.archivePrinciple(principle.id)
+                            }
+                        },
+                        onDelete: {
+                            Task {
+                                await store.deletePrinciple(principle.id)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -1659,11 +1742,31 @@ private struct ManualPrincipleFormSheet: View {
     @State private var exceptions = ""
     @State private var errorMessage: String?
     @State private var isSaving = false
+    private let repairing: PrincipleAsset?
+
+    init(repairing: PrincipleAsset? = nil) {
+        self.repairing = repairing
+        _title = State(initialValue: repairing?.title ?? "")
+        _summary = State(initialValue: repairing?.summary ?? "")
+        _triggerContext = State(initialValue: repairing?.triggerContext ?? "")
+        _actionsText = State(initialValue: repairing?.actions.joined(separator: "\n") ?? "")
+        _successCriteria = State(initialValue: repairing?.successCriteria ?? "")
+        _exceptions = State(initialValue: repairing?.exceptions ?? "")
+    }
 
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !isSaving
+    }
+
+    private var navigationTitle: String {
+        repairing == nil ? "添加原则" : "复审原则"
+    }
+
+    private var saveButtonTitle: String {
+        if isSaving { return "保存中" }
+        return repairing == nil ? "保存" : "启用"
     }
 
     var body: some View {
@@ -1692,7 +1795,7 @@ private struct ManualPrincipleFormSheet: View {
                         .foregroundStyle(DS.caution)
                 }
             }
-            .navigationTitle("添加原则")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1701,7 +1804,7 @@ private struct ManualPrincipleFormSheet: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "保存中" : "保存") {
+                    Button(saveButtonTitle) {
                         Task {
                             await save()
                         }
@@ -1721,14 +1824,27 @@ private struct ManualPrincipleFormSheet: View {
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        let didSave = await store.addManualPrinciple(
-            title: title,
-            summary: summary,
-            triggerContext: triggerContext,
-            actions: actions,
-            successCriteria: successCriteria,
-            exceptions: exceptions
-        )
+        let didSave: Bool
+        if let repairing {
+            didSave = await store.repairPrinciple(
+                repairing.id,
+                title: title,
+                summary: summary,
+                triggerContext: triggerContext,
+                actions: actions,
+                successCriteria: successCriteria,
+                exceptions: exceptions
+            )
+        } else {
+            didSave = await store.addManualPrinciple(
+                title: title,
+                summary: summary,
+                triggerContext: triggerContext,
+                actions: actions,
+                successCriteria: successCriteria,
+                exceptions: exceptions
+            )
+        }
         isSaving = false
         if didSave {
             dismiss()
@@ -1985,18 +2101,35 @@ struct SettingsView: View {
     @State private var selectedSessionMode: SessionMode = .standard
     @State private var promptSystemTextExpanded = false
     @State private var promptUserTextExpanded = false
+    @State private var isPreparingDataExport = false
+    @State private var lensPackJSONInput = ""
+    @State private var promptPackJSONInput = ""
+    @State private var assetPackManifestJSONInput = AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() ? "{" : ""
+    @State private var assetPackManifestRemoteURLInput = AppStore.shouldUseVisualQASettingsAssetPackManifestFixture()
+        ? "http://127.0.0.1:1/mingsi-asset-pack-manifest.json"
+        : ""
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
             VStack(spacing: DS.cardSpacing) {
-                apiKeyCard
+                if AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
+                    assetPackInstallManifestCard
+                    apiKeyCard
+                    dataExportCard
+                } else {
+                    apiKeyCard
+                    dataExportCard
+                    assetPackInstallManifestCard
+                }
+                lensAssetPackCard
+                promptAssetPackCard
                 promptAuditCard
+                promptEvalGateCard
                 promptTemplateCard
                 SettingRow(title: "GLM API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
                 SettingRow(title: "请求协议", value: "OpenAI-compatible / 自动 JSON 降级")
                 SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.title)
                 SettingRow(title: "本地通知", value: store.reminderStatusMessage)
-                SettingRow(title: "数据导出", value: "可用")
             }
         }
         .onAppear {
@@ -2004,8 +2137,409 @@ struct SettingsView: View {
             modelNameInput = store.currentModelName
             Task {
                 await store.loadRecentPromptRuns()
+                await store.loadRecentPromptEvalRuns()
+                await store.loadLensAssetPacks()
+                await store.loadPromptAssetPacks()
             }
         }
+    }
+
+    private var dataExportCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.brick)
+                    .frame(width: 36, height: 36)
+                    .background(DS.brick.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("数据导出")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text("导出本机 SQLite 白名单数据为 JSON。会先等待当前草稿写入完成。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if let export = store.preparedDataExport {
+                Text(export.summary)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !store.dataExportMessage.isEmpty {
+                Text(store.dataExportMessage)
+                    .font(.footnote)
+                    .foregroundStyle(store.dataExportMessage.contains("失败") || store.dataExportMessage.contains("不可用") ? DS.caution : DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    prepareDataExport()
+                } label: {
+                    Label(isPreparingDataExport ? "准备中" : "生成导出文件", systemImage: isPreparingDataExport ? "hourglass" : "doc.badge.arrow.up")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DS.brick)
+                .controlSize(.small)
+                .disabled(isPreparingDataExport)
+
+                if let export = store.preparedDataExport {
+                    ShareLink(item: export.fileURL) {
+                        Label("分享 JSON", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                Spacer()
+            }
+            .font(.footnote.weight(.semibold))
+        }
+        .cardSurface()
+    }
+
+    private var lensAssetPackCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("透镜包")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                        .accessibilityIdentifier(SettingsAutomationID.lensPackCard)
+                    Text("管理本机导入的角色卡、思维框架和未来 Marketplace 透镜。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer()
+                Button {
+                    Task {
+                        await store.loadLensAssetPacks()
+                    }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.footnote.weight(.semibold))
+                .accessibilityIdentifier(SettingsAutomationID.lensPackRefreshAction)
+            }
+
+            if !store.lensAssetPackMessage.isEmpty {
+                Text(store.lensAssetPackMessage)
+                    .font(.footnote)
+                    .foregroundStyle(store.lensAssetPackMessage.contains("失败") || store.lensAssetPackMessage.contains("不可用") ? DS.caution : DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if store.lensAssetPacks.isEmpty {
+                Text("还没有本地透镜包。粘贴 JSON 后导入，会立即出现在 Today 的透镜选择里。")
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(store.lensAssetPacks, id: \.id) { pack in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Label(
+                                    pack.displayName,
+                                    systemImage: pack.isEnabled ? "checkmark.circle" : "pause.circle"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(pack.isEnabled ? DS.ink : DS.mutedInk)
+
+                                Spacer(minLength: 0)
+
+                                Button {
+                                    Task {
+                                        await store.setLensAssetPack(pack.id, isEnabled: !pack.isEnabled)
+                                    }
+                                } label: {
+                                    Label(pack.isEnabled ? "停用" : "启用", systemImage: pack.isEnabled ? "pause" : "play")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .font(.caption.weight(.semibold))
+                                .accessibilityIdentifier(SettingsAutomationID.lensPackToggleAction(packId: pack.id))
+                            }
+
+                            Text("\(pack.sourceKind.displayName) · v\(pack.version) · \(pack.items.count) 个透镜 · \(pack.id)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(DS.mutedInk)
+                                .lineLimit(2)
+                        }
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("导入 JSON")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+
+                SettingsJSONTextView(
+                    text: $lensPackJSONInput,
+                    accessibilityIdentifier: SettingsAutomationID.lensPackImportField
+                )
+                    .frame(minHeight: 88)
+                    .padding(6)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                HStack(spacing: 8) {
+                    Button {
+                        pasteLensPackJSON()
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(SettingsAutomationID.lensPackPasteAction)
+
+                    Button {
+                        importLensPackJSON()
+                    } label: {
+                        Label("导入透镜包", systemImage: "tray.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.brick)
+                    .controlSize(.small)
+                    .disabled(lensPackJSONInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(SettingsAutomationID.lensPackImportAction)
+
+                    Spacer(minLength: 0)
+                }
+                .font(.footnote.weight(.semibold))
+            }
+        }
+        .cardSurface()
+    }
+
+    private var assetPackInstallManifestCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("资产包安装清单")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                        .accessibilityIdentifier(SettingsAutomationID.assetPackManifestCard)
+                    Text("安装通过本地信任校验的 Prompt / 透镜包。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if !store.assetPackInstallMessage.isEmpty {
+                Text(store.assetPackInstallMessage)
+                    .font(.footnote)
+                    .foregroundStyle(store.assetPackInstallMessage.contains("失败") || store.assetPackInstallMessage.contains("不可用") ? DS.caution : DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackManifestMessage)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("远程清单 URL")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text("获取后仍会经过本地信任校验再安装。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+
+                HStack(spacing: 8) {
+                    SettingsTextField(
+                        placeholder: "https://example.com/mingsi/asset-pack-manifest.json",
+                        text: $assetPackManifestRemoteURLInput,
+                        keyboardType: .URL,
+                        accessibilityIdentifier: SettingsAutomationID.assetPackManifestRemoteURLField
+                    )
+
+                    Button {
+                        installRemoteAssetPackManifest()
+                    } label: {
+                        Label("获取安装", systemImage: "arrow.down.doc")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.accent)
+                    .controlSize(.small)
+                    .disabled(assetPackManifestRemoteURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackManifestRemoteInstallAction)
+                }
+                .font(.footnote.weight(.semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("清单 JSON")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+
+                SettingsJSONTextView(
+                    text: $assetPackManifestJSONInput,
+                    accessibilityIdentifier: SettingsAutomationID.assetPackManifestImportField
+                )
+                    .frame(minHeight: 88)
+                    .padding(6)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                HStack(spacing: 8) {
+                    Button {
+                        pasteAssetPackInstallManifestJSON()
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackManifestPasteAction)
+
+                    Button {
+                        importAssetPackInstallManifestJSON()
+                    } label: {
+                        Label("安装清单", systemImage: "shippingbox.and.arrow.backward")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.brick)
+                    .controlSize(.small)
+                    .disabled(assetPackManifestJSONInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackManifestInstallAction)
+
+                    Spacer(minLength: 0)
+                }
+                .font(.footnote.weight(.semibold))
+            }
+        }
+        .cardSurface()
+    }
+
+    private var promptAssetPackCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Prompt 包")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                        .accessibilityIdentifier(SettingsAutomationID.promptPackCard)
+                    Text("管理本机导入的 Prompt 模板包。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer()
+                Button {
+                    Task {
+                        await store.loadPromptAssetPacks()
+                    }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.footnote.weight(.semibold))
+                .accessibilityIdentifier(SettingsAutomationID.promptPackRefreshAction)
+            }
+
+            if !store.promptAssetPackMessage.isEmpty {
+                Text(store.promptAssetPackMessage)
+                    .font(.footnote)
+                    .foregroundStyle(store.promptAssetPackMessage.contains("失败") || store.promptAssetPackMessage.contains("不可用") ? DS.caution : DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if store.promptAssetPacks.isEmpty {
+                Text("还没有本地 Prompt 包。粘贴 JSON 后导入，会立即参与当前 Prompt 模板选择。")
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(store.promptAssetPacks, id: \.id) { pack in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Label(
+                                    pack.displayName,
+                                    systemImage: pack.isEnabled ? "checkmark.circle" : "pause.circle"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(pack.isEnabled ? DS.ink : DS.mutedInk)
+
+                                Spacer(minLength: 0)
+
+                                Button {
+                                    Task {
+                                        await store.setPromptAssetPack(pack.id, isEnabled: !pack.isEnabled)
+                                    }
+                                } label: {
+                                    Label(pack.isEnabled ? "停用" : "启用", systemImage: pack.isEnabled ? "pause" : "play")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .font(.caption.weight(.semibold))
+                                .accessibilityIdentifier(SettingsAutomationID.promptPackToggleAction(packId: pack.id))
+                            }
+
+                            Text("\(pack.sourceKind.displayName) · v\(pack.version) · \(pack.templates.count) 个模板 · \(pack.id)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(DS.mutedInk)
+                                .lineLimit(2)
+                        }
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("导入 JSON")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+
+                SettingsJSONTextView(
+                    text: $promptPackJSONInput,
+                    accessibilityIdentifier: SettingsAutomationID.promptPackImportField
+                )
+                    .frame(minHeight: 88)
+                    .padding(6)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                HStack(spacing: 8) {
+                    Button {
+                        pastePromptPackJSON()
+                    } label: {
+                        Image(systemName: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(SettingsAutomationID.promptPackPasteAction)
+
+                    Button {
+                        importPromptPackJSON()
+                    } label: {
+                        Label("导入 Prompt 包", systemImage: "tray.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.brick)
+                    .controlSize(.small)
+                    .disabled(promptPackJSONInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(SettingsAutomationID.promptPackImportAction)
+
+                    Spacer(minLength: 0)
+                }
+                .font(.footnote.weight(.semibold))
+            }
+        }
+        .cardSurface()
     }
 
     private var promptTemplateCard: some View {
@@ -2313,7 +2847,7 @@ struct SettingsView: View {
             } else {
                 let summary = PromptRunAuditSummary(runs: store.recentPromptRuns)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("最近 \(summary.totalCount) 次 · 失败 \(summary.failed.count) · 成功 \(summary.successful.count)")
+                    Text(promptRunAuditStatsLine(summary: summary))
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
 
@@ -2331,6 +2865,116 @@ struct SettingsView: View {
         .cardSurface()
     }
 
+    private var promptEvalGateCard: some View {
+        let gate = store.promptEvalReleaseGate
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Prompt 固定评测")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text("用本地固定 suite 校验当前 Prompt / Context / Schema / Eval 版本。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer()
+                Button {
+                    Task {
+                        await store.runPromptEvalSuite()
+                    }
+                } label: {
+                    Label("运行固定评测", systemImage: "checklist.checked")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.footnote.weight(.semibold))
+            }
+
+            HStack(spacing: 8) {
+                Label(
+                    gate.status == .passed ? "可发布" : "阻塞",
+                    systemImage: gate.status == .passed ? "checkmark.seal" : "exclamationmark.triangle"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(gate.status == .passed ? DS.success : DS.caution)
+
+                Text("通过 \(gate.passedPromptCount)/\(gate.totalPromptCount)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+
+                Spacer(minLength: 0)
+            }
+
+            Text("缺失 \(gate.missingPromptCount) · 过期 \(gate.stalePromptCount) · 失败 \(gate.failedPromptCount) · Runner \(gate.runnerMismatchCount)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(DS.mutedInk)
+
+            if gate.status == .blocked {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("可回滚 \(gate.rollbackReadyCount) · 需人工处理 \(gate.manualReviewCount)")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(gate.rollbackReadyCount > 0 ? DS.accent : DS.mutedInk)
+
+                    Spacer(minLength: 0)
+
+                    if let candidate = gate.rollbackCandidates.first {
+                        Button {
+                            Task {
+                                await store.applyPromptRollback(candidate)
+                            }
+                        } label: {
+                            Label("执行回滚", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+            }
+
+            if !store.promptEvalMessage.isEmpty {
+                Text(store.promptEvalMessage)
+                    .font(.footnote)
+                    .foregroundStyle(gate.status == .passed ? DS.mutedInk : DS.caution)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !gate.blockingIssues.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(gate.blockingIssues.prefix(3)) { issue in
+                        Text(issue.message)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let candidate = issue.rollbackCandidate {
+                            Text("候选：\(candidate.currentVersion) → \(candidate.rollbackTargetVersion)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(DS.accent)
+                        }
+                    }
+                }
+            } else if !store.recentPromptEvalRuns.isEmpty {
+                Text("最近评测 \(store.recentPromptEvalRuns.count) 条 · Runner \(PromptEvalRunner.currentRunnerVersion)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+            }
+        }
+        .cardSurface()
+    }
+
+    private func promptRunAuditStatsLine(summary: PromptRunAuditSummary) -> String {
+        guard let stats = store.promptRunStats, stats.totalCount > 0 else {
+            return "最近 \(summary.totalCount) 次 · 失败 \(summary.failed.count) · 成功 \(summary.successful.count)"
+        }
+
+        return "最近 \(stats.totalCount) 次 · 失败率 \(Self.percent(stats.failureRate)) · 空结果率 \(Self.percent(stats.emptyResultRate)) · 用户否认率 \(Self.percent(stats.userDenialRate))"
+    }
+
+    private static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+
     private func pasteClipboard(into binding: Binding<String>) {
         guard let pastedText = currentClipboardString() else {
             clipboardMessage = "剪贴板为空：请先复制文本，模拟器里可用菜单 Edit > Paste 同步到 iOS 剪贴板。"
@@ -2342,6 +2986,120 @@ struct SettingsView: View {
 
     private func pasteAPIKey() {
         pasteClipboard(into: $apiKeyInput)
+    }
+
+    private func prepareDataExport() {
+        isPreparingDataExport = true
+        Task {
+            do {
+                _ = try await store.prepareDataExport()
+            } catch {
+                store.dataExportMessage = "数据导出失败：\(error.localizedDescription)"
+            }
+            isPreparingDataExport = false
+        }
+    }
+
+    private func pasteLensPackJSON() {
+        guard let pastedText = currentClipboardString() else {
+            store.lensAssetPackMessage = "剪贴板为空：请先复制透镜包 JSON。"
+            return
+        }
+        lensPackJSONInput = pastedText
+        store.lensAssetPackMessage = "已读取剪贴板，长度 \(pastedText.count) 个字符。"
+    }
+
+    private func importLensPackJSON() {
+        let trimmed = lensPackJSONInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else {
+            store.lensAssetPackMessage = "导入透镜包失败：JSON 文本不是 UTF-8。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.importLensAssetPack(from: data)
+                lensPackJSONInput = ""
+            } catch {
+                if store.lensAssetPackMessage.isEmpty {
+                    store.lensAssetPackMessage = "导入透镜包失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func pastePromptPackJSON() {
+        guard let pastedText = currentClipboardString() else {
+            store.promptAssetPackMessage = "剪贴板为空：请先复制 Prompt 包 JSON。"
+            return
+        }
+        promptPackJSONInput = pastedText
+        store.promptAssetPackMessage = "已读取剪贴板，长度 \(pastedText.count) 个字符。"
+    }
+
+    private func importPromptPackJSON() {
+        let trimmed = promptPackJSONInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else {
+            store.promptAssetPackMessage = "导入 Prompt 包失败：JSON 文本不是 UTF-8。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.importPromptAssetPack(from: data)
+                promptPackJSONInput = ""
+            } catch {
+                if store.promptAssetPackMessage.isEmpty {
+                    store.promptAssetPackMessage = "导入 Prompt 包失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func pasteAssetPackInstallManifestJSON() {
+        guard let pastedText = currentClipboardString() else {
+            store.assetPackInstallMessage = "剪贴板为空：请先复制资产包安装清单 JSON。"
+            return
+        }
+        assetPackManifestJSONInput = pastedText
+        store.assetPackInstallMessage = "已读取剪贴板，长度 \(pastedText.count) 个字符。"
+    }
+
+    private func importAssetPackInstallManifestJSON() {
+        let trimmed = assetPackManifestJSONInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8) else {
+            store.assetPackInstallMessage = "安装资产包清单失败：JSON 文本不是 UTF-8。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.importAssetPackInstallManifest(from: data)
+                assetPackManifestJSONInput = ""
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "安装资产包清单失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func installRemoteAssetPackManifest() {
+        let trimmed = assetPackManifestRemoteURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), !trimmed.isEmpty else {
+            store.assetPackInstallMessage = "获取远程资产包清单失败：URL 格式不正确。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.fetchAndInstallAssetPackInstallManifest(from: url)
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "获取远程资产包清单失败：\(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     private func pasteAndSaveAPIKey() {
@@ -2399,10 +3157,101 @@ struct SettingsView: View {
     }
 }
 
+private extension LensAssetSourceKind {
+    var displayName: String {
+        switch self {
+        case .builtin:
+            return "内置"
+        case .localCustom:
+            return "本地自定义"
+        case .imported:
+            return "已导入"
+        case .marketplace:
+            return "Marketplace"
+        }
+    }
+}
+
+private extension PromptAssetSourceKind {
+    var displayName: String {
+        switch self {
+        case .builtin:
+            return "内置"
+        case .localCustom:
+            return "本地自定义"
+        case .imported:
+            return "已导入"
+        case .marketplace:
+            return "Marketplace"
+        }
+    }
+}
+
+private struct SettingsJSONTextView: UIViewRepresentable {
+    @Binding var text: String
+    let accessibilityIdentifier: String
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.adjustsFontForContentSizeCategory = true
+        textView.textColor = UIColor.label
+        textView.tintColor = UIColor(DS.accent)
+        textView.autocorrectionType = .no
+        textView.autocapitalizationType = .none
+        textView.keyboardType = .asciiCapable
+        textView.returnKeyType = .default
+        textView.isScrollEnabled = true
+        textView.alwaysBounceVertical = true
+        textView.keyboardDismissMode = .interactive
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 6, bottom: 8, right: 6)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.accessibilityIdentifier = accessibilityIdentifier
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        if textView.accessibilityIdentifier != accessibilityIdentifier {
+            textView.accessibilityIdentifier = accessibilityIdentifier
+        }
+        if textView.markedTextRange == nil && textView.text != text {
+            textView.text = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            guard textView.markedTextRange == nil else { return }
+            text = textView.text
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            if textView.markedTextRange == nil {
+                text = textView.text
+            }
+        }
+    }
+}
+
 private struct SettingsTextField: UIViewRepresentable {
     let placeholder: String
     @Binding var text: String
     var isSecure: Bool = false
+    var keyboardType: UIKeyboardType = .asciiCapable
+    var accessibilityIdentifier: String?
 
     private static let fieldBackgroundColor = UIColor { traitCollection in
         if traitCollection.userInterfaceStyle == .dark {
@@ -2425,18 +3274,25 @@ private struct SettingsTextField: UIViewRepresentable {
         textField.borderStyle = .roundedRect
         textField.autocorrectionType = .no
         textField.autocapitalizationType = .none
-        textField.keyboardType = .asciiCapable
+        textField.keyboardType = keyboardType
         textField.returnKeyType = .done
         textField.clearButtonMode = .whileEditing
         textField.font = UIFont.preferredFont(forTextStyle: .subheadline)
         textField.adjustsFontForContentSizeCategory = true
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textField.accessibilityIdentifier = accessibilityIdentifier
         applyStyle(to: textField)
         return textField
     }
 
     func updateUIView(_ textField: UITextField, context: Context) {
         applyStyle(to: textField)
+        if textField.keyboardType != keyboardType {
+            textField.keyboardType = keyboardType
+        }
+        if textField.accessibilityIdentifier != accessibilityIdentifier {
+            textField.accessibilityIdentifier = accessibilityIdentifier
+        }
         if textField.isSecureTextEntry != isSecure {
             textField.isSecureTextEntry = isSecure
         }
@@ -3107,13 +3963,17 @@ private struct HistoryTimelineRow: View {
 
 private struct PrincipleArchiveRow: View {
     let principle: PrincipleAsset
+    var trainingSummary: PrincipleTrainingSummary?
     var isHighlighted: Bool = false
     var onSaveProject: (() -> Void)?
+    var onRepair: (() -> Void)?
+    var onArchive: (() -> Void)?
+    var onDelete: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("原则")
+                Text(trainingSummary?.state.title ?? "原则")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(DS.caution)
                 Spacer()
@@ -3132,6 +3992,12 @@ private struct PrincipleArchiveRow: View {
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .lineLimit(2)
+            if let trainingSummary {
+                HStack(spacing: 8) {
+                    ProjectTinyChip(text: "实践 \(trainingSummary.practiceEvidenceCount)", systemImage: "checkmark.circle")
+                    ProjectTinyChip(text: "负反馈 \(trainingSummary.negativeRecallFeedbackCount)", systemImage: "exclamationmark.triangle")
+                }
+            }
             if let onSaveProject {
                 Button(action: onSaveProject) {
                     Label("保存为长期议题", systemImage: "plus.circle")
@@ -3139,6 +4005,30 @@ private struct PrincipleArchiveRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DS.accent)
+            }
+            if let onRepair {
+                Button(action: onRepair) {
+                    Label("复审并启用", systemImage: "checkmark.seal")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+            }
+            if let onArchive {
+                Button(action: onArchive) {
+                    Label("归档", systemImage: "archivebox")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.caution)
+            }
+            if let onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Label("删除", systemImage: "trash")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.caution)
             }
         }
         .evidenceSurface(isHighlighted: isHighlighted, base: .principle)

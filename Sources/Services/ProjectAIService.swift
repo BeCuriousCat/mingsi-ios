@@ -84,15 +84,13 @@ final class ProjectAIService {
 
     func suggestProjectLinks(context: ProjectSuggestionContext) async throws -> ProjectSuggestionResult {
         let template = promptProvider.template(for: .suggestProjectLinks, mode: .standard)
-        let payload = buildPayload(from: context)
-        let contextPayload = buildContextPayload(from: context, legacyPayload: payload)
+        let contextPayload = buildContextPayload(from: context)
         let sourceRecordIDs = buildSourceRecordIDs(from: context)
         let contextRecordIDs = buildContextRecordIDs(from: context)
 
         let request = LLMRequest(
             prompt: template,
             inputSummary: "entry=\(context.dailyEntryId.uuidString); cards=\(context.confirmedCards.count); projects=\(context.activeProjects.count)",
-            jsonPayload: payload,
             contextPayload: contextPayload,
             sourceRecordIDs: sourceRecordIDs,
             contextVersion: 1,
@@ -111,44 +109,7 @@ final class ProjectAIService {
         return result
     }
 
-    private func buildPayload(from context: ProjectSuggestionContext) -> [String: String] {
-        var payload: [String: String] = [:]
-        payload["daily_entry_id"] = context.dailyEntryId.uuidString
-        payload["confirmed_cards_count"] = String(context.confirmedCards.count)
-
-        if !context.confirmedCards.isEmpty {
-            let cardsText = context.confirmedCards.map { card in
-                "id: \(card.id), type: \(card.type), title: \(card.title), body: \(card.body)"
-            }.joined(separator: "\n")
-            payload["confirmed_cards"] = cardsText
-        }
-
-        if !context.quests.isEmpty {
-            let questsText = context.quests.map { quest in
-                "id: \(quest.id), type: \(quest.type), title: \(quest.title), completionCriteria: \(quest.completionCriteria)"
-            }.joined(separator: "\n")
-            payload["quests"] = questsText
-        }
-
-        if !context.activeProjects.isEmpty {
-            payload["active_projects_count"] = String(context.activeProjects.count)
-            let projectsText = context.activeProjects.map { project in
-                "id: \(project.id), name: \(project.name)"
-            }.joined(separator: "\n")
-            payload["active_projects"] = projectsText
-        }
-
-        if !context.existingLinkSourceIds.isEmpty {
-            payload["existing_link_source_ids"] = context.existingLinkSourceIds.joined(separator: ", ")
-        }
-
-        return payload
-    }
-
-    private func buildContextPayload(
-        from context: ProjectSuggestionContext,
-        legacyPayload: [String: String]
-    ) -> PromptContextPayload {
+    private func buildContextPayload(from context: ProjectSuggestionContext) -> PromptContextPayload {
         PromptContextPayload(
             currentInput: .init(dailyEntryId: context.dailyEntryId.uuidString),
             userChoice: .init(sessionMode: SessionMode.standard.rawValue),
@@ -171,8 +132,7 @@ final class ProjectAIService {
                     .init(id: project.id, name: project.name)
                 },
                 existingLinkSourceIds: context.existingLinkSourceIds
-            ),
-            extra: legacyPayload
+            )
         )
     }
 
@@ -191,7 +151,6 @@ final class ProjectAIService {
 
     func generateProjectInsights(context: ProjectInsightsContext) async throws -> ProjectInsightsResult {
         let template = promptProvider.template(for: .generateProjectInsights, mode: .standard)
-        let payload = buildPayload(from: context)
         let contextPayload = buildContextPayload(from: context)
         let sourceRecordIDs = buildSourceRecordIDs(from: context)
         let contextRecordIDs = [context.projectId.uuidString]
@@ -199,7 +158,6 @@ final class ProjectAIService {
         let request = LLMRequest(
             prompt: template,
             inputSummary: "project=\(context.projectId.uuidString); evidence=\(context.confirmedEvidence.count)",
-            jsonPayload: payload,
             contextPayload: contextPayload,
             sourceRecordIDs: sourceRecordIDs,
             contextVersion: 1,
@@ -208,24 +166,6 @@ final class ProjectAIService {
 
         let data = try await llmClient.complete(request)
         return try parser.parseProjectInsights(from: data)
-    }
-
-    private func buildPayload(from context: ProjectInsightsContext) -> [String: String] {
-        var payload: [String: String] = [:]
-        payload["project_id"] = context.projectId.uuidString
-        payload["project_name"] = context.projectName
-        payload["project_goal"] = context.projectGoal
-        payload["project_success_criteria"] = context.projectSuccessCriteria
-        payload["accepted_insight_count"] = String(context.acceptedInsightCount)
-
-        if !context.confirmedEvidence.isEmpty {
-            let evidenceText = context.confirmedEvidence.map { evidence in
-                "id: \(evidence.id), type: \(evidence.type), title: \(evidence.title), body: \(evidence.body)"
-            }.joined(separator: "\n")
-            payload["confirmed_evidence"] = evidenceText
-        }
-
-        return payload
     }
 
     private func buildContextPayload(from context: ProjectInsightsContext) -> PromptContextPayload {
@@ -271,9 +211,16 @@ final class ProjectAIService {
                     .init(id: quest.id, type: quest.type, title: quest.title, completionCriteria: quest.completionCriteria)
                 },
                 activeProjects: [],
-                existingLinkSourceIds: []
-            ),
-            extra: [:]
+                existingLinkSourceIds: [],
+                projectId: context.projectId.uuidString,
+                projectName: context.projectName,
+                projectGoal: context.projectGoal,
+                projectSuccessCriteria: context.projectSuccessCriteria,
+                confirmedEvidence: context.confirmedEvidence.map { evidence in
+                    .init(id: evidence.id, type: evidence.type, title: evidence.title, body: evidence.body)
+                },
+                acceptedInsightCount: context.acceptedInsightCount
+            )
         )
     }
 
@@ -283,7 +230,6 @@ final class ProjectAIService {
 
     func suggestProjectMerges(context: ProjectMergeSuggestionContext) async throws -> ProjectMergeSuggestionResult {
         let template = promptProvider.template(for: .suggestProjectMerges, mode: .standard)
-        let payload = buildPayload(from: context)
         let contextPayload = buildContextPayload(from: context)
         let sourceRecordIDs = buildSourceRecordIDs(from: context)
         let contextRecordIDs = buildContextRecordIDs(from: context)
@@ -291,7 +237,6 @@ final class ProjectAIService {
         let request = LLMRequest(
             prompt: template,
             inputSummary: "projects=\(context.activeProjects.count); links=\(context.confirmedProjectLinks.count)",
-            jsonPayload: payload,
             contextPayload: contextPayload,
             sourceRecordIDs: sourceRecordIDs,
             contextVersion: 1,
@@ -304,27 +249,6 @@ final class ProjectAIService {
         return ProjectMergeSuggestionResult(candidates: candidates)
     }
 
-    private func buildPayload(from context: ProjectMergeSuggestionContext) -> [String: String] {
-        var payload: [String: String] = [:]
-        payload["active_projects_count"] = String(context.activeProjects.count)
-
-        if !context.activeProjects.isEmpty {
-            let projectsText = context.activeProjects.map { project in
-                "id: \(project.id), name: \(project.name), goal: \(project.goal), success_criteria: \(project.successCriteria), status: \(project.status)"
-            }.joined(separator: "\n")
-            payload["active_projects"] = projectsText
-        }
-
-        if !context.confirmedProjectLinks.isEmpty {
-            let linksText = context.confirmedProjectLinks.map { link in
-                "project_id: \(link.projectId), source_id: \(link.sourceId), source_type: \(link.sourceType), link_type: \(link.linkType)"
-            }.joined(separator: "\n")
-            payload["confirmed_project_links"] = linksText
-        }
-
-        return payload
-    }
-
     private func buildContextPayload(from context: ProjectMergeSuggestionContext) -> PromptContextPayload {
         PromptContextPayload(
             currentInput: .init(dailyEntryId: nil),
@@ -334,11 +258,24 @@ final class ProjectAIService {
                 confirmedCards: [],
                 quests: [],
                 activeProjects: context.activeProjects.map { project in
-                    .init(id: project.id, name: project.name)
+                    .init(
+                        id: project.id,
+                        name: project.name,
+                        goal: project.goal,
+                        successCriteria: project.successCriteria,
+                        status: project.status
+                    )
                 },
-                existingLinkSourceIds: []
-            ),
-            extra: [:]
+                existingLinkSourceIds: [],
+                confirmedProjectLinks: context.confirmedProjectLinks.map { link in
+                    .init(
+                        projectId: link.projectId,
+                        sourceId: link.sourceId,
+                        sourceType: link.sourceType,
+                        linkType: link.linkType
+                    )
+                }
+            )
         )
     }
 

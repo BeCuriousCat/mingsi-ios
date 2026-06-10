@@ -82,6 +82,45 @@ final class LocalPromptProviderTests: XCTestCase {
         }
     }
 
+    func testEveryPromptTemplate_exposesVersionedPromptAssetMetadata() {
+        for promptID in PromptID.allCases {
+            let template = provider.template(for: promptID, mode: .standard)
+
+            XCTAssertFalse(template.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(template.systemPolicyVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(template.contextPolicyVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(template.evalSuiteVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertGreaterThan(template.outputSchemaVersion, 0)
+        }
+    }
+
+    func testGenerateQuestionsCurrentTemplate_declaresLocalRollbackTarget() {
+        let current = provider.template(for: .generateQuestions, mode: .standard)
+
+        XCTAssertEqual(current.version, "1.0.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "0.9.0")
+    }
+
+    func testGenerateQuestionsRollbackTarget_resolvesHistoricalPromptAsset() {
+        let current = provider.template(for: .generateQuestions, mode: .standard)
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "0.9.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "0.9.0")
+        XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
+        XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
+        XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
+        XCTAssertEqual(historical?.outputSchemaVersion, current.outputSchemaVersion)
+        XCTAssertNil(historical?.rollbackTargetVersion)
+        XCTAssertNotEqual(historical?.userText, current.userText)
+        XCTAssertTrue(historical?.userText.contains("Generate concrete reflection questions") ?? false)
+    }
+
+    func testTemplateVersionLookup_returnsNilForUnknownHistoricalAsset() {
+        XCTAssertNil(provider.template(for: .generateQuestions, mode: .standard, version: "0.8.0"))
+        XCTAssertNil(provider.template(for: .generateQuests, mode: .standard, version: "0.9.0"))
+    }
+
     func testModeGuidance_changesBySessionMode() {
         let quick = provider.template(for: .generateQuestions, mode: .quick)
         let standard = provider.template(for: .generateQuestions, mode: .standard)

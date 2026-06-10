@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 import GRDB
 import UIKit
@@ -149,6 +150,162 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(yesterdayRecord?.sourceIds.contains(verificationForYesterday?.id.uuidString ?? "") == true)
     }
 
+    func testVerifyYesterday_recordsPrinciplePracticeEvidenceWhenQuestMatchesActivePrinciple() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+
+        let yesterday = DailyEntryDraft(
+            date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+            rawText: "昨天围绕会议负责人机制做了行动。",
+            state: .sessionComplete
+        )
+        try await dailyRepo.saveDraft(yesterday)
+
+        let today = DailyEntryDraft(rawText: "今天确认会前负责人已经写清。", state: .verifyYesterday)
+        try await dailyRepo.saveDraft(today)
+
+        let quest = Quest(
+            type: .main,
+            title: "会前明确负责人并写出验收标准",
+            whyItMatters: "避免会议后没有责任人。",
+            completionCriteria: "负责人和验收标准已经写在会议记录。",
+            expectedResistance: "临时讨论太快。",
+            reflectionQuestion: "是否真的减少了职责空白？",
+            status: .active
+        )
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: yesterday.id)
+
+        let principle = PrincipleAsset(
+            title: "会前明确负责人",
+            summary: "推进前先确认唯一负责人。",
+            triggerContext: "跨团队会议",
+            actions: ["写出负责人", "写出验收标准"],
+            successCriteria: "会后没有职责空白。",
+            exceptions: "低风险同步可简化。",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: yesterday.id)
+
+        let verifyingStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await verifyingStore.loadPersistedState()
+
+        verifyingStore.selectYesterdayCompletion(.done)
+        verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.submitTodayStep()
+        try await waitUntil(
+            verifyingStore.todayDraft.state == .capture,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected verification flow to advance to capture"
+        ) {
+            verifyingStore.todayDraft.state == .capture
+        }
+
+        let storedVerification = try await verificationRepo.verification(for: yesterday.id)
+        let verification = try XCTUnwrap(storedVerification)
+        let evidence = try await practiceRepo.evidence(for: principle.id, limit: 10)
+
+        XCTAssertEqual(evidence.count, 1)
+        XCTAssertEqual(evidence.first?.sourceDailyEntryId, yesterday.id)
+        XCTAssertEqual(evidence.first?.questId, quest.id)
+        XCTAssertEqual(evidence.first?.verificationId, verification.id)
+        XCTAssertEqual(evidence.first?.evidenceSource, .verification)
+        XCTAssertEqual(evidence.first?.strength, .intentionalPractice)
+        XCTAssertTrue(evidence.first?.evidenceSummary.contains("会前明确负责人") == true)
+    }
+
+    func testVerifyYesterday_recordsPrinciplePracticeEvidenceOnlyOnceForSameVerification() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+
+        let yesterday = DailyEntryDraft(
+            date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+            rawText: "昨天练习了会前明确负责人。",
+            state: .sessionComplete
+        )
+        try await dailyRepo.saveDraft(yesterday)
+        let today = DailyEntryDraft(rawText: "今天再次进入验证。", state: .verifyYesterday)
+        try await dailyRepo.saveDraft(today)
+
+        let quest = Quest(
+            type: .main,
+            title: "会前明确负责人",
+            whyItMatters: "减少职责空白。",
+            completionCriteria: "会议记录有负责人。",
+            expectedResistance: "节奏太快。",
+            reflectionQuestion: "是否减少返工？",
+            status: .active
+        )
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: yesterday.id)
+        let principle = PrincipleAsset(
+            title: "会前明确负责人",
+            summary: "推进前先确认唯一负责人。",
+            triggerContext: "跨团队会议",
+            actions: ["写出负责人"],
+            successCriteria: "会后没有职责空白。",
+            exceptions: "低风险同步可简化。",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: yesterday.id)
+
+        let verifyingStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await verifyingStore.loadPersistedState()
+
+        verifyingStore.selectYesterdayCompletion(.done)
+        verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.submitTodayStep()
+        try await waitUntil(
+            verifyingStore.todayDraft.state == .capture,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected first verification to advance"
+        ) {
+            verifyingStore.todayDraft.state == .capture
+        }
+
+        verifyingStore.todayDraft.state = .verifyYesterday
+        verifyingStore.quests = [quest]
+        verifyingStore.selectYesterdayCompletion(.done)
+        verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.submitTodayStep()
+        try await waitUntil(
+            verifyingStore.todayDraft.state == .capture,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected second verification to advance"
+        ) {
+            verifyingStore.todayDraft.state == .capture
+        }
+
+        let evidence = try await practiceRepo.evidence(for: principle.id, limit: 10)
+        XCTAssertEqual(evidence.count, 1)
+    }
+
     // MARK: - Capture -> Organizing (async card generation, stays at .organizing)
 
     func testCapture_emptyInput_blocksProgression() async throws {
@@ -193,7 +350,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         let request = try XCTUnwrap(client.requests.first)
         XCTAssertEqual(request.prompt.id, .organizeCards)
-        XCTAssertEqual(request.jsonPayload["sessionMode"], SessionMode.deep.rawValue)
+        let legacy = try XCTUnwrap(request.contextPayload?.legacyKeyValues)
+        XCTAssertEqual(legacy["sessionMode"], SessionMode.deep.rawValue)
         XCTAssertTrue(request.prompt.systemText.contains("Session mode: deep"))
     }
 
@@ -397,6 +555,1403 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
     }
 
+    func testGenerateCustomLensFromConfirmedCards_canBeSelectedAndUsedForLocalQuestions() async throws {
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "会议归属不清",
+            body: "接口讨论结束后没有唯一负责人。"
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        let generatedLens = store.generateCustomLensFromConfirmedCards()
+        store.selectCustomLens(generatedLens.id)
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.availableLensChoices.map(\.id), [generatedLens.id] + ThinkingLens.allCases.map(\.rawValue))
+        XCTAssertEqual(store.todayDraft.selectedCustomLensId, generatedLens.id)
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(store.questions.contains { $0.question == generatedLens.questionSeeds.first })
+        XCTAssertTrue(store.questions.contains { $0.question.contains(generatedLens.title) })
+    }
+
+    func testCustomLensDefinitionRestoresWithPersistedDraft() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let originalStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        originalStore.todayDraft = DailyEntryDraft(
+            rawText: "接口会议后责任边界还不清楚。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .selectLens
+        )
+
+        let customLens = originalStore.upsertCustomLens(
+            title: "责任边界透镜",
+            subtitle: "为当前会议复盘创建。",
+            shortLabel: "边界",
+            methodLine: "先问：这件事到底归谁拥有？",
+            promptGuidance: "Ask ownership and evidence questions.",
+            firstQuestion: "这件事到底归谁拥有？",
+            idSuffix: "ownership"
+        )
+        originalStore.selectCustomLens(customLens.id)
+        try await waitUntilAsync(
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected custom lens selection to persist"
+        ) {
+            try await dailyRepo.latestDraft()?.selectedCustomLensId == customLens.id
+        }
+
+        let restoredStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.todayDraft.selectedCustomLensId, customLens.id)
+        XCTAssertEqual(restoredStore.customLensItems.first?.id, customLens.id)
+        XCTAssertEqual(restoredStore.selectedLensItem?.title, "责任边界透镜")
+        XCTAssertTrue(restoredStore.availableLensChoices.contains { $0.id == customLens.id })
+    }
+
+    func testCustomLensQuestionsRestoreWithPersistedDraft() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let originalStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        originalStore.todayDraft = DailyEntryDraft(
+            rawText: "接口归属仍然不清，明天需要明确负责人。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .selectLens
+        )
+        let customLens = originalStore.upsertCustomLens(
+            title: "责任边界透镜",
+            subtitle: "为当前会议复盘创建。",
+            shortLabel: "边界",
+            methodLine: "先问：这件事到底归谁拥有？",
+            promptGuidance: "Ask ownership and evidence questions.",
+            firstQuestion: "这件事到底归谁拥有？",
+            idSuffix: "ownership"
+        )
+
+        originalStore.selectCustomLens(customLens.id)
+        originalStore.submitTodayStep()
+        XCTAssertEqual(originalStore.todayDraft.state, .answerQuestions)
+        let firstQuestion = try XCTUnwrap(originalStore.questions.first)
+        originalStore.updateQuestionAnswer(questionID: firstQuestion.id, answer: "需要产品负责人确认。")
+
+        try await waitUntilAsync(
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected custom lens questions to persist"
+        ) {
+            try await dailyRepo.latestDraft()?.customLensQuestions.first?.answer == "需要产品负责人确认。"
+        }
+
+        let restoredStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.todayDraft.selectedCustomLensId, customLens.id)
+        XCTAssertEqual(restoredStore.questions.first?.question, "这件事到底归谁拥有？")
+        XCTAssertEqual(restoredStore.questions.first?.answer, "需要产品负责人确认。")
+    }
+
+    func testCustomLensQuestionsRestoreWinsOverStaleBuiltinLensSession() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let lensRepo = SQLiteLensSessionRepository(database: database)
+        let originalStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            lensSessionRepository: lensRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        originalStore.todayDraft = DailyEntryDraft(
+            rawText: "同一个议题先做过内置透镜，后来改成责任边界透镜。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .selectLens
+        )
+        try await lensRepo.saveLensSession(
+            LensSession(
+                dailyEntryId: originalStore.todayDraft.id,
+                selectedLens: .evidenceCheck,
+                questions: [
+                    ReflectionQuestion(
+                        question: "旧内置追问不应覆盖自定义透镜。",
+                        whyItMatters: "这是同一天早先留下的 lens session。"
+                    )
+                ]
+            )
+        )
+        let customLens = originalStore.upsertCustomLens(
+            title: "责任边界透镜",
+            subtitle: "为当前会议复盘创建。",
+            shortLabel: "边界",
+            methodLine: "先问：这件事到底归谁拥有？",
+            promptGuidance: "Ask ownership and evidence questions.",
+            firstQuestion: "这件事到底归谁拥有？",
+            idSuffix: "ownership"
+        )
+
+        originalStore.selectCustomLens(customLens.id)
+        originalStore.submitTodayStep()
+        let firstQuestion = try XCTUnwrap(originalStore.questions.first)
+        originalStore.updateQuestionAnswer(questionID: firstQuestion.id, answer: "需要产品负责人确认。")
+        try await waitUntilAsync(
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected custom lens questions to persist"
+        ) {
+            try await dailyRepo.latestDraft()?.customLensQuestions.first?.answer == "需要产品负责人确认。"
+        }
+
+        let restoredStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            lensSessionRepository: lensRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.todayDraft.selectedCustomLensId, customLens.id)
+        XCTAssertNil(restoredStore.todayDraft.selectedLens)
+        XCTAssertEqual(restoredStore.questions.first?.question, "这件事到底归谁拥有？")
+        XCTAssertEqual(restoredStore.questions.first?.answer, "需要产品负责人确认。")
+    }
+
+    func testLoadPersistedState_loadsEnabledLensAssetPacksIntoRuntimeChoices() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        let enabledLens = Self.makeRuntimeLensPackItem(
+            lensId: "marketplace-role-coach",
+            promptId: "role_coach"
+        )
+        let disabledLens = Self.makeRuntimeLensPackItem(
+            lensId: "marketplace-role-off",
+            promptId: "role_off"
+        )
+
+        try await dailyRepo.saveDraft(
+            DailyEntryDraft(
+                rawText: "今天要从教练视角复盘沟通方式。",
+                sessionMode: .standard,
+                hasSelectedSessionMode: true,
+                state: .selectLens
+            )
+        )
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "marketplace.roles.coach",
+                version: "2026.06",
+                displayName: "Coach Role Cards",
+                sourceKind: .marketplace,
+                isEnabled: true,
+                items: [enabledLens]
+                )
+            )
+        )
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "marketplace.roles.disabled",
+                version: "2026.06",
+                displayName: "Disabled Role Cards",
+                sourceKind: .marketplace,
+                isEnabled: false,
+                items: [disabledLens]
+                )
+            )
+        )
+
+        let restoredStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertTrue(restoredStore.availableLensChoices.contains { $0.id == "marketplace-role-coach" })
+        XCTAssertFalse(restoredStore.availableLensChoices.contains { $0.id == "marketplace-role-off" })
+        XCTAssertEqual(restoredStore.runtimeLensItems.first?.packId, "marketplace.roles.coach")
+        XCTAssertEqual(restoredStore.runtimeLensItems.first?.sourceKind, .marketplace)
+    }
+
+    func testLoadPersistedState_loadsEnabledPromptAssetPacksIntoEffectiveProvider() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                id: "imported.prompt.coach",
+                version: "2026.06",
+                displayName: "Coach Prompt Pack",
+                sourceKind: .imported,
+                isEnabled: true,
+                templates: [
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "pack.questions.v2",
+                        userText: "Pack version asks one sharper ownership question."
+                    )
+                ]
+                )
+            )
+        )
+
+        let restoredStore = AppStore(
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        let template = restoredStore.promptTemplate(for: .generateQuestions, mode: .standard)
+        XCTAssertEqual(template.version, "pack.questions.v2")
+        XCTAssertEqual(template.userText, "Pack version asks one sharper ownership question.")
+    }
+
+    func testLoadPersistedState_ignoresDisabledPromptAssetPacksForEffectiveProvider() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                id: "imported.prompt.disabled",
+                version: "2026.06",
+                displayName: "Disabled Prompt Pack",
+                sourceKind: .imported,
+                isEnabled: false,
+                templates: [
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "disabled.questions.v2",
+                        userText: "Disabled pack must not drive runtime prompts."
+                    )
+                ]
+                )
+            )
+        )
+
+        let restoredStore = AppStore(
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        let template = restoredStore.promptTemplate(for: .generateQuestions, mode: .standard)
+        XCTAssertNotEqual(template.version, "disabled.questions.v2")
+        XCTAssertNotEqual(template.userText, "Disabled pack must not drive runtime prompts.")
+    }
+
+    func testLoadPersistedState_promptRollbackSelectionOverridesEnabledPromptPack() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        let selectionRepo = SQLitePromptAssetSelectionRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                id: "imported.prompt.current",
+                version: "2026.06",
+                displayName: "Current Prompt Pack",
+                sourceKind: .imported,
+                isEnabled: true,
+                templates: [
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "pack.questions.v2",
+                        userText: "Current pack prompt."
+                    ),
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "pack.questions.v1",
+                        userText: "Rollback pack prompt."
+                    )
+                ]
+                )
+            )
+        )
+        try await selectionRepo.saveSelection(
+            PromptAssetSelection(
+                promptId: .generateQuestions,
+                selectedVersion: "pack.questions.v1",
+                baseVersion: "pack.questions.v2",
+                reason: .rollback
+            )
+        )
+
+        let restoredStore = AppStore(
+            promptAssetSelectionRepository: selectionRepo,
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        let template = restoredStore.promptTemplate(for: .generateQuestions, mode: .standard)
+        XCTAssertEqual(template.version, "pack.questions.v1")
+        XCTAssertEqual(template.userText, "Rollback pack prompt.")
+    }
+
+    func testLoadPersistedState_scheduledPromptEvalUsesEnabledPromptPackVersions() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                id: "imported.prompt.eval",
+                version: "2026.06",
+                displayName: "Eval Prompt Pack",
+                sourceKind: .imported,
+                isEnabled: true,
+                templates: [
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "pack.questions.eval.v2",
+                        userText: "Eval should record this pack version."
+                    )
+                ]
+                )
+            )
+        )
+        let store = AppStore(
+            promptEvalRunRepository: evalRepo,
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        let persisted = try await evalRepo.recentEvalRuns(limit: 100)
+        let questionsRun = try XCTUnwrap(persisted.first { $0.promptId == PromptID.generateQuestions.rawValue })
+        XCTAssertEqual(questionsRun.promptVersion, "pack.questions.eval.v2")
+        XCTAssertEqual(questionsRun.promptSourceKind, .imported)
+        XCTAssertEqual(questionsRun.promptPackId, "imported.prompt.eval")
+        XCTAssertEqual(questionsRun.promptPackVersion, "2026.06")
+        XCTAssertEqual(questionsRun.promptPackDisplayName, "Eval Prompt Pack")
+        XCTAssertEqual(store.promptEvalReleaseGate.status, .passed)
+    }
+
+    func testRuntimeLensAssetSelectionUsesCustomLensStateWithoutChangingBuiltinLens() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        let lens = Self.makeRuntimeLensPackItem(
+            lensId: "marketplace-framework-review",
+            promptId: "framework_review"
+        )
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "imported.frameworks.review",
+                version: "1.2.0",
+                displayName: "Review Frameworks",
+                sourceKind: .imported,
+                isEnabled: true,
+                items: [lens]
+                )
+            )
+        )
+
+        let restoredStore = AppStore(
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+        restoredStore.selectCustomLens("marketplace-framework-review")
+
+        XCTAssertEqual(restoredStore.todayDraft.selectedCustomLensId, "marketplace-framework-review")
+        XCTAssertNil(restoredStore.todayDraft.selectedLens)
+        XCTAssertEqual(restoredStore.selectedLensItem?.packId, "imported.frameworks.review")
+        XCTAssertEqual(restoredStore.selectedLensItem?.packVersion, "1.2.0")
+    }
+
+    func testLoadLensAssetPacks_listsAllPacksWithEnabledRuntimeCount() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "imported.roles.coach",
+                version: "1.0.0",
+                displayName: "Coach Roles",
+                sourceKind: .imported,
+                isEnabled: true,
+                items: [Self.makeRuntimeLensPackItem(lensId: "role-coach", promptId: "role_coach")]
+                )
+            )
+        )
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "imported.frameworks.off",
+                version: "1.0.0",
+                displayName: "Disabled Frameworks",
+                sourceKind: .imported,
+                isEnabled: false,
+                items: [Self.makeRuntimeLensPackItem(lensId: "framework-off", promptId: "framework_off")]
+                )
+            )
+        )
+
+        let store = AppStore(
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadLensAssetPacks()
+
+        XCTAssertEqual(store.lensAssetPacks.map(\.id), ["imported.roles.coach", "imported.frameworks.off"])
+        XCTAssertEqual(store.runtimeLensItems.map(\.lensId), ["role-coach"])
+        XCTAssertEqual(store.lensAssetPackMessage, "已加载 2 个透镜包，启用 1 个。")
+    }
+
+    func testLoadLensAssetPacks_keepsMismatchedExternalPackOutOfRuntimeChoices() async throws {
+        let queue = try DatabaseQueue()
+        let database = try AppDatabase(dbQueue: queue)
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        let lens = Self.makeRuntimeLensPackItem(
+            lensId: "stale-role",
+            promptId: "stale_role"
+        )
+        let now = Self.storageString(Date(timeIntervalSince1970: 100))
+        let itemsJSON = try Self.encodedJSONString([lens])
+        let trustMetadataJSON = try Self.encodedJSONString(
+            Self.makeTrustMetadata(contentHash: Self.mismatchedContentHash)
+        )
+
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO lens_asset_packs
+                (id, schema_version, version, display_name, source_kind, is_enabled, items_json, trust_metadata_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "marketplace.roles.stale-hash",
+                    1,
+                    "2026.05",
+                    "Stale Hash Role Cards",
+                    LensAssetSourceKind.marketplace.rawValue,
+                    1,
+                    itemsJSON,
+                    trustMetadataJSON,
+                    now,
+                    now
+                ]
+            )
+        }
+
+        let store = AppStore(
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadLensAssetPacks()
+
+        XCTAssertEqual(store.lensAssetPacks.map(\.id), ["marketplace.roles.stale-hash"])
+        XCTAssertTrue(store.runtimeLensItems.isEmpty)
+        XCTAssertFalse(store.availableLensChoices.contains { $0.id == "stale-role" })
+    }
+
+    func testSetLensAssetPackEnabled_updatesRuntimeChoicesAndClearsDisabledSelection() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                LensAssetPack(
+                id: "imported.roles.coach",
+                version: "1.0.0",
+                displayName: "Coach Roles",
+                sourceKind: .imported,
+                isEnabled: true,
+                items: [Self.makeRuntimeLensPackItem(lensId: "role-coach", promptId: "role_coach")]
+                )
+            )
+        )
+
+        let store = AppStore(
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadLensAssetPacks()
+        store.selectCustomLens("role-coach")
+
+        await store.setLensAssetPack("imported.roles.coach", isEnabled: false)
+
+        XCTAssertFalse(store.availableLensChoices.contains { $0.id == "role-coach" })
+        XCTAssertNil(store.todayDraft.selectedCustomLensId)
+        XCTAssertNil(store.selectedLensItem)
+        let persistedPacks = try await packRepo.allPacks()
+        let persisted = try XCTUnwrap(persistedPacks.first)
+        XCTAssertFalse(persisted.isEnabled)
+        XCTAssertEqual(persisted.trustMetadata?.contentHash, try AssetPackIntegrity.expectedContentHash(for: persisted))
+        XCTAssertEqual(store.lensAssetPackMessage, "已停用 Coach Roles。")
+    }
+
+    func testImportLensAssetPackFromJSON_persistsAndEnablesPack() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLiteLensAssetPackRepository(database: database)
+        let pack = try Self.trusted(
+            LensAssetPack(
+            id: "imported.frameworks.review",
+            version: "1.2.0",
+            displayName: "Review Frameworks",
+            sourceKind: .imported,
+            isEnabled: true,
+            items: [Self.makeRuntimeLensPackItem(lensId: "framework-review", promptId: "framework_review")]
+            )
+        )
+        let payload = try JSONEncoder().encode(pack)
+        let store = AppStore(
+            lensAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let imported = try await store.importLensAssetPack(from: payload)
+
+        XCTAssertEqual(imported.id, "imported.frameworks.review")
+        XCTAssertEqual(store.lensAssetPacks.map(\.id), ["imported.frameworks.review"])
+        XCTAssertTrue(store.availableLensChoices.contains { $0.id == "framework-review" })
+        let enabledPacks = try await packRepo.enabledPacks()
+        XCTAssertEqual(enabledPacks.first?.id, "imported.frameworks.review")
+        XCTAssertEqual(store.lensAssetPackMessage, "已导入 Review Frameworks，包含 1 个透镜。")
+    }
+
+    func testLoadPromptAssetPacks_listsAllPacksWithEnabledRuntimeCount() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                    id: "imported.prompts.coach",
+                    version: "1.0.0",
+                    displayName: "Coach Prompts",
+                    sourceKind: .imported,
+                    isEnabled: true,
+                    templates: [
+                        Self.makePromptPackTemplate(
+                            promptId: .generateQuestions,
+                            version: "coach.questions.v1",
+                            userText: "Coach prompt should be active."
+                        )
+                    ]
+                )
+            )
+        )
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                    id: "imported.prompts.off",
+                    version: "1.0.0",
+                    displayName: "Disabled Prompts",
+                    sourceKind: .imported,
+                    isEnabled: false,
+                    templates: [
+                        Self.makePromptPackTemplate(
+                            promptId: .generateQuestions,
+                            version: "off.questions.v1",
+                            userText: "Disabled prompt should not be active."
+                        )
+                    ]
+                )
+            )
+        )
+        let store = AppStore(
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPromptAssetPacks()
+
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["imported.prompts.coach", "imported.prompts.off"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "coach.questions.v1")
+        XCTAssertEqual(store.promptAssetPackMessage, "已加载 2 个 Prompt 包，启用 1 个。")
+    }
+
+    func testSetPromptAssetPackEnabled_updatesRuntimePromptProvider() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        try await packRepo.savePack(
+            try Self.trusted(
+                PromptAssetPack(
+                    id: "imported.prompts.coach",
+                    version: "1.0.0",
+                    displayName: "Coach Prompts",
+                    sourceKind: .imported,
+                    isEnabled: true,
+                    templates: [
+                        Self.makePromptPackTemplate(
+                            promptId: .generateQuestions,
+                            version: "coach.questions.v1",
+                            userText: "Coach prompt should be active."
+                        )
+                    ]
+                )
+            )
+        )
+        let store = AppStore(
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPromptAssetPacks()
+
+        await store.setPromptAssetPack("imported.prompts.coach", isEnabled: false)
+
+        XCTAssertNotEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "coach.questions.v1")
+        let persistedPacks = try await packRepo.allPacks()
+        let persisted = try XCTUnwrap(persistedPacks.first)
+        XCTAssertFalse(persisted.isEnabled)
+        XCTAssertEqual(persisted.trustMetadata?.contentHash, try AssetPackIntegrity.expectedContentHash(for: persisted))
+        XCTAssertEqual(store.promptAssetPackMessage, "已停用 Coach Prompts。")
+    }
+
+    func testImportPromptAssetPackFromJSON_persistsAndEnablesPack() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let packRepo = SQLitePromptAssetPackRepository(database: database)
+        let pack = try Self.trusted(
+            PromptAssetPack(
+                id: "imported.prompts.review",
+                version: "1.2.0",
+                displayName: "Review Prompts",
+                sourceKind: .imported,
+                isEnabled: true,
+                templates: [
+                    Self.makePromptPackTemplate(
+                        promptId: .generateQuestions,
+                        version: "review.questions.v1",
+                        userText: "Review prompt should be active."
+                    )
+                ]
+            )
+        )
+        let payload = try JSONEncoder().encode(pack)
+        let store = AppStore(
+            promptAssetPackRepository: packRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let imported = try await store.importPromptAssetPack(from: payload)
+
+        XCTAssertEqual(imported.id, "imported.prompts.review")
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["imported.prompts.review"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "review.questions.v1")
+        let enabledPacks = try await packRepo.enabledPacks()
+        XCTAssertEqual(enabledPacks.first?.id, "imported.prompts.review")
+        XCTAssertEqual(store.promptAssetPackMessage, "已导入 Review Prompts，包含 1 个 Prompt 模板。")
+    }
+
+    func testImportAssetPackInstallManifestFromJSON_savesValidatedPacksAndRefreshesRuntimeAssets() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let installablePrompt = PromptAssetPack(
+            id: "marketplace.prompts.installable-settings",
+            version: "2026.06",
+            displayName: "Installable Settings Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "settings.questions.v1",
+                    userText: "Settings manifest prompt should be active."
+                )
+            ]
+        )
+        let rejectedPrompt = PromptAssetPack(
+            id: "marketplace.prompts.rejected-settings",
+            version: "2026.06",
+            displayName: "Rejected Settings Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: installablePrompt.templates
+        )
+        let installableLens = LensAssetPack(
+            id: "marketplace.roles.installable-settings",
+            version: "2026.06",
+            displayName: "Installable Settings Roles",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [
+                Self.makeRuntimeLensPackItem(
+                    lensId: "settings-role-installable",
+                    promptId: "settings_role_installable"
+                )
+            ]
+        )
+        let rejectedLens = LensAssetPack(
+            id: "marketplace.roles.rejected-settings",
+            version: "2026.06",
+            displayName: "Rejected Settings Roles",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: installableLens.items
+        )
+        let manifest = AssetPackInstallManifest(
+            promptPacks: [
+                try Self.trusted(installablePrompt),
+                rejectedPrompt
+            ],
+            lensPacks: [
+                try Self.trusted(installableLens),
+                rejectedLens
+            ]
+        )
+        let payload = try JSONEncoder().encode(manifest)
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.importAssetPackInstallManifest(from: payload)
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.installable-settings"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.packId), ["marketplace.prompts.rejected-settings"])
+        XCTAssertEqual(report.installableLensPacks.map(\.id), ["marketplace.roles.installable-settings"])
+        XCTAssertEqual(report.rejectedLensPacks.map(\.packId), ["marketplace.roles.rejected-settings"])
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["marketplace.prompts.installable-settings"])
+        XCTAssertEqual(store.lensAssetPacks.map(\.id), ["marketplace.roles.installable-settings"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "settings.questions.v1")
+        XCTAssertTrue(store.availableLensChoices.contains { $0.id == "settings-role-installable" })
+        let savedPromptPackIds = try await promptRepo.allPacks().map(\.id)
+        let savedLensPackIds = try await lensRepo.allPacks().map(\.id)
+        XCTAssertEqual(savedPromptPackIds, ["marketplace.prompts.installable-settings"])
+        XCTAssertEqual(savedLensPackIds, ["marketplace.roles.installable-settings"])
+        XCTAssertEqual(store.assetPackInstallMessage, "已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、1 个透镜包。")
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let installablePrompt = PromptAssetPack(
+            id: "marketplace.prompts.remote-installable",
+            version: "2026.06",
+            displayName: "Remote Installable Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "remote.questions.v1",
+                    userText: "Remote manifest prompt should be active."
+                )
+            ]
+        )
+        let rejectedPrompt = PromptAssetPack(
+            id: "marketplace.prompts.remote-rejected",
+            version: "2026.06",
+            displayName: "Remote Rejected Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: installablePrompt.templates
+        )
+        let installableLens = LensAssetPack(
+            id: "marketplace.roles.remote-installable",
+            version: "2026.06",
+            displayName: "Remote Installable Roles",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            items: [
+                Self.makeRuntimeLensPackItem(
+                    lensId: "remote-role-installable",
+                    promptId: "remote_role_installable"
+                )
+            ]
+        )
+        let manifest = AssetPackInstallManifest(
+            promptPacks: [
+                try Self.trusted(installablePrompt),
+                rejectedPrompt
+            ],
+            lensPacks: [
+                try Self.trusted(installableLens)
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [remoteURL: try JSONEncoder().encode(manifest)]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [remoteURL])
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.remote-installable"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.packId), ["marketplace.prompts.remote-rejected"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [.missingTrustMetadata])
+        XCTAssertEqual(report.installableLensPacks.map(\.id), ["marketplace.roles.remote-installable"])
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["marketplace.prompts.remote-installable"])
+        XCTAssertEqual(store.lensAssetPacks.map(\.id), ["marketplace.roles.remote-installable"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "remote.questions.v1")
+        XCTAssertTrue(store.availableLensChoices.contains { $0.id == "remote-role-installable" })
+        XCTAssertEqual(store.assetPackInstallMessage, "已从远程清单安装：已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、0 个透镜包。")
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let remotePolicyVersion = "asset-trust.remote.rotated.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.remote-policy",
+            version: "2026.06",
+            displayName: "Remote Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "remote.policy.questions.v1",
+                    userText: "Remote policy prompt should be active."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let manifest = AssetPackInstallManifest(
+            trustPolicyURL: policyURL,
+            promptPacks: [trustedPrompt]
+        )
+        let policy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ]
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                remoteURL: try JSONEncoder().encode(manifest),
+                policyURL: try JSONEncoder().encode(policy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [remoteURL, policyURL])
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.remote-policy"])
+        XCTAssertTrue(report.rejectedPromptPacks.isEmpty)
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["marketplace.prompts.remote-policy"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "remote.policy.questions.v1")
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_rejectsUnsignedRemoteTrustPolicy() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let remotePolicyVersion = "asset-trust.remote.unsigned.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.unsigned-policy",
+            version: "2026.06",
+            displayName: "Unsigned Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "unsigned.policy.questions.v1",
+                    userText: "Unsigned policy prompt should not install."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let manifest = AssetPackInstallManifest(
+            trustPolicyURL: policyURL,
+            promptPacks: [trustedPrompt]
+        )
+        let unsignedPolicy = AssetPackTrustPolicyDocument(
+            policies: [
+                AssetPackTrustPolicy(
+                    version: remotePolicyVersion,
+                    trustedPublisherPublicKeys: [
+                        "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                    ]
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                remoteURL: try Self.assetPackJSONEncoder.encode(manifest),
+                policyURL: try Self.assetPackJSONEncoder.encode(unsignedPolicy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let remotePolicyVersion = "asset-trust.remote.expired.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.expired-policy",
+            version: "2026.06",
+            displayName: "Expired Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "expired.policy.questions.v1",
+                    userText: "Expired policy prompt should not install."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let manifest = AssetPackInstallManifest(
+            trustPolicyURL: policyURL,
+            promptPacks: [trustedPrompt]
+        )
+        let expiredPolicy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ],
+                expiresAt: Date(timeIntervalSince1970: 1)
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                remoteURL: try Self.assetPackJSONEncoder.encode(manifest),
+                policyURL: try Self.assetPackJSONEncoder.encode(expiredPolicy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+    }
+
+    func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let remotePolicyVersion = "asset-trust.remote.persisted.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.persisted-policy",
+            version: "2026.06",
+            displayName: "Persisted Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "persisted.policy.questions.v1",
+                    userText: "Persisted policy prompt should survive restart."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let manifest = AssetPackInstallManifest(
+            trustPolicyURL: policyURL,
+            promptPacks: [trustedPrompt]
+        )
+        let policy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ]
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                remoteURL: try JSONEncoder().encode(manifest),
+                policyURL: try JSONEncoder().encode(policy)
+            ]
+        )
+        let installingStore = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+        _ = try await installingStore.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        let restoredStore = AppStore(
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "persisted.policy.questions.v1")
+        XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.persisted-policy"])
+    }
+
+    func testLoadPersistedState_excludesPacksAuthorizedOnlyByExpiredRemoteTrustPolicy() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remotePolicyVersion = "asset-trust.remote.expired-persisted.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.expired-persisted-policy",
+            version: "2026.06",
+            displayName: "Expired Persisted Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "expired.persisted.policy.questions.v1",
+                    userText: "Expired persisted policy prompt should not survive restart."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let activePolicy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ],
+                expiresAt: Date(timeIntervalSinceNow: 60)
+            )
+        )
+        let expiredPolicy = try Self.signedTrustPolicyDocument(AssetPackTrustPolicyDocument(
+            policies: activePolicy.policies,
+            expiresAt: Date(timeIntervalSince1970: 1)
+        ))
+        try await SQLitePromptAssetPackRepository(
+            database: database,
+            signatureVerifier: activePolicy.signatureVerifier
+        ).savePack(trustedPrompt)
+        try await SQLiteAssetPackTrustPolicyRepository(database: database).saveDocument(
+            expiredPolicy,
+            sourceURL: URL(string: "https://registry.mingsi.test/assets/expired-trust-policy.json")!
+        )
+
+        let restoredStore = AppStore(
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+    }
+
+    func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remotePolicyVersion = "asset-trust.remote.unsigned-persisted.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.unsigned-persisted-policy",
+            version: "2026.06",
+            displayName: "Unsigned Persisted Policy Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "unsigned.persisted.policy.questions.v1",
+                    userText: "Unsigned persisted policy prompt should not survive restart."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let signedPolicy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ]
+                    )
+                ]
+            )
+        )
+        let unsignedPolicy = AssetPackTrustPolicyDocument(policies: signedPolicy.policies)
+        try await SQLitePromptAssetPackRepository(
+            database: database,
+            signatureVerifier: signedPolicy.signatureVerifier
+        ).savePack(trustedPrompt)
+        try await SQLiteAssetPackTrustPolicyRepository(database: database).saveDocument(
+            unsignedPolicy,
+            sourceURL: URL(string: "https://registry.mingsi.test/assets/unsigned-trust-policy.json")!
+        )
+
+        let restoredStore = AppStore(
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let manifest = AssetPackInstallManifest(trustPolicyURL: policyURL)
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [remoteURL: try JSONEncoder().encode(manifest)],
+            errorByURL: [policyURL: URLError(.notConnectedToInternet)]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        do {
+            _ = try await store.fetchAndInstallAssetPackInstallManifest(
+                from: remoteURL,
+                fetcher: fetcher
+            )
+            XCTFail("Expected remote trust policy fetch to fail.")
+        } catch {
+            XCTAssertEqual(fetcher.requestedURLs, [remoteURL, policyURL])
+            XCTAssertTrue(store.assetPackInstallMessage.contains("获取远程资产包信任策略失败"))
+            XCTAssertFalse(store.assetPackInstallMessage.contains("获取远程资产包清单失败"))
+            XCTAssertFalse(store.assetPackInstallMessage.hasPrefix("已从远程清单安装"))
+        }
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_reportsFetchFailure() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/missing.json")!
+        let fetcher = FakeAssetPackInstallManifestFetcher(error: URLError(.fileDoesNotExist))
+        let store = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        do {
+            _ = try await store.fetchAndInstallAssetPackInstallManifest(
+                from: remoteURL,
+                fetcher: fetcher
+            )
+            XCTFail("Expected remote manifest fetch to fail.")
+        } catch {
+            XCTAssertEqual(fetcher.requestedURLs, [remoteURL])
+            XCTAssertTrue(store.assetPackInstallMessage.contains("获取远程资产包清单失败"))
+        }
+    }
+
+    func testFetchAndInstallAssetPackInstallManifest_keepsInstallFailureDistinctFromFetchFailure() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/invalid.json")!
+        let fetcher = FakeAssetPackInstallManifestFetcher(dataByURL: [remoteURL: Data("{".utf8)])
+        let store = AppStore(
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        do {
+            _ = try await store.fetchAndInstallAssetPackInstallManifest(
+                from: remoteURL,
+                fetcher: fetcher
+            )
+            XCTFail("Expected remote manifest install to fail.")
+        } catch {
+            XCTAssertEqual(fetcher.requestedURLs, [remoteURL])
+            XCTAssertTrue(store.assetPackInstallMessage.contains("安装资产包清单失败"))
+            XCTAssertFalse(store.assetPackInstallMessage.contains("获取远程资产包清单失败"))
+        }
+    }
+
+    func testFetchAssetPackRegistryCatalog_loadsRemoteEntriesForSettingsSelection() async throws {
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let manifestURL = URL(string: "https://registry.mingsi.test/manifests/coach.json")!
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.coach",
+                    displayName: "Coach Starter Pack",
+                    summary: "Prompt and lens starter pack.",
+                    manifestURL: manifestURL,
+                    updatedAt: Date(timeIntervalSince1970: 1_804_032_000)
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [catalogURL: try Self.assetPackJSONEncoder.encode(catalog)]
+        )
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        let loadedCatalog = try await store.fetchAssetPackRegistryCatalog(from: catalogURL, fetcher: fetcher)
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL])
+        XCTAssertEqual(loadedCatalog, catalog)
+        XCTAssertEqual(store.assetPackRegistryCatalogEntries.map(\.id), ["marketplace.coach"])
+        XCTAssertEqual(store.assetPackInstallMessage, "已获取 1 个远程资产包条目。")
+    }
+
+    func testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let manifestURL = URL(string: "https://registry.mingsi.test/manifests/coach.json")!
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.catalog-installable",
+            version: "2026.06",
+            displayName: "Catalog Installable Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "catalog.questions.v1",
+                    userText: "Catalog manifest prompt should be active."
+                )
+            ]
+        )
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.coach",
+                    displayName: "Coach Starter Pack",
+                    summary: "Prompt and lens starter pack.",
+                    manifestURL: manifestURL,
+                    updatedAt: nil
+                )
+            ]
+        )
+        let manifest = AssetPackInstallManifest(
+            promptPacks: [
+                try Self.trusted(prompt)
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                catalogURL: try Self.assetPackJSONEncoder.encode(catalog),
+                manifestURL: try Self.assetPackJSONEncoder.encode(manifest)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        _ = try await store.fetchAssetPackRegistryCatalog(from: catalogURL, fetcher: fetcher)
+        let report = try await store.installAssetPackRegistryCatalogEntry(
+            entryId: "marketplace.coach",
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL, manifestURL])
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.catalog-installable"])
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["marketplace.prompts.catalog-installable"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "catalog.questions.v1")
+        XCTAssertEqual(store.assetPackInstallMessage, "已从 Coach Starter Pack 安装：已安装 1 个 Prompt 包、0 个透镜包；拒绝 0 个 Prompt 包、0 个透镜包。")
+    }
+
     func testSelectLens_generateQuestionsUsesHistoricalActivePrinciplesAndShowsReferences() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let principleRepo = SQLitePrincipleRepository(database: database)
@@ -435,12 +1990,188 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
         XCTAssertEqual(request.prompt.id, .generateQuestions)
-        XCTAssertTrue(try XCTUnwrap(request.jsonPayload["relevantPrinciples"]).contains("Clarify meeting ownership"))
+        let legacy = try XCTUnwrap(request.contextPayload?.legacyKeyValues)
+        XCTAssertTrue(try XCTUnwrap(legacy["relevantPrinciples"]).contains("Clarify meeting ownership"))
         XCTAssertTrue(request.contextRecordIDs.contains(historicalPrinciple.id.uuidString))
         XCTAssertEqual(store.referencedPrinciples.map(\.id), [historicalPrinciple.id])
 
         store.navigateTodayLoop(to: .reviewCards)
         XCTAssertTrue(store.referencedPrinciples.isEmpty)
+    }
+
+    func testSelectLens_generateQuestionsUsesSingleRecallFeedbackToDemoteReferencesBeforeReviewThreshold() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let penalizedPrinciple = PrincipleAsset(
+            title: "Meeting ownership escalation",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        let unchallengedPrinciple = PrincipleAsset(
+            title: "Meeting ownership alignment",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(penalizedPrinciple, sourceDailyEntryId: UUID())
+        try await principleRepo.savePrinciple(unchallengedPrinciple, sourceDailyEntryId: UUID())
+        try await feedbackRepo.saveFeedback(
+            PrincipleRecallFeedback(
+                principleId: penalizedPrinciple.id,
+                promptId: .generateQuestions,
+                retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                retrievalReason: "Earlier recall was too broad.",
+                feedback: .misrecalled,
+                createdAt: Date(timeIntervalSince1970: 200)
+            )
+        )
+
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            principleRepository: principleRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "Meeting ownership unclear",
+            body: "No owner was named."
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        store.selectThinkingLens(.evidenceCheck)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
+        XCTAssertEqual(
+            request.contextPayload?.principles.map(\.id),
+            [unchallengedPrinciple.id.uuidString, penalizedPrinciple.id.uuidString]
+        )
+        XCTAssertEqual(store.referencedPrinciples.map(\.id), [unchallengedPrinciple.id, penalizedPrinciple.id])
+        let storedPrinciples = try await principleRepo.activePrinciples()
+        XCTAssertTrue(storedPrinciples.contains(where: { $0.id == penalizedPrinciple.id }))
+    }
+
+    func testReferencedPrincipleFeedback_persistsRecallMetadataAndRemovesRejectedReference() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let recalledPrinciple = PrincipleAsset(
+            title: "Meeting ownership alignment",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(recalledPrinciple, sourceDailyEntryId: UUID())
+
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            principleRepository: principleRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "Meeting ownership unclear",
+            body: "No owner was named."
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        store.selectThinkingLens(.evidenceCheck)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        XCTAssertEqual(store.referencedPrinciples.map(\.id), [recalledPrinciple.id])
+
+        await store.recordReferencedPrincipleFeedback(
+            for: recalledPrinciple.id,
+            feedback: .notApplicable
+        )
+
+        let savedFeedback = try await feedbackRepo.feedback(for: recalledPrinciple.id, limit: 5)
+        XCTAssertEqual(savedFeedback.map(\.feedback), [.notApplicable])
+        XCTAssertEqual(savedFeedback.first?.sourceDailyEntryId, store.todayDraft.id)
+        XCTAssertEqual(savedFeedback.first?.promptId, .generateQuestions)
+        XCTAssertEqual(savedFeedback.first?.retrievalPolicyVersion, LocalPrincipleRetriever.policyVersion)
+        XCTAssertTrue(savedFeedback.first?.retrievalReason.contains("Meeting ownership alignment") == true)
+        XCTAssertTrue(store.referencedPrinciples.isEmpty)
+    }
+
+    func testLoadPersistedState_marksRepeatedNegativeRecallFeedbackNeedsReview() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let draft = DailyEntryDraft(rawText: "Review stale recall policy", state: .capture)
+        let principle = PrincipleAsset(
+            title: "Meeting owner rule",
+            summary: "Clarify ownership before execution.",
+            triggerContext: "Meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await dailyRepo.saveDraft(draft)
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: draft.id)
+        try await feedbackRepo.saveFeedback(
+            PrincipleRecallFeedback(
+                principleId: principle.id,
+                promptId: .generateQuestions,
+                retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                retrievalReason: "Owner keyword matched but did not apply.",
+                feedback: .notApplicable,
+                createdAt: Date(timeIntervalSince1970: 100)
+            )
+        )
+        try await feedbackRepo.saveFeedback(
+            PrincipleRecallFeedback(
+                principleId: principle.id,
+                promptId: .generateQuests,
+                retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                retrievalReason: "Owner keyword was a false positive.",
+                feedback: .misrecalled,
+                createdAt: Date(timeIntervalSince1970: 200)
+            )
+        )
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPersistedState()
+
+        let activePrinciples = try await principleRepo.activePrinciples()
+        let storedPrinciples = try await principleRepo.principles(for: draft.id)
+        XCTAssertTrue(activePrinciples.isEmpty)
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        XCTAssertEqual(storedPrinciples.first?.status, .needsReview)
     }
 
     // MARK: - AnswerQuestions -> ReviewQuests (async)
@@ -1218,6 +2949,65 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.thinkingCards.first?.title, "Slow AI card")
     }
 
+    func testTodayPrimaryActionBlockerExplainsMissingPrerequisites() {
+        store.todayDraft.state = .capture
+        store.todayDraft.rawText = "   "
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先写下") == true)
+
+        store.todayDraft.rawText = "今天想复盘会议里的卡点。"
+        store.todayDraft.hasSelectedSessionMode = false
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练深度") == true)
+
+        store.todayDraft.state = .reviewCards
+        store.todayDraft.hasSelectedSessionMode = true
+        store.thinkingCards = [ThinkingCard(type: .fact, title: "事实", body: "还没确认。")]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认至少一张卡片") == true)
+
+        var confirmedCard = ThinkingCard(type: .fact, title: "事实", body: "已确认。")
+        confirmedCard.isConfirmed = true
+        store.thinkingCards = [confirmedCard]
+        store.todayDraft.state = .selectLens
+        store.todayDraft.selectedLens = nil
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("思考透镜") == true)
+
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.selectedLens = .firstPrinciples
+        store.questions = [
+            ReflectionQuestion(
+                question: "真正的问题是什么？",
+                whyItMatters: "避免只处理表层症状。",
+                answer: "   "
+            )
+        ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个问题") == true)
+
+        store.todayDraft.state = .reviewQuests
+        store.questions[0].answer = "会议目标没有对齐。"
+        store.quests = [
+            Quest(
+                type: .main,
+                title: "明确会议目标",
+                whyItMatters: "减少会后返工。",
+                completionCriteria: "   ",
+                expectedResistance: "大家默认直接开会。",
+                reflectionQuestion: "目标是否被写下来？"
+            )
+        ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("完成标准") == true)
+
+        store.quests = [
+            Quest(
+                type: .main,
+                title: "明确会议目标",
+                whyItMatters: "减少会后返工。",
+                completionCriteria: "会前写出目标。",
+                expectedResistance: "大家默认直接开会。",
+                reflectionQuestion: "目标是否被写下来？"
+            )
+        ]
+        XCTAssertNil(store.todayPrimaryActionBlocker)
+    }
+
     func testNavigateBackToEarlierCompletedStep_trimsDownstreamGeneratedState() async throws {
         try await advanceTo(.reviewQuests)
         store.principles = [
@@ -1239,6 +3029,18 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.quests.isEmpty)
         XCTAssertTrue(store.principles.isEmpty)
         XCTAssertTrue(store.todayLoopMessage.contains("后续内容会在确认后重新生成"))
+    }
+
+    func testPreviousFromReviewCardsReturnsToCaptureWithoutClearingCards() async throws {
+        try await advanceTo(.reviewCards)
+        let generatedCards = store.thinkingCards
+        XCTAssertFalse(generatedCards.isEmpty)
+
+        store.navigateTodayLoopToPreviousUserStep()
+
+        XCTAssertEqual(store.todayDraft.state, .capture)
+        XCTAssertEqual(store.thinkingCards, generatedCards)
+        XCTAssertTrue(store.todayLoopMessage.contains("已回到今日输入"))
     }
 
     func testSupplementCaptureAfterGeneratedCards_appendsTextAndReturnsToCaptureForRegeneration() async throws {
@@ -1343,6 +3145,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await promptRunRepo.savePromptRun(oldRun)
         try await promptRunRepo.savePromptRun(failedRun)
         try await promptRunRepo.savePromptRun(newestRun)
+        try await promptRunRepo.updatePromptRunFeedback(.denied, runId: newestRun.id)
 
         let auditStore = AppStore(
             promptRunRepository: promptRunRepo,
@@ -1357,6 +3160,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(auditStore.recentPromptRuns[1].sourceRecordIds, [sourceID])
         XCTAssertEqual(auditStore.recentPromptRuns[1].contextRecordIds, [contextID])
         XCTAssertEqual(auditStore.recentPromptRuns[1].error, "HTTP 500: upstream unavailable")
+        XCTAssertEqual(auditStore.promptRunStats?.totalCount, 2)
+        XCTAssertEqual(auditStore.promptRunStats?.successCount, 1)
+        XCTAssertEqual(auditStore.promptRunStats?.failureCount, 1)
+        XCTAssertEqual(auditStore.promptRunStats?.userDeniedCount, 1)
         XCTAssertTrue(auditStore.promptRunAuditMessage.isEmpty)
     }
 
@@ -1407,6 +3214,26 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testPrepareDataExport_waitsForPendingDraftPersistenceAndReturnsFile() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let exportStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            dataExportRepository: exportRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        exportStore.updateDraftText("Export this draft after queued persistence.")
+        let export = try await exportStore.prepareDataExport()
+        let exportedText = try String(contentsOf: export.fileURL, encoding: .utf8)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: export.fileURL.path))
+        XCTAssertTrue(exportedText.contains("Export this draft after queued persistence."))
+        XCTAssertTrue(export.summary.contains("daily_entries: 1"))
+        XCTAssertEqual(exportStore.dataExportMessage, "已准备数据导出文件。")
+    }
+
     func testGLMConnectionRefreshesPromptRunAuditAfterCompletion() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRunRepo = SQLitePromptRunRepository(database: database)
@@ -1434,6 +3261,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(run.promptVersion, "connection-test")
         XCTAssertEqual(run.modelProvider, "GLM")
         XCTAssertEqual(run.modelName, "missing-api-key")
+        XCTAssertEqual(run.sessionMode, SessionMode.standard.rawValue)
         XCTAssertTrue(run.error?.contains("API Key") == true)
     }
 
@@ -2094,8 +3922,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         await growthStore.generateWeeklyGrowthReport()
 
         let request = try XCTUnwrap(client.requests.first)
-        XCTAssertEqual(request.jsonPayload["dismissed_contributions"], "Overstated clarity gain")
-        XCTAssertEqual(request.contextPayload?.growth?.dismissedContributionTitles, ["Overstated clarity gain"])
+        let payload = try XCTUnwrap(request.contextPayload)
+        XCTAssertEqual(payload.legacyKeyValues["dismissed_contributions"], "Overstated clarity gain")
+        XCTAssertEqual(payload.growth?.dismissedContributionTitles, ["Overstated clarity gain"])
     }
 
     func testGenerateMonthlyGrowthReport_withInsufficientEvidenceSavesNoContributions() async throws {
@@ -3151,6 +4980,150 @@ final class AppStoreStateMachineTests: XCTestCase {
         return 0.2126 * linearized(red) + 0.7152 * linearized(green) + 0.0722 * linearized(blue)
     }
 
+    private static func makeRuntimeLensPackItem(lensId: String, promptId: String) -> LensCatalogItem {
+        LensCatalogItem(
+            lensId: lensId,
+            promptId: promptId,
+            version: "asset.v1",
+            title: "Runtime Lens",
+            subtitle: "Loaded from a persisted lens asset pack.",
+            shortLabel: "Run",
+            methodLine: "What would this external lens ask first?",
+            promptGuidance: "Ask questions from the external lens asset pack.",
+            symbolName: "sparkles",
+            recommendedReason: "Persisted runtime lens pack.",
+            questionSeeds: ["What would this external lens ask first?"],
+            accentRole: .accent,
+            methodIndex: 20
+        )
+    }
+
+    private static func makePromptPackTemplate(
+        promptId: PromptID,
+        version: String,
+        userText: String
+    ) -> PromptTemplate {
+        PromptTemplate(
+            id: promptId,
+            version: version,
+            systemPolicyVersion: "system.pack.v1",
+            contextPolicyVersion: "context.\(promptId.rawValue).pack.v1",
+            evalSuiteVersion: "\(promptId.rawValue).eval.pack.v1",
+            rollbackTargetVersion: nil,
+            systemText: "Pack system policy for \(promptId.rawValue).",
+            userText: userText,
+            outputSchemaVersion: 1
+        )
+    }
+
+    private static func trusted(
+        _ pack: PromptAssetPack,
+        verificationPolicyVersion: String = "asset-trust.test.v1",
+        privateKeyBase64: String = testPublisherPrivateKeyBase64
+    ) throws -> PromptAssetPack {
+        let contentHash = try AssetPackIntegrity.expectedContentHash(for: pack)
+        return PromptAssetPack(
+            id: pack.id,
+            version: pack.version,
+            displayName: pack.displayName,
+            sourceKind: pack.sourceKind,
+            isEnabled: pack.isEnabled,
+            templates: pack.templates,
+            trustMetadata: try signedTrustMetadata(
+                contentHash: contentHash,
+                signedPayload: AssetPackIntegrity.signaturePayload(for: pack),
+                verificationPolicyVersion: verificationPolicyVersion,
+                privateKeyBase64: privateKeyBase64
+            )
+        )
+    }
+
+    private static func trusted(_ pack: LensAssetPack) throws -> LensAssetPack {
+        let contentHash = try AssetPackIntegrity.expectedContentHash(for: pack)
+        return LensAssetPack(
+            id: pack.id,
+            version: pack.version,
+            displayName: pack.displayName,
+            sourceKind: pack.sourceKind,
+            isEnabled: pack.isEnabled,
+            items: pack.items,
+            trustMetadata: try signedTrustMetadata(
+                contentHash: contentHash,
+                signedPayload: AssetPackIntegrity.signaturePayload(for: pack)
+            )
+        )
+    }
+
+    private static func makeTrustMetadata(contentHash: String) -> AssetTrustMetadata {
+        AssetTrustMetadata(
+            publisherId: "mingsi.test.publisher",
+            contentHash: contentHash,
+            signature: "p256-sha256:invalid-test-signature",
+            trustedAt: "2026-06-10T00:00:00Z",
+            verificationPolicyVersion: "asset-trust.test.v1"
+        )
+    }
+
+    private static func signedTrustMetadata(
+        publisherId: String = "mingsi.test.publisher",
+        contentHash: String,
+        signedPayload: Data,
+        verificationPolicyVersion: String = "asset-trust.test.v1",
+        privateKeyBase64: String = testPublisherPrivateKeyBase64
+    ) throws -> AssetTrustMetadata {
+        let keyData = try XCTUnwrap(Data(base64Encoded: privateKeyBase64))
+        let privateKey = try P256.Signing.PrivateKey(rawRepresentation: keyData)
+        let signature = try privateKey.signature(for: signedPayload)
+        return AssetTrustMetadata(
+            publisherId: publisherId,
+            contentHash: contentHash,
+            signature: "p256-sha256:" + signature.derRepresentation.base64EncodedString(),
+            trustedAt: "2026-06-10T00:00:00Z",
+            verificationPolicyVersion: verificationPolicyVersion
+        )
+    }
+
+    private static func signedTrustPolicyDocument(
+        _ document: AssetPackTrustPolicyDocument,
+        privateKeyBase64: String = testRegistryRootPrivateKeyBase64
+    ) throws -> AssetPackTrustPolicyDocument {
+        AssetPackTrustPolicyDocument(
+            policies: document.policies,
+            expiresAt: document.expiresAt,
+            trustMetadata: try signedTrustMetadata(
+                publisherId: "mingsi.test.registry",
+                contentHash: try AssetPackIntegrity.expectedContentHash(for: document),
+                signedPayload: AssetPackIntegrity.signaturePayload(for: document),
+                verificationPolicyVersion: "asset-trust-policy-root.test.v1",
+                privateKeyBase64: privateKeyBase64
+            )
+        )
+    }
+
+    nonisolated private static let testPublisherPrivateKeyBase64 = "Zcl0fRH+ywPs2LCNnRt4Jgkkg2IQWBwb0X42sTsVrKc="
+    nonisolated private static let rotatedPublisherPrivateKeyBase64 = "XevPucFuvG6Qc3pJsFZIrGxO/SyZ0h7joKaZCTq4F84="
+    nonisolated private static let rotatedPublisherPublicKeyBase64 = "oWMff09DdO3X4j8sTNyVyvkyBPwE1u92V6uWUXwja11I+NWsO9JcXodn+3AKjS5V79HtI/FVX3fObaehVz7zKw=="
+    nonisolated private static let testRegistryRootPrivateKeyBase64 = "khu517UBQX2f62ROBcl1XuforsMkVw7gbkhzHpGPug4="
+
+    private static let mismatchedContentHash = "sha256:" + String(repeating: "0", count: 64)
+
+    private static let assetPackJSONEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private static func storageString(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
+    private static func encodedJSONString<T: Encodable>(_ value: T) throws -> String {
+        let data = try JSONEncoder().encode(value)
+        return try XCTUnwrap(String(data: data, encoding: .utf8))
+    }
+
     private enum StateMachineWaitError: Error {
         case timeout
     }
@@ -3465,6 +5438,85 @@ final class AppStoreStateMachineTests: XCTestCase {
         cleanDefaults.removeSuite(named: "test-visual-qa-root-tab-priority")
     }
 
+    func testVisualQASettingsAuditProof_appliesSettingsFailureAuditState() throws {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQASettingsAuditProof(
+            environment: ["MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF": "1"]
+        )
+
+        XCTAssertEqual(store.selectedTab, .settings)
+        XCTAssertTrue(store.apiKeyConfigured)
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+        XCTAssertTrue(store.settingsMessage.contains("GLM 连接测试失败"))
+        XCTAssertTrue(store.promptRunAuditMessage.isEmpty)
+
+        let run = try XCTUnwrap(store.recentPromptRuns.first)
+        XCTAssertEqual(run.promptId, PromptID.organizeCards.rawValue)
+        XCTAssertEqual(run.modelProvider, "GLM")
+        XCTAssertEqual(run.modelName, "debug-settings-audit-proof")
+        XCTAssertTrue(run.error?.contains("Debug 视觉验证") == true)
+    }
+
+    func testVisualQASettingsAuditProof_withoutFlagDoesNothing() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQASettingsAuditProof(environment: [:])
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertFalse(store.apiKeyConfigured)
+        XCTAssertTrue(store.recentPromptRuns.isEmpty)
+        XCTAssertTrue(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQASettingsAuditProof_readsSimctlChildFlag() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQASettingsAuditProof(
+            environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF": "1"]
+        )
+
+        XCTAssertEqual(store.selectedTab, .settings)
+        XCTAssertFalse(store.recentPromptRuns.isEmpty)
+    }
+
+    func testVisualQASettingsAssetPackManifestFixture_readsDirectAndSimctlChildFlags() {
+        XCTAssertTrue(AppStore.shouldUseVisualQASettingsAssetPackManifestFixture(
+            environment: ["MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST": "1"]
+        ))
+        XCTAssertTrue(AppStore.shouldUseVisualQASettingsAssetPackManifestFixture(
+            environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST": "1"]
+        ))
+        XCTAssertFalse(AppStore.shouldUseVisualQASettingsAssetPackManifestFixture(environment: [:]))
+    }
+
+    func testVisualQASettingsAuditProof_preventsProjectDetailFixtureMarker() {
+        XCTAssertFalse(
+            AppStore.shouldUseVisualQAProjectDetailFixture(
+                environment: ["MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF": "1"],
+                markerFileExists: { true }
+            ),
+            "Settings audit proof launches must not be hijacked by stale Project Detail visual QA marker files"
+        )
+    }
+
+    func testVisualQASettingsAuditProof_loadRecentPromptRunsKeepsFixtureRows() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let store = AppStore(
+            promptRunRepository: SQLitePromptRunRepository(database: database),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        store.applyVisualQASettingsAuditProof(
+            environment: ["MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF": "1"]
+        )
+        await store.loadRecentPromptRuns()
+
+        let run = try XCTUnwrap(store.recentPromptRuns.first)
+        XCTAssertEqual(run.modelName, "debug-settings-audit-proof")
+        XCTAssertTrue(store.promptRunAuditMessage.isEmpty)
+    }
+
     func testVisualQATodaySeedInput_appliesCaptureTextModeAndSkipsPersistedLoad() {
         let store = AppStore(refreshesAIServiceFromKeychain: false)
 
@@ -3552,6 +5604,20 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.questions.isEmpty)
         XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
         XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
+    func testVisualQACustomLensSheetFlag_resolvesFromEnvironment() {
+        XCTAssertFalse(AppStore.shouldPresentVisualQACustomLensSheet(environment: [:]))
+        XCTAssertTrue(
+            AppStore.shouldPresentVisualQACustomLensSheet(
+                environment: ["MINGSI_VISUAL_QA_TODAY_CUSTOM_LENS_SHEET": "1"]
+            )
+        )
+        XCTAssertTrue(
+            AppStore.shouldPresentVisualQACustomLensSheet(
+                environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_CUSTOM_LENS_SHEET": "1"]
+            )
+        )
     }
 
     func testVisualQATodayStageSeed_readsSimctlChildStage() {
@@ -3647,6 +5713,354 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertNotNil(record.mainQuest)
         XCTAssertFalse(record.principles.isEmpty)
         XCTAssertTrue(store.todayLoopMessage.contains("本地 fallback"))
+    }
+
+    func testTodayAutomationIdentifiers_areStableForRenderedWalkthroughControls() {
+        XCTAssertEqual(TodayAutomationID.primaryAction, "today.primary-action")
+        XCTAssertEqual(TodayAutomationID.primaryActionHint, "today.primary-action-hint")
+        XCTAssertEqual(TodayAutomationID.previousAction, "today.previous-action")
+        XCTAssertEqual(TodayAutomationID.supplementCaptureAction, "today.supplement-capture-action")
+        XCTAssertEqual(TodayAutomationID.retryCurrentStepAction, "today.retry-current-step-action")
+        XCTAssertEqual(TodayAutomationID.skipPrincipleAction, "today.skip-principle-action")
+        XCTAssertEqual(TodayAutomationID.resetAction, "today.reset-action")
+        XCTAssertEqual(TodayAutomationID.cardConfirmAction, "today.card.confirm-action")
+        XCTAssertEqual(TodayAutomationID.cardExcludeAction, "today.card.exclude-action")
+        XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
+        XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
+        XCTAssertEqual(TodayAutomationID.lensGenerateAction, "today.lens.generate-action")
+        XCTAssertEqual(TodayAutomationID.lensCustomAction, "today.lens.custom-action")
+        XCTAssertEqual(TodayAutomationID.principleFeedbackHelpfulAction, "today.principle.feedback.helpful-action")
+        XCTAssertEqual(TodayAutomationID.principleFeedbackNotApplicableAction, "today.principle.feedback.not-applicable-action")
+        XCTAssertEqual(TodayAutomationID.principleFeedbackMisrecalledAction, "today.principle.feedback.misrecalled-action")
+        XCTAssertEqual(TodayAutomationID.customLensSheet, "today.custom-lens.sheet")
+        XCTAssertEqual(TodayAutomationID.customLensTitleField, "today.custom-lens.title-field")
+        XCTAssertEqual(TodayAutomationID.customLensMethodField, "today.custom-lens.method-field")
+        XCTAssertEqual(TodayAutomationID.customLensQuestionField, "today.custom-lens.question-field")
+        XCTAssertEqual(TodayAutomationID.customLensSaveAction, "today.custom-lens.save-action")
+        XCTAssertEqual(TodayAutomationID.state(.verifyYesterday), "today.state.verify_yesterday")
+        XCTAssertEqual(TodayAutomationID.state(.capture), "today.state.capture")
+        XCTAssertEqual(TodayAutomationID.state(.organizing), "today.state.organizing")
+        XCTAssertEqual(TodayAutomationID.state(.reviewCards), "today.state.review_cards")
+        XCTAssertEqual(TodayAutomationID.state(.selectMode), "today.state.select_mode")
+        XCTAssertEqual(TodayAutomationID.state(.selectLens), "today.state.select_lens")
+        XCTAssertEqual(TodayAutomationID.state(.answerQuestions), "today.state.answer_questions")
+        XCTAssertEqual(TodayAutomationID.state(.reviewQuests), "today.state.review_quests")
+        XCTAssertEqual(TodayAutomationID.state(.extractPrinciple), "today.state.extract_principle")
+        XCTAssertEqual(TodayAutomationID.state(.sessionComplete), "today.state.session_complete")
+        XCTAssertEqual(TodayAutomationID.lensAction(ThinkingLens.firstPrinciples.catalogItem), "today.lens.firstPrinciples-action")
+    }
+
+    func testSettingsAutomationIdentifiers_areStableForLensPackManager() {
+        XCTAssertEqual(SettingsAutomationID.lensPackCard, "settings.lens-pack.card")
+        XCTAssertEqual(SettingsAutomationID.lensPackRefreshAction, "settings.lens-pack.refresh-action")
+        XCTAssertEqual(SettingsAutomationID.lensPackImportField, "settings.lens-pack.import-field")
+        XCTAssertEqual(SettingsAutomationID.lensPackPasteAction, "settings.lens-pack.paste-action")
+        XCTAssertEqual(SettingsAutomationID.lensPackImportAction, "settings.lens-pack.import-action")
+        XCTAssertEqual(SettingsAutomationID.lensPackToggleAction(packId: "imported.roles.coach"), "settings.lens-pack.imported_roles_coach.toggle-action")
+    }
+
+    func testSettingsAutomationIdentifiers_areStableForPromptPackManager() {
+        XCTAssertEqual(SettingsAutomationID.promptPackCard, "settings.prompt-pack.card")
+        XCTAssertEqual(SettingsAutomationID.promptPackRefreshAction, "settings.prompt-pack.refresh-action")
+        XCTAssertEqual(SettingsAutomationID.promptPackImportField, "settings.prompt-pack.import-field")
+        XCTAssertEqual(SettingsAutomationID.promptPackPasteAction, "settings.prompt-pack.paste-action")
+        XCTAssertEqual(SettingsAutomationID.promptPackImportAction, "settings.prompt-pack.import-action")
+        XCTAssertEqual(SettingsAutomationID.promptPackToggleAction(packId: "imported.prompts.coach"), "settings.prompt-pack.imported_prompts_coach.toggle-action")
+    }
+
+    func testSettingsAutomationIdentifiers_areStableForAssetPackInstallManifest() {
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestCard, "settings.asset-pack-manifest.card")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestImportField, "settings.asset-pack-manifest.import-field")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestPasteAction, "settings.asset-pack-manifest.paste-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestInstallAction, "settings.asset-pack-manifest.install-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestRemoteURLField, "settings.asset-pack-manifest.remote-url-field")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestRemoteInstallAction, "settings.asset-pack-manifest.remote-install-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogURLField, "settings.asset-pack-registry.catalog-url-field")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogFetchAction, "settings.asset-pack-registry.catalog-fetch-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId: "marketplace.coach"), "settings.asset-pack-registry.marketplace_coach.install-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackManifestMessage, "settings.asset-pack-manifest.message")
+    }
+
+    func testRunPromptEvalSuite_persistsRunsAndUpdatesReleaseGate() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let evalStore = AppStore(
+            promptEvalRunRepository: evalRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await evalStore.loadRecentPromptEvalRuns()
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.status, .blocked)
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.missingPromptCount, PromptID.allCases.count)
+
+        await evalStore.runPromptEvalSuite()
+
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.status, .passed)
+        XCTAssertTrue(evalStore.promptEvalReleaseGate.canShipPromptAssets)
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.passedPromptCount, PromptID.allCases.count)
+        XCTAssertEqual(evalStore.recentPromptEvalRuns.count, PromptID.allCases.count)
+        XCTAssertTrue(evalStore.promptEvalMessage.contains("通过"))
+
+        let persisted = try await evalRepo.recentEvalRuns(limit: 100)
+        XCTAssertEqual(persisted.count, PromptID.allCases.count)
+        XCTAssertTrue(persisted.allSatisfy { $0.status == .passed })
+    }
+
+    func testLoadPersistedState_runsScheduledPromptEvalWhenHistoryIsMissing() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let store = AppStore(
+            promptEvalRunRepository: evalRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        XCTAssertEqual(store.recentPromptEvalRuns.count, PromptID.allCases.count)
+        XCTAssertEqual(store.promptEvalReleaseGate.status, .passed)
+        XCTAssertTrue(store.promptEvalMessage.contains("自动固定评测"))
+
+        let persisted = try await evalRepo.recentEvalRuns(limit: 100)
+        XCTAssertEqual(persisted.count, PromptID.allCases.count)
+        XCTAssertTrue(persisted.allSatisfy { $0.status == .passed })
+    }
+
+    func testLoadPersistedState_skipsScheduledPromptEvalWhenHistoryIsFresh() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let existingRuns = PromptEvalRunner(promptProvider: LocalPromptProvider())
+            .runFixedSuite(createdAt: .now)
+        for run in existingRuns {
+            try await evalRepo.saveEvalRun(run)
+        }
+        let store = AppStore(
+            promptEvalRunRepository: evalRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        let persisted = try await evalRepo.recentEvalRuns(limit: 100)
+        XCTAssertEqual(persisted.count, PromptID.allCases.count)
+        XCTAssertEqual(Set(persisted.map(\.id)), Set(existingRuns.map(\.id)))
+        XCTAssertEqual(store.promptEvalReleaseGate.status, .passed)
+        XCTAssertFalse(store.promptEvalMessage.contains("自动固定评测"))
+    }
+
+    func testPromptEvalReleaseGateMessage_includesRollbackReadinessCounts() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let provider = AppStoreRollbackFixturePromptProvider()
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: template.version,
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.current_failure", name: "Current failure", status: .failed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 300)
+        ))
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: template.outputSchemaVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.previous_pass", name: "Previous pass", status: .passed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        let evalStore = AppStore(
+            promptEvalRunRepository: evalRepo,
+            promptProvider: provider,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await evalStore.loadRecentPromptEvalRuns()
+
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.rollbackReadyCount, 1)
+        XCTAssertTrue(evalStore.promptEvalMessage.contains("可回滚 1"))
+        XCTAssertTrue(evalStore.promptEvalMessage.contains("需人工处理 \(PromptID.allCases.count - 1)"))
+    }
+
+    func testApplyPromptRollback_usesTargetTemplateAndRefreshesReleaseGate() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let provider = AppStoreExecutableRollbackFixturePromptProvider()
+        let currentTemplate = provider.template(for: .generateQuestions, mode: .standard)
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: currentTemplate.version,
+            systemPolicyVersion: currentTemplate.systemPolicyVersion,
+            contextPolicyVersion: currentTemplate.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: currentTemplate.outputSchemaVersion,
+            evalSuiteVersion: currentTemplate.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.current_failure", name: "Current failure", status: .failed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 300)
+        ))
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            systemPolicyVersion: currentTemplate.systemPolicyVersion,
+            contextPolicyVersion: currentTemplate.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: currentTemplate.outputSchemaVersion,
+            evalSuiteVersion: currentTemplate.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.previous_pass", name: "Previous pass", status: .passed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        for promptID in PromptID.allCases where promptID != .generateQuestions {
+            let template = provider.template(for: promptID, mode: .standard)
+            try await evalRepo.saveEvalRun(PromptEvalRun(
+                promptId: promptID.rawValue,
+                promptVersion: template.version,
+                systemPolicyVersion: template.systemPolicyVersion,
+                contextPolicyVersion: template.contextPolicyVersion,
+                inputSchemaVersion: 1,
+                outputSchemaVersion: template.outputSchemaVersion,
+                evalSuiteVersion: template.evalSuiteVersion,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion,
+                caseResults: [
+                    PromptEvalCaseResult(caseId: "\(promptID.rawValue).pass", name: "\(promptID.displayName) pass", status: .passed)
+                ],
+                createdAt: Date(timeIntervalSince1970: 250)
+            ))
+        }
+        let evalStore = AppStore(
+            promptEvalRunRepository: evalRepo,
+            promptProvider: provider,
+            refreshesAIServiceFromKeychain: false
+        )
+        await evalStore.loadRecentPromptEvalRuns()
+        let candidate = try XCTUnwrap(evalStore.promptEvalReleaseGate.rollbackCandidates.first)
+
+        let didRollback = await evalStore.applyPromptRollback(candidate)
+
+        XCTAssertTrue(didRollback)
+        XCTAssertEqual(evalStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "0.9.0")
+        XCTAssertEqual(evalStore.promptEvalReleaseGate.status, .passed)
+        XCTAssertTrue(evalStore.promptEvalMessage.contains("已回滚"))
+    }
+
+    func testApplyPromptRollback_persistsSelectedVersionAcrossStoreReload() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let evalRepo = SQLitePromptEvalRunRepository(database: database)
+        let selectionRepo = SQLitePromptAssetSelectionRepository(database: database)
+        let provider = AppStoreExecutableRollbackFixturePromptProvider()
+        let currentTemplate = provider.template(for: .generateQuestions, mode: .standard)
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: currentTemplate.version,
+            systemPolicyVersion: currentTemplate.systemPolicyVersion,
+            contextPolicyVersion: currentTemplate.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: currentTemplate.outputSchemaVersion,
+            evalSuiteVersion: currentTemplate.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.current_failure", name: "Current failure", status: .failed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 300)
+        ))
+        try await evalRepo.saveEvalRun(PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            systemPolicyVersion: currentTemplate.systemPolicyVersion,
+            contextPolicyVersion: currentTemplate.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: currentTemplate.outputSchemaVersion,
+            evalSuiteVersion: currentTemplate.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "questions.previous_pass", name: "Previous pass", status: .passed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 200)
+        ))
+        for promptID in PromptID.allCases where promptID != .generateQuestions {
+            let template = provider.template(for: promptID, mode: .standard)
+            try await evalRepo.saveEvalRun(PromptEvalRun(
+                promptId: promptID.rawValue,
+                promptVersion: template.version,
+                systemPolicyVersion: template.systemPolicyVersion,
+                contextPolicyVersion: template.contextPolicyVersion,
+                inputSchemaVersion: 1,
+                outputSchemaVersion: template.outputSchemaVersion,
+                evalSuiteVersion: template.evalSuiteVersion,
+                runnerVersion: PromptEvalRunner.currentRunnerVersion,
+                caseResults: [
+                    PromptEvalCaseResult(caseId: "\(promptID.rawValue).pass", name: "\(promptID.displayName) pass", status: .passed)
+                ],
+                createdAt: Date(timeIntervalSince1970: 250)
+            ))
+        }
+        let initialStore = AppStore(
+            promptEvalRunRepository: evalRepo,
+            promptAssetSelectionRepository: selectionRepo,
+            promptProvider: provider,
+            refreshesAIServiceFromKeychain: false
+        )
+        await initialStore.loadRecentPromptEvalRuns()
+        let candidate = try XCTUnwrap(initialStore.promptEvalReleaseGate.rollbackCandidates.first)
+
+        let didRollback = await initialStore.applyPromptRollback(candidate)
+        XCTAssertTrue(didRollback)
+
+        let restoredStore = AppStore(
+            promptEvalRunRepository: evalRepo,
+            promptAssetSelectionRepository: selectionRepo,
+            promptProvider: provider,
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+        await restoredStore.loadRecentPromptEvalRuns()
+
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "0.9.0")
+        XCTAssertEqual(restoredStore.promptEvalReleaseGate.status, .passed)
+    }
+
+    func testLoadPersistedState_restoresHistoricalPromptAssetSelectionWithLocalProvider() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let selectionRepo = SQLitePromptAssetSelectionRepository(database: database)
+        try await selectionRepo.saveSelection(PromptAssetSelection(
+            promptId: .generateQuestions,
+            selectedVersion: "0.9.0",
+            baseVersion: "1.0.0",
+            reason: .rollback
+        ))
+
+        let restoredStore = AppStore(
+            promptAssetSelectionRepository: selectionRepo,
+            promptProvider: LocalPromptProvider(),
+            refreshesAIServiceFromKeychain: false
+        )
+        await restoredStore.loadPersistedState()
+
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "0.9.0")
+
+        await restoredStore.runPromptEvalSuite()
+
+        let restoredRun = try XCTUnwrap(restoredStore.recentPromptEvalRuns.first {
+            $0.promptId == PromptID.generateQuestions.rawValue
+        })
+        XCTAssertEqual(restoredRun.promptVersion, "0.9.0")
+        XCTAssertEqual(restoredRun.status, .passed)
     }
 
     // MARK: - Visual QA Direct Entry
@@ -4364,6 +6778,65 @@ private final class RecordingLLMClient: LLMClient {
     }
 }
 
+private final class FakeAssetPackInstallManifestFetcher: AssetPackInstallManifestFetching {
+    private let dataByURL: [URL: Data]
+    private let errorByURL: [URL: Error]
+    private let error: Error?
+    private(set) var requestedURLs: [URL] = []
+
+    init(
+        dataByURL: [URL: Data] = [:],
+        errorByURL: [URL: Error] = [:],
+        error: Error? = nil
+    ) {
+        self.dataByURL = dataByURL
+        self.errorByURL = errorByURL
+        self.error = error
+    }
+
+    func fetchInstallManifestData(from url: URL) async throws -> Data {
+        requestedURLs.append(url)
+        if let error = errorByURL[url] {
+            throw error
+        }
+        if let error {
+            throw error
+        }
+        guard let data = dataByURL[url] else {
+            throw URLError(.resourceUnavailable)
+        }
+        return data
+    }
+
+    func fetchTrustPolicyData(from url: URL) async throws -> Data {
+        requestedURLs.append(url)
+        if let error = errorByURL[url] {
+            throw error
+        }
+        if let error {
+            throw error
+        }
+        guard let data = dataByURL[url] else {
+            throw URLError(.resourceUnavailable)
+        }
+        return data
+    }
+
+    func fetchRegistryCatalogData(from url: URL) async throws -> Data {
+        requestedURLs.append(url)
+        if let error = errorByURL[url] {
+            throw error
+        }
+        if let error {
+            throw error
+        }
+        guard let data = dataByURL[url] else {
+            throw URLError(.resourceUnavailable)
+        }
+        return data
+    }
+}
+
 private final class InMemoryDailyEntryRepository: DailyEntryRepository {
     private var drafts: [UUID: DailyEntryDraft] = [:]
 
@@ -4623,12 +7096,63 @@ private final class InMemoryPrincipleRepository: PrincipleRepository {
         }
     }
 
+    func allPrinciples() async throws -> [PrincipleAsset] {
+        principlesById.values.filter { $0.status != .archived }
+    }
+
     func activePrinciples() async throws -> [PrincipleAsset] {
         principlesById.values.filter { $0.status == .active }
     }
 
     func principles(for dailyEntryId: UUID) async throws -> [PrincipleAsset] {
-        (entryPrincipleIds[dailyEntryId] ?? []).compactMap { principlesById[$0] }
+        (entryPrincipleIds[dailyEntryId] ?? [])
+            .compactMap { principlesById[$0] }
+            .filter { $0.status != .archived }
+    }
+
+    func updatePrinciple(_ principle: PrincipleAsset) async throws {
+        principlesById[principle.id] = principle
+    }
+
+    func updatePrincipleStatus(_ status: PrincipleStatus, principleId: UUID) async throws {
+        principlesById[principleId]?.status = status
+    }
+
+    func deletePrinciple(_ principleId: UUID) async throws {
+        principlesById.removeValue(forKey: principleId)
+        for entryId in entryPrincipleIds.keys {
+            entryPrincipleIds[entryId]?.removeAll { $0 == principleId }
+        }
+    }
+}
+
+private final class InMemoryPrinciplePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository {
+    private var evidenceById: [UUID: PrinciplePracticeEvidence] = [:]
+
+    func saveEvidence(_ evidence: PrinciplePracticeEvidence) async throws {
+        evidenceById[evidence.id] = evidence
+    }
+
+    func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
+        Array(evidenceById.values)
+            .filter { $0.principleId == principleId }
+            .sorted { $0.createdAt > $1.createdAt }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func evidence(
+        for principleId: UUID,
+        sourceDailyEntryId: UUID,
+        questId: UUID,
+        evidenceSource: PrinciplePracticeEvidenceSource
+    ) async throws -> PrinciplePracticeEvidence? {
+        evidenceById.values.first {
+            $0.principleId == principleId &&
+            $0.sourceDailyEntryId == sourceDailyEntryId &&
+            $0.questId == questId &&
+            $0.evidenceSource == evidenceSource
+        }
     }
 }
 
@@ -4712,6 +7236,263 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(store.activePrinciples.map(\.title), ["先确认负责人"])
     }
 
+    func testPrincipleTrainingSummary_classifiesKnownPracticedInternalizedAndNeedsReview() {
+        let known = PrincipleAsset(
+            id: UUID(),
+            title: "先确认负责人",
+            summary: "行动前先确认唯一负责人。",
+            triggerContext: "协作任务",
+            actions: ["说清负责人"],
+            successCriteria: "没有职责空白",
+            exceptions: ""
+        )
+        let practiced = PrincipleAsset(
+            id: UUID(),
+            title: "先写验收标准",
+            summary: "开始前先写清完成证据。",
+            triggerContext: "任务启动",
+            actions: ["写验收标准"],
+            successCriteria: "完成时能直接验证",
+            exceptions: ""
+        )
+        let internalized = PrincipleAsset(
+            id: UUID(),
+            title: "会后同步结论",
+            summary: "会议结束后发出负责人和行动项。",
+            triggerContext: "会议结束",
+            actions: ["发出结论"],
+            successCriteria: "相关人知道下一步",
+            exceptions: ""
+        )
+        let needsReview = PrincipleAsset(
+            id: UUID(),
+            title: "所有会议都要拉齐",
+            summary: "看似有用但经常不适用。",
+            triggerContext: "会议",
+            actions: ["拉齐所有人"],
+            successCriteria: "没有遗漏",
+            exceptions: "",
+            status: .needsReview
+        )
+
+        let summaries = PrincipleTrainingSummary.summaries(
+            for: [known, practiced, internalized, needsReview],
+            practiceEvidence: [
+                PrinciplePracticeEvidence(
+                    principleId: practiced.id,
+                    sourceDailyEntryId: UUID(),
+                    evidenceSource: .verification,
+                    strength: .intentionalPractice,
+                    evidenceSummary: "验证中实践了验收标准。"
+                ),
+                PrinciplePracticeEvidence(
+                    principleId: internalized.id,
+                    sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                    evidenceSource: .verification,
+                    strength: .intentionalPractice,
+                    evidenceSummary: "第一次会后同步。"
+                ),
+                PrinciplePracticeEvidence(
+                    principleId: internalized.id,
+                    sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                    evidenceSource: .verification,
+                    strength: .intentionalPractice,
+                    evidenceSummary: "第二次会后同步。"
+                ),
+                PrinciplePracticeEvidence(
+                    principleId: internalized.id,
+                    sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                    evidenceSource: .manual,
+                    strength: .internalized,
+                    evidenceSummary: "用户明确表示已经自然执行。"
+                )
+            ],
+            recallFeedback: [
+                PrincipleRecallFeedback(
+                    principleId: needsReview.id,
+                    promptId: .generateQuestions,
+                    retrievalPolicyVersion: "principle-retrieval.local-keyword-feedback.v2",
+                    retrievalReason: "Matched meeting.",
+                    feedback: .misrecalled
+                )
+            ]
+        )
+
+        XCTAssertEqual(summaries.map(\.state), [
+            .knownButUnused,
+            .consciouslyPracticed,
+            .stablyInternalized,
+            .needsReview
+        ])
+        XCTAssertEqual(summaries[1].practiceEvidenceCount, 1)
+        XCTAssertEqual(summaries[2].practiceEvidenceCount, 3)
+        XCTAssertEqual(summaries[3].negativeRecallFeedbackCount, 1)
+    }
+
+    func testRefreshPrincipleTrainingSummaries_loadsPracticeEvidenceForActivePrinciples() async throws {
+        let practiced = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "开始前先写清完成证据。",
+            triggerContext: "任务启动",
+            actions: ["写验收标准"],
+            successCriteria: "完成时能直接验证",
+            exceptions: ""
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        let practiceRepo = InMemoryPrinciplePracticeEvidenceRepository()
+        try await principleRepo.savePrinciple(practiced, sourceDailyEntryId: UUID())
+        try await practiceRepo.saveEvidence(PrinciplePracticeEvidence(
+            principleId: practiced.id,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证中实践了验收标准。"
+        ))
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        await store.refreshPrincipleTrainingSummaries()
+
+        XCTAssertEqual(store.principleTrainingSummaries.map(\.principle.id), [practiced.id])
+        XCTAssertEqual(store.principleTrainingSummaries.first?.state, .consciouslyPracticed)
+        XCTAssertEqual(store.principleTrainingSummaries.first?.practiceEvidenceCount, 1)
+    }
+
+    func testLoadPersistedState_keepsNeedsReviewPrinciplesVisibleInTrainingSummaries() async throws {
+        let needsReview = PrincipleAsset(
+            title: "所有会议都要拉齐",
+            summary: "看似有用但经常不适用。",
+            triggerContext: "会议",
+            actions: ["拉齐所有人"],
+            successCriteria: "没有遗漏",
+            exceptions: "",
+            status: .needsReview
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        try await principleRepo.savePrinciple(needsReview, sourceDailyEntryId: UUID())
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        XCTAssertEqual(store.principleTrainingSummaries.map(\.principle.id), [needsReview.id])
+        XCTAssertEqual(store.principleTrainingSummaries.first?.state, .needsReview)
+    }
+
+    func testRepairPrinciple_reactivatesNeedsReviewPrincipleAndRefreshesTrainingSummary() async throws {
+        let needsReview = PrincipleAsset(
+            title: "所有会议都要拉齐",
+            summary: "看似有用但经常不适用。",
+            triggerContext: "会议",
+            actions: ["拉齐所有人"],
+            successCriteria: "没有遗漏",
+            exceptions: "",
+            status: .needsReview
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        try await principleRepo.savePrinciple(needsReview, sourceDailyEntryId: UUID())
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        let didRepair = await store.repairPrinciple(
+            needsReview.id,
+            title: "只拉齐有决策权的人",
+            summary: "协作前确认真正参与决策和执行的人。",
+            triggerContext: "跨团队会议",
+            actions: ["列出决策人", "列出执行人"],
+            successCriteria: "会后每个行动项都有唯一负责人。",
+            exceptions: "纯信息同步可以只发纪要。"
+        )
+
+        XCTAssertTrue(didRepair)
+        XCTAssertEqual(store.activePrinciples.map(\.id), [needsReview.id])
+        XCTAssertEqual(store.activePrinciples.first?.title, "只拉齐有决策权的人")
+        XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertEqual(store.principleTrainingSummaries.map(\.principle.id), [needsReview.id])
+        XCTAssertEqual(store.principleTrainingSummaries.first?.state, .knownButUnused)
+        let stored = try await principleRepo.activePrinciples()
+        XCTAssertEqual(stored.map(\.id), [needsReview.id])
+        XCTAssertEqual(stored.first?.summary, "协作前确认真正参与决策和执行的人。")
+    }
+
+    func testArchivePrinciple_removesNeedsReviewPrincipleFromVisibleTrainingAssets() async throws {
+        let needsReview = PrincipleAsset(
+            title: "Visual QA - 会前确认负责人",
+            summary: "协作任务开始前先确认唯一负责人和验收标准。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人", "写出验收标准"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "低风险同步可简化",
+            status: .needsReview
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        try await principleRepo.savePrinciple(needsReview, sourceDailyEntryId: UUID())
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        let didArchive = await store.archivePrinciple(needsReview.id)
+
+        XCTAssertTrue(didArchive)
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        XCTAssertTrue(store.principleTrainingSummaries.isEmpty)
+        XCTAssertEqual(store.todayLoopMessage, "原则已归档。")
+        let active = try await principleRepo.activePrinciples()
+        let all = try await principleRepo.allPrinciples()
+        XCTAssertTrue(active.isEmpty)
+        XCTAssertTrue(all.isEmpty)
+    }
+
+    func testDeletePrinciple_removesNeedsReviewPrincipleFromRepositoryAndVisibleTrainingAssets() async throws {
+        let needsReview = PrincipleAsset(
+            title: "Visual QA - 待清理测试原则",
+            summary: "这是手工测试留下的原则资产。",
+            triggerContext: "manual testing",
+            actions: ["清理测试数据"],
+            successCriteria: "原则资产列表不再显示它。",
+            exceptions: "",
+            status: .needsReview
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        try await principleRepo.savePrinciple(needsReview, sourceDailyEntryId: UUID())
+        let store = AppStore(
+            principleRepository: principleRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        let didDelete = await store.deletePrinciple(needsReview.id)
+
+        XCTAssertTrue(didDelete)
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        XCTAssertTrue(store.principleTrainingSummaries.isEmpty)
+        XCTAssertEqual(store.todayLoopMessage, "原则已删除。")
+        let active = try await principleRepo.activePrinciples()
+        let all = try await principleRepo.allPrinciples()
+        XCTAssertTrue(active.isEmpty)
+        XCTAssertTrue(all.isEmpty)
+    }
+
     // MARK: - ThinkingLens Catalog
 
     func testThinkingLens_allCases_containsFirstPrinciples() {
@@ -4782,6 +7563,17 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(methodIndexes.sorted(), [1, 2, 3, 4])
 
         for item in BuiltinLensCatalog.items {
+            XCTAssertFalse(item.purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(item.questionStrategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(item.taskSelectionRule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(item.applicability.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            XCTAssertFalse(item.disableConditions.isEmpty)
+            XCTAssertTrue(item.disableConditions.allSatisfy {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            })
+            XCTAssertEqual(item.uiMetadata.symbolName, item.symbolName)
+            XCTAssertEqual(item.uiMetadata.accentRole, item.accentRole)
+            XCTAssertEqual(item.uiMetadata.methodIndex, item.methodIndex)
             XCTAssertFalse(item.recommendedReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             XCTAssertFalse(item.questionSeeds.isEmpty)
             XCTAssertTrue(item.questionSeeds.allSatisfy {
@@ -4790,6 +7582,114 @@ extension AppStoreStateMachineTests {
             XCTAssertFalse(item.accentRole.rawValue.isEmpty)
             XCTAssertGreaterThan(item.methodIndex, 0)
         }
+    }
+
+    func testBuiltinLensCatalog_packMetadataIsFirstPartyAndVersioned() {
+        for item in BuiltinLensCatalog.items {
+            XCTAssertEqual(item.sourceKind, .builtin)
+            XCTAssertEqual(item.packId, "mingsi.builtin.lenses")
+            XCTAssertEqual(item.packVersion, "builtin.v1")
+            XCTAssertEqual(item.packDisplayName, "MingSi Built-in Lens Pack")
+            XCTAssertTrue(item.isBuiltIn)
+        }
+    }
+
+    func testLensLibrary_combinesEnabledMarketplaceLensPackAndIgnoresDisabledPacks() {
+        let roleLens = LensCatalogItem(
+            lensId: "role-coach",
+            promptId: "role_coach",
+            version: "role.v1",
+            title: "Coach Role",
+            subtitle: "Use a coaching voice.",
+            shortLabel: "Coach",
+            methodLine: "What would a coach ask first?",
+            promptGuidance: "Ask coaching-style reflection questions.",
+            symbolName: "person.wave.2",
+            recommendedReason: "Imported role card pack.",
+            questionSeeds: ["What would a coach ask first?"],
+            accentRole: .accent,
+            methodIndex: 10
+        )
+        let disabledLens = LensCatalogItem(
+            lensId: "disabled-role",
+            promptId: "disabled_role",
+            version: "role.v1",
+            title: "Disabled Role",
+            subtitle: "Should not appear.",
+            shortLabel: "Off",
+            methodLine: "Should not appear.",
+            promptGuidance: "Should not appear.",
+            symbolName: "nosign",
+            recommendedReason: "Disabled pack.",
+            questionSeeds: ["Should not appear."],
+            accentRole: .brick,
+            methodIndex: 11
+        )
+        let library = LensLibrary(packs: [
+            LensAssetPack(
+                id: "marketplace.roles.coach",
+                version: "2026.06",
+                displayName: "Coach Role Cards",
+                sourceKind: .marketplace,
+                isEnabled: true,
+                items: [roleLens]
+            ),
+            LensAssetPack(
+                id: "marketplace.roles.disabled",
+                version: "2026.06",
+                displayName: "Disabled Role Cards",
+                sourceKind: .marketplace,
+                isEnabled: false,
+                items: [disabledLens]
+            )
+        ])
+
+        let imported = library.item(localId: "role-coach")
+
+        XCTAssertEqual(imported?.promptId, "role_coach")
+        XCTAssertEqual(imported?.sourceKind, .marketplace)
+        XCTAssertEqual(imported?.packId, "marketplace.roles.coach")
+        XCTAssertEqual(imported?.packVersion, "2026.06")
+        XCTAssertEqual(imported?.packDisplayName, "Coach Role Cards")
+        XCTAssertFalse(imported?.isBuiltIn ?? true)
+        XCTAssertNil(library.item(localId: "disabled-role"))
+    }
+
+    func testLensCatalogItem_decodesLegacyCustomLensJSONWithDefaultAssetFields() throws {
+        let legacyJSON = """
+        {
+          "lensId": "custom-owner",
+          "promptId": "custom_owner",
+          "version": "custom.v1",
+          "title": "Owner Lens",
+          "subtitle": "Clarify ownership.",
+          "shortLabel": "Owner",
+          "methodLine": "Who owns the next decision?",
+          "promptGuidance": "Ask ownership and evidence questions.",
+          "symbolName": "person.crop.circle.badge.checkmark",
+          "recommendedReason": "Created from confirmed cards.",
+          "questionSeeds": ["Who owns the next decision?"],
+          "accentRole": "brick",
+          "methodIndex": 0
+        }
+        """.data(using: .utf8)!
+
+        let item = try JSONDecoder().decode(LensCatalogItem.self, from: legacyJSON)
+
+        XCTAssertEqual(item.lensId, "custom-owner")
+        XCTAssertEqual(item.purpose, "Clarify ownership.")
+        XCTAssertEqual(item.questionStrategy, "Ask ownership and evidence questions.")
+        XCTAssertEqual(item.taskSelectionRule, "Use this lens to choose a next action grounded in the user's confirmed cards.")
+        XCTAssertEqual(item.applicability, "Created from confirmed cards.")
+        XCTAssertEqual(item.disableConditions, ["Do not use when the user has not selected this custom lens."])
+        XCTAssertEqual(item.uiMetadata.symbolName, "person.crop.circle.badge.checkmark")
+        XCTAssertEqual(item.uiMetadata.accentRole, .brick)
+        XCTAssertEqual(item.uiMetadata.methodIndex, 0)
+        XCTAssertEqual(item.sourceKind, .localCustom)
+        XCTAssertEqual(item.packId, "local.custom-lenses")
+        XCTAssertEqual(item.packVersion, "session.v1")
+        XCTAssertEqual(item.packDisplayName, "Local Custom Lenses")
+        XCTAssertFalse(item.isBuiltIn)
     }
 
     func testBuiltinLensLibrary_recommendsEvidenceCheckForValidationHeavyCards() {
@@ -5155,5 +8055,47 @@ extension AppStoreStateMachineTests {
         let normalStore = AppStore(refreshesAIServiceFromKeychain: false)
         XCTAssertNil(normalStore.visualQAProjectDetailDirectEntryProjectID)
         XCTAssertTrue(normalStore.loadsPersistedStateOnLaunch)
+    }
+}
+
+private struct AppStoreRollbackFixturePromptProvider: PromptProvider {
+    private let base = LocalPromptProvider()
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        var template = base.template(for: id, mode: mode)
+        if id == .generateQuestions {
+            template.rollbackTargetVersion = "0.9.0"
+        }
+        return template
+    }
+}
+
+private struct AppStoreExecutableRollbackFixturePromptProvider: PromptProvider {
+    private let base = LocalPromptProvider()
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        var template = base.template(for: id, mode: mode)
+        if id == .generateQuestions {
+            template.rollbackTargetVersion = "0.9.0"
+        }
+        return template
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        let template = base.template(for: id, mode: mode)
+        guard id == .generateQuestions, version == "0.9.0" else {
+            return template.version == version ? template : nil
+        }
+        return PromptTemplate(
+            id: template.id,
+            version: "0.9.0",
+            systemPolicyVersion: template.systemPolicyVersion,
+            contextPolicyVersion: template.contextPolicyVersion,
+            evalSuiteVersion: template.evalSuiteVersion,
+            rollbackTargetVersion: nil,
+            systemText: template.systemText,
+            userText: template.userText,
+            outputSchemaVersion: template.outputSchemaVersion
+        )
     }
 }

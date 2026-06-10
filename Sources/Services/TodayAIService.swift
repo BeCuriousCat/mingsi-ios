@@ -21,6 +21,8 @@ struct TodayAIContext: Hashable {
     var questions: [ReflectionQuestion] = []
     var quests: [Quest] = []
     var principles: [PrincipleAsset] = []
+    var principleRecallFeedback: [PrincipleRecallFeedback] = []
+    var selectedLensItem: LensCatalogItem?
 }
 
 final class TodayAIService {
@@ -45,10 +47,7 @@ final class TodayAIService {
         let request = request(
             promptID: .organizeCards,
             context: context,
-            payload: [
-                "privacyRules": "Avoid repeating unnecessary confidential specifics. Mark sensitive content defensively.",
-                "sessionMode": context.draft.sessionMode.rawValue
-            ]
+            directives: organizeCardsDirectives()
         )
         let data = try await llmClient.complete(request)
         return try parser.parseCards(from: data)
@@ -65,11 +64,7 @@ final class TodayAIService {
         let request = request(
             promptID: .organizeCards,
             context: context,
-            payload: [
-                "privacyRules": "Avoid repeating unnecessary confidential specifics. Mark sensitive content defensively.",
-                "sessionMode": context.draft.sessionMode.rawValue,
-                "streamProtocol": "MINGSI_STREAM_V1"
-            ]
+            directives: organizeCardsDirectives(streamProtocol: "MINGSI_STREAM_V1")
         )
         let assembler = XMLStreamingCardAssembler()
 
@@ -101,11 +96,7 @@ final class TodayAIService {
     func generateQuestions(for context: TodayAIContext) async throws -> [ReflectionQuestion] {
         let request = request(
             promptID: .generateQuestions,
-            context: context,
-            payload: [
-                "selectedLens": context.draft.selectedLens?.catalogItem.promptId ?? "",
-                "sessionMode": context.draft.sessionMode.rawValue
-            ]
+            context: context
         )
         let data = try await llmClient.complete(request)
         return try parser.parseQuestions(from: data)
@@ -114,11 +105,7 @@ final class TodayAIService {
     func generateQuests(for context: TodayAIContext) async throws -> [Quest] {
         let request = request(
             promptID: .generateQuests,
-            context: context,
-            payload: [
-                "selectedLens": context.draft.selectedLens?.catalogItem.promptId ?? "",
-                "sessionMode": context.draft.sessionMode.rawValue
-            ]
+            context: context
         )
         let data = try await llmClient.complete(request)
         return try parser.parseQuests(from: data)
@@ -127,10 +114,7 @@ final class TodayAIService {
     func extractPrinciple(for context: TodayAIContext) async throws -> [PrincipleAsset] {
         let request = request(
             promptID: .extractPrinciple,
-            context: context,
-            payload: [
-                "sessionMode": context.draft.sessionMode.rawValue
-            ]
+            context: context
         )
         let data = try await llmClient.complete(request)
         return try parser.parsePrinciples(from: data)
@@ -138,26 +122,20 @@ final class TodayAIService {
 
     func verifyQuest(input: VerifyQuestInput, sessionMode: SessionMode) async throws -> VerifyQuestResult {
         let template = promptProvider.template(for: .verifyQuest, mode: sessionMode)
+        let contextPayload = PromptContextPayload(
+            currentInput: .init(rawText: input.rawText),
+            userChoice: .init(sessionMode: sessionMode.rawValue),
+            verification: .init(
+                questTitle: input.questTitle,
+                completionCriteria: input.completionCriteria,
+                completion: input.completion,
+                valueRating: input.valueRating
+            )
+        )
         let request = LLMRequest(
             prompt: template,
             inputSummary: "quest=\(input.questTitle); completion=\(input.completion); rating=\(input.valueRating)",
-            jsonPayload: [
-                "questTitle": input.questTitle,
-                "completionCriteria": input.completionCriteria,
-                "completion": input.completion,
-                "valueRating": input.valueRating,
-                "rawText": input.rawText
-            ],
-            contextPayload: PromptContextPayload(
-                currentInput: .init(rawText: input.rawText),
-                userChoice: .init(sessionMode: sessionMode.rawValue),
-                extra: [
-                    "questTitle": input.questTitle,
-                    "completionCriteria": input.completionCriteria,
-                    "completion": input.completion,
-                    "valueRating": input.valueRating
-                ]
-            ),
+            contextPayload: contextPayload,
             sourceRecordIDs: input.sourceRecordIDs,
             contextVersion: 1,
             contextRecordIDs: input.sourceRecordIDs
@@ -169,19 +147,24 @@ final class TodayAIService {
     private func request(
         promptID: PromptID,
         context: TodayAIContext,
-        payload: [String: String]
+        directives: PromptContextPayload.PromptDirectives = .init()
     ) -> LLMRequest {
         let promptContext = contextAssembler.assemble(promptID: promptID, context: context)
-        let contextPayload = promptContext.contextPayload.mergingExtra(payload)
-        let mergedPayload = contextPayload.legacyKeyValues
+        let contextPayload = promptContext.contextPayload.applyingDirectives(directives)
         return LLMRequest(
             prompt: promptProvider.template(for: promptID, mode: context.draft.sessionMode),
             inputSummary: promptContext.inputSummary,
-            jsonPayload: mergedPayload,
             contextPayload: contextPayload,
             sourceRecordIDs: promptContext.sourceRecordIDs,
             contextVersion: promptContext.version,
             contextRecordIDs: promptContext.contextRecordIDs
+        )
+    }
+
+    private func organizeCardsDirectives(streamProtocol: String? = nil) -> PromptContextPayload.PromptDirectives {
+        .init(
+            privacyRules: "Avoid repeating unnecessary confidential specifics. Mark sensitive content defensively.",
+            streamProtocol: streamProtocol
         )
     }
 }
@@ -189,7 +172,6 @@ final class TodayAIService {
 struct PromptContext: Hashable {
     var version: Int = 1
     var inputSummary: String
-    var payload: [String: String]
     var contextPayload: PromptContextPayload
     var sourceRecordIDs: [String]
     var contextRecordIDs: [String]
@@ -200,10 +182,26 @@ protocol ContextAssembler {
 }
 
 protocol PrincipleRetriever {
+    func retrievePrinciples(for context: TodayAIContext, promptID: PromptID, limit: Int) -> [RetrievedPrinciple]
     func relevantPrinciples(for context: TodayAIContext, promptID: PromptID, limit: Int) -> [PrincipleAsset]
 }
 
+struct RetrievedPrinciple: Hashable {
+    var principle: PrincipleAsset
+    var score: Int
+    var retrievalReason: String
+    var policyVersion: String
+}
+
+extension PrincipleRetriever {
+    func relevantPrinciples(for context: TodayAIContext, promptID: PromptID, limit: Int) -> [PrincipleAsset] {
+        retrievePrinciples(for: context, promptID: promptID, limit: limit).map(\.principle)
+    }
+}
+
 struct LocalPrincipleRetriever: PrincipleRetriever {
+    static let policyVersion = "principle-retrieval.local-keyword-feedback.v2"
+
     private let minimumScore = 2
     private let stopWords: Set<String> = [
         "a", "an", "and", "are", "as", "at", "be", "before", "by", "did", "do", "does", "for", "from",
@@ -213,24 +211,42 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
         "明日", "任务", "今天", "昨天", "问题", "行动", "标准", "完成", "需要", "进行", "一个", "这个"
     ]
 
-    func relevantPrinciples(for context: TodayAIContext, promptID: PromptID, limit: Int = 3) -> [PrincipleAsset] {
+    func retrievePrinciples(for context: TodayAIContext, promptID: PromptID, limit: Int = 3) -> [RetrievedPrinciple] {
         guard promptID != .organizeCards else { return [] }
 
         let terms = searchTerms(from: context)
         let scored = context.principles
             .filter { $0.status == .active }
             .map { principle in
-                (principle, score(principle: principle, terms: terms))
+                let baseScore = score(principle: principle, terms: terms)
+                let penalty = recallFeedbackPenalty(
+                    for: principle.id,
+                    feedback: context.principleRecallFeedback
+                )
+                return (principle, baseScore, max(0, baseScore - penalty), penalty)
             }
-            .filter { $0.1 >= minimumScore }
+            .filter { $0.2 >= minimumScore }
             .sorted { lhs, rhs in
-                if lhs.1 == rhs.1 {
+                if lhs.2 == rhs.2 {
                     return lhs.0.title < rhs.0.title
                 }
-                return lhs.1 > rhs.1
+                return lhs.2 > rhs.2
             }
             .prefix(limit)
-            .map { $0.0 }
+            .map { principle, baseScore, adjustedScore, penalty in
+                RetrievedPrinciple(
+                    principle: principle,
+                    score: adjustedScore,
+                    retrievalReason: retrievalReason(
+                        for: principle,
+                        terms: terms,
+                        baseScore: baseScore,
+                        adjustedScore: adjustedScore,
+                        feedbackPenalty: penalty
+                    ),
+                    policyVersion: Self.policyVersion
+                )
+            }
 
         return Array(scored)
     }
@@ -276,6 +292,48 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
             return partial
         }
     }
+
+    private func recallFeedbackPenalty(
+        for principleId: UUID,
+        feedback: [PrincipleRecallFeedback]
+    ) -> Int {
+        feedback
+            .filter { $0.principleId == principleId }
+            .reduce(0) { partial, event in
+                switch event.feedback {
+                case .helpful:
+                    return partial
+                case .notApplicable, .misrecalled:
+                    return partial + 1
+                }
+            }
+    }
+
+    private func retrievalReason(
+        for principle: PrincipleAsset,
+        terms: [String],
+        baseScore: Int,
+        adjustedScore: Int,
+        feedbackPenalty: Int
+    ) -> String {
+        let principleText = [
+            principle.title,
+            principle.summary,
+            principle.triggerContext,
+            principle.actions.joined(separator: " "),
+            principle.successCriteria
+        ].joined(separator: " ").lowercased()
+        let matchedTerms = Array(Set(terms))
+            .sorted()
+            .filter { principleText.contains($0) }
+            .prefix(4)
+        let matchedText = matchedTerms.isEmpty ? "keyword overlap" : matchedTerms.joined(separator: ", ")
+        var reason = "Matched \(matchedText) with \(principle.title) using local keyword policy; score=\(adjustedScore)."
+        if feedbackPenalty > 0 {
+            reason += " Applied negative recall feedback penalty=\(feedbackPenalty) from base score=\(baseScore)."
+        }
+        return reason
+    }
 }
 
 struct DefaultContextAssembler: ContextAssembler {
@@ -286,26 +344,23 @@ struct DefaultContextAssembler: ContextAssembler {
     }
 
     func assemble(promptID: PromptID, context: TodayAIContext) -> PromptContext {
-        let relevantPrinciples = principleRetriever.relevantPrinciples(for: context, promptID: promptID, limit: 3)
+        let retrievedPrinciples = principleRetriever.retrievePrinciples(for: context, promptID: promptID, limit: 3)
+        let relevantPrinciples = retrievedPrinciples.map(\.principle)
         let existingPrinciples = promptID == .extractPrinciple ? context.principles : []
-        var payload = basePayload(for: promptID, context: context)
-        if !relevantPrinciples.isEmpty {
-            payload["relevantPrinciples"] = principlesPayload(relevantPrinciples)
-            payload["principleUsageRule"] = "Use accepted principles only as comparison lenses. Do not force today's situation to fit them."
-        }
         let contextPayload = structuredPayload(
             for: context,
-            relevantPrinciples: relevantPrinciples,
+            retrievedPrinciples: retrievedPrinciples,
             existingPrinciples: existingPrinciples,
-            extra: !relevantPrinciples.isEmpty ? [
-                "principleUsageRule": "Use accepted principles only as comparison lenses. Do not force today's situation to fit them."
-            ] : [:]
+            directives: .init(
+                principleUsageRule: !relevantPrinciples.isEmpty
+                    ? "Use accepted principles only as comparison lenses. Do not force today's situation to fit them."
+                    : nil
+            )
         )
 
         return PromptContext(
             version: 1,
             inputSummary: inputSummary(for: context, relevantPrinciples: relevantPrinciples),
-            payload: payload,
             contextPayload: contextPayload,
             sourceRecordIDs: sourceRecordIDs(for: context),
             contextRecordIDs: contextRecordIDs(
@@ -318,9 +373,9 @@ struct DefaultContextAssembler: ContextAssembler {
 
     private func structuredPayload(
         for context: TodayAIContext,
-        relevantPrinciples: [PrincipleAsset],
+        retrievedPrinciples: [RetrievedPrinciple],
         existingPrinciples: [PrincipleAsset],
-        extra: [String: String]
+        directives: PromptContextPayload.PromptDirectives
     ) -> PromptContextPayload {
         PromptContextPayload(
             currentInput: .init(
@@ -329,16 +384,29 @@ struct DefaultContextAssembler: ContextAssembler {
             ),
             userChoice: .init(
                 sessionMode: context.draft.sessionMode.rawValue,
-                selectedLens: context.draft.selectedLens?.rawValue,
-                lensCatalog: context.draft.selectedLens.map { lens in
-                    let item = lens.catalogItem
+                selectedLens: selectedLensId(for: context),
+                lensCatalog: selectedLensItem(for: context).map { item in
                     return .init(
                         localId: item.lensId,
                         promptId: item.promptId,
                         version: item.version,
                         title: item.title,
                         methodLine: item.methodLine,
-                        promptGuidance: item.promptGuidance
+                        promptGuidance: item.promptGuidance,
+                        purpose: item.purpose,
+                        questionStrategy: item.questionStrategy,
+                        taskSelectionRule: item.taskSelectionRule,
+                        applicability: item.applicability,
+                        disableConditions: item.disableConditions,
+                        uiMetadata: .init(
+                            symbolName: item.uiMetadata.symbolName,
+                            accentRole: item.uiMetadata.accentRole,
+                            methodIndex: item.uiMetadata.methodIndex
+                        ),
+                        sourceKind: item.sourceKind,
+                        packId: item.packId,
+                        packVersion: item.packVersion,
+                        packDisplayName: item.packDisplayName
                     )
                 }
             ),
@@ -368,15 +436,18 @@ struct DefaultContextAssembler: ContextAssembler {
                     completionCriteria: quest.completionCriteria
                 )
             },
-            principles: relevantPrinciples.map { principle in
-                .init(
+            principles: retrievedPrinciples.map { retrieved in
+                let principle = retrieved.principle
+                return PromptContextPayload.PrincipleContext(
                     id: principle.id.uuidString,
                     title: principle.title,
                     summary: principle.summary,
                     triggerContext: principle.triggerContext,
                     successCriteria: principle.successCriteria,
                     exceptions: principle.exceptions,
-                    status: principle.status
+                    status: principle.status,
+                    retrievalReason: retrieved.retrievalReason,
+                    retrievalPolicyVersion: retrieved.policyVersion
                 )
             },
             existingPrinciples: existingPrinciples.map { principle in
@@ -390,36 +461,8 @@ struct DefaultContextAssembler: ContextAssembler {
                     status: principle.status
                 )
             },
-            extra: extra
+            directives: directives
         )
-    }
-
-    private func basePayload(for promptID: PromptID, context: TodayAIContext) -> [String: String] {
-        switch promptID {
-        case .organizeCards:
-            return [
-                "rawText": context.draft.rawText
-            ]
-        case .generateQuestions:
-            return [
-                "confirmedCards": cardsPayload(context.confirmedCards),
-                "priorAnswers": questionsPayload(context.questions)
-            ]
-        case .generateQuests:
-            return [
-                "confirmedCards": cardsPayload(context.confirmedCards),
-                "reflectionAnswers": questionsPayload(context.questions)
-            ]
-        case .extractPrinciple:
-            return [
-                "confirmedCards": cardsPayload(context.confirmedCards),
-                "reflectionAnswers": questionsPayload(context.questions),
-                "selectedQuest": questsPayload(context.quests),
-                "existingPrinciples": principlesPayload(context.principles)
-            ]
-        case .recommendLenses, .verifyQuest, .weeklyCalibration, .monthlyGrowth, .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges:
-            return [:]
-        }
     }
 
     private func sourceRecordIDs(for context: TodayAIContext) -> [String] {
@@ -443,56 +486,17 @@ struct DefaultContextAssembler: ContextAssembler {
 
     private func inputSummary(for context: TodayAIContext, relevantPrinciples: [PrincipleAsset]) -> String {
         let rawText = context.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lens = context.draft.selectedLens?.catalogItem.promptId ?? "none"
+        let lens = selectedLensItem(for: context)?.promptId ?? "none"
         let cardTitles = context.confirmedCards.map(\.title).joined(separator: ", ")
         let principleTitles = relevantPrinciples.map(\.title).joined(separator: ", ")
         return "mode=\(context.draft.sessionMode.rawValue); lens=\(lens); rawText=\(rawText); cards=\(cardTitles); principles=\(principleTitles)"
     }
 
-    private func cardsPayload(_ cards: [ThinkingCard]) -> String {
-        cards.map { card in
-            [
-                "type": card.type.rawValue,
-                "title": card.title,
-                "body": card.body,
-                "priority": card.priority.rawValue,
-                "sensitivity": card.sensitivity.rawValue
-            ]
-            .map { "\($0.key): \($0.value)" }
-            .sorted()
-            .joined(separator: ", ")
-        }
-        .joined(separator: "\n")
+    private func selectedLensId(for context: TodayAIContext) -> String? {
+        selectedLensItem(for: context)?.lensId
     }
 
-    private func questionsPayload(_ questions: [ReflectionQuestion]) -> String {
-        questions.map { question in
-            "question: \(question.question), answer: \(question.answer)"
-        }
-        .joined(separator: "\n")
-    }
-
-    private func questsPayload(_ quests: [Quest]) -> String {
-        quests.map { quest in
-            "type: \(quest.type.rawValue), title: \(quest.title), completionCriteria: \(quest.completionCriteria)"
-        }
-        .joined(separator: "\n")
-    }
-
-    private func principlesPayload(_ principles: [PrincipleAsset]) -> String {
-        principles.map { principle in
-            [
-                "id": principle.id.uuidString,
-                "title": principle.title,
-                "summary": principle.summary,
-                "triggerContext": principle.triggerContext,
-                "successCriteria": principle.successCriteria,
-                "exceptions": principle.exceptions
-            ]
-            .map { "\($0.key): \($0.value)" }
-            .sorted()
-            .joined(separator: ", ")
-        }
-        .joined(separator: "\n")
+    private func selectedLensItem(for context: TodayAIContext) -> LensCatalogItem? {
+        context.selectedLensItem ?? context.draft.selectedLens?.catalogItem
     }
 }

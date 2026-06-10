@@ -100,14 +100,114 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
     }
 }
 
-enum LensAccentRole: String, CaseIterable {
+enum LensAccentRole: String, Codable, CaseIterable {
     case graphite
     case brick
     case accent
     case principle
 }
 
-struct LensCatalogItem: Equatable {
+enum LensAssetSourceKind: String, Codable, CaseIterable {
+    case builtin
+    case localCustom
+    case imported
+    case marketplace
+
+    var requiresTrustMetadata: Bool {
+        switch self {
+        case .builtin, .localCustom:
+            return false
+        case .imported, .marketplace:
+            return true
+        }
+    }
+}
+
+enum PromptAssetSourceKind: String, Codable, CaseIterable {
+    case builtin
+    case localCustom
+    case imported
+    case marketplace
+
+    var requiresTrustMetadata: Bool {
+        switch self {
+        case .builtin, .localCustom:
+            return false
+        case .imported, .marketplace:
+            return true
+        }
+    }
+}
+
+struct AssetTrustMetadata: Codable, Hashable {
+    let publisherId: String
+    let contentHash: String
+    let signature: String
+    let trustedAt: String
+    let verificationPolicyVersion: String
+
+    init(
+        publisherId: String,
+        contentHash: String,
+        signature: String,
+        trustedAt: String,
+        verificationPolicyVersion: String
+    ) {
+        self.publisherId = publisherId
+        self.contentHash = contentHash
+        self.signature = signature
+        self.trustedAt = trustedAt
+        self.verificationPolicyVersion = verificationPolicyVersion
+    }
+
+    var missingRequiredFields: [String] {
+        [
+            ("publisherId", publisherId),
+            ("contentHash", contentHash),
+            ("signature", signature),
+            ("trustedAt", trustedAt),
+            ("verificationPolicyVersion", verificationPolicyVersion)
+        ].compactMap { field, value in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? field : nil
+        }
+    }
+}
+
+struct PromptAssetPack: Codable, Hashable {
+    let id: String
+    let version: String
+    let displayName: String
+    let sourceKind: PromptAssetSourceKind
+    let isEnabled: Bool
+    let templates: [PromptTemplate]
+    let trustMetadata: AssetTrustMetadata?
+
+    init(
+        id: String,
+        version: String,
+        displayName: String,
+        sourceKind: PromptAssetSourceKind,
+        isEnabled: Bool = true,
+        templates: [PromptTemplate],
+        trustMetadata: AssetTrustMetadata? = nil
+    ) {
+        self.id = id
+        self.version = version
+        self.displayName = displayName
+        self.sourceKind = sourceKind
+        self.isEnabled = isEnabled
+        self.templates = templates
+        self.trustMetadata = trustMetadata
+    }
+}
+
+struct LensCatalogItem: Codable, Hashable {
+    struct UIMetadata: Codable, Hashable {
+        let symbolName: String
+        let accentRole: LensAccentRole
+        let methodIndex: Int
+    }
+
     let lensId: String
     let promptId: String
     let version: String
@@ -121,6 +221,187 @@ struct LensCatalogItem: Equatable {
     let questionSeeds: [String]
     let accentRole: LensAccentRole
     let methodIndex: Int
+    let purpose: String
+    let questionStrategy: String
+    let taskSelectionRule: String
+    let applicability: String
+    let disableConditions: [String]
+    let uiMetadata: UIMetadata
+    let sourceKind: LensAssetSourceKind
+    let packId: String
+    let packVersion: String
+    let packDisplayName: String
+
+    var id: String { lensId }
+    var isBuiltIn: Bool { sourceKind == .builtin }
+
+    init(
+        lensId: String,
+        promptId: String,
+        version: String,
+        title: String,
+        subtitle: String,
+        shortLabel: String,
+        methodLine: String,
+        promptGuidance: String,
+        symbolName: String,
+        recommendedReason: String,
+        questionSeeds: [String],
+        accentRole: LensAccentRole,
+        methodIndex: Int,
+        purpose: String? = nil,
+        questionStrategy: String? = nil,
+        taskSelectionRule: String? = nil,
+        applicability: String? = nil,
+        disableConditions: [String]? = nil,
+        uiMetadata: UIMetadata? = nil,
+        sourceKind: LensAssetSourceKind = .localCustom,
+        packId: String = Self.defaultCustomPackId,
+        packVersion: String? = nil,
+        packDisplayName: String = Self.defaultCustomPackDisplayName
+    ) {
+        self.lensId = lensId
+        self.promptId = promptId
+        self.version = version
+        self.title = title
+        self.subtitle = subtitle
+        self.shortLabel = shortLabel
+        self.methodLine = methodLine
+        self.promptGuidance = promptGuidance
+        self.symbolName = symbolName
+        self.recommendedReason = recommendedReason
+        self.questionSeeds = questionSeeds
+        self.accentRole = accentRole
+        self.methodIndex = methodIndex
+        self.purpose = purpose ?? subtitle
+        self.questionStrategy = questionStrategy ?? promptGuidance
+        self.taskSelectionRule = taskSelectionRule ?? Self.defaultTaskSelectionRule
+        self.applicability = applicability ?? recommendedReason
+        self.disableConditions = disableConditions ?? Self.defaultDisableConditions
+        self.uiMetadata = uiMetadata ?? UIMetadata(
+            symbolName: symbolName,
+            accentRole: accentRole,
+            methodIndex: methodIndex
+        )
+        self.sourceKind = sourceKind
+        self.packId = packId
+        self.packVersion = packVersion ?? Self.defaultPackVersion(for: sourceKind, itemVersion: version)
+        self.packDisplayName = packDisplayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let lensId = try container.decode(String.self, forKey: .lensId)
+        let promptId = try container.decode(String.self, forKey: .promptId)
+        let version = try container.decode(String.self, forKey: .version)
+        let title = try container.decode(String.self, forKey: .title)
+        let subtitle = try container.decode(String.self, forKey: .subtitle)
+        let shortLabel = try container.decode(String.self, forKey: .shortLabel)
+        let methodLine = try container.decode(String.self, forKey: .methodLine)
+        let promptGuidance = try container.decode(String.self, forKey: .promptGuidance)
+        let symbolName = try container.decode(String.self, forKey: .symbolName)
+        let recommendedReason = try container.decode(String.self, forKey: .recommendedReason)
+        let questionSeeds = try container.decode([String].self, forKey: .questionSeeds)
+        let accentRole = try container.decode(LensAccentRole.self, forKey: .accentRole)
+        let methodIndex = try container.decode(Int.self, forKey: .methodIndex)
+
+        self.init(
+            lensId: lensId,
+            promptId: promptId,
+            version: version,
+            title: title,
+            subtitle: subtitle,
+            shortLabel: shortLabel,
+            methodLine: methodLine,
+            promptGuidance: promptGuidance,
+            symbolName: symbolName,
+            recommendedReason: recommendedReason,
+            questionSeeds: questionSeeds,
+            accentRole: accentRole,
+            methodIndex: methodIndex,
+            purpose: try container.decodeIfPresent(String.self, forKey: .purpose),
+            questionStrategy: try container.decodeIfPresent(String.self, forKey: .questionStrategy),
+            taskSelectionRule: try container.decodeIfPresent(String.self, forKey: .taskSelectionRule),
+            applicability: try container.decodeIfPresent(String.self, forKey: .applicability),
+            disableConditions: try container.decodeIfPresent([String].self, forKey: .disableConditions),
+            uiMetadata: try container.decodeIfPresent(UIMetadata.self, forKey: .uiMetadata),
+            sourceKind: try container.decodeIfPresent(LensAssetSourceKind.self, forKey: .sourceKind) ?? .localCustom,
+            packId: try container.decodeIfPresent(String.self, forKey: .packId) ?? Self.defaultCustomPackId,
+            packVersion: try container.decodeIfPresent(String.self, forKey: .packVersion),
+            packDisplayName: try container.decodeIfPresent(String.self, forKey: .packDisplayName) ?? Self.defaultCustomPackDisplayName
+        )
+    }
+
+    private static let defaultTaskSelectionRule = "Use this lens to choose a next action grounded in the user's confirmed cards."
+    private static let defaultDisableConditions = ["Do not use when the user has not selected this custom lens."]
+    private static let defaultCustomPackId = "local.custom-lenses"
+    private static let defaultCustomPackVersion = "session.v1"
+    private static let defaultCustomPackDisplayName = "Local Custom Lenses"
+
+    private static func defaultPackVersion(for sourceKind: LensAssetSourceKind, itemVersion: String) -> String {
+        sourceKind == .localCustom ? defaultCustomPackVersion : itemVersion
+    }
+
+    func applyingPackMetadata(_ pack: LensAssetPack) -> LensCatalogItem {
+        LensCatalogItem(
+            lensId: lensId,
+            promptId: promptId,
+            version: version,
+            title: title,
+            subtitle: subtitle,
+            shortLabel: shortLabel,
+            methodLine: methodLine,
+            promptGuidance: promptGuidance,
+            symbolName: symbolName,
+            recommendedReason: recommendedReason,
+            questionSeeds: questionSeeds,
+            accentRole: accentRole,
+            methodIndex: methodIndex,
+            purpose: purpose,
+            questionStrategy: questionStrategy,
+            taskSelectionRule: taskSelectionRule,
+            applicability: applicability,
+            disableConditions: disableConditions,
+            uiMetadata: uiMetadata,
+            sourceKind: pack.sourceKind,
+            packId: pack.id,
+            packVersion: pack.version,
+            packDisplayName: pack.displayName
+        )
+    }
+}
+
+struct LensAssetPack: Codable, Hashable {
+    let id: String
+    let version: String
+    let displayName: String
+    let sourceKind: LensAssetSourceKind
+    let isEnabled: Bool
+    let items: [LensCatalogItem]
+    let trustMetadata: AssetTrustMetadata?
+
+    init(
+        id: String,
+        version: String,
+        displayName: String,
+        sourceKind: LensAssetSourceKind,
+        isEnabled: Bool = true,
+        items: [LensCatalogItem],
+        trustMetadata: AssetTrustMetadata? = nil
+    ) {
+        self.id = id
+        self.version = version
+        self.displayName = displayName
+        self.sourceKind = sourceKind
+        self.isEnabled = isEnabled
+        self.items = items
+        self.trustMetadata = trustMetadata
+    }
+
+    var stampedItems: [LensCatalogItem] {
+        guard isEnabled else { return [] }
+        return items.map { $0.applyingPackMetadata(self) }
+    }
 }
 
 protocol LensCatalogProviding {
@@ -133,6 +414,14 @@ protocol LensCatalogProviding {
 
 struct LensLibrary: LensCatalogProviding {
     let items: [LensCatalogItem]
+
+    init(items: [LensCatalogItem]) {
+        self.items = items
+    }
+
+    init(packs: [LensAssetPack]) {
+        self.items = packs.flatMap(\.stampedItems)
+    }
 
     func item(localId: String) -> LensCatalogItem? {
         items.first { $0.lensId == localId }
@@ -180,7 +469,17 @@ struct LensLibrary: LensCatalogProviding {
 }
 
 enum BuiltinLensCatalog {
-    static let library = LensLibrary(items: [
+    private static let pack = LensAssetPack(
+        id: "mingsi.builtin.lenses",
+        version: "builtin.v1",
+        displayName: "MingSi Built-in Lens Pack",
+        sourceKind: .builtin,
+        items: builtinItems
+    )
+
+    static let library = LensLibrary(packs: [pack])
+
+    private static let builtinItems = [
         LensCatalogItem(
             lensId: "evidenceCheck",
             promptId: "evidence_check",
@@ -198,7 +497,16 @@ enum BuiltinLensCatalog {
                 "如果只保留事实，这件事还剩什么？"
             ],
             accentRole: .graphite,
-            methodIndex: 1
+            methodIndex: 1,
+            purpose: "把事实、判断、假设和待验证缺口拆开，避免在证据不足时推进决策。",
+            questionStrategy: "先要求用户区分已知事实和解释性判断，再找出最需要补证据的一处。",
+            taskSelectionRule: "优先生成能补齐关键证据、确认验收口径或降低事实不确定性的明日任务。",
+            applicability: "适用于事实、风险、问题或高优先级卡片较多，且当前判断依赖未验证依据的场景。",
+            disableConditions: [
+                "不要用于用户已经明确选择其他透镜的请求。",
+                "不要把未经确认的推测包装成事实。",
+                "不要要求用户暴露公司、客户或个人敏感细节。"
+            ]
         ),
         LensCatalogItem(
             lensId: "opposingView",
@@ -217,7 +525,16 @@ enum BuiltinLensCatalog {
                 "有没有一个更便宜的解释？"
             ],
             accentRole: .brick,
-            methodIndex: 2
+            methodIndex: 2,
+            purpose: "主动寻找反证、替代解释和被忽略的利益相关方，降低只证明自己正确的风险。",
+            questionStrategy: "先让用户描述相反证据会是什么，再追问谁会不同意以及最强反方理由。",
+            taskSelectionRule: "优先生成能验证关键反方假设、暴露盲点或让不同角色参与校准的明日任务。",
+            applicability: "适用于问题和风险偏多、用户判断较强、或 Deep 模式下需要挑战默认解释的场景。",
+            disableConditions: [
+                "不要为了反对而反对，必须回到当天确认卡片。",
+                "不要把反方视角变成替用户否定自己。",
+                "不要在事实明显不足时输出确定性结论。"
+            ]
         ),
         LensCatalogItem(
             lensId: "leverageAnalysis",
@@ -236,7 +553,16 @@ enum BuiltinLensCatalog {
                 "当前真正卡住结果的约束是什么？"
             ],
             accentRole: .accent,
-            methodIndex: 3
+            methodIndex: 3,
+            purpose: "识别最小但最能改变结果的动作、约束或决策，避免把容易完成误判为高价值。",
+            questionStrategy: "先比较不同动作的结果影响，再排除低杠杆忙碌，最后收敛一个关键约束。",
+            taskSelectionRule: "优先生成能改变关键结果、解除瓶颈或让后续动作变简单的明日主线任务。",
+            applicability: "适用于任务、决策或行动卡片较多，且用户需要从多个动作中选择下一步的场景。",
+            disableConditions: [
+                "不要在事实和验收口径明显不清时跳过证据校验。",
+                "不要把轻松完成当作高杠杆。",
+                "不要生成多个并列主线任务。"
+            ]
         ),
         LensCatalogItem(
             lensId: "firstPrinciples",
@@ -255,9 +581,18 @@ enum BuiltinLensCatalog {
                 "去掉默认做法后，最小可行动作是什么？"
             ],
             accentRole: .principle,
-            methodIndex: 4
+            methodIndex: 4,
+            purpose: "拆掉默认前提，保留不可再拆的事实、约束和目标，再从这些基本条件重建下一步。",
+            questionStrategy: "先识别硬事实和不可变约束，再分离沿用假设，最后从零重建一个最小行动。",
+            taskSelectionRule: "优先生成能验证核心前提、澄清必要条件或重建行动路径的明日任务。",
+            applicability: "适用于卡片类型没有明显主导、前提混杂、或用户需要重新定义问题的场景。",
+            disableConditions: [
+                "不要用抽象原则替代当天具体证据。",
+                "不要把复杂问题简化成口号。",
+                "不要在用户只需要快速执行时过度拆解。"
+            ]
         ),
-    ])
+    ]
 
     static var items: [LensCatalogItem] {
         library.items
@@ -486,6 +821,196 @@ struct PrincipleAsset: Identifiable, Hashable {
     }
 }
 
+enum PrincipleRecallFeedbackValue: String, CaseIterable, Identifiable, Codable {
+    case helpful
+    case notApplicable = "not_applicable"
+    case misrecalled
+
+    var id: String { rawValue }
+}
+
+struct PrincipleRecallFeedback: Identifiable, Hashable {
+    let id: UUID
+    var schemaVersion: Int
+    var principleId: UUID
+    var promptRunId: UUID?
+    var sourceDailyEntryId: UUID?
+    var promptId: PromptID
+    var retrievalPolicyVersion: String
+    var retrievalReason: String
+    var feedback: PrincipleRecallFeedbackValue
+    var note: String
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        schemaVersion: Int = 1,
+        principleId: UUID,
+        promptRunId: UUID? = nil,
+        sourceDailyEntryId: UUID? = nil,
+        promptId: PromptID,
+        retrievalPolicyVersion: String,
+        retrievalReason: String,
+        feedback: PrincipleRecallFeedbackValue,
+        note: String = "",
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.schemaVersion = schemaVersion
+        self.principleId = principleId
+        self.promptRunId = promptRunId
+        self.sourceDailyEntryId = sourceDailyEntryId
+        self.promptId = promptId
+        self.retrievalPolicyVersion = retrievalPolicyVersion
+        self.retrievalReason = retrievalReason
+        self.feedback = feedback
+        self.note = note
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+enum PrinciplePracticeEvidenceSource: String, CaseIterable, Identifiable, Codable {
+    case quest
+    case verification
+    case manual
+
+    var id: String { rawValue }
+}
+
+enum PrinciplePracticeEvidenceStrength: String, CaseIterable, Identifiable, Codable {
+    case attempted
+    case intentionalPractice = "intentional_practice"
+    case internalized
+
+    var id: String { rawValue }
+}
+
+struct PrinciplePracticeEvidence: Identifiable, Hashable {
+    let id: UUID
+    var schemaVersion: Int
+    var principleId: UUID
+    var sourceDailyEntryId: UUID
+    var questId: UUID?
+    var verificationId: UUID?
+    var evidenceSource: PrinciplePracticeEvidenceSource
+    var strength: PrinciplePracticeEvidenceStrength
+    var evidenceSummary: String
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        schemaVersion: Int = 1,
+        principleId: UUID,
+        sourceDailyEntryId: UUID,
+        questId: UUID? = nil,
+        verificationId: UUID? = nil,
+        evidenceSource: PrinciplePracticeEvidenceSource,
+        strength: PrinciplePracticeEvidenceStrength,
+        evidenceSummary: String,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.schemaVersion = schemaVersion
+        self.principleId = principleId
+        self.sourceDailyEntryId = sourceDailyEntryId
+        self.questId = questId
+        self.verificationId = verificationId
+        self.evidenceSource = evidenceSource
+        self.strength = strength
+        self.evidenceSummary = evidenceSummary
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+enum PrincipleTrainingState: String, CaseIterable, Identifiable, Codable {
+    case knownButUnused = "known_but_unused"
+    case consciouslyPracticed = "consciously_practiced"
+    case stablyInternalized = "stably_internalized"
+    case needsReview = "needs_review"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .knownButUnused: return "已知未使用"
+        case .consciouslyPracticed: return "有意识练习"
+        case .stablyInternalized: return "稳定内化"
+        case .needsReview: return "需要复审"
+        }
+    }
+}
+
+struct PrincipleTrainingSummary: Identifiable, Hashable {
+    var id: UUID { principle.id }
+    var principle: PrincipleAsset
+    var state: PrincipleTrainingState
+    var practiceEvidenceCount: Int
+    var intentionalPracticeCount: Int
+    var internalizedEvidenceCount: Int
+    var helpfulRecallFeedbackCount: Int
+    var negativeRecallFeedbackCount: Int
+    var latestPracticeEvidenceAt: Date?
+
+    static func summaries(
+        for principles: [PrincipleAsset],
+        practiceEvidence: [PrinciplePracticeEvidence],
+        recallFeedback: [PrincipleRecallFeedback]
+    ) -> [PrincipleTrainingSummary] {
+        principles.map { principle in
+            summary(
+                for: principle,
+                practiceEvidence: practiceEvidence.filter { $0.principleId == principle.id },
+                recallFeedback: recallFeedback.filter { $0.principleId == principle.id }
+            )
+        }
+    }
+
+    static func summary(
+        for principle: PrincipleAsset,
+        practiceEvidence: [PrinciplePracticeEvidence],
+        recallFeedback: [PrincipleRecallFeedback]
+    ) -> PrincipleTrainingSummary {
+        let helpfulCount = recallFeedback.filter { $0.feedback == .helpful }.count
+        let negativeCount = recallFeedback.filter {
+            $0.feedback == .notApplicable || $0.feedback == .misrecalled
+        }.count
+        let intentionalPracticeCount = practiceEvidence.filter {
+            $0.strength == .intentionalPractice || $0.strength == .internalized
+        }.count
+        let internalizedEvidenceCount = practiceEvidence.filter { $0.strength == .internalized }.count
+        let distinctPracticeDays = Set(practiceEvidence.map(\.sourceDailyEntryId)).count
+        let latestPracticeAt = practiceEvidence.map(\.createdAt).max()
+        let state: PrincipleTrainingState
+
+        if principle.status == .needsReview || negativeCount >= 2 {
+            state = .needsReview
+        } else if internalizedEvidenceCount > 0 || distinctPracticeDays >= 3 {
+            state = .stablyInternalized
+        } else if intentionalPracticeCount > 0 || helpfulCount > 0 {
+            state = .consciouslyPracticed
+        } else {
+            state = .knownButUnused
+        }
+
+        return PrincipleTrainingSummary(
+            principle: principle,
+            state: state,
+            practiceEvidenceCount: practiceEvidence.count,
+            intentionalPracticeCount: intentionalPracticeCount,
+            internalizedEvidenceCount: internalizedEvidenceCount,
+            helpfulRecallFeedbackCount: helpfulCount,
+            negativeRecallFeedbackCount: negativeCount,
+            latestPracticeEvidenceAt: latestPracticeAt
+        )
+    }
+}
+
 struct DailyEntryDraft: Identifiable, Hashable {
     let id: UUID
     var date: Date
@@ -493,6 +1018,9 @@ struct DailyEntryDraft: Identifiable, Hashable {
     var sessionMode: SessionMode
     var hasSelectedSessionMode: Bool
     var selectedLens: ThinkingLens?
+    var selectedCustomLensId: String?
+    var customLensItems: [LensCatalogItem]
+    var customLensQuestions: [ReflectionQuestion]
     var yesterdayCompletion: YesterdayCompletion?
     var yesterdayValueRating: YesterdayValueRating?
     var state: DailyLoopState
@@ -504,6 +1032,9 @@ struct DailyEntryDraft: Identifiable, Hashable {
         sessionMode: SessionMode = .standard,
         hasSelectedSessionMode: Bool = false,
         selectedLens: ThinkingLens? = nil,
+        selectedCustomLensId: String? = nil,
+        customLensItems: [LensCatalogItem] = [],
+        customLensQuestions: [ReflectionQuestion] = [],
         yesterdayCompletion: YesterdayCompletion? = nil,
         yesterdayValueRating: YesterdayValueRating? = nil,
         state: DailyLoopState = .verifyYesterday
@@ -514,6 +1045,9 @@ struct DailyEntryDraft: Identifiable, Hashable {
         self.sessionMode = sessionMode
         self.hasSelectedSessionMode = hasSelectedSessionMode
         self.selectedLens = selectedLens
+        self.selectedCustomLensId = selectedCustomLensId
+        self.customLensItems = customLensItems
+        self.customLensQuestions = customLensQuestions
         self.yesterdayCompletion = yesterdayCompletion
         self.yesterdayValueRating = yesterdayValueRating
         self.state = state
@@ -525,8 +1059,16 @@ struct PromptRun: Identifiable, Hashable {
     var schemaVersion: Int
     var promptId: String
     var promptVersion: String
+    var promptSourceKind: PromptAssetSourceKind
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
     var inputSchemaVersion: Int
     var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+    var rollbackTargetVersion: String?
     var modelProvider: String
     var modelName: String
     var sessionMode: String
@@ -535,6 +1077,7 @@ struct PromptRun: Identifiable, Hashable {
     var requestSummary: String
     var responseJSON: String?
     var error: String?
+    var userFeedback: PromptRunFeedback
     var createdAt: Date
 
     init(
@@ -542,8 +1085,16 @@ struct PromptRun: Identifiable, Hashable {
         schemaVersion: Int = 1,
         promptId: String,
         promptVersion: String,
+        promptSourceKind: PromptAssetSourceKind = .builtin,
+        promptPackId: String = "mingsi.builtin.prompts",
+        promptPackVersion: String = "builtin.v1",
+        promptPackDisplayName: String = "MingSi Built-in Prompt Pack",
+        systemPolicyVersion: String = "system.v1",
+        contextPolicyVersion: String = "context.v1",
         inputSchemaVersion: Int = 1,
         outputSchemaVersion: Int,
+        evalSuiteVersion: String = "eval.v1",
+        rollbackTargetVersion: String? = nil,
         modelProvider: String,
         modelName: String,
         sessionMode: String,
@@ -552,14 +1103,23 @@ struct PromptRun: Identifiable, Hashable {
         requestSummary: String,
         responseJSON: String? = nil,
         error: String? = nil,
+        userFeedback: PromptRunFeedback = .none,
         createdAt: Date = .now
     ) {
         self.id = id
         self.schemaVersion = schemaVersion
         self.promptId = promptId
         self.promptVersion = promptVersion
+        self.promptSourceKind = promptSourceKind
+        self.promptPackId = promptPackId
+        self.promptPackVersion = promptPackVersion
+        self.promptPackDisplayName = promptPackDisplayName
+        self.systemPolicyVersion = systemPolicyVersion
+        self.contextPolicyVersion = contextPolicyVersion
         self.inputSchemaVersion = inputSchemaVersion
         self.outputSchemaVersion = outputSchemaVersion
+        self.evalSuiteVersion = evalSuiteVersion
+        self.rollbackTargetVersion = rollbackTargetVersion
         self.modelProvider = modelProvider
         self.modelName = modelName
         self.sessionMode = sessionMode
@@ -568,7 +1128,454 @@ struct PromptRun: Identifiable, Hashable {
         self.requestSummary = requestSummary
         self.responseJSON = responseJSON
         self.error = error
+        self.userFeedback = userFeedback
         self.createdAt = createdAt
+    }
+}
+
+enum PromptRunFeedback: String, CaseIterable, Identifiable {
+    case none
+    case accepted
+    case denied
+
+    var id: String { rawValue }
+}
+
+struct PromptRunStats: Hashable {
+    var totalCount: Int
+    var successCount: Int
+    var failureCount: Int
+    var emptyResultCount: Int
+    var userDeniedCount: Int
+
+    var failureRate: Double { rate(failureCount) }
+    var emptyResultRate: Double { rate(emptyResultCount) }
+    var userDenialRate: Double { rate(userDeniedCount) }
+
+    private func rate(_ count: Int) -> Double {
+        guard totalCount > 0 else { return 0 }
+        return Double(count) / Double(totalCount)
+    }
+}
+
+enum PromptEvalStatus: String, Codable, CaseIterable, Identifiable {
+    case passed
+    case failed
+
+    var id: String { rawValue }
+}
+
+struct PromptEvalCaseResult: Codable, Hashable {
+    var caseId: String
+    var name: String
+    var status: PromptEvalStatus
+    var failureReason: String?
+    var inputSummary: String
+    var expectedBehavior: String
+    var actualObservation: String
+    var diagnosticReason: String
+
+    init(
+        caseId: String,
+        name: String,
+        status: PromptEvalStatus,
+        failureReason: String? = nil,
+        inputSummary: String = "",
+        expectedBehavior: String = "",
+        actualObservation: String = "",
+        diagnosticReason: String = ""
+    ) {
+        self.caseId = caseId
+        self.name = name
+        self.status = status
+        self.failureReason = failureReason
+        self.inputSummary = inputSummary
+        self.expectedBehavior = expectedBehavior
+        self.actualObservation = actualObservation
+        self.diagnosticReason = diagnosticReason
+    }
+}
+
+struct PromptEvalRun: Identifiable, Hashable {
+    let id: UUID
+    var schemaVersion: Int
+    var promptId: String
+    var promptVersion: String
+    var promptSourceKind: PromptAssetSourceKind
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
+    var inputSchemaVersion: Int
+    var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+    var runnerVersion: String
+    var caseResults: [PromptEvalCaseResult]
+    var createdAt: Date
+
+    var totalCaseCount: Int { caseResults.count }
+    var passedCaseCount: Int { caseResults.filter { $0.status == .passed }.count }
+    var failedCaseCount: Int { caseResults.filter { $0.status == .failed }.count }
+    var status: PromptEvalStatus { failedCaseCount == 0 ? .passed : .failed }
+    var passRate: Double {
+        guard totalCaseCount > 0 else { return 0 }
+        return Double(passedCaseCount) / Double(totalCaseCount)
+    }
+
+    init(
+        id: UUID = UUID(),
+        schemaVersion: Int = 1,
+        promptId: String,
+        promptVersion: String,
+        promptSourceKind: PromptAssetSourceKind = .builtin,
+        promptPackId: String = "mingsi.builtin.prompts",
+        promptPackVersion: String = "builtin.v1",
+        promptPackDisplayName: String = "MingSi Built-in Prompt Pack",
+        systemPolicyVersion: String,
+        contextPolicyVersion: String,
+        inputSchemaVersion: Int,
+        outputSchemaVersion: Int,
+        evalSuiteVersion: String,
+        runnerVersion: String,
+        caseResults: [PromptEvalCaseResult],
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.schemaVersion = schemaVersion
+        self.promptId = promptId
+        self.promptVersion = promptVersion
+        self.promptSourceKind = promptSourceKind
+        self.promptPackId = promptPackId
+        self.promptPackVersion = promptPackVersion
+        self.promptPackDisplayName = promptPackDisplayName
+        self.systemPolicyVersion = systemPolicyVersion
+        self.contextPolicyVersion = contextPolicyVersion
+        self.inputSchemaVersion = inputSchemaVersion
+        self.outputSchemaVersion = outputSchemaVersion
+        self.evalSuiteVersion = evalSuiteVersion
+        self.runnerVersion = runnerVersion
+        self.caseResults = caseResults
+        self.createdAt = createdAt
+    }
+}
+
+enum PromptEvalReleaseGateStatus: String, CaseIterable, Identifiable {
+    case passed
+    case blocked
+
+    var id: String { rawValue }
+}
+
+enum PromptEvalReleaseGateIssueReason: String, CaseIterable, Identifiable {
+    case missingRun
+    case staleVersion
+    case failedCases
+    case runnerMismatch
+
+    var id: String { rawValue }
+}
+
+struct PromptEvalReleaseGateIssue: Hashable, Identifiable {
+    var promptId: String
+    var reason: PromptEvalReleaseGateIssueReason
+    var message: String
+    var rollbackCandidate: PromptEvalRollbackCandidate?
+
+    var id: String { "\(promptId)-\(reason.rawValue)" }
+}
+
+struct PromptEvalRollbackCandidate: Hashable, Identifiable {
+    var promptId: String
+    var currentVersion: String
+    var rollbackTargetVersion: String
+    var lastPassingRunId: UUID
+    var lastPassingRunCreatedAt: Date
+    var reason: PromptEvalReleaseGateIssueReason
+
+    var id: String { "\(promptId)-\(rollbackTargetVersion)-\(lastPassingRunId.uuidString)" }
+}
+
+struct PromptEvalReleaseGate: Hashable {
+    var status: PromptEvalReleaseGateStatus
+    var totalPromptCount: Int
+    var passedPromptCount: Int
+    var failedPromptCount: Int
+    var missingPromptCount: Int
+    var stalePromptCount: Int
+    var runnerMismatchCount: Int
+    var rollbackReadyCount: Int
+    var manualReviewCount: Int
+    var rollbackCandidates: [PromptEvalRollbackCandidate]
+    var blockingIssues: [PromptEvalReleaseGateIssue]
+    var evaluatedAt: Date
+
+    var canShipPromptAssets: Bool { status == .passed }
+
+    static func blocked(
+        promptProvider: PromptProvider,
+        mode: SessionMode = .standard,
+        runnerVersion: String = PromptEvalRunner.currentRunnerVersion,
+        evaluatedAt: Date = .now
+    ) -> PromptEvalReleaseGate {
+        evaluate(
+            runs: [],
+            promptProvider: promptProvider,
+            mode: mode,
+            runnerVersion: runnerVersion,
+            evaluatedAt: evaluatedAt
+        )
+    }
+
+    static func evaluate(
+        runs: [PromptEvalRun],
+        promptProvider: PromptProvider,
+        mode: SessionMode,
+        runnerVersion: String,
+        evaluatedAt: Date = .now
+    ) -> PromptEvalReleaseGate {
+        var issues: [PromptEvalReleaseGateIssue] = []
+        var passedPromptCount = 0
+        var failedPromptIDs = Set<String>()
+        var missingPromptIDs = Set<String>()
+        var stalePromptIDs = Set<String>()
+        var runnerMismatchPromptIDs = Set<String>()
+        var rollbackCandidates: [PromptEvalRollbackCandidate] = []
+
+        for promptID in PromptID.allCases {
+            let promptId = promptID.rawValue
+            let template = promptProvider.template(for: promptID, mode: mode)
+            let promptRuns = runs.filter { $0.promptId == promptId }
+            let matchingVersionRuns = promptRuns.filter {
+                $0.promptId == promptId &&
+                    $0.promptVersion == template.version &&
+                    $0.systemPolicyVersion == template.systemPolicyVersion &&
+                    $0.contextPolicyVersion == template.contextPolicyVersion &&
+                    $0.inputSchemaVersion == 1 &&
+                    $0.outputSchemaVersion == template.outputSchemaVersion &&
+                    $0.evalSuiteVersion == template.evalSuiteVersion
+            }
+            let run = matchingVersionRuns.max { $0.createdAt < $1.createdAt }
+                ?? promptRuns.max { $0.createdAt < $1.createdAt }
+
+            guard let run else {
+                missingPromptIDs.insert(promptId)
+                issues.append(issue(promptId: promptId, reason: .missingRun, candidate: nil))
+                continue
+            }
+
+            var isPromptPassed = true
+
+            if isStale(run: run, template: template) {
+                stalePromptIDs.insert(promptId)
+                let candidate = rollbackCandidate(
+                    promptId: promptId,
+                    template: template,
+                    runs: runs,
+                    reason: .staleVersion,
+                    runnerVersion: runnerVersion
+                )
+                if let candidate {
+                    rollbackCandidates.append(candidate)
+                }
+                issues.append(issue(promptId: promptId, reason: .staleVersion, candidate: candidate))
+                isPromptPassed = false
+            }
+
+            if run.status == .failed {
+                failedPromptIDs.insert(promptId)
+                let candidate = rollbackCandidate(
+                    promptId: promptId,
+                    template: template,
+                    runs: runs,
+                    reason: .failedCases,
+                    runnerVersion: runnerVersion
+                )
+                if let candidate {
+                    rollbackCandidates.append(candidate)
+                }
+                issues.append(issue(promptId: promptId, reason: .failedCases, candidate: candidate))
+                isPromptPassed = false
+            }
+
+            if run.runnerVersion != runnerVersion {
+                runnerMismatchPromptIDs.insert(promptId)
+                issues.append(issue(promptId: promptId, reason: .runnerMismatch, candidate: nil))
+                isPromptPassed = false
+            }
+
+            if isPromptPassed {
+                passedPromptCount += 1
+            }
+        }
+
+        let status: PromptEvalReleaseGateStatus = issues.isEmpty ? .passed : .blocked
+        return PromptEvalReleaseGate(
+            status: status,
+            totalPromptCount: PromptID.allCases.count,
+            passedPromptCount: passedPromptCount,
+            failedPromptCount: failedPromptIDs.count,
+            missingPromptCount: missingPromptIDs.count,
+            stalePromptCount: stalePromptIDs.count,
+            runnerMismatchCount: runnerMismatchPromptIDs.count,
+            rollbackReadyCount: Set(rollbackCandidates.map(\.promptId)).count,
+            manualReviewCount: PromptID.allCases.count - passedPromptCount - Set(rollbackCandidates.map(\.promptId)).count,
+            rollbackCandidates: rollbackCandidates,
+            blockingIssues: issues,
+            evaluatedAt: evaluatedAt
+        )
+    }
+
+    private static func isStale(run: PromptEvalRun, template: PromptTemplate) -> Bool {
+        run.promptVersion != template.version ||
+            run.systemPolicyVersion != template.systemPolicyVersion ||
+            run.contextPolicyVersion != template.contextPolicyVersion ||
+            run.inputSchemaVersion != 1 ||
+            run.outputSchemaVersion != template.outputSchemaVersion ||
+            run.evalSuiteVersion != template.evalSuiteVersion
+    }
+
+    private static func issue(
+        promptId: String,
+        reason: PromptEvalReleaseGateIssueReason,
+        candidate: PromptEvalRollbackCandidate?
+    ) -> PromptEvalReleaseGateIssue {
+        PromptEvalReleaseGateIssue(
+            promptId: promptId,
+            reason: reason,
+            message: message(promptId: promptId, reason: reason, candidate: candidate),
+            rollbackCandidate: candidate
+        )
+    }
+
+    private static func message(
+        promptId: String,
+        reason: PromptEvalReleaseGateIssueReason,
+        candidate: PromptEvalRollbackCandidate?
+    ) -> String {
+        let name = PromptID(rawValue: promptId)?.displayName ?? promptId
+        switch reason {
+        case .missingRun:
+            return "\(name) 缺少固定评测记录。"
+        case .staleVersion:
+            if let candidate {
+                return "\(name) 版本已过期，可回滚到 \(candidate.rollbackTargetVersion) 的通过记录。"
+            }
+            return "\(name) 的评测记录已落后于当前 Prompt / Context / Schema / Eval 版本。"
+        case .failedCases:
+            if let candidate {
+                return "\(name) 当前评测失败，可回滚到 \(candidate.rollbackTargetVersion) 的通过记录。"
+            }
+            return "\(name) 存在失败评测用例。"
+        case .runnerMismatch:
+            return "\(name) 使用的评测 runner 版本不匹配。"
+        }
+    }
+
+    private static func rollbackCandidate(
+        promptId: String,
+        template: PromptTemplate,
+        runs: [PromptEvalRun],
+        reason: PromptEvalReleaseGateIssueReason,
+        runnerVersion: String
+    ) -> PromptEvalRollbackCandidate? {
+        guard let rollbackTargetVersion = template.rollbackTargetVersion,
+              !rollbackTargetVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+
+        guard let passingRun = runs
+            .filter({
+                $0.promptId == promptId &&
+                    $0.promptVersion == rollbackTargetVersion &&
+                    $0.systemPolicyVersion == template.systemPolicyVersion &&
+                    $0.contextPolicyVersion == template.contextPolicyVersion &&
+                    $0.inputSchemaVersion == 1 &&
+                    $0.outputSchemaVersion == template.outputSchemaVersion &&
+                    $0.evalSuiteVersion == template.evalSuiteVersion &&
+                    $0.runnerVersion == runnerVersion &&
+                    $0.status == .passed
+            })
+            .max(by: { $0.createdAt < $1.createdAt })
+        else {
+            return nil
+        }
+
+        return PromptEvalRollbackCandidate(
+            promptId: promptId,
+            currentVersion: template.version,
+            rollbackTargetVersion: rollbackTargetVersion,
+            lastPassingRunId: passingRun.id,
+            lastPassingRunCreatedAt: passingRun.createdAt,
+            reason: reason
+        )
+    }
+}
+
+enum PromptEvalScheduleReason: String, Codable, CaseIterable, Identifiable {
+    case missingRequiredRun = "missing_required_run"
+    case staleRequiredRun = "stale_required_run"
+    case failedRequiredRun = "failed_required_run"
+    case runnerMismatch = "runner_mismatch"
+    case minimumIntervalElapsed = "minimum_interval_elapsed"
+
+    var id: String { rawValue }
+}
+
+struct PromptEvalScheduleDecision: Hashable {
+    var reason: PromptEvalScheduleReason?
+
+    var shouldRun: Bool { reason != nil }
+
+    static let skip = PromptEvalScheduleDecision(reason: nil)
+}
+
+struct PromptEvalSchedulePolicy: Hashable {
+    var minimumRunInterval: TimeInterval
+
+    init(minimumRunInterval: TimeInterval = 24 * 60 * 60) {
+        self.minimumRunInterval = minimumRunInterval
+    }
+
+    func decision(
+        runs: [PromptEvalRun],
+        promptProvider: PromptProvider,
+        mode: SessionMode,
+        runnerVersion: String,
+        now: Date = .now
+    ) -> PromptEvalScheduleDecision {
+        let gate = PromptEvalReleaseGate.evaluate(
+            runs: runs,
+            promptProvider: promptProvider,
+            mode: mode,
+            runnerVersion: runnerVersion,
+            evaluatedAt: now
+        )
+
+        if gate.missingPromptCount > 0 {
+            return PromptEvalScheduleDecision(reason: .missingRequiredRun)
+        }
+        if gate.stalePromptCount > 0 {
+            return PromptEvalScheduleDecision(reason: .staleRequiredRun)
+        }
+        if gate.failedPromptCount > 0 {
+            return PromptEvalScheduleDecision(reason: .failedRequiredRun)
+        }
+        if gate.runnerMismatchCount > 0 {
+            return PromptEvalScheduleDecision(reason: .runnerMismatch)
+        }
+
+        guard minimumRunInterval > 0,
+              let latestRunDate = runs.map(\.createdAt).max()
+        else {
+            return .skip
+        }
+
+        if now.timeIntervalSince(latestRunDate) >= minimumRunInterval {
+            return PromptEvalScheduleDecision(reason: .minimumIntervalElapsed)
+        }
+        return .skip
     }
 }
 
