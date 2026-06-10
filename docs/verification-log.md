@@ -39,6 +39,7 @@ Result:
 - A second RED failed because `AppStore` could not inject an asset-pack registry sync policy/fetcher for `loadPersistedState()`.
 - GREEN passed after adding injectable sync policy/fetcher and running due sync from persisted-state load.
 - Final verification passed: `git diff --check`, full `AppStoreStateMachineTests` with 257 tests and 0 failures, full `PersistenceCoreTests` with 125 tests and 0 failures, and full `MingSiTests` with 567 tests, 1 skipped, and 0 failures.
+- After fast-forwarding `main` to this commit, full `MingSiTests` also passed from the main worktree with 567 tests, 1 skipped, and 0 failures.
 
 Residual risk:
 
