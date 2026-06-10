@@ -165,6 +165,19 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["settings.asset-pack-registry.subscription-sync-action"].exists)
     }
 
+    func testSettingsPromptAssetQualitySummaryRendersThroughIdentifier() throws {
+        let app = settingsApp()
+        app.launch()
+
+        let section = app.staticTexts["settings.prompt-asset-quality.section"]
+        scrollToElement(section, in: app)
+        XCTAssertTrue(section.exists)
+
+        let row = app.staticTexts["settings.prompt-asset-quality.mingsi_builtin_prompts.organizeCards.connection-test"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4))
+        XCTAssertTrue(row.label.contains("失败率 100%"))
+    }
+
     private func seededTodayApp(stage: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = "今天用 UI Test 验证 Today 自动化入口。"

@@ -15,6 +15,7 @@ enum SettingsAutomationID {
     static let assetPackRegistrySubscriptionSaveAction = "settings.asset-pack-registry.subscription-save-action"
     static let assetPackRegistrySubscriptionSyncAction = "settings.asset-pack-registry.subscription-sync-action"
     static let assetPackManifestMessage = "settings.asset-pack-manifest.message"
+    static let promptAssetQualitySection = "settings.prompt-asset-quality.section"
     static let lensPackCard = "settings.lens-pack.card"
     static let lensPackRefreshAction = "settings.lens-pack.refresh-action"
     static let lensPackImportField = "settings.lens-pack.import-field"
@@ -40,6 +41,14 @@ enum SettingsAutomationID {
 
     static func assetPackRegistrySubscriptionToggleAction(subscriptionId: String) -> String {
         "settings.asset-pack-registry.\(sanitized(subscriptionId)).subscription-toggle-action"
+    }
+
+    static func promptAssetQualityRow(
+        promptPackId: String,
+        promptId: String,
+        promptVersion: String
+    ) -> String {
+        "settings.prompt-asset-quality.\(sanitized(promptPackId)).\(sanitized(promptId)).\(sanitized(promptVersion))"
     }
 
     private static func sanitized(_ value: String) -> String {
@@ -3043,6 +3052,12 @@ struct SettingsView: View {
                     Text(promptRunAuditStatsLine(summary: summary))
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
+
+                    if !store.promptAssetRunQualitySummaries.isEmpty {
+                        PromptAssetQualitySummarySection(
+                            summaries: Array(store.promptAssetRunQualitySummaries.prefix(3))
+                        )
+                    }
 
                     ForEach(summary.visibleGroupKinds, id: \.self) { kind in
                         PromptRunAuditGroupSection(
@@ -6115,6 +6130,112 @@ private struct PromptRunAuditGroupSection: View {
             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
+    }
+}
+
+private struct PromptAssetQualitySummarySection: View {
+    let summaries: [PromptAssetRunQualitySummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Prompt 资产质量")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .accessibilityIdentifier(SettingsAutomationID.promptAssetQualitySection)
+
+                Text("\(summaries.count)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+
+                Spacer(minLength: 8)
+            }
+
+            Text("按 Prompt / Pack / Context / Eval 版本聚合最近调用，用于定位回滚或包版本问题。")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(summaries) { summary in
+                    PromptAssetQualitySummaryRow(summary: summary)
+                }
+            }
+        }
+        .padding(10)
+        .background(DS.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+}
+
+private struct PromptAssetQualitySummaryRow: View {
+    let summary: PromptAssetRunQualitySummary
+
+    private var promptName: String {
+        PromptID(rawValue: summary.promptId)?.displayName ?? summary.promptId
+    }
+
+    private var qualityLine: String {
+        "最近 \(summary.totalCount) 次 · 失败率 \(Self.percent(summary.failureRate)) · 空结果率 \(Self.percent(summary.emptyResultRate)) · 用户否认率 \(Self.percent(summary.userDenialRate))"
+    }
+
+    private var policyLine: String {
+        "\(summary.promptPackDisplayName) · \(summary.promptPackVersion) · \(summary.promptSourceKind.rawValue)"
+    }
+
+    private var versionLine: String {
+        "prompt v\(summary.promptVersion) · \(summary.contextPolicyVersion) · \(summary.evalSuiteVersion)"
+    }
+
+    private var rowIdentifier: String {
+        SettingsAutomationID.promptAssetQualityRow(
+            promptPackId: summary.promptPackId,
+            promptId: summary.promptId,
+            promptVersion: summary.promptVersion
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(promptName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(summary.latestRunCreatedAt.mingsiShortDate)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            Text(qualityLine)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(summary.failureCount > 0 ? DS.caution : DS.mutedInk)
+                .accessibilityIdentifier(rowIdentifier)
+
+            Text(policyLine)
+                .font(.caption2)
+                .foregroundStyle(DS.mutedInk)
+                .lineLimit(1)
+
+            Text(versionLine)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(DS.mutedInk.opacity(0.82))
+                .lineLimit(1)
+        }
+        .padding(10)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(summary.failureCount > 0 ? DS.caution.opacity(0.18) : Color.primary.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    private static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 }
 

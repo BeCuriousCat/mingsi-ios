@@ -2,6 +2,43 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Settings Prompt Asset Quality Surface
+
+Scope:
+
+- Render `PromptAssetRunQualitySummary` data inside the Settings AI audit card as a compact `Prompt 资产质量` section.
+- Show the top recent asset-version summaries with failure rate, empty-result rate, user-denial rate, pack/source provenance, and prompt/context/eval versions.
+- Add stable accessibility identifiers for the section and per-asset rows so rendered Settings UI automation can prove the summary is visible.
+- Keep this as an audit surface only; no Prompt execution behavior, Today state machine, live BYOK GLM call, publisher onboarding, or remote registry rollout is changed.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/UI/MingSiUITests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testSettingsPromptAssetQualitySummaryRendersThroughIdentifier
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testSettingsPromptAssetQualitySummaryRendersThroughIdentifier
+git diff --check
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests -resultBundlePath /tmp/mingsi-ui-prompt-asset-quality-20260611-0111.xcresult
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests -resultBundlePath /tmp/mingsi-tests-prompt-asset-quality-20260611-0113.xcresult
+```
+
+Result:
+
+- RED failed as expected because `settings.prompt-asset-quality.section` was absent from the rendered Settings audit fixture.
+- GREEN passed after adding the Settings prompt-asset quality section and row identifiers.
+- Final verification passed: `git diff --check`, full `MingSiUITests` with 11 tests and 0 failures, and full `MingSiTests` with 568 total tests, 567 passed, 1 skipped, and 0 failures.
+
+Residual risk:
+
+- The section is a compact top-3 recent-window view, not a full prompt-pack quality explorer or rollback decision workflow.
+- Real BYOK GLM network success, real publisher onboarding, remote prompt/lens registry rollout, and optional OS-level background refresh remain open.
+
 ## 2026-06-11: Prompt Asset Run Quality Summary
 
 Scope:
