@@ -139,6 +139,7 @@ final class AppStore: ObservableObject {
     @Published var recentPromptRuns: [PromptRun] = []
     @Published var promptRunStats: PromptRunStats?
     @Published var promptAssetRunQualitySummaries: [PromptAssetRunQualitySummary] = []
+    @Published var promptAssetQualityGate: PromptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
     @Published var promptRunAuditMessage: String = ""
     @Published var recentPromptEvalRuns: [PromptEvalRun] = []
     @Published private(set) var promptRollbackOverrides: [PromptID: PromptTemplate] = [:]
@@ -2282,6 +2283,7 @@ final class AppStore: ObservableObject {
                 userDeniedCount: 0
             )
             promptAssetRunQualitySummaries = PromptAssetRunQualitySummary.summaries(for: recentPromptRuns)
+            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: promptAssetRunQualitySummaries)
             promptRunAuditMessage = ""
             return
         }
@@ -2291,6 +2293,7 @@ final class AppStore: ObservableObject {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
+            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
             promptRunAuditMessage = "AI 调用记录暂不可用。"
             return
         }
@@ -2299,11 +2302,13 @@ final class AppStore: ObservableObject {
             recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
             promptRunStats = try await promptRunRepository.promptRunStats(limit: limit)
             promptAssetRunQualitySummaries = try await promptRunRepository.promptAssetRunQualitySummaries(limit: limit)
+            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: promptAssetRunQualitySummaries)
             promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
         } catch {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
+            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
             promptRunAuditMessage = "读取 AI 调用记录失败。"
         }
     }

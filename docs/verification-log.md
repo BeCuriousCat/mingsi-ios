@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Prompt Asset Operational Quality Gate
+
+Scope:
+
+- Add `PromptAssetQualityGate` over `PromptAssetRunQualitySummary` so recent prompt asset-version quality can be evaluated as a machine-readable operational review gate.
+- Flag high failure, empty-result, and user-denial rates only after a conservative minimum sample count.
+- Publish the gate through `AppStore.loadRecentPromptRuns(limit:)` and show the Settings AI audit status plus the first issue message.
+- Keep this as a review signal only; no Prompt execution behavior, Today state machine ownership, automatic rollback, live BYOK GLM call, publisher onboarding, or remote registry rollout is changed.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Services/PromptEvalFixtureTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptAssetQualityGate_flagsHighOperationalFailureSignalsAfterMinimumSample -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_updatesPromptAssetQualityGate
+git diff --check
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests -only-testing:MingSiTests/AppStoreStateMachineTests -resultBundlePath /tmp/mingsi-prompt-asset-quality-gate-affected-20260611.xcresult
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests -resultBundlePath /tmp/mingsi-prompt-asset-quality-gate-tests-20260611.xcresult
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests -resultBundlePath /tmp/mingsi-prompt-asset-quality-gate-uitests-20260611.xcresult
+xcrun xcresulttool get test-results summary --path /tmp/mingsi-prompt-asset-quality-gate-affected-20260611.xcresult
+xcrun xcresulttool get test-results summary --path /tmp/mingsi-prompt-asset-quality-gate-tests-20260611.xcresult
+xcrun xcresulttool get test-results summary --path /tmp/mingsi-prompt-asset-quality-gate-uitests-20260611.xcresult
+```
+
+Result:
+
+- Initial focused RED failed at compile time because the quality-gate model and `AppStore.promptAssetQualityGate` did not exist.
+- Focused GREEN passed after adding the domain gate, AppStore publication, and Settings gate line.
+- Final verification passed: `git diff --check`, affected `PromptEvalFixtureTests` + `AppStoreStateMachineTests` with 270 tests and 0 failures, full `MingSiTests` with 569 passed, 1 skipped, and 0 failures, and full `MingSiUITests` with 11 tests and 0 failures.
+
+Residual risk:
+
+- The gate evaluates the current recent-window summary only; it is not a long-term quality trend store or automatic rollback trigger.
+- Real BYOK GLM network success, real publisher onboarding, remote prompt/lens registry rollout, external key distribution, and optional OS-level background refresh remain open.
+
 ## 2026-06-11: Settings Prompt Asset Quality Surface
 
 Scope:

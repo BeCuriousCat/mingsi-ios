@@ -3055,7 +3055,8 @@ struct SettingsView: View {
 
                     if !store.promptAssetRunQualitySummaries.isEmpty {
                         PromptAssetQualitySummarySection(
-                            summaries: Array(store.promptAssetRunQualitySummaries.prefix(3))
+                            summaries: Array(store.promptAssetRunQualitySummaries.prefix(3)),
+                            gate: store.promptAssetQualityGate
                         )
                     }
 
@@ -6135,6 +6136,7 @@ private struct PromptRunAuditGroupSection: View {
 
 private struct PromptAssetQualitySummarySection: View {
     let summaries: [PromptAssetRunQualitySummary]
+    let gate: PromptAssetQualityGate
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -6149,6 +6151,17 @@ private struct PromptAssetQualitySummarySection: View {
                     .foregroundStyle(DS.mutedInk)
 
                 Spacer(minLength: 8)
+            }
+
+            Label(gateStatusText, systemImage: gate.status == .passed ? "checkmark.seal" : "exclamationmark.triangle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(gate.status == .passed ? DS.success : DS.caution)
+
+            if let issue = gate.issues.first {
+                Text(issue.message)
+                    .font(.caption)
+                    .foregroundStyle(DS.caution)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Text("按 Prompt / Pack / Context / Eval 版本聚合最近调用，用于定位回滚或包版本问题。")
@@ -6168,6 +6181,15 @@ private struct PromptAssetQualitySummarySection: View {
             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
+    }
+
+    private var gateStatusText: String {
+        switch gate.status {
+        case .passed:
+            return "运行质量通过"
+        case .needsReview:
+            return "运行质量需复查 \(gate.needsReviewAssetCount) 个资产 · \(gate.issueCount) 个信号"
+        }
     }
 }
 

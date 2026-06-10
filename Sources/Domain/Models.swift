@@ -1283,6 +1283,171 @@ private struct PromptAssetRunQualityKey: Hashable {
     }
 }
 
+enum PromptAssetQualityGateStatus: String, CaseIterable, Identifiable {
+    case passed
+    case needsReview
+
+    var id: String { rawValue }
+}
+
+enum PromptAssetQualityGateIssueReason: String, CaseIterable, Identifiable {
+    case highFailureRate
+    case highEmptyResultRate
+    case highUserDenialRate
+
+    var id: String { rawValue }
+}
+
+struct PromptAssetQualityGatePolicy: Hashable {
+    var minimumSampleCount: Int
+    var failureRateThreshold: Double
+    var emptyResultRateThreshold: Double
+    var userDenialRateThreshold: Double
+
+    init(
+        minimumSampleCount: Int = 4,
+        failureRateThreshold: Double = 0.5,
+        emptyResultRateThreshold: Double = 0.25,
+        userDenialRateThreshold: Double = 0.25
+    ) {
+        self.minimumSampleCount = minimumSampleCount
+        self.failureRateThreshold = failureRateThreshold
+        self.emptyResultRateThreshold = emptyResultRateThreshold
+        self.userDenialRateThreshold = userDenialRateThreshold
+    }
+}
+
+struct PromptAssetQualityGateIssue: Hashable, Identifiable {
+    var promptId: String
+    var promptVersion: String
+    var promptPackId: String
+    var promptPackVersion: String
+    var reason: PromptAssetQualityGateIssueReason
+    var rate: Double
+    var threshold: Double
+    var sampleCount: Int
+    var message: String
+
+    var id: String {
+        [
+            promptPackId,
+            promptPackVersion,
+            promptId,
+            promptVersion,
+            reason.rawValue
+        ].joined(separator: "|")
+    }
+}
+
+struct PromptAssetQualityGate: Hashable {
+    var status: PromptAssetQualityGateStatus
+    var evaluatedSummaryCount: Int
+    var needsReviewAssetCount: Int
+    var issueCount: Int
+    var issues: [PromptAssetQualityGateIssue]
+    var evaluatedAt: Date
+
+    static func evaluate(
+        summaries: [PromptAssetRunQualitySummary],
+        policy: PromptAssetQualityGatePolicy = PromptAssetQualityGatePolicy(),
+        evaluatedAt: Date = .now
+    ) -> PromptAssetQualityGate {
+        let collectedIssues = summaries.flatMap { summary in
+            issues(for: summary, policy: policy)
+        }
+        let reviewAssetIDs = Set(collectedIssues.map {
+            "\($0.promptPackId)|\($0.promptPackVersion)|\($0.promptId)|\($0.promptVersion)"
+        })
+        return PromptAssetQualityGate(
+            status: collectedIssues.isEmpty ? .passed : .needsReview,
+            evaluatedSummaryCount: summaries.count,
+            needsReviewAssetCount: reviewAssetIDs.count,
+            issueCount: collectedIssues.count,
+            issues: collectedIssues,
+            evaluatedAt: evaluatedAt
+        )
+    }
+
+    private static func issues(
+        for summary: PromptAssetRunQualitySummary,
+        policy: PromptAssetQualityGatePolicy
+    ) -> [PromptAssetQualityGateIssue] {
+        guard summary.totalCount >= policy.minimumSampleCount else {
+            return []
+        }
+
+        var issues: [PromptAssetQualityGateIssue] = []
+        appendIssue(
+            to: &issues,
+            summary: summary,
+            reason: .highFailureRate,
+            rate: summary.failureRate,
+            threshold: policy.failureRateThreshold
+        )
+        appendIssue(
+            to: &issues,
+            summary: summary,
+            reason: .highEmptyResultRate,
+            rate: summary.emptyResultRate,
+            threshold: policy.emptyResultRateThreshold
+        )
+        appendIssue(
+            to: &issues,
+            summary: summary,
+            reason: .highUserDenialRate,
+            rate: summary.userDenialRate,
+            threshold: policy.userDenialRateThreshold
+        )
+        return issues
+    }
+
+    private static func appendIssue(
+        to issues: inout [PromptAssetQualityGateIssue],
+        summary: PromptAssetRunQualitySummary,
+        reason: PromptAssetQualityGateIssueReason,
+        rate: Double,
+        threshold: Double
+    ) {
+        guard rate >= threshold else { return }
+        issues.append(
+            PromptAssetQualityGateIssue(
+                promptId: summary.promptId,
+                promptVersion: summary.promptVersion,
+                promptPackId: summary.promptPackId,
+                promptPackVersion: summary.promptPackVersion,
+                reason: reason,
+                rate: rate,
+                threshold: threshold,
+                sampleCount: summary.totalCount,
+                message: message(summary: summary, reason: reason, rate: rate, threshold: threshold)
+            )
+        )
+    }
+
+    private static func message(
+        summary: PromptAssetRunQualitySummary,
+        reason: PromptAssetQualityGateIssueReason,
+        rate: Double,
+        threshold: Double
+    ) -> String {
+        let name = PromptID(rawValue: summary.promptId)?.displayName ?? summary.promptId
+        let rateText = percent(rate)
+        let thresholdText = percent(threshold)
+        switch reason {
+        case .highFailureRate:
+            return "\(name) 运行失败率 \(rateText)，达到复查阈值 \(thresholdText)。"
+        case .highEmptyResultRate:
+            return "\(name) 空结果率 \(rateText)，达到复查阈值 \(thresholdText)。"
+        case .highUserDenialRate:
+            return "\(name) 用户否认率 \(rateText)，达到复查阈值 \(thresholdText)。"
+        }
+    }
+
+    private static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+}
+
 enum PromptEvalStatus: String, Codable, CaseIterable, Identifiable {
     case passed
     case failed

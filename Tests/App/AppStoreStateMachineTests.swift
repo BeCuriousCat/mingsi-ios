@@ -3461,6 +3461,75 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(auditStore.promptRunAuditMessage.isEmpty)
     }
 
+    func testLoadRecentPromptRuns_updatesPromptAssetQualityGate() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let runs = [
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "success",
+                responseJSON: "{}",
+                createdAt: Date(timeIntervalSince1970: 100)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "upstream failure",
+                error: "HTTP 500",
+                createdAt: Date(timeIntervalSince1970: 101)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "empty result",
+                error: "TodayAIParsingError.emptyResult",
+                createdAt: Date(timeIntervalSince1970: 102)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "denied result",
+                responseJSON: "{}",
+                userFeedback: .denied,
+                createdAt: Date(timeIntervalSince1970: 103)
+            )
+        ]
+        for run in runs {
+            try await promptRunRepo.savePromptRun(run)
+        }
+
+        let auditStore = AppStore(
+            promptRunRepository: promptRunRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await auditStore.loadRecentPromptRuns(limit: 10)
+
+        XCTAssertEqual(auditStore.promptAssetQualityGate.status, .needsReview)
+        XCTAssertEqual(auditStore.promptAssetQualityGate.needsReviewAssetCount, 1)
+        XCTAssertTrue(auditStore.promptAssetQualityGate.issues.contains {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+                $0.reason == .highFailureRate
+        })
+    }
+
     func testPromptRunAuditSummary_groupsFailedAndSuccessfulRunsWithDefaultExpansion() {
         let failedRun = PromptRun(
             promptId: PromptID.generateQuestions.rawValue,

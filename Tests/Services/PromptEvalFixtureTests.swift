@@ -406,6 +406,88 @@ final class PromptEvalFixtureTests: XCTestCase {
         })
     }
 
+    func testPromptAssetQualityGate_flagsHighOperationalFailureSignalsAfterMinimumSample() throws {
+        let runs = [
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "success",
+                responseJSON: "{}",
+                createdAt: Date(timeIntervalSince1970: 100)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "upstream failure",
+                error: "HTTP 500",
+                createdAt: Date(timeIntervalSince1970: 101)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "empty result",
+                error: "TodayAIParsingError.emptyResult",
+                createdAt: Date(timeIntervalSince1970: 102)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: "1.0.0",
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "denied result",
+                responseJSON: "{}",
+                userFeedback: .denied,
+                createdAt: Date(timeIntervalSince1970: 103)
+            )
+        ]
+        let summaries = PromptAssetRunQualitySummary.summaries(for: runs)
+
+        let gate = PromptAssetQualityGate.evaluate(
+            summaries: summaries,
+            policy: PromptAssetQualityGatePolicy(
+                minimumSampleCount: 4,
+                failureRateThreshold: 0.5,
+                emptyResultRateThreshold: 0.25,
+                userDenialRateThreshold: 0.25
+            )
+        )
+
+        XCTAssertEqual(gate.status, .needsReview)
+        XCTAssertEqual(gate.needsReviewAssetCount, 1)
+        XCTAssertEqual(gate.issueCount, 3)
+        XCTAssertEqual(Set(gate.issues.map(\.reason)), [
+            .highFailureRate,
+            .highEmptyResultRate,
+            .highUserDenialRate
+        ])
+        XCTAssertTrue(gate.issues.allSatisfy {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+                $0.promptVersion == "1.0.0" &&
+                $0.sampleCount == 4
+        })
+
+        let underSampledGate = PromptAssetQualityGate.evaluate(
+            summaries: summaries,
+            policy: PromptAssetQualityGatePolicy(minimumSampleCount: 5)
+        )
+        XCTAssertEqual(underSampledGate.status, .passed)
+        XCTAssertTrue(underSampledGate.issues.isEmpty)
+    }
+
     func testPromptEvalReleaseGate_passesAfterPromptAssetRollbackUsesTargetVersionHistory() throws {
         let provider = AppliedRollbackFixturePromptProvider()
         let template = provider.template(for: .generateQuestions, mode: .standard)
