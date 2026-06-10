@@ -1331,7 +1331,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let savedLensPackIds = try await lensRepo.allPacks().map(\.id)
         XCTAssertEqual(savedPromptPackIds, ["marketplace.prompts.installable-settings"])
         XCTAssertEqual(savedLensPackIds, ["marketplace.roles.installable-settings"])
-        XCTAssertEqual(store.assetPackInstallMessage, "已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、1 个透镜包。")
+        XCTAssertEqual(store.assetPackInstallMessage, "已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、1 个透镜包。拒绝原因：Prompt 包缺少信任元数据 1 个、透镜包缺少信任元数据 1 个。")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets() async throws {
@@ -1406,7 +1406,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.lensAssetPacks.map(\.id), ["marketplace.roles.remote-installable"])
         XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "remote.questions.v1")
         XCTAssertTrue(store.availableLensChoices.contains { $0.id == "remote-role-installable" })
-        XCTAssertEqual(store.assetPackInstallMessage, "已从远程清单安装：已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、0 个透镜包。")
+        XCTAssertEqual(store.assetPackInstallMessage, "已从远程清单安装：已安装 1 个 Prompt 包、1 个透镜包；拒绝 1 个 Prompt 包、0 个透镜包。拒绝原因：Prompt 包缺少信任元数据 1 个。")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling() async throws {
@@ -2408,6 +2408,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [.unexpectedVerificationPolicyVersion])
         XCTAssertTrue(store.promptAssetPacks.isEmpty)
         XCTAssertTrue(store.assetPackInstallMessage.contains("拒绝 1 个 Prompt 包"))
+        XCTAssertTrue(store.assetPackInstallMessage.contains("Prompt 包策略版本不匹配 1 个"))
     }
 
     func testSelectLens_generateQuestionsUsesHistoricalActivePrinciplesAndShowsReferences() async throws {

@@ -2233,7 +2233,55 @@ final class AppStore: ObservableObject {
         let installedLensCount = report.installableLensPacks.count
         let rejectedPromptCount = report.rejectedPromptPacks.count
         let rejectedLensCount = report.rejectedLensPacks.count
-        return "已安装 \(installedPromptCount) 个 Prompt 包、\(installedLensCount) 个透镜包；拒绝 \(rejectedPromptCount) 个 Prompt 包、\(rejectedLensCount) 个透镜包。"
+        let base = "已安装 \(installedPromptCount) 个 Prompt 包、\(installedLensCount) 个透镜包；拒绝 \(rejectedPromptCount) 个 Prompt 包、\(rejectedLensCount) 个透镜包。"
+        let rejectionDetails = assetPackInstallRejectionSummary(report)
+        guard !rejectionDetails.isEmpty else { return base }
+        return "\(base)拒绝原因：\(rejectionDetails)。"
+    }
+
+    private static func assetPackInstallRejectionSummary(_ report: AssetPackInstallValidationReport) -> String {
+        let promptDetails = assetPackInstallRejectionSummary(
+            title: "Prompt 包",
+            rejections: report.rejectedPromptPacks
+        )
+        let lensDetails = assetPackInstallRejectionSummary(
+            title: "透镜包",
+            rejections: report.rejectedLensPacks
+        )
+        return (promptDetails + lensDetails).joined(separator: "、")
+    }
+
+    private static func assetPackInstallRejectionSummary(
+        title: String,
+        rejections: [AssetPackInstallRejection]
+    ) -> [String] {
+        var reasonOrder: [AssetPackInstallRejectionReason] = []
+        var countsByReason: [AssetPackInstallRejectionReason: Int] = [:]
+        for rejection in rejections {
+            if countsByReason[rejection.reason] == nil {
+                reasonOrder.append(rejection.reason)
+            }
+            countsByReason[rejection.reason, default: 0] += 1
+        }
+        return reasonOrder.compactMap { reason in
+            guard let count = countsByReason[reason] else { return nil }
+            return "\(title)\(assetPackInstallRejectionReasonLabel(reason)) \(count) 个"
+        }
+    }
+
+    private static func assetPackInstallRejectionReasonLabel(_ reason: AssetPackInstallRejectionReason) -> String {
+        switch reason {
+        case .missingTrustMetadata:
+            return "缺少信任元数据"
+        case .incompleteTrustMetadata:
+            return "信任元数据不完整"
+        case .unexpectedVerificationPolicyVersion:
+            return "策略版本不匹配"
+        case .mismatchedContentHash:
+            return "内容哈希不匹配"
+        case .invalidTrustProof:
+            return "签名或信任策略无效"
+        }
     }
 
     private static func assetPackRegistrySubscriptionId(for catalogURL: URL) -> String {

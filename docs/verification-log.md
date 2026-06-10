@@ -5883,3 +5883,43 @@ Residual risk:
 
 - Real BYOK GLM confirmation is still not proven in this environment because `MINGSI_GLM_API_KEY`, `GLM_API_KEY`, and `SIMCTL_CHILD_MINGSI_GLM_API_KEY` are absent.
 - This is still local/test registry readiness; it does not add a real external registry service, real publisher onboarding workflow, external key-distribution UX, or live registry acceptance run.
+
+## 2026-06-11: Asset Pack Install Rejection Reason Surface
+
+Scope:
+
+- Improve remote asset-pack distribution diagnostics without adding a new install state machine.
+- Preserve existing installed/rejected count messages.
+- Append grouped rejection reasons for Prompt and Lens packs when an install report rejects any packs.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testImportAssetPackInstallManifestFromJSON_savesValidatedPacksAndRefreshesRuntimeAssets -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_rejectsPackWhenRequiredPolicyVersionDiffers
+rg -n "assetPackInstallMessage, \".*拒绝|assetPackInstallMessage\\.contains\\(\".*拒绝|拒绝原因" Tests Sources docs/mvp-stage-progress.md docs/verification-log.md
+git diff --check
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+```
+
+Result:
+
+- RED first failed because local/remote rejected installs only reported counts and the catalog policy-version mismatch message did not include the concrete reason.
+- `AppStore.assetPackInstallSummary` now appends grouped reason text when Prompt/Lens packs are rejected.
+- Rejection labels cover missing trust metadata, incomplete trust metadata, policy-version mismatch, content-hash mismatch, and invalid signature/trust proof.
+- Focused GREEN passed with 3 AppStore state-machine tests and 0 failures.
+- Search audit found only the expected message assertions, no-rejection exact assertions, the implementation, and this verification-log command.
+- `git diff --check` passed.
+- Full `MingSiTests` passed with 575 tests executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 tests executed and 0 failures.
+
+Residual risk:
+
+- This improves local and test-backed install diagnostics only; it does not add real external registry onboarding, remote prompt/lens rollout, or live BYOK GLM confirmation.
