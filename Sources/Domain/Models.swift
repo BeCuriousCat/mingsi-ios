@@ -1327,6 +1327,7 @@ struct PromptAssetQualityGateIssue: Hashable, Identifiable {
     var threshold: Double
     var sampleCount: Int
     var message: String
+    var rollbackCandidate: PromptAssetQualityGateRollbackCandidate?
 
     var id: String {
         [
@@ -1339,38 +1340,84 @@ struct PromptAssetQualityGateIssue: Hashable, Identifiable {
     }
 }
 
+struct PromptAssetQualityGateRollbackCandidate: Hashable, Identifiable {
+    var promptId: String
+    var currentVersion: String
+    var rollbackTargetVersion: String
+    var promptPackId: String
+    var currentPromptPackVersion: String
+    var rollbackPromptPackVersion: String
+    var lastPassingRunId: UUID
+    var lastPassingRunCreatedAt: Date
+    var reason: PromptAssetQualityGateIssueReason
+
+    var id: String {
+        [
+            promptPackId,
+            currentPromptPackVersion,
+            promptId,
+            currentVersion,
+            rollbackTargetVersion,
+            reason.rawValue,
+            lastPassingRunId.uuidString
+        ].joined(separator: "|")
+    }
+}
+
 struct PromptAssetQualityGate: Hashable {
     var status: PromptAssetQualityGateStatus
     var evaluatedSummaryCount: Int
     var needsReviewAssetCount: Int
+    var rollbackReadyAssetCount: Int
+    var manualReviewAssetCount: Int
     var issueCount: Int
     var issues: [PromptAssetQualityGateIssue]
+    var rollbackCandidates: [PromptAssetQualityGateRollbackCandidate]
     var evaluatedAt: Date
 
     static func evaluate(
         summaries: [PromptAssetRunQualitySummary],
         policy: PromptAssetQualityGatePolicy = PromptAssetQualityGatePolicy(),
+        evalRuns: [PromptEvalRun] = [],
+        promptProvider: PromptProvider? = nil,
+        mode: SessionMode = .standard,
+        runnerVersion: String = PromptEvalRunner.currentRunnerVersion,
         evaluatedAt: Date = .now
     ) -> PromptAssetQualityGate {
         let collectedIssues = summaries.flatMap { summary in
-            issues(for: summary, policy: policy)
+            let candidate = rollbackCandidate(
+                for: summary,
+                evalRuns: evalRuns,
+                promptProvider: promptProvider,
+                mode: mode,
+                runnerVersion: runnerVersion
+            )
+            return issues(for: summary, policy: policy, rollbackCandidate: candidate)
         }
         let reviewAssetIDs = Set(collectedIssues.map {
             "\($0.promptPackId)|\($0.promptPackVersion)|\($0.promptId)|\($0.promptVersion)"
+        })
+        let rollbackCandidates = uniqueRollbackCandidates(collectedIssues.compactMap(\.rollbackCandidate))
+        let rollbackReadyAssetIDs = Set(rollbackCandidates.map {
+            "\($0.promptPackId)|\($0.currentPromptPackVersion)|\($0.promptId)|\($0.currentVersion)"
         })
         return PromptAssetQualityGate(
             status: collectedIssues.isEmpty ? .passed : .needsReview,
             evaluatedSummaryCount: summaries.count,
             needsReviewAssetCount: reviewAssetIDs.count,
+            rollbackReadyAssetCount: rollbackReadyAssetIDs.count,
+            manualReviewAssetCount: reviewAssetIDs.subtracting(rollbackReadyAssetIDs).count,
             issueCount: collectedIssues.count,
             issues: collectedIssues,
+            rollbackCandidates: rollbackCandidates,
             evaluatedAt: evaluatedAt
         )
     }
 
     private static func issues(
         for summary: PromptAssetRunQualitySummary,
-        policy: PromptAssetQualityGatePolicy
+        policy: PromptAssetQualityGatePolicy,
+        rollbackCandidate: PromptAssetQualityGateRollbackCandidate?
     ) -> [PromptAssetQualityGateIssue] {
         guard summary.totalCount >= policy.minimumSampleCount else {
             return []
@@ -1382,21 +1429,24 @@ struct PromptAssetQualityGate: Hashable {
             summary: summary,
             reason: .highFailureRate,
             rate: summary.failureRate,
-            threshold: policy.failureRateThreshold
+            threshold: policy.failureRateThreshold,
+            rollbackCandidate: rollbackCandidate
         )
         appendIssue(
             to: &issues,
             summary: summary,
             reason: .highEmptyResultRate,
             rate: summary.emptyResultRate,
-            threshold: policy.emptyResultRateThreshold
+            threshold: policy.emptyResultRateThreshold,
+            rollbackCandidate: rollbackCandidate
         )
         appendIssue(
             to: &issues,
             summary: summary,
             reason: .highUserDenialRate,
             rate: summary.userDenialRate,
-            threshold: policy.userDenialRateThreshold
+            threshold: policy.userDenialRateThreshold,
+            rollbackCandidate: rollbackCandidate
         )
         return issues
     }
@@ -1406,9 +1456,12 @@ struct PromptAssetQualityGate: Hashable {
         summary: PromptAssetRunQualitySummary,
         reason: PromptAssetQualityGateIssueReason,
         rate: Double,
-        threshold: Double
+        threshold: Double,
+        rollbackCandidate: PromptAssetQualityGateRollbackCandidate?
     ) {
         guard rate >= threshold else { return }
+        var candidate = rollbackCandidate
+        candidate?.reason = reason
         issues.append(
             PromptAssetQualityGateIssue(
                 promptId: summary.promptId,
@@ -1419,9 +1472,91 @@ struct PromptAssetQualityGate: Hashable {
                 rate: rate,
                 threshold: threshold,
                 sampleCount: summary.totalCount,
-                message: message(summary: summary, reason: reason, rate: rate, threshold: threshold)
+                message: message(summary: summary, reason: reason, rate: rate, threshold: threshold),
+                rollbackCandidate: candidate
             )
         )
+    }
+
+    private static func rollbackCandidate(
+        for summary: PromptAssetRunQualitySummary,
+        evalRuns: [PromptEvalRun],
+        promptProvider: PromptProvider?,
+        mode: SessionMode,
+        runnerVersion: String
+    ) -> PromptAssetQualityGateRollbackCandidate? {
+        guard let promptProvider,
+              let promptID = PromptID(rawValue: summary.promptId)
+        else {
+            return nil
+        }
+
+        let currentTemplate = promptProvider.template(for: promptID, mode: mode)
+        guard currentTemplate.version == summary.promptVersion,
+              currentTemplate.sourceKind == summary.promptSourceKind,
+              currentTemplate.packId == summary.promptPackId,
+              currentTemplate.packVersion == summary.promptPackVersion,
+              currentTemplate.systemPolicyVersion == summary.systemPolicyVersion,
+              currentTemplate.contextPolicyVersion == summary.contextPolicyVersion,
+              currentTemplate.outputSchemaVersion == summary.outputSchemaVersion,
+              currentTemplate.evalSuiteVersion == summary.evalSuiteVersion,
+              let rollbackTargetVersion = currentTemplate.rollbackTargetVersion?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rollbackTargetVersion.isEmpty,
+              let rollbackTemplate = promptProvider.template(for: promptID, mode: mode, version: rollbackTargetVersion)
+        else {
+            return nil
+        }
+
+        guard let passingRun = evalRuns
+            .filter({
+                $0.promptId == summary.promptId &&
+                    $0.promptVersion == rollbackTargetVersion &&
+                    $0.promptSourceKind == summary.promptSourceKind &&
+                    $0.promptPackId == summary.promptPackId &&
+                    $0.promptPackVersion == rollbackTemplate.packVersion &&
+                    $0.systemPolicyVersion == summary.systemPolicyVersion &&
+                    $0.contextPolicyVersion == summary.contextPolicyVersion &&
+                    $0.inputSchemaVersion == summary.inputSchemaVersion &&
+                    $0.outputSchemaVersion == summary.outputSchemaVersion &&
+                    $0.evalSuiteVersion == summary.evalSuiteVersion &&
+                    $0.runnerVersion == runnerVersion &&
+                    $0.status == .passed
+            })
+            .max(by: { $0.createdAt < $1.createdAt })
+        else {
+            return nil
+        }
+
+        return PromptAssetQualityGateRollbackCandidate(
+            promptId: summary.promptId,
+            currentVersion: summary.promptVersion,
+            rollbackTargetVersion: rollbackTargetVersion,
+            promptPackId: summary.promptPackId,
+            currentPromptPackVersion: summary.promptPackVersion,
+            rollbackPromptPackVersion: passingRun.promptPackVersion,
+            lastPassingRunId: passingRun.id,
+            lastPassingRunCreatedAt: passingRun.createdAt,
+            reason: .highFailureRate
+        )
+    }
+
+    private static func uniqueRollbackCandidates(
+        _ candidates: [PromptAssetQualityGateRollbackCandidate]
+    ) -> [PromptAssetQualityGateRollbackCandidate] {
+        var seen = Set<String>()
+        var uniqueCandidates: [PromptAssetQualityGateRollbackCandidate] = []
+        for candidate in candidates {
+            let key = [
+                candidate.promptPackId,
+                candidate.currentPromptPackVersion,
+                candidate.promptId,
+                candidate.currentVersion,
+                candidate.rollbackTargetVersion
+            ].joined(separator: "|")
+            guard seen.insert(key).inserted else { continue }
+            uniqueCandidates.append(candidate)
+        }
+        return uniqueCandidates
     }
 
     private static func message(

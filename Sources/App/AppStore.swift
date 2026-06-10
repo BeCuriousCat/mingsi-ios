@@ -2283,7 +2283,7 @@ final class AppStore: ObservableObject {
                 userDeniedCount: 0
             )
             promptAssetRunQualitySummaries = PromptAssetRunQualitySummary.summaries(for: recentPromptRuns)
-            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: promptAssetRunQualitySummaries)
+            refreshPromptAssetQualityGate()
             promptRunAuditMessage = ""
             return
         }
@@ -2293,7 +2293,7 @@ final class AppStore: ObservableObject {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
-            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
+            refreshPromptAssetQualityGate()
             promptRunAuditMessage = "AI 调用记录暂不可用。"
             return
         }
@@ -2302,15 +2302,25 @@ final class AppStore: ObservableObject {
             recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
             promptRunStats = try await promptRunRepository.promptRunStats(limit: limit)
             promptAssetRunQualitySummaries = try await promptRunRepository.promptAssetRunQualitySummaries(limit: limit)
-            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: promptAssetRunQualitySummaries)
+            refreshPromptAssetQualityGate()
             promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
         } catch {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
-            promptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
+            refreshPromptAssetQualityGate()
             promptRunAuditMessage = "读取 AI 调用记录失败。"
         }
+    }
+
+    private func refreshPromptAssetQualityGate() {
+        promptAssetQualityGate = PromptAssetQualityGate.evaluate(
+            summaries: promptAssetRunQualitySummaries,
+            evalRuns: recentPromptEvalRuns,
+            promptProvider: effectivePromptProvider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
     }
 
     func loadRecentPromptEvalRuns(limit: Int = 100) async {
@@ -2322,6 +2332,7 @@ final class AppStore: ObservableObject {
                 mode: .standard,
                 runnerVersion: PromptEvalRunner.currentRunnerVersion
             )
+            refreshPromptAssetQualityGate()
             promptEvalMessage = "Prompt 固定评测记录暂不可用。"
             return
         }
@@ -2334,6 +2345,7 @@ final class AppStore: ObservableObject {
                 mode: .standard,
                 runnerVersion: PromptEvalRunner.currentRunnerVersion
             )
+            refreshPromptAssetQualityGate()
             promptEvalMessage = recentPromptEvalRuns.isEmpty ? "还没有固定评测记录。" : promptEvalGateSummaryMessage
         } catch {
             recentPromptEvalRuns = []
@@ -2343,6 +2355,7 @@ final class AppStore: ObservableObject {
                 mode: .standard,
                 runnerVersion: PromptEvalRunner.currentRunnerVersion
             )
+            refreshPromptAssetQualityGate()
             promptEvalMessage = "读取 Prompt 固定评测失败。"
         }
     }

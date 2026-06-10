@@ -2,6 +2,54 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Prompt Asset Quality Rollback Readiness
+
+Scope:
+
+- Extend `PromptAssetQualityGate` so operational quality issues can attach rollback candidates when local fixed-suite eval history proves a compatible prior prompt asset passed.
+- Match rollback readiness by prompt id, source kind, pack id, current pack version, rollback target version, system/context policy, input/output schema, eval suite, and runner version.
+- Publish rollback-ready/manual-review asset counts from `AppStore.loadRecentPromptRuns(limit:)` using already loaded `recentPromptEvalRuns` and the effective `PromptProvider`.
+- Surface those counts in the Settings Prompt asset quality text without changing Prompt execution, Today state ownership, or automatically applying rollback.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Services/PromptEvalFixtureTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptAssetQualityGate_marksImportedPackRollbackReadyFromPassingEvalHistory
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptAssetQualityGate_marksImportedPackRollbackReadyFromPassingEvalHistory
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_marksPromptAssetQualityRollbackReadinessFromEvalHistory
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_marksPromptAssetQualityRollbackReadinessFromEvalHistory
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptAssetQualityGate_flagsHighOperationalFailureSignalsAfterMinimumSample -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptAssetQualityGate_marksImportedPackRollbackReadyFromPassingEvalHistory -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_updatesPromptAssetQualityGate -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_marksPromptAssetQualityRollbackReadinessFromEvalHistory
+git diff --check
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests -resultBundlePath /tmp/mingsi-quality-gate-rollback-tests-20260611.xcresult
+xcodebuild test -quiet -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests -resultBundlePath /tmp/mingsi-quality-gate-rollback-uitests-20260611.xcresult
+xcrun xcresulttool get test-results summary --path /tmp/mingsi-quality-gate-rollback-tests-20260611.xcresult
+xcrun xcresulttool get test-results summary --path /tmp/mingsi-quality-gate-rollback-uitests-20260611.xcresult
+```
+
+Result:
+
+- Domain RED failed at compile time because `PromptAssetQualityGate.evaluate` had no eval-history/provider inputs and quality issues had no rollback candidate.
+- Domain GREEN passed after adding `PromptAssetQualityGateRollbackCandidate`, rollback-ready/manual-review counts, and strict matching against provider-resolvable rollback target versions plus passing eval runs.
+- AppStore RED failed with `rollbackReadyAssetCount == 0` because `loadRecentPromptRuns` did not feed eval history into the quality gate.
+- AppStore GREEN passed after routing prompt-asset quality evaluation through a shared AppStore helper that uses `recentPromptEvalRuns` and `effectivePromptProvider`.
+- Final verification passed: `git diff --check`, focused quality-gate/AppStore coverage with 4 tests and 0 failures, full `MingSiTests` with 571 passed, 1 skipped, and 0 failures, and full `MingSiUITests` with 11 tests and 0 failures.
+
+Residual risk:
+
+- This marks rollback readiness only; it does not automatically execute rollback for operational quality issues.
+- Readiness depends on local eval history already being loaded and on the effective provider resolving the rollback target version.
+- Real BYOK GLM network success, real publisher onboarding, remote prompt/lens registry rollout, external key distribution, and optional OS-level background refresh remain open.
+
 ## 2026-06-11: Prompt Asset Operational Quality Gate
 
 Scope:

@@ -6158,7 +6158,7 @@ private struct PromptAssetQualitySummarySection: View {
                 .foregroundStyle(gate.status == .passed ? DS.success : DS.caution)
 
             if let issue = gate.issues.first {
-                Text(issue.message)
+                Text(issueMessage(issue))
                     .font(.caption)
                     .foregroundStyle(DS.caution)
                     .fixedSize(horizontal: false, vertical: true)
@@ -6188,8 +6188,22 @@ private struct PromptAssetQualitySummarySection: View {
         case .passed:
             return "运行质量通过"
         case .needsReview:
-            return "运行质量需复查 \(gate.needsReviewAssetCount) 个资产 · \(gate.issueCount) 个信号"
+            var text = "运行质量需复查 \(gate.needsReviewAssetCount) 个资产 · \(gate.issueCount) 个信号"
+            if gate.rollbackReadyAssetCount > 0 {
+                text += " · 可回滚 \(gate.rollbackReadyAssetCount)"
+            }
+            if gate.manualReviewAssetCount > 0 {
+                text += " · 需人工处理 \(gate.manualReviewAssetCount)"
+            }
+            return text
         }
+    }
+
+    private func issueMessage(_ issue: PromptAssetQualityGateIssue) -> String {
+        guard let candidate = issue.rollbackCandidate else {
+            return issue.message
+        }
+        return "\(issue.message) 可回滚到 \(candidate.rollbackTargetVersion)。"
     }
 }
 

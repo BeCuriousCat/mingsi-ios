@@ -488,6 +488,138 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(underSampledGate.issues.isEmpty)
     }
 
+    func testPromptAssetQualityGate_marksImportedPackRollbackReadyFromPassingEvalHistory() throws {
+        let provider = ImportedPromptPackRollbackFixtureProvider()
+        let currentTemplate = provider.template(for: .generateQuestions, mode: .standard)
+        let currentRuns = [
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: currentTemplate.version,
+                promptSourceKind: currentTemplate.sourceKind,
+                promptPackId: currentTemplate.packId,
+                promptPackVersion: currentTemplate.packVersion,
+                promptPackDisplayName: currentTemplate.packDisplayName,
+                systemPolicyVersion: currentTemplate.systemPolicyVersion,
+                contextPolicyVersion: currentTemplate.contextPolicyVersion,
+                outputSchemaVersion: currentTemplate.outputSchemaVersion,
+                evalSuiteVersion: currentTemplate.evalSuiteVersion,
+                rollbackTargetVersion: currentTemplate.rollbackTargetVersion,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "success",
+                responseJSON: "{}",
+                createdAt: Date(timeIntervalSince1970: 100)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: currentTemplate.version,
+                promptSourceKind: currentTemplate.sourceKind,
+                promptPackId: currentTemplate.packId,
+                promptPackVersion: currentTemplate.packVersion,
+                promptPackDisplayName: currentTemplate.packDisplayName,
+                systemPolicyVersion: currentTemplate.systemPolicyVersion,
+                contextPolicyVersion: currentTemplate.contextPolicyVersion,
+                outputSchemaVersion: currentTemplate.outputSchemaVersion,
+                evalSuiteVersion: currentTemplate.evalSuiteVersion,
+                rollbackTargetVersion: currentTemplate.rollbackTargetVersion,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "second success",
+                responseJSON: "{}",
+                createdAt: Date(timeIntervalSince1970: 101)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: currentTemplate.version,
+                promptSourceKind: currentTemplate.sourceKind,
+                promptPackId: currentTemplate.packId,
+                promptPackVersion: currentTemplate.packVersion,
+                promptPackDisplayName: currentTemplate.packDisplayName,
+                systemPolicyVersion: currentTemplate.systemPolicyVersion,
+                contextPolicyVersion: currentTemplate.contextPolicyVersion,
+                outputSchemaVersion: currentTemplate.outputSchemaVersion,
+                evalSuiteVersion: currentTemplate.evalSuiteVersion,
+                rollbackTargetVersion: currentTemplate.rollbackTargetVersion,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "upstream failure",
+                error: "HTTP 500",
+                createdAt: Date(timeIntervalSince1970: 102)
+            ),
+            PromptRun(
+                promptId: PromptID.generateQuestions.rawValue,
+                promptVersion: currentTemplate.version,
+                promptSourceKind: currentTemplate.sourceKind,
+                promptPackId: currentTemplate.packId,
+                promptPackVersion: currentTemplate.packVersion,
+                promptPackDisplayName: currentTemplate.packDisplayName,
+                systemPolicyVersion: currentTemplate.systemPolicyVersion,
+                contextPolicyVersion: currentTemplate.contextPolicyVersion,
+                outputSchemaVersion: currentTemplate.outputSchemaVersion,
+                evalSuiteVersion: currentTemplate.evalSuiteVersion,
+                rollbackTargetVersion: currentTemplate.rollbackTargetVersion,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                requestSummary: "second upstream failure",
+                error: "HTTP 502",
+                createdAt: Date(timeIntervalSince1970: 103)
+            )
+        ]
+        let summaries = PromptAssetRunQualitySummary.summaries(for: currentRuns)
+        let rollbackTemplate = try XCTUnwrap(provider.template(for: .generateQuestions, mode: .standard, version: "1.0.0"))
+        let passingRollbackRun = PromptEvalRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: rollbackTemplate.version,
+            promptSourceKind: rollbackTemplate.sourceKind,
+            promptPackId: rollbackTemplate.packId,
+            promptPackVersion: rollbackTemplate.packVersion,
+            promptPackDisplayName: rollbackTemplate.packDisplayName,
+            systemPolicyVersion: currentTemplate.systemPolicyVersion,
+            contextPolicyVersion: currentTemplate.contextPolicyVersion,
+            inputSchemaVersion: 1,
+            outputSchemaVersion: currentTemplate.outputSchemaVersion,
+            evalSuiteVersion: currentTemplate.evalSuiteVersion,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion,
+            caseResults: [
+                PromptEvalCaseResult(caseId: "imported.questions.pass", name: "Imported previous prompt passed", status: .passed)
+            ],
+            createdAt: Date(timeIntervalSince1970: 90)
+        )
+
+        let gate = PromptAssetQualityGate.evaluate(
+            summaries: summaries,
+            policy: PromptAssetQualityGatePolicy(
+                minimumSampleCount: 4,
+                failureRateThreshold: 0.5,
+                emptyResultRateThreshold: 0.25,
+                userDenialRateThreshold: 0.25
+            ),
+            evalRuns: [passingRollbackRun],
+            promptProvider: provider,
+            mode: .standard,
+            runnerVersion: PromptEvalRunner.currentRunnerVersion
+        )
+
+        XCTAssertEqual(gate.status, .needsReview)
+        XCTAssertEqual(gate.needsReviewAssetCount, 1)
+        XCTAssertEqual(gate.rollbackReadyAssetCount, 1)
+        XCTAssertEqual(gate.manualReviewAssetCount, 0)
+        let issue = try XCTUnwrap(gate.issues.first)
+        XCTAssertEqual(issue.reason, .highFailureRate)
+        let candidate = try XCTUnwrap(issue.rollbackCandidate)
+        XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
+        XCTAssertEqual(candidate.currentVersion, "1.1.0")
+        XCTAssertEqual(candidate.rollbackTargetVersion, "1.0.0")
+        XCTAssertEqual(candidate.promptPackId, "marketplace.prompts.coach")
+        XCTAssertEqual(candidate.currentPromptPackVersion, "2026.06")
+        XCTAssertEqual(candidate.rollbackPromptPackVersion, "2026.05")
+        XCTAssertEqual(candidate.lastPassingRunId, passingRollbackRun.id)
+    }
+
     func testPromptEvalReleaseGate_passesAfterPromptAssetRollbackUsesTargetVersionHistory() throws {
         let provider = AppliedRollbackFixturePromptProvider()
         let template = provider.template(for: .generateQuestions, mode: .standard)
@@ -639,6 +771,55 @@ private struct AppliedRollbackFixturePromptProvider: PromptProvider {
             systemText: template.systemText,
             userText: template.userText,
             outputSchemaVersion: template.outputSchemaVersion
+        )
+    }
+}
+
+private struct ImportedPromptPackRollbackFixtureProvider: PromptProvider {
+    private let base = LocalPromptProvider()
+
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        if id == .generateQuestions {
+            return importedTemplate(version: "1.1.0", packVersion: "2026.06", rollbackTargetVersion: "1.0.0")
+        }
+        return base.template(for: id, mode: mode)
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        guard id == .generateQuestions else {
+            let template = base.template(for: id, mode: mode)
+            return template.version == version ? template : nil
+        }
+        switch version {
+        case "1.1.0":
+            return importedTemplate(version: "1.1.0", packVersion: "2026.06", rollbackTargetVersion: "1.0.0")
+        case "1.0.0":
+            return importedTemplate(version: "1.0.0", packVersion: "2026.05", rollbackTargetVersion: nil)
+        default:
+            return nil
+        }
+    }
+
+    private func importedTemplate(
+        version: String,
+        packVersion: String,
+        rollbackTargetVersion: String?
+    ) -> PromptTemplate {
+        let baseTemplate = base.template(for: .generateQuestions, mode: .standard)
+        return PromptTemplate(
+            id: .generateQuestions,
+            version: version,
+            systemPolicyVersion: baseTemplate.systemPolicyVersion,
+            contextPolicyVersion: baseTemplate.contextPolicyVersion,
+            evalSuiteVersion: baseTemplate.evalSuiteVersion,
+            rollbackTargetVersion: rollbackTargetVersion,
+            sourceKind: .marketplace,
+            packId: "marketplace.prompts.coach",
+            packVersion: packVersion,
+            packDisplayName: "Coach Prompt Pack",
+            systemText: baseTemplate.systemText,
+            userText: "Imported questions prompt \(version).",
+            outputSchemaVersion: baseTemplate.outputSchemaVersion
         )
     }
 }
