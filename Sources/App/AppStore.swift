@@ -1774,6 +1774,7 @@ final class AppStore: ObservableObject {
     func fetchAndInstallAssetPackInstallManifest(
         from url: URL,
         fallbackTrustPolicyURL: URL? = nil,
+        requiredVerificationPolicyVersion: String? = nil,
         fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
     ) async throws -> AssetPackInstallValidationReport {
         let data: Data
@@ -1815,7 +1816,8 @@ final class AppStore: ObservableObject {
 
             let report = try await installAssetPackManifest(
                 manifest,
-                signatureVerifier: signatureVerifier
+                signatureVerifier: signatureVerifier,
+                requiredVerificationPolicyVersion: requiredVerificationPolicyVersion
             )
             assetPackInstallMessage = "已从远程清单安装：\(Self.assetPackInstallSummary(report))"
             return report
@@ -1978,6 +1980,7 @@ final class AppStore: ObservableObject {
         let report = try await fetchAndInstallAssetPackInstallManifest(
             from: manifestURL,
             fallbackTrustPolicyURL: fallbackTrustPolicyURL,
+            requiredVerificationPolicyVersion: entry.requiredVerificationPolicyVersion,
             fetcher: fetcher
         )
         assetPackInstallMessage = "已从 \(entry.displayName) 安装：\(Self.assetPackInstallSummary(report))"
@@ -1986,15 +1989,18 @@ final class AppStore: ObservableObject {
 
     private func installAssetPackManifest(
         _ manifest: AssetPackInstallManifest,
-        signatureVerifier: AssetPackSignatureVerifier? = nil
+        signatureVerifier: AssetPackSignatureVerifier? = nil,
+        requiredVerificationPolicyVersion: String? = nil
     ) async throws -> AssetPackInstallValidationReport {
         guard let promptAssetPackRepository, let lensAssetPackRepository else {
             assetPackInstallMessage = "资产包安装不可用：本地数据库未启用。"
             throw PersistenceError.unimplemented
         }
 
-        let validator = signatureVerifier.map(AssetPackInstallManifestValidator.init(signatureVerifier:))
-            ?? AssetPackInstallManifestValidator()
+        let validator = AssetPackInstallManifestValidator(
+            signatureVerifier: signatureVerifier ?? .default,
+            requiredVerificationPolicyVersion: requiredVerificationPolicyVersion
+        )
         let report = try await AssetPackInstallManifestInstaller(
             promptAssetPackRepository: promptAssetPackRepository,
             lensAssetPackRepository: lensAssetPackRepository,

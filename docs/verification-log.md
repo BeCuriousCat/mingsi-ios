@@ -5841,3 +5841,45 @@ Result:
 Residual risk:
 
 - This is still local/test registry readiness. There is no real external registry service, publisher onboarding workflow, external key-distribution UX, or live registry acceptance run yet.
+
+## 2026-06-11: Asset Pack Registry Required Trust Policy Enforcement
+
+Scope:
+
+- Enforce `AssetPackRegistryCatalogEntry.requiredVerificationPolicyVersion` during catalog-entry installs instead of treating it as display-only metadata.
+- Reject Prompt/Lens packs whose trust metadata was signed under a different verification policy version, even if the fetched trust policy document contains keys for both policy versions.
+- Preserve the existing remote trust-policy fetch/cache and signed-pack validation path.
+
+Changed areas:
+
+- `Sources/Services/PersistenceCore.swift`
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_rejectsPackWhenRequiredPolicyVersionDiffers
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackInstallManifest_filtersInstallablePromptAndLensPacksThroughTrustGate -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackInstallManifestInstaller_savesOnlyValidatedPromptAndLensPacks -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_rejectsPackWhenRequiredPolicyVersionDiffers
+git diff --check
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+```
+
+Result:
+
+- RED first failed because `AssetPackInstallRejectionReason` had no `.unexpectedVerificationPolicyVersion` case and catalog-entry installs did not pass the required policy version into manifest validation.
+- Added `.unexpectedVerificationPolicyVersion` and made `AssetPackInstallManifestValidator` compare Prompt/Lens trust metadata against the catalog entry's required policy version before content-hash and signature verification.
+- `AppStore.installAssetPackRegistryCatalogEntry` now forwards `entry.requiredVerificationPolicyVersion` through the remote manifest fetch/install path.
+- Focused GREEN passed with 1 test and 0 failures.
+- Related registry/manifest regression coverage passed with 6 tests and 0 failures.
+- `git diff --check` passed.
+- Full `MingSiTests` passed with 575 tests executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 tests executed and 0 failures.
+
+Residual risk:
+
+- Real BYOK GLM confirmation is still not proven in this environment because `MINGSI_GLM_API_KEY`, `GLM_API_KEY`, and `SIMCTL_CHILD_MINGSI_GLM_API_KEY` are absent.
+- This is still local/test registry readiness; it does not add a real external registry service, real publisher onboarding workflow, external key-distribution UX, or live registry acceptance run.

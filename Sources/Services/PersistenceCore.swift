@@ -3660,6 +3660,7 @@ struct URLSessionAssetPackInstallManifestFetcher: AssetPackInstallManifestFetchi
 enum AssetPackInstallRejectionReason: String, Equatable {
     case missingTrustMetadata
     case incompleteTrustMetadata
+    case unexpectedVerificationPolicyVersion
     case mismatchedContentHash
     case invalidTrustProof
 }
@@ -3680,9 +3681,14 @@ struct AssetPackInstallValidationReport: Equatable {
 
 struct AssetPackInstallManifestValidator {
     private let signatureVerifier: AssetPackSignatureVerifier
+    private let requiredVerificationPolicyVersion: String?
 
-    init(signatureVerifier: AssetPackSignatureVerifier = .default) {
+    init(
+        signatureVerifier: AssetPackSignatureVerifier = .default,
+        requiredVerificationPolicyVersion: String? = nil
+    ) {
         self.signatureVerifier = signatureVerifier
+        self.requiredVerificationPolicyVersion = requiredVerificationPolicyVersion
     }
 
     func validate(_ manifest: AssetPackInstallManifest) -> AssetPackInstallValidationReport {
@@ -3714,6 +3720,10 @@ struct AssetPackInstallManifestValidator {
         guard pack.sourceKind.requiresTrustMetadata else { return nil }
         guard let metadata = pack.trustMetadata else { return .missingTrustMetadata }
         guard metadata.missingRequiredFields.isEmpty else { return .incompleteTrustMetadata }
+        if let requiredVerificationPolicyVersion,
+           metadata.verificationPolicyVersion != requiredVerificationPolicyVersion {
+            return .unexpectedVerificationPolicyVersion
+        }
         guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return .mismatchedContentHash }
         guard (try? signatureVerifier.hasValidSignature(pack)) == true else { return .invalidTrustProof }
         return nil
@@ -3723,6 +3733,10 @@ struct AssetPackInstallManifestValidator {
         guard pack.sourceKind.requiresTrustMetadata else { return nil }
         guard let metadata = pack.trustMetadata else { return .missingTrustMetadata }
         guard metadata.missingRequiredFields.isEmpty else { return .incompleteTrustMetadata }
+        if let requiredVerificationPolicyVersion,
+           metadata.verificationPolicyVersion != requiredVerificationPolicyVersion {
+            return .unexpectedVerificationPolicyVersion
+        }
         guard (try? AssetPackIntegrity.hasValidContentHash(pack)) == true else { return .mismatchedContentHash }
         guard (try? signatureVerifier.hasValidSignature(pack)) == true else { return .invalidTrustProof }
         return nil

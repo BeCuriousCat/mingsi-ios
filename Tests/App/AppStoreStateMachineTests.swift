@@ -2318,6 +2318,98 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.assetPackInstallMessage, "已从 Catalog Policy Pack 安装：已安装 1 个 Prompt 包、0 个透镜包；拒绝 0 个 Prompt 包、0 个透镜包。")
     }
 
+    func testInstallAssetPackRegistryCatalogEntry_rejectsPackWhenRequiredPolicyVersionDiffers() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog/index.json")!
+        let manifestURL = URL(string: "https://registry.mingsi.test/catalog/manifests/coach.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/catalog/trust/policies/coach.json")!
+        let signedPolicyVersion = "asset-trust.remote.catalog-entry.v1"
+        let requiredPolicyVersion = "asset-trust.remote.catalog-entry.v2"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.catalog-policy-mismatch",
+            version: "2026.06",
+            displayName: "Catalog Policy Mismatch Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "catalog.policy.mismatch.questions.v1",
+                    userText: "This prompt should be rejected because the catalog requires v2."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: signedPolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.catalog-policy-mismatch",
+                    displayName: "Catalog Policy Mismatch Pack",
+                    summary: "Catalog entry requires a newer policy version.",
+                    manifestURL: URL(string: "manifests/coach.json")!,
+                    updatedAt: nil,
+                    publisherId: "mingsi.test.publisher",
+                    publisherDisplayName: "MingSi Test Publisher",
+                    trustPolicyURL: URL(string: "trust/policies/coach.json")!,
+                    requiredVerificationPolicyVersion: requiredPolicyVersion
+                )
+            ]
+        )
+        let manifest = AssetPackInstallManifest(promptPacks: [trustedPrompt])
+        let policy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: signedPolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    ),
+                    AssetPackTrustPolicy(
+                        version: requiredPolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ]
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                catalogURL: try Self.assetPackJSONEncoder.encode(catalog),
+                manifestURL: try Self.assetPackJSONEncoder.encode(manifest),
+                policyURL: try Self.assetPackJSONEncoder.encode(policy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        _ = try await store.fetchAssetPackRegistryCatalog(from: catalogURL, fetcher: fetcher)
+        let report = try await store.installAssetPackRegistryCatalogEntry(
+            entryId: "marketplace.catalog-policy-mismatch",
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL, manifestURL, policyURL])
+        XCTAssertTrue(report.installablePromptPacks.isEmpty)
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.packId), ["marketplace.prompts.catalog-policy-mismatch"])
+        XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [.unexpectedVerificationPolicyVersion])
+        XCTAssertTrue(store.promptAssetPacks.isEmpty)
+        XCTAssertTrue(store.assetPackInstallMessage.contains("拒绝 1 个 Prompt 包"))
+    }
+
     func testSelectLens_generateQuestionsUsesHistoricalActivePrinciplesAndShowsReferences() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let principleRepo = SQLitePrincipleRepository(database: database)
