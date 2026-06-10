@@ -1788,7 +1788,7 @@ final class AppStore: ObservableObject {
         do {
             let manifest = try Self.assetPackJSONDecoder.decode(AssetPackInstallManifest.self, from: data)
             let signatureVerifier: AssetPackSignatureVerifier?
-            var publisherProfileSummary: String?
+            var signedTrustPolicyDocument: AssetPackTrustPolicyDocument?
             if let trustPolicyURL = manifest.trustPolicyURL ?? fallbackTrustPolicyURL {
                 let trustPolicyData: Data
                 do {
@@ -1804,7 +1804,7 @@ final class AppStore: ObservableObject {
                         trustPolicyDocument,
                         sourceURL: trustPolicyURL
                     )
-                    publisherProfileSummary = Self.assetPackTrustPolicyPublisherSummary(trustPolicyDocument)
+                    signedTrustPolicyDocument = trustPolicyDocument
                     signatureVerifier = AssetPackSignatureVerifier.combining([
                         trustPolicyDocument.signatureVerifier,
                         persistedVerifier
@@ -1821,6 +1821,9 @@ final class AppStore: ObservableObject {
                 signatureVerifier: signatureVerifier,
                 requiredVerificationPolicyVersion: requiredVerificationPolicyVersion
             )
+            let publisherProfileSummary = signedTrustPolicyDocument.flatMap {
+                Self.assetPackTrustPolicyPublisherSummary($0, report: report)
+            }
             assetPackInstallMessage = "已从远程清单安装：\(Self.assetPackInstallSummary(report))\(publisherProfileSummary ?? "")"
             return report
         } catch {
@@ -2241,17 +2244,26 @@ final class AppStore: ObservableObject {
         return "\(base)拒绝原因：\(rejectionDetails)。"
     }
 
-    private static func assetPackTrustPolicyPublisherSummary(_ document: AssetPackTrustPolicyDocument) -> String? {
+    private static func assetPackTrustPolicyPublisherSummary(
+        _ document: AssetPackTrustPolicyDocument,
+        report: AssetPackInstallValidationReport
+    ) -> String? {
+        var profilesById: [String: AssetPackPublisherProfile] = [:]
+        for profile in document.policies.flatMap(\.publisherProfiles) where profilesById[profile.id] == nil {
+            profilesById[profile.id] = profile
+        }
+
         var seenPublisherIds: Set<String> = []
-        let names = document.policies
-            .flatMap(\.publisherProfiles)
-            .compactMap { profile -> String? in
-                guard seenPublisherIds.insert(profile.id).inserted else { return nil }
-                let displayName = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let fallbackId = profile.id.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !displayName.isEmpty { return displayName }
-                return fallbackId.isEmpty ? nil : fallbackId
-            }
+        let installedPublisherIds = report.installablePromptPacks.compactMap(\.trustMetadata?.publisherId)
+            + report.installableLensPacks.compactMap(\.trustMetadata?.publisherId)
+        let names = installedPublisherIds.compactMap { publisherId -> String? in
+            guard seenPublisherIds.insert(publisherId).inserted else { return nil }
+            guard let profile = profilesById[publisherId] else { return nil }
+            let displayName = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallbackId = profile.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !displayName.isEmpty { return displayName }
+            return fallbackId.isEmpty ? nil : fallbackId
+        }
 
         guard !names.isEmpty else { return nil }
         return "信任发布者：\(names.joined(separator: "、"))。"

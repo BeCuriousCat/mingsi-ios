@@ -6010,3 +6010,43 @@ Result:
 Residual risk:
 
 - This adds local trust-policy identity metadata and install visibility only; it does not add a real external publisher onboarding service, external key-distribution portal, remote registry acceptance run, or live BYOK GLM confirmation.
+
+## 2026-06-11: Remote Install Publisher Profile Scope
+
+Scope:
+
+- Narrow remote install success messages so signed publisher names come only from Prompt/Lens packs that actually installed.
+- Preserve signed trust-policy profile verification and persisted policy caching.
+- Avoid showing unrelated publishers that are present in the same broad trust-policy document but did not participate in the current install.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_surfacesOnlyInstalledPublisherProfiles
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_surfacesRemotePublisherProfiles -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_surfacesOnlyInstalledPublisherProfiles -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_rejectsPackWhenRequiredPolicyVersionDiffers -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicy_decodesPublisherProfilesAndDefaultsLegacyDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsPublisherProfileTampering
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+git diff --check
+```
+
+Result:
+
+- RED first failed with 1 executed test and 2 expected assertion failures: the install message did not include the expected exact installed-publisher summary and did include `Other Publisher` from an unrelated policy profile.
+- `AppStore.fetchAndInstallAssetPackInstallManifest` now keeps the signed trust-policy document until after manifest installation, then builds the publisher summary from `report.installablePromptPacks` and `report.installableLensPacks`.
+- `assetPackTrustPolicyPublisherSummary` now filters policy profiles by installed pack `trustMetadata.publisherId`, de-duplicates installed publisher ids, and falls back to publisher id only for an installed profile with an empty display name.
+- Focused GREEN passed with 1 test and 0 failures.
+- Related remote trust-policy/catalog regression coverage passed with 8 tests and 0 failures.
+- Full `MingSiTests` passed with 580 executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 executed and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This narrows local install-message trust visibility only; it does not add a real external publisher onboarding service, external key-distribution portal, remote registry acceptance run, or live BYOK GLM confirmation.
