@@ -121,6 +121,7 @@ protocol PromptRunRepository {
     func unresolvedFailures(limit: Int) async throws -> [PromptRun]
     func updatePromptRunFeedback(_ feedback: PromptRunFeedback, runId: UUID) async throws
     func promptRunStats(limit: Int) async throws -> PromptRunStats
+    func promptAssetRunQualitySummaries(limit: Int) async throws -> [PromptAssetRunQualitySummary]
 }
 
 protocol PromptEvalRunRepository {
@@ -2800,6 +2801,17 @@ final class SQLitePromptRunRepository: PromptRunRepository {
                 emptyResultCount: emptyResults.count,
                 userDeniedCount: denied.count
             )
+        }
+    }
+
+    func promptAssetRunQualitySummaries(limit: Int) async throws -> [PromptAssetRunQualitySummary] {
+        try await database.dbQueue.read { db in
+            let runs = try PromptRunRow
+                .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+            return PromptAssetRunQualitySummary.summaries(for: runs)
         }
     }
 }

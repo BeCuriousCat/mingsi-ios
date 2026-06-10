@@ -1158,6 +1158,131 @@ struct PromptRunStats: Hashable {
     }
 }
 
+struct PromptAssetRunQualitySummary: Identifiable, Hashable {
+    var promptId: String
+    var promptVersion: String
+    var promptSourceKind: PromptAssetSourceKind
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
+    var inputSchemaVersion: Int
+    var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+    var totalCount: Int
+    var successCount: Int
+    var failureCount: Int
+    var emptyResultCount: Int
+    var userDeniedCount: Int
+    var latestRunCreatedAt: Date
+
+    var id: String {
+        [
+            promptId,
+            promptVersion,
+            promptSourceKind.rawValue,
+            promptPackId,
+            promptPackVersion,
+            systemPolicyVersion,
+            contextPolicyVersion,
+            String(inputSchemaVersion),
+            String(outputSchemaVersion),
+            evalSuiteVersion
+        ].joined(separator: "|")
+    }
+
+    var failureRate: Double { rate(failureCount) }
+    var emptyResultRate: Double { rate(emptyResultCount) }
+    var userDenialRate: Double { rate(userDeniedCount) }
+
+    static func summaries(for runs: [PromptRun]) -> [PromptAssetRunQualitySummary] {
+        let grouped = Dictionary(grouping: runs, by: PromptAssetRunQualityKey.init(run:))
+        return grouped
+            .map { key, runs in
+                PromptAssetRunQualitySummary(
+                    key: key,
+                    runs: runs
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.latestRunCreatedAt == rhs.latestRunCreatedAt {
+                    if lhs.promptId == rhs.promptId {
+                        return lhs.promptVersion > rhs.promptVersion
+                    }
+                    return lhs.promptId < rhs.promptId
+                }
+                return lhs.latestRunCreatedAt > rhs.latestRunCreatedAt
+            }
+    }
+
+    private init(key: PromptAssetRunQualityKey, runs: [PromptRun]) {
+        promptId = key.promptId
+        promptVersion = key.promptVersion
+        promptSourceKind = key.promptSourceKind
+        promptPackId = key.promptPackId
+        promptPackVersion = key.promptPackVersion
+        promptPackDisplayName = key.promptPackDisplayName
+        systemPolicyVersion = key.systemPolicyVersion
+        contextPolicyVersion = key.contextPolicyVersion
+        inputSchemaVersion = key.inputSchemaVersion
+        outputSchemaVersion = key.outputSchemaVersion
+        evalSuiteVersion = key.evalSuiteVersion
+        totalCount = runs.count
+        successCount = runs.filter(Self.isSuccess).count
+        failureCount = runs.filter(Self.isFailure).count
+        emptyResultCount = runs.filter(Self.isEmptyResultFailure).count
+        userDeniedCount = runs.filter { $0.userFeedback == .denied }.count
+        latestRunCreatedAt = runs.map(\.createdAt).max() ?? .distantPast
+    }
+
+    private func rate(_ count: Int) -> Double {
+        guard totalCount > 0 else { return 0 }
+        return Double(count) / Double(totalCount)
+    }
+
+    private static func isSuccess(_ run: PromptRun) -> Bool {
+        run.responseJSON != nil && run.error == nil
+    }
+
+    private static func isFailure(_ run: PromptRun) -> Bool {
+        run.responseJSON == nil && run.error != nil
+    }
+
+    private static func isEmptyResultFailure(_ run: PromptRun) -> Bool {
+        guard isFailure(run), let error = run.error?.lowercased() else { return false }
+        return error.contains("emptyresult") || error.contains("empty result")
+    }
+}
+
+private struct PromptAssetRunQualityKey: Hashable {
+    var promptId: String
+    var promptVersion: String
+    var promptSourceKind: PromptAssetSourceKind
+    var promptPackId: String
+    var promptPackVersion: String
+    var promptPackDisplayName: String
+    var systemPolicyVersion: String
+    var contextPolicyVersion: String
+    var inputSchemaVersion: Int
+    var outputSchemaVersion: Int
+    var evalSuiteVersion: String
+
+    init(run: PromptRun) {
+        promptId = run.promptId
+        promptVersion = run.promptVersion
+        promptSourceKind = run.promptSourceKind
+        promptPackId = run.promptPackId
+        promptPackVersion = run.promptPackVersion
+        promptPackDisplayName = run.promptPackDisplayName
+        systemPolicyVersion = run.systemPolicyVersion
+        contextPolicyVersion = run.contextPolicyVersion
+        inputSchemaVersion = run.inputSchemaVersion
+        outputSchemaVersion = run.outputSchemaVersion
+        evalSuiteVersion = run.evalSuiteVersion
+    }
+}
+
 enum PromptEvalStatus: String, Codable, CaseIterable, Identifiable {
     case passed
     case failed

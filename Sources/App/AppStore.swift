@@ -138,6 +138,7 @@ final class AppStore: ObservableObject {
     @Published var streamingStatusText: String = ""
     @Published var recentPromptRuns: [PromptRun] = []
     @Published var promptRunStats: PromptRunStats?
+    @Published var promptAssetRunQualitySummaries: [PromptAssetRunQualitySummary] = []
     @Published var promptRunAuditMessage: String = ""
     @Published var recentPromptEvalRuns: [PromptEvalRun] = []
     @Published private(set) var promptRollbackOverrides: [PromptID: PromptTemplate] = [:]
@@ -2280,6 +2281,7 @@ final class AppStore: ObservableObject {
                 emptyResultCount: 0,
                 userDeniedCount: 0
             )
+            promptAssetRunQualitySummaries = PromptAssetRunQualitySummary.summaries(for: recentPromptRuns)
             promptRunAuditMessage = ""
             return
         }
@@ -2288,6 +2290,7 @@ final class AppStore: ObservableObject {
         guard let promptRunRepository else {
             recentPromptRuns = []
             promptRunStats = nil
+            promptAssetRunQualitySummaries = []
             promptRunAuditMessage = "AI 调用记录暂不可用。"
             return
         }
@@ -2295,10 +2298,12 @@ final class AppStore: ObservableObject {
         do {
             recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
             promptRunStats = try await promptRunRepository.promptRunStats(limit: limit)
+            promptAssetRunQualitySummaries = try await promptRunRepository.promptAssetRunQualitySummaries(limit: limit)
             promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
         } catch {
             recentPromptRuns = []
             promptRunStats = nil
+            promptAssetRunQualitySummaries = []
             promptRunAuditMessage = "读取 AI 调用记录失败。"
         }
     }

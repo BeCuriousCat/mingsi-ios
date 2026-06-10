@@ -1121,6 +1121,128 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(stats.userDenialRate, 0.25, accuracy: 0.001)
     }
 
+    func testPromptRun_assetQualitySummariesSeparatePromptContextAndEvalVersions() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let currentSuccess = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            promptPackId: "mingsi.builtin.prompts",
+            promptPackVersion: "builtin.v1",
+            promptPackDisplayName: "MingSi Built-in Prompt Pack",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-1"],
+            requestSummary: "current success",
+            responseJSON: #"{"questions":[{"question":"What evidence matters?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        let currentEmptyResult = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            promptPackId: "mingsi.builtin.prompts",
+            promptPackVersion: "builtin.v1",
+            promptPackDisplayName: "MingSi Built-in Prompt Pack",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-2"],
+            requestSummary: "current empty result",
+            error: "TodayAIParsingError.emptyResult",
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+        let rollbackDenied = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "0.9.0",
+            promptPackId: "mingsi.builtin.prompts",
+            promptPackVersion: "builtin.v1",
+            promptPackDisplayName: "MingSi Built-in Prompt Pack",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-3"],
+            requestSummary: "rollback denied",
+            responseJSON: #"{"questions":[{"question":"Generic question?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 3)
+        )
+        let nextContextFailure = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            promptPackId: "mingsi.builtin.prompts",
+            promptPackVersion: "builtin.v1",
+            promptPackDisplayName: "MingSi Built-in Prompt Pack",
+            systemPolicyVersion: "system.v1",
+            contextPolicyVersion: "context.generateQuestions.v2",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            evalSuiteVersion: "generateQuestions.eval.v1",
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: ["entry-4"],
+            requestSummary: "next context failure",
+            error: "HTTP 500",
+            createdAt: Date(timeIntervalSince1970: 4)
+        )
+
+        try await repo.savePromptRun(currentSuccess)
+        try await repo.savePromptRun(currentEmptyResult)
+        try await repo.savePromptRun(rollbackDenied)
+        try await repo.savePromptRun(nextContextFailure)
+        try await repo.updatePromptRunFeedback(.denied, runId: rollbackDenied.id)
+
+        let summaries = try await repo.promptAssetRunQualitySummaries(limit: 10)
+
+        XCTAssertEqual(summaries.count, 3)
+        let current = try XCTUnwrap(summaries.first {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+                $0.promptVersion == "1.0.0" &&
+                $0.contextPolicyVersion == "context.generateQuestions.v1"
+        })
+        XCTAssertEqual(current.totalCount, 2)
+        XCTAssertEqual(current.successCount, 1)
+        XCTAssertEqual(current.failureCount, 1)
+        XCTAssertEqual(current.emptyResultCount, 1)
+        XCTAssertEqual(current.userDeniedCount, 0)
+        XCTAssertEqual(current.failureRate, 0.5, accuracy: 0.001)
+        XCTAssertEqual(current.emptyResultRate, 0.5, accuracy: 0.001)
+        XCTAssertEqual(current.userDenialRate, 0, accuracy: 0.001)
+        XCTAssertEqual(current.latestRunCreatedAt, currentEmptyResult.createdAt)
+
+        let rollback = try XCTUnwrap(summaries.first {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+                $0.promptVersion == "0.9.0"
+        })
+        XCTAssertEqual(rollback.totalCount, 1)
+        XCTAssertEqual(rollback.successCount, 1)
+        XCTAssertEqual(rollback.userDeniedCount, 1)
+        XCTAssertEqual(rollback.userDenialRate, 1, accuracy: 0.001)
+
+        let nextContext = try XCTUnwrap(summaries.first {
+            $0.promptId == PromptID.generateQuestions.rawValue &&
+                $0.promptVersion == "1.0.0" &&
+                $0.contextPolicyVersion == "context.generateQuestions.v2"
+        })
+        XCTAssertEqual(nextContext.totalCount, 1)
+        XCTAssertEqual(nextContext.failureCount, 1)
+        XCTAssertEqual(nextContext.emptyResultCount, 0)
+    }
+
     // MARK: - PromptEvalRunRepository
 
     func testSavePromptEvalRun_andLoadRecent() async throws {

@@ -3446,6 +3446,18 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(auditStore.promptRunStats?.successCount, 1)
         XCTAssertEqual(auditStore.promptRunStats?.failureCount, 1)
         XCTAssertEqual(auditStore.promptRunStats?.userDeniedCount, 1)
+        XCTAssertEqual(auditStore.promptAssetRunQualitySummaries.count, 2)
+        let principleQuality = try XCTUnwrap(auditStore.promptAssetRunQualitySummaries.first {
+            $0.promptId == PromptID.extractPrinciple.rawValue
+        })
+        XCTAssertEqual(principleQuality.totalCount, 1)
+        XCTAssertEqual(principleQuality.successCount, 1)
+        XCTAssertEqual(principleQuality.userDeniedCount, 1)
+        let questionQuality = try XCTUnwrap(auditStore.promptAssetRunQualitySummaries.first {
+            $0.promptId == PromptID.generateQuestions.rawValue
+        })
+        XCTAssertEqual(questionQuality.failureCount, 1)
+        XCTAssertEqual(questionQuality.failureRate, 1, accuracy: 0.001)
         XCTAssertTrue(auditStore.promptRunAuditMessage.isEmpty)
     }
 

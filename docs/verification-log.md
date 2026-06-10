@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Prompt Asset Run Quality Summary
+
+Scope:
+
+- Add `PromptAssetRunQualitySummary` to group recent PromptRun outcomes by prompt id/version, source kind, prompt pack id/version/display name, system policy, context policy, input/output schema, and eval suite version.
+- Add `PromptRunRepository.promptAssetRunQualitySummaries(limit:)` and the SQLite implementation by loading the recent PromptRun window and grouping domain models.
+- Expose the summaries from `AppStore.loadRecentPromptRuns(limit:)` alongside existing recent runs and global PromptRun stats.
+- Keep this as an audit/model boundary only; no new Settings rendering, live BYOK GLM confirmation, or remote registry rollout is added.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/Services/PersistenceCore.swift`
+- `Sources/App/AppStore.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testPromptRun_assetQualitySummariesSeparatePromptContextAndEvalVersions
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_loadsNewestFirstAuditRunsWithRefsAndErrors
+git diff --check
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testPromptRun_assetQualitySummariesSeparatePromptContextAndEvalVersions -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadRecentPromptRuns_loadsNewestFirstAuditRunsWithRefsAndErrors
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests -only-testing:MingSiTests/PersistenceCoreTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+```
+
+Result:
+
+- Initial persistence RED failed as expected because `PromptRunRepository` and `SQLitePromptRunRepository` had no asset-quality summary API.
+- Focused persistence GREEN passed after adding the domain grouping model and SQLite repository method.
+- Initial AppStore RED failed as expected because `AppStore` did not publish prompt asset run-quality summaries.
+- Focused AppStore GREEN passed after loading summaries with recent PromptRun audit state.
+- Final verification passed: `git diff --check`, focused 2-test prompt-asset summary coverage with 0 failures, affected `AppStoreStateMachineTests` + `PersistenceCoreTests` with 383 tests and 0 failures, and full `MingSiTests` with 568 tests, 1 skipped, and 0 failures.
+
+Residual risk:
+
+- The summaries are not yet rendered in Settings or a prompt-pack review UI.
+- Real BYOK GLM network success, real publisher onboarding, remote prompt/lens registry rollout, and optional OS-level background refresh remain open.
+
 ## 2026-06-11: Asset Pack Registry Subscription Auto-Sync Policy
 
 Scope:
