@@ -6050,3 +6050,48 @@ Result:
 Residual risk:
 
 - This narrows local install-message trust visibility only; it does not add a real external publisher onboarding service, external key-distribution portal, remote registry acceptance run, or live BYOK GLM confirmation.
+
+## 2026-06-11: Live GLM Acceptance Runner Script
+
+Scope:
+
+- Turn the Subtask 115 manual `.xctestrun` injection recipe into a reusable local command.
+- Keep the live GLM acceptance path explicit and safe-by-default: no live request runs unless the script injects `MINGSI_LIVE_GLM_ACCEPTANCE=1` into the XCTest environment.
+- Avoid leaking API keys in script output while still allowing user-provided BYOK keys through `MINGSI_LIVE_GLM_API_KEY`, `MINGSI_GLM_API_KEY`, `GLM_API_KEY`, or `--api-key`.
+
+Changed areas:
+
+- `scripts/run_live_glm_acceptance.sh`
+- `Tests/Scripts/test_live_glm_acceptance_script.sh`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash Tests/Scripts/test_live_glm_acceptance_script.sh
+chmod +x scripts/run_live_glm_acceptance.sh Tests/Scripts/test_live_glm_acceptance_script.sh && bash Tests/Scripts/test_live_glm_acceptance_script.sh
+scripts/run_live_glm_acceptance.sh --dry-run
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LiveGLMAcceptanceTests
+bash -n scripts/run_live_glm_acceptance.sh Tests/Scripts/test_live_glm_acceptance_script.sh
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+git diff --check
+```
+
+Result:
+
+- RED first failed because `scripts/run_live_glm_acceptance.sh` did not exist.
+- After adding the script, the contract test failed again because the script file was not executable; setting the executable bit made the same test pass.
+- The shell contract test verifies `--dry-run` prints sanitized commands without writing an output `.xctestrun`, and `--prepare-only` copies a source `.xctestrun` while injecting `MINGSI_LIVE_GLM_ACCEPTANCE`, `MINGSI_LIVE_GLM_API_KEY`, optional base URL, and optional model into both `EnvironmentVariables` and `TestingEnvironmentVariables`.
+- `scripts/run_live_glm_acceptance.sh --dry-run` passed without a local key and showed `MINGSI_LIVE_GLM_API_KEY=<missing; Keychain fallback may still be used>` rather than printing a secret.
+- `LiveGLMAcceptanceTests` passed with 5 executed, 1 skipped, and 0 failures; the live probe still skips before network without the opt-in/key path.
+- `bash -n` passed for the runner and script test.
+- Full `MingSiTests` passed with 580 executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 executed and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This automates the acceptance harness path only. A real BYOK GLM network success still requires a real user-provided key and an approved external call window.
+- `shellcheck` is not installed in this local environment, so script static verification used `bash -n` plus the repository shell contract test.
