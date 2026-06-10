@@ -1655,6 +1655,54 @@ final class PersistenceCoreTests: XCTestCase {
         )
     }
 
+    func testAssetPackTrustPolicy_decodesPublisherProfilesAndDefaultsLegacyDocuments() throws {
+        let profileJSON = """
+        {
+          "version": "asset-trust.remote.profiled.v1",
+          "trustedPublisherPublicKeys": {
+            "mingsi.remote.publisher": ["remote-public-key"]
+          },
+          "publisherProfiles": [
+            {
+              "id": "mingsi.remote.publisher",
+              "displayName": "Remote Publisher",
+              "websiteURL": "https://publisher.mingsi.test",
+              "trustSummary": "Ships signed Prompt and Lens packs."
+            }
+          ],
+          "revokedPublisherIds": []
+        }
+        """
+        let policy = try Self.assetPackJSONDecoder.decode(AssetPackTrustPolicy.self, from: Data(profileJSON.utf8))
+
+        XCTAssertEqual(
+            policy.publisherProfiles,
+            [
+                AssetPackPublisherProfile(
+                    id: "mingsi.remote.publisher",
+                    displayName: "Remote Publisher",
+                    websiteURL: URL(string: "https://publisher.mingsi.test")!,
+                    trustSummary: "Ships signed Prompt and Lens packs."
+                )
+            ]
+        )
+        XCTAssertEqual(policy.publisherProfile(for: "mingsi.remote.publisher")?.displayName, "Remote Publisher")
+        XCTAssertNil(policy.publisherProfile(for: "missing.publisher"))
+
+        let legacyJSON = """
+        {
+          "version": "asset-trust.remote.legacy.v1",
+          "trustedPublisherPublicKeys": {
+            "mingsi.remote.publisher": ["remote-public-key"]
+          },
+          "revokedPublisherIds": []
+        }
+        """
+        let legacyPolicy = try Self.assetPackJSONDecoder.decode(AssetPackTrustPolicy.self, from: Data(legacyJSON.utf8))
+
+        XCTAssertEqual(legacyPolicy.publisherProfiles, [])
+    }
+
     func testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsUnsignedAndTamperedDocuments() throws {
         let unsigned = AssetPackTrustPolicyDocument(
             policies: [
@@ -1686,6 +1734,36 @@ final class PersistenceCoreTests: XCTestCase {
             tampered.signatureVerifier.publicKeyStrings(
                 for: "mingsi.remote.publisher",
                 verificationPolicyVersion: "asset-trust.remote.unsigned.v1"
+            ).isEmpty
+        )
+    }
+
+    func testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsPublisherProfileTampering() throws {
+        let unsigned = AssetPackTrustPolicyDocument(
+            policies: [
+                AssetPackTrustPolicy(
+                    version: "asset-trust.remote.profiled.v1",
+                    trustedPublisherPublicKeys: [
+                        "mingsi.remote.publisher": ["remote-public-key"]
+                    ],
+                    publisherProfiles: [
+                        AssetPackPublisherProfile(
+                            id: "mingsi.remote.publisher",
+                            displayName: "Remote Publisher",
+                            websiteURL: URL(string: "https://publisher.mingsi.test")!,
+                            trustSummary: "Ships signed Prompt and Lens packs."
+                        )
+                    ]
+                )
+            ]
+        )
+        var tampered = try Self.signedTrustPolicyDocument(unsigned)
+        tampered.policies[0].publisherProfiles[0].displayName = "Tampered Publisher"
+
+        XCTAssertTrue(
+            tampered.signatureVerifier.publicKeyStrings(
+                for: "mingsi.remote.publisher",
+                verificationPolicyVersion: "asset-trust.remote.profiled.v1"
             ).isEmpty
         )
     }

@@ -1788,6 +1788,7 @@ final class AppStore: ObservableObject {
         do {
             let manifest = try Self.assetPackJSONDecoder.decode(AssetPackInstallManifest.self, from: data)
             let signatureVerifier: AssetPackSignatureVerifier?
+            var publisherProfileSummary: String?
             if let trustPolicyURL = manifest.trustPolicyURL ?? fallbackTrustPolicyURL {
                 let trustPolicyData: Data
                 do {
@@ -1803,6 +1804,7 @@ final class AppStore: ObservableObject {
                         trustPolicyDocument,
                         sourceURL: trustPolicyURL
                     )
+                    publisherProfileSummary = Self.assetPackTrustPolicyPublisherSummary(trustPolicyDocument)
                     signatureVerifier = AssetPackSignatureVerifier.combining([
                         trustPolicyDocument.signatureVerifier,
                         persistedVerifier
@@ -1819,7 +1821,7 @@ final class AppStore: ObservableObject {
                 signatureVerifier: signatureVerifier,
                 requiredVerificationPolicyVersion: requiredVerificationPolicyVersion
             )
-            assetPackInstallMessage = "已从远程清单安装：\(Self.assetPackInstallSummary(report))"
+            assetPackInstallMessage = "已从远程清单安装：\(Self.assetPackInstallSummary(report))\(publisherProfileSummary ?? "")"
             return report
         } catch {
             if assetPackInstallMessage.isEmpty || assetPackInstallMessage.hasPrefix("已") {
@@ -2237,6 +2239,22 @@ final class AppStore: ObservableObject {
         let rejectionDetails = assetPackInstallRejectionSummary(report)
         guard !rejectionDetails.isEmpty else { return base }
         return "\(base)拒绝原因：\(rejectionDetails)。"
+    }
+
+    private static func assetPackTrustPolicyPublisherSummary(_ document: AssetPackTrustPolicyDocument) -> String? {
+        var seenPublisherIds: Set<String> = []
+        let names = document.policies
+            .flatMap(\.publisherProfiles)
+            .compactMap { profile -> String? in
+                guard seenPublisherIds.insert(profile.id).inserted else { return nil }
+                let displayName = profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let fallbackId = profile.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !displayName.isEmpty { return displayName }
+                return fallbackId.isEmpty ? nil : fallbackId
+            }
+
+        guard !names.isEmpty else { return nil }
+        return "信任发布者：\(names.joined(separator: "、"))。"
     }
 
     private static func assetPackInstallRejectionSummary(_ report: AssetPackInstallValidationReport) -> String {

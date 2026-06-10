@@ -1476,6 +1476,77 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "remote.policy.questions.v1")
     }
 
+    func testFetchAndInstallAssetPackInstallManifest_surfacesRemotePublisherProfiles() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/assets/trust-policy.json")!
+        let remotePolicyVersion = "asset-trust.remote.profiled.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.profiled-policy",
+            version: "2026.06",
+            displayName: "Profiled Publisher Prompt Pack",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "profiled.policy.questions.v1",
+                    userText: "Profiled publisher prompt should be active."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let manifest = AssetPackInstallManifest(
+            trustPolicyURL: policyURL,
+            promptPacks: [trustedPrompt]
+        )
+        let policy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        publisherProfiles: [
+                            AssetPackPublisherProfile(
+                                id: "mingsi.test.publisher",
+                                displayName: "MingSi Test Publisher",
+                                websiteURL: URL(string: "https://publisher.mingsi.test")!,
+                                trustSummary: "Publishes signed Prompt and Lens packs."
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                remoteURL: try JSONEncoder().encode(manifest),
+                policyURL: try JSONEncoder().encode(policy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let report = try await store.fetchAndInstallAssetPackInstallManifest(
+            from: remoteURL,
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.profiled-policy"])
+        XCTAssertTrue(store.assetPackInstallMessage.contains("信任发布者：MingSi Test Publisher。"))
+    }
+
     func testFetchAndInstallAssetPackInstallManifest_rejectsUnsignedRemoteTrustPolicy() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let remoteURL = URL(string: "https://registry.mingsi.test/assets/install-manifest.json")!

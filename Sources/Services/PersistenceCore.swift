@@ -3409,24 +3409,75 @@ struct AssetPackTrustPolicySignatureVerifier {
     }
 }
 
+struct AssetPackPublisherProfile: Codable, Equatable, Identifiable {
+    var id: String
+    var displayName: String
+    var websiteURL: URL?
+    var trustSummary: String
+
+    init(
+        id: String,
+        displayName: String,
+        websiteURL: URL? = nil,
+        trustSummary: String = ""
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.websiteURL = websiteURL
+        self.trustSummary = trustSummary
+    }
+}
+
 struct AssetPackTrustPolicy: Codable, Equatable {
     var version: String
     var trustedPublisherPublicKeys: [String: [String]]
+    var publisherProfiles: [AssetPackPublisherProfile]
     var revokedPublisherIds: [String]
 
     init(
         version: String,
         trustedPublisherPublicKeys: [String: [String]],
+        publisherProfiles: [AssetPackPublisherProfile] = [],
         revokedPublisherIds: [String] = []
     ) {
         self.version = version
         self.trustedPublisherPublicKeys = trustedPublisherPublicKeys
+        self.publisherProfiles = publisherProfiles
         self.revokedPublisherIds = revokedPublisherIds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case trustedPublisherPublicKeys
+        case publisherProfiles
+        case revokedPublisherIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(String.self, forKey: .version)
+        trustedPublisherPublicKeys = try container.decode([String: [String]].self, forKey: .trustedPublisherPublicKeys)
+        publisherProfiles = try container.decodeIfPresent([AssetPackPublisherProfile].self, forKey: .publisherProfiles) ?? []
+        revokedPublisherIds = try container.decodeIfPresent([String].self, forKey: .revokedPublisherIds) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encode(trustedPublisherPublicKeys, forKey: .trustedPublisherPublicKeys)
+        if !publisherProfiles.isEmpty {
+            try container.encode(publisherProfiles, forKey: .publisherProfiles)
+        }
+        try container.encode(revokedPublisherIds, forKey: .revokedPublisherIds)
     }
 
     func publicKeys(for publisherId: String) -> [String] {
         guard !Set(revokedPublisherIds).contains(publisherId) else { return [] }
         return trustedPublisherPublicKeys[publisherId] ?? []
+    }
+
+    func publisherProfile(for publisherId: String) -> AssetPackPublisherProfile? {
+        publisherProfiles.first { $0.id == publisherId }
     }
 }
 

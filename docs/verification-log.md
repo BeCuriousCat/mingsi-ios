@@ -5964,3 +5964,49 @@ Result:
 Residual risk:
 
 - Real BYOK GLM network success remains externally blocked until a user-provided key is configured and an external call window is approved.
+
+## 2026-06-11: Remote Trust Policy Publisher Profile Boundary
+
+Scope:
+
+- Add signed publisher profile metadata to remote trust-policy documents so publisher onboarding has an auditable identity boundary, not only a publisher id to public-key map.
+- Keep legacy trust-policy JSON compatible and preserve no-profile policy signatures by omitting empty profile arrays during encoding.
+- Surface signed publisher display names in remote manifest install status messages.
+
+Changed areas:
+
+- `Sources/Services/PersistenceCore.swift`
+- `Sources/App/AppStore.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicy_decodesPublisherProfilesAndDefaultsLegacyDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsPublisherProfileTampering
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_surfacesRemotePublisherProfiles
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyDocumentSignatureVerifier_allowsSignedDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsUnsignedAndTamperedDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyRepository_saveAndLoadDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicy_decodesPublisherProfilesAndDefaultsLegacyDocuments -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackTrustPolicyDocumentSignatureVerifier_rejectsPublisherProfileTampering -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_surfacesRemotePublisherProfiles -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+git diff --check
+```
+
+Result:
+
+- RED first failed at compile time because `AssetPackPublisherProfile`, `AssetPackTrustPolicy.publisherProfiles`, and `publisherProfile(for:)` did not exist.
+- Added `AssetPackPublisherProfile` with `id`, `displayName`, `websiteURL`, and `trustSummary`.
+- `AssetPackTrustPolicy` now decodes missing `publisherProfiles` as `[]`, omits empty profiles during encoding, and can look up a publisher profile by id.
+- RED then failed at the AppStore layer because a valid remote trust policy with publisher profiles installed successfully but did not surface the signed publisher display name.
+- Remote manifest install messages now append `信任发布者：...` when the fetched trust policy has a valid registry-root signature and publisher profiles.
+- Focused profile model/signature GREEN passed with 2 tests and 0 failures.
+- Focused AppStore GREEN passed with 1 test and 0 failures.
+- Related trust-policy/remote-install regression coverage passed with 9 tests and 0 failures.
+- Full `MingSiTests` passed with 579 executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 executed and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This adds local trust-policy identity metadata and install visibility only; it does not add a real external publisher onboarding service, external key-distribution portal, remote registry acceptance run, or live BYOK GLM confirmation.
