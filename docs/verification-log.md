@@ -2,6 +2,46 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-10: Settings Remote Asset Pack Registry Catalog Surface
+
+Scope:
+
+- Render the remote asset-pack registry catalog boundary in Settings instead of leaving it AppStore-only.
+- Add a catalog URL input and fetch action using `SettingsAutomationID.assetPackRegistryCatalogURLField` and `SettingsAutomationID.assetPackRegistryCatalogFetchAction`.
+- Render fetched `AssetPackRegistryCatalogEntry` rows and expose per-entry install actions through `SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId:)`.
+- Keep entry install on the existing trusted manifest fetch/install path through `AppStore.installAssetPackRegistryCatalogEntry`.
+- Prove the rendered fetch action is drivable through iOS UI automation and reports fetch failures through the existing asset-pack install message slot.
+
+Changed areas:
+
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/UI/MingSiUITests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testSettingsAssetPackRegistryCatalogFetchReportsFailureThroughIdentifier
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+git diff --check
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+```
+
+Result:
+
+- RED failed because `settings.asset-pack-registry.catalog-url-field` was absent from rendered Settings.
+- GREEN passed with 1 UI test and 0 failures after adding the catalog URL input, fetch button, entry list, entry install buttons, and Settings helper actions.
+- Full `MingSiUITests` passed with 9 tests and 0 failures after adding the rendered catalog surface.
+- `git diff --check` passed with no output.
+- Full `MingSiTests` passed with 557 tests, 1 skipped, and 0 failures.
+- The UI test launches the Debug Settings asset-pack fixture, finds `settings.asset-pack-registry.catalog-url-field` prefilled with `http://127.0.0.1:1/mingsi-asset-pack-catalog.json`, taps `settings.asset-pack-registry.catalog-fetch-action`, and asserts `settings.asset-pack-manifest.message` contains `获取远程资产包目录失败`.
+
+Residual risk:
+
+- This is manual catalog browsing and install selection. It still does not add background registry sync, a real external registry service, publisher onboarding, key-distribution UX, or a live external registry acceptance run.
+- Real BYOK GLM network success remains externally blocked until a user-provided key is configured and an external call window is approved.
+
 ## 2026-06-10: Remote Asset Pack Registry Catalog Boundary
 
 Scope:

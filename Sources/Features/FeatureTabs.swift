@@ -2108,6 +2108,9 @@ struct SettingsView: View {
     @State private var assetPackManifestRemoteURLInput = AppStore.shouldUseVisualQASettingsAssetPackManifestFixture()
         ? "http://127.0.0.1:1/mingsi-asset-pack-manifest.json"
         : ""
+    @State private var assetPackRegistryCatalogURLInput = AppStore.shouldUseVisualQASettingsAssetPackManifestFixture()
+        ? "http://127.0.0.1:1/mingsi-asset-pack-catalog.json"
+        : ""
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
@@ -2348,6 +2351,79 @@ struct SettingsView: View {
                     .foregroundStyle(store.assetPackInstallMessage.contains("失败") || store.assetPackInstallMessage.contains("不可用") ? DS.caution : DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(SettingsAutomationID.assetPackManifestMessage)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("远程目录 URL")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text("先获取目录，再选择其中的资产包条目安装。每个条目仍会走清单信任校验。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+
+                HStack(spacing: 8) {
+                    SettingsTextField(
+                        placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
+                        text: $assetPackRegistryCatalogURLInput,
+                        keyboardType: .URL,
+                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistryCatalogURLField
+                    )
+
+                    Button {
+                        fetchRemoteAssetPackRegistryCatalog()
+                    } label: {
+                        Label("获取目录", systemImage: "list.bullet.rectangle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.accent)
+                    .controlSize(.small)
+                    .disabled(assetPackRegistryCatalogURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogFetchAction)
+                }
+                .font(.footnote.weight(.semibold))
+            }
+
+            if !store.assetPackRegistryCatalogEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("远程目录条目")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+
+                    ForEach(store.assetPackRegistryCatalogEntries) { entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(entry.displayName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(DS.ink)
+                                    Text(entry.summary)
+                                        .font(.caption)
+                                        .foregroundStyle(DS.mutedInk)
+                                        .lineLimit(2)
+                                }
+
+                                Spacer(minLength: 0)
+
+                                Button {
+                                    installAssetPackRegistryCatalogEntry(entry.id)
+                                } label: {
+                                    Label("安装", systemImage: "arrow.down.circle")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .font(.caption.weight(.semibold))
+                                .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId: entry.id))
+                            }
+
+                            Text(entry.manifestURL.absoluteString)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(DS.mutedInk)
+                                .lineLimit(1)
+                        }
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -3097,6 +3173,36 @@ struct SettingsView: View {
             } catch {
                 if store.assetPackInstallMessage.isEmpty {
                     store.assetPackInstallMessage = "获取远程资产包清单失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func fetchRemoteAssetPackRegistryCatalog() {
+        let trimmed = assetPackRegistryCatalogURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), !trimmed.isEmpty else {
+            store.assetPackInstallMessage = "获取远程资产包目录失败：URL 格式不正确。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.fetchAssetPackRegistryCatalog(from: url)
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "获取远程资产包目录失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func installAssetPackRegistryCatalogEntry(_ entryId: String) {
+        Task {
+            do {
+                _ = try await store.installAssetPackRegistryCatalogEntry(entryId: entryId)
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "安装远程资产包条目失败：\(error.localizedDescription)"
                 }
             }
         }

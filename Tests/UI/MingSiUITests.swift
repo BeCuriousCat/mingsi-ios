@@ -133,6 +133,24 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(message.label.contains("获取远程资产包清单失败"))
     }
 
+    func testSettingsAssetPackRegistryCatalogFetchReportsFailureThroughIdentifier() throws {
+        let app = settingsApp()
+        app.launch()
+
+        let catalogURLField = app.textFields["settings.asset-pack-registry.catalog-url-field"]
+        XCTAssertTrue(catalogURLField.waitForExistence(timeout: 8))
+        XCTAssertEqual(catalogURLField.value as? String, "http://127.0.0.1:1/mingsi-asset-pack-catalog.json")
+
+        let fetchAction = app.descendants(matching: .any)["settings.asset-pack-registry.catalog-fetch-action"]
+        XCTAssertTrue(fetchAction.waitForExistence(timeout: 8))
+        XCTAssertTrue(fetchAction.isEnabled)
+        fetchAction.tap()
+
+        let message = app.staticTexts["settings.asset-pack-manifest.message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 8))
+        XCTAssertTrue(message.label.contains("获取远程资产包目录失败"))
+    }
+
     private func seededTodayApp(stage: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = "今天用 UI Test 验证 Today 自动化入口。"
