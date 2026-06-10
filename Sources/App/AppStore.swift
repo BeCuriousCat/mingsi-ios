@@ -1643,6 +1643,90 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func loadAssetPackRegistrySubscriptions() async {
+        guard let assetPackRegistrySubscriptionRepository else {
+            assetPackRegistrySubscriptions = []
+            assetPackInstallMessage = "资产包目录订阅不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+            let enabledCount = assetPackRegistrySubscriptions.filter(\.isEnabled).count
+            assetPackInstallMessage = "已加载 \(assetPackRegistrySubscriptions.count) 个资产包目录订阅，启用 \(enabledCount) 个。"
+        } catch {
+            assetPackRegistrySubscriptions = []
+            assetPackInstallMessage = "读取资产包目录订阅失败：\(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func saveAssetPackRegistrySubscription(
+        displayName: String,
+        catalogURL: URL
+    ) async throws -> AssetPackRegistrySubscription {
+        guard let assetPackRegistrySubscriptionRepository else {
+            assetPackInstallMessage = "资产包目录订阅不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            assetPackInstallMessage = "保存资产包目录订阅失败：名称不能为空。"
+            throw PersistenceError.validationFailed("Asset pack registry subscription name is required")
+        }
+        guard catalogURL.scheme != nil else {
+            assetPackInstallMessage = "保存资产包目录订阅失败：URL 必须是绝对地址。"
+            throw PersistenceError.validationFailed("Asset pack registry subscription URL must be absolute")
+        }
+
+        let existingSubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+        let existing = existingSubscriptions.first { $0.catalogURL == catalogURL }
+        let now = Date()
+        let subscription = AssetPackRegistrySubscription(
+            id: existing?.id ?? Self.assetPackRegistrySubscriptionId(for: catalogURL),
+            schemaVersion: existing?.schemaVersion ?? 1,
+            displayName: trimmedName,
+            catalogURL: catalogURL,
+            syncPolicyVersion: existing?.syncPolicyVersion ?? AssetPackRegistrySubscription.currentSyncPolicyVersion,
+            isEnabled: existing?.isEnabled ?? true,
+            lastSyncedAt: existing?.lastSyncedAt,
+            lastSyncStatus: existing?.lastSyncStatus ?? .neverSynced,
+            lastSyncMessage: existing?.lastSyncMessage ?? "",
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+        )
+
+        try await assetPackRegistrySubscriptionRepository.saveSubscription(subscription)
+        assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+        assetPackInstallMessage = "已保存资产包目录订阅：\(trimmedName)。"
+        return subscription
+    }
+
+    func setAssetPackRegistrySubscription(_ subscriptionId: String, isEnabled: Bool) async {
+        guard let assetPackRegistrySubscriptionRepository else {
+            assetPackRegistrySubscriptions = []
+            assetPackInstallMessage = "资产包目录订阅不可用：本地数据库未启用。"
+            return
+        }
+
+        do {
+            let subscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+            guard var subscription = subscriptions.first(where: { $0.id == subscriptionId }) else {
+                assetPackInstallMessage = "未找到资产包目录订阅：\(subscriptionId)。"
+                return
+            }
+
+            subscription.isEnabled = isEnabled
+            subscription.updatedAt = .now
+            try await assetPackRegistrySubscriptionRepository.saveSubscription(subscription)
+            assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+            assetPackInstallMessage = "\(isEnabled ? "已启用" : "已停用")资产包目录订阅：\(subscription.displayName)。"
+        } catch {
+            assetPackInstallMessage = "更新资产包目录订阅失败：\(error.localizedDescription)"
+        }
+    }
+
     @discardableResult
     func importAssetPackInstallManifest(from data: Data) async throws -> AssetPackInstallValidationReport {
         guard promptAssetPackRepository != nil, lensAssetPackRepository != nil else {
@@ -2066,6 +2150,18 @@ final class AppStore: ObservableObject {
         let rejectedPromptCount = report.rejectedPromptPacks.count
         let rejectedLensCount = report.rejectedLensPacks.count
         return "已安装 \(installedPromptCount) 个 Prompt 包、\(installedLensCount) 个透镜包；拒绝 \(rejectedPromptCount) 个 Prompt 包、\(rejectedLensCount) 个透镜包。"
+    }
+
+    private static func assetPackRegistrySubscriptionId(for catalogURL: URL) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let normalized = catalogURL.absoluteString.lowercased()
+        let sanitized = normalized.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : "_" }
+            .reduce(into: "") { $0.append($1) }
+            .split(separator: "_")
+            .joined(separator: "_")
+        let suffix = sanitized.isEmpty ? "catalog" : String(sanitized.prefix(64))
+        return "registry.\(suffix)"
     }
 
     private static func canUseAsRuntimeLensPack(_ pack: LensAssetPack) -> Bool {

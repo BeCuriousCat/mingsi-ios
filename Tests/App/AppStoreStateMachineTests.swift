@@ -1943,6 +1943,60 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertNil(disabled.lastSyncedAt)
     }
 
+    func testSaveAssetPackRegistrySubscription_persistsAndLoadsForSettingsManagement() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let saved = try await store.saveAssetPackRegistrySubscription(
+            displayName: "MingSi Registry",
+            catalogURL: catalogURL
+        )
+
+        XCTAssertEqual(saved.displayName, "MingSi Registry")
+        XCTAssertEqual(saved.catalogURL, catalogURL)
+        XCTAssertEqual(saved.lastSyncStatus, .neverSynced)
+        XCTAssertEqual(store.assetPackRegistrySubscriptions.map(\.id), [saved.id])
+        XCTAssertTrue(store.assetPackInstallMessage.contains("已保存资产包目录订阅"))
+
+        let reloadedStore = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await reloadedStore.loadAssetPackRegistrySubscriptions()
+
+        XCTAssertEqual(reloadedStore.assetPackRegistrySubscriptions.map(\.id), [saved.id])
+        XCTAssertEqual(reloadedStore.assetPackRegistrySubscriptions.first?.displayName, "MingSi Registry")
+        XCTAssertTrue(reloadedStore.assetPackInstallMessage.contains("已加载 1 个资产包目录订阅，启用 1 个"))
+    }
+
+    func testSetAssetPackRegistrySubscriptionEnabled_updatesInventoryAndSyncScope() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        let saved = try await store.saveAssetPackRegistrySubscription(
+            displayName: "MingSi Registry",
+            catalogURL: catalogURL
+        )
+
+        await store.setAssetPackRegistrySubscription(saved.id, isEnabled: false)
+        let fetcher = FakeAssetPackInstallManifestFetcher(dataByURL: [catalogURL: Data()])
+        let syncedEntries = try await store.syncAssetPackRegistrySubscriptions(fetcher: fetcher)
+
+        XCTAssertEqual(store.assetPackRegistrySubscriptions.first?.isEnabled, false)
+        XCTAssertEqual(fetcher.requestedURLs, [])
+        XCTAssertEqual(syncedEntries, [])
+        XCTAssertEqual(store.assetPackInstallMessage, "没有已启用的资产包目录订阅。")
+    }
+
     func testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRepo = SQLitePromptAssetPackRepository(database: database)
@@ -5831,6 +5885,11 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogURLField, "settings.asset-pack-registry.catalog-url-field")
         XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogFetchAction, "settings.asset-pack-registry.catalog-fetch-action")
         XCTAssertEqual(SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId: "marketplace.coach"), "settings.asset-pack-registry.marketplace_coach.install-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionNameField, "settings.asset-pack-registry.subscription-name-field")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionURLField, "settings.asset-pack-registry.subscription-url-field")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionSaveAction, "settings.asset-pack-registry.subscription-save-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionSyncAction, "settings.asset-pack-registry.subscription-sync-action")
+        XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionToggleAction(subscriptionId: "mingsi.registry.default"), "settings.asset-pack-registry.mingsi_registry_default.subscription-toggle-action")
         XCTAssertEqual(SettingsAutomationID.assetPackManifestMessage, "settings.asset-pack-manifest.message")
     }
 

@@ -151,6 +151,20 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(message.label.contains("获取远程资产包目录失败"))
     }
 
+    func testSettingsAssetPackRegistrySubscriptionControlsRenderThroughIdentifiers() throws {
+        let app = settingsApp()
+        app.launch()
+
+        let nameField = app.textFields["settings.asset-pack-registry.subscription-name-field"]
+        scrollToElement(nameField, in: app)
+        XCTAssertTrue(nameField.exists)
+
+        let urlField = app.textFields["settings.asset-pack-registry.subscription-url-field"]
+        XCTAssertTrue(urlField.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["settings.asset-pack-registry.subscription-save-action"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settings.asset-pack-registry.subscription-sync-action"].exists)
+    }
+
     private func seededTodayApp(stage: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = "今天用 UI Test 验证 Today 自动化入口。"

@@ -10,6 +10,10 @@ enum SettingsAutomationID {
     static let assetPackManifestRemoteInstallAction = "settings.asset-pack-manifest.remote-install-action"
     static let assetPackRegistryCatalogURLField = "settings.asset-pack-registry.catalog-url-field"
     static let assetPackRegistryCatalogFetchAction = "settings.asset-pack-registry.catalog-fetch-action"
+    static let assetPackRegistrySubscriptionNameField = "settings.asset-pack-registry.subscription-name-field"
+    static let assetPackRegistrySubscriptionURLField = "settings.asset-pack-registry.subscription-url-field"
+    static let assetPackRegistrySubscriptionSaveAction = "settings.asset-pack-registry.subscription-save-action"
+    static let assetPackRegistrySubscriptionSyncAction = "settings.asset-pack-registry.subscription-sync-action"
     static let assetPackManifestMessage = "settings.asset-pack-manifest.message"
     static let lensPackCard = "settings.lens-pack.card"
     static let lensPackRefreshAction = "settings.lens-pack.refresh-action"
@@ -32,6 +36,10 @@ enum SettingsAutomationID {
 
     static func assetPackRegistryCatalogEntryInstallAction(entryId: String) -> String {
         "settings.asset-pack-registry.\(sanitized(entryId)).install-action"
+    }
+
+    static func assetPackRegistrySubscriptionToggleAction(subscriptionId: String) -> String {
+        "settings.asset-pack-registry.\(sanitized(subscriptionId)).subscription-toggle-action"
     }
 
     private static func sanitized(_ value: String) -> String {
@@ -2111,6 +2119,8 @@ struct SettingsView: View {
     @State private var assetPackRegistryCatalogURLInput = AppStore.shouldUseVisualQASettingsAssetPackManifestFixture()
         ? "http://127.0.0.1:1/mingsi-asset-pack-catalog.json"
         : ""
+    @State private var assetPackRegistrySubscriptionNameInput = ""
+    @State private var assetPackRegistrySubscriptionURLInput = ""
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
@@ -2143,6 +2153,7 @@ struct SettingsView: View {
                 await store.loadRecentPromptEvalRuns()
                 await store.loadLensAssetPacks()
                 await store.loadPromptAssetPacks()
+                await store.loadAssetPackRegistrySubscriptions()
             }
         }
     }
@@ -2422,6 +2433,112 @@ struct SettingsView: View {
                         }
                         .padding(10)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("目录订阅")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ink)
+                        Text("保存常用目录后，可统一同步并安装条目。")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        syncAssetPackRegistrySubscriptions()
+                    } label: {
+                        Label("同步", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.footnote.weight(.semibold))
+                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSyncAction)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SettingsTextField(
+                        placeholder: "MingSi Registry",
+                        text: $assetPackRegistrySubscriptionNameInput,
+                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionNameField
+                    )
+
+                    SettingsTextField(
+                        placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
+                        text: $assetPackRegistrySubscriptionURLInput,
+                        keyboardType: .URL,
+                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionURLField
+                    )
+
+                    HStack(spacing: 8) {
+                        Button {
+                            saveAssetPackRegistrySubscription()
+                        } label: {
+                            Label("保存订阅", systemImage: "bookmark")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.accent)
+                        .controlSize(.small)
+                        .disabled(
+                            assetPackRegistrySubscriptionNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                assetPackRegistrySubscriptionURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                        .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSaveAction)
+
+                        Spacer(minLength: 0)
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+
+                if store.assetPackRegistrySubscriptions.isEmpty {
+                    Text("还没有保存的目录订阅。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(store.assetPackRegistrySubscriptions) { subscription in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Label(
+                                        subscription.displayName,
+                                        systemImage: subscription.isEnabled ? "checkmark.circle" : "pause.circle"
+                                    )
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(subscription.isEnabled ? DS.ink : DS.mutedInk)
+
+                                    Spacer(minLength: 0)
+
+                                    Button {
+                                        toggleAssetPackRegistrySubscription(subscription)
+                                    } label: {
+                                        Label(subscription.isEnabled ? "停用" : "启用", systemImage: subscription.isEnabled ? "pause" : "play")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .font(.caption.weight(.semibold))
+                                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionToggleAction(subscriptionId: subscription.id))
+                                }
+
+                                Text(subscription.catalogURL.absoluteString)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(DS.mutedInk)
+                                    .lineLimit(1)
+
+                                Text(assetPackRegistrySubscriptionStatusText(subscription))
+                                    .font(.caption)
+                                    .foregroundStyle(subscription.lastSyncStatus == .failed ? DS.caution : DS.mutedInk)
+                                    .lineLimit(2)
+                            }
+                            .padding(10)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
                     }
                 }
             }
@@ -3206,6 +3323,65 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func saveAssetPackRegistrySubscription() {
+        let trimmedName = assetPackRegistrySubscriptionNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = assetPackRegistrySubscriptionURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmedURL), !trimmedURL.isEmpty else {
+            store.assetPackInstallMessage = "保存资产包目录订阅失败：URL 格式不正确。"
+            return
+        }
+
+        Task {
+            do {
+                _ = try await store.saveAssetPackRegistrySubscription(
+                    displayName: trimmedName,
+                    catalogURL: url
+                )
+                assetPackRegistrySubscriptionNameInput = ""
+                assetPackRegistrySubscriptionURLInput = ""
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "保存资产包目录订阅失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func syncAssetPackRegistrySubscriptions() {
+        Task {
+            do {
+                _ = try await store.syncAssetPackRegistrySubscriptions()
+            } catch {
+                if store.assetPackInstallMessage.isEmpty {
+                    store.assetPackInstallMessage = "同步资产包目录订阅失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func toggleAssetPackRegistrySubscription(_ subscription: AssetPackRegistrySubscription) {
+        Task {
+            await store.setAssetPackRegistrySubscription(subscription.id, isEnabled: !subscription.isEnabled)
+        }
+    }
+
+    private func assetPackRegistrySubscriptionStatusText(_ subscription: AssetPackRegistrySubscription) -> String {
+        let statusText: String
+        switch subscription.lastSyncStatus {
+        case .neverSynced:
+            statusText = "未同步"
+        case .succeeded:
+            statusText = "上次同步成功"
+        case .failed:
+            statusText = "上次同步失败"
+        }
+
+        if subscription.lastSyncMessage.isEmpty {
+            return statusText
+        }
+        return "\(statusText)：\(subscription.lastSyncMessage)"
     }
 
     private func pasteAndSaveAPIKey() {

@@ -2,6 +2,43 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Settings Asset Pack Registry Subscription Management Surface
+
+Scope:
+
+- Add product-facing Settings controls for persisted asset-pack registry subscriptions.
+- Add `AppStore.loadAssetPackRegistrySubscriptions()`, `saveAssetPackRegistrySubscription(displayName:catalogURL:)`, and `setAssetPackRegistrySubscription(_:isEnabled:)`.
+- Render subscription name/URL fields, save action, explicit sync action, persisted subscription rows, and per-subscription enable/disable controls in the existing Settings asset-pack card.
+- Pin stable accessibility identifiers for subscription fields/actions and prove the rendered controls exist through XCTest UI automation.
+- Keep this as explicit user-triggered management and sync only; no background scheduler is added.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/UI/MingSiUITests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testSaveAssetPackRegistrySubscription_persistsAndLoadsForSettingsManagement -only-testing:MingSiTests/AppStoreStateMachineTests/testSetAssetPackRegistrySubscriptionEnabled_updatesInventoryAndSyncScope -only-testing:MingSiTests/AppStoreStateMachineTests/testSettingsAutomationIdentifiers_areStableForAssetPackInstallManifest
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testSettingsAssetPackRegistrySubscriptionControlsRenderThroughIdentifiers
+```
+
+Result:
+
+- RED failed at compile time because `AppStore` had no subscription load/save/toggle APIs and `SettingsAutomationID` had no registry-subscription identifiers.
+- GREEN passed with 3 AppStore/identifier tests and 0 failures after adding the management APIs and Settings identifiers.
+- Rendered UI automation passed with 1 UI test and 0 failures; the Settings fixture found `settings.asset-pack-registry.subscription-name-field`, `settings.asset-pack-registry.subscription-url-field`, `settings.asset-pack-registry.subscription-save-action`, and `settings.asset-pack-registry.subscription-sync-action` in the accessibility tree.
+
+Residual risk:
+
+- This is still manual Settings subscription management plus explicit sync. There is no background timer, remote scheduler policy, real registry service, publisher onboarding flow, external key-distribution channel, or live external registry acceptance run yet.
+- Real BYOK GLM network success remains externally blocked until a user-provided key is configured and an external call window is approved.
+
 ## 2026-06-10: Asset Pack Registry Subscription Sync Boundary
 
 Scope:
