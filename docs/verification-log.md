@@ -5923,3 +5923,44 @@ Result:
 Residual risk:
 
 - This improves local and test-backed install diagnostics only; it does not add real external registry onboarding, remote prompt/lens rollout, or live BYOK GLM confirmation.
+
+## 2026-06-11: Live GLM BYOK Environment Alias Compatibility
+
+Scope:
+
+- Make the live GLM acceptance harness accept the same BYOK environment names used by setup docs and simulator launch flows.
+- Preserve `MINGSI_LIVE_GLM_API_KEY` precedence for explicit live acceptance runs.
+- Keep `SIMCTL_CHILD_` environment forwarding and Keychain fallback behavior intact.
+
+Changed areas:
+
+- `Tests/Services/LiveGLMAcceptanceTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LiveGLMAcceptanceTests/testHarnessAcceptsStandardBYOKEnvironmentKeys
+git diff --check
+bash -lc 'for key in MINGSI_LIVE_GLM_API_KEY MINGSI_GLM_API_KEY GLM_API_KEY SIMCTL_CHILD_MINGSI_LIVE_GLM_API_KEY SIMCTL_CHILD_MINGSI_GLM_API_KEY SIMCTL_CHILD_GLM_API_KEY; do if [ -n "${!key:-}" ]; then printf "%s=present\n" "$key"; else printf "%s=missing\n" "$key"; fi; done'
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LiveGLMAcceptanceTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+```
+
+Result:
+
+- RED first failed because `MINGSI_GLM_API_KEY` and `GLM_API_KEY` resolved to `nil`; the live-specific precedence case already passed.
+- `LiveGLMAcceptanceHarness.resolvedAPIKey()` now checks `MINGSI_LIVE_GLM_API_KEY`, `MINGSI_GLM_API_KEY`, and `GLM_API_KEY` in order before Keychain fallback.
+- Skip guidance now lists the accepted BYOK key names instead of only the live-specific key.
+- Focused GREEN passed with 1 test and 0 failures.
+- `git diff --check` passed.
+- Local environment check found all host and `SIMCTL_CHILD_` BYOK key variables missing without printing secret values.
+- Full `LiveGLMAcceptanceTests` passed with 5 tests executed, 1 skipped, and 0 failures.
+- Full `MingSiTests` passed with 576 tests executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 tests executed and 0 failures.
+
+Residual risk:
+
+- Real BYOK GLM network success remains externally blocked until a user-provided key is configured and an external call window is approved.

@@ -25,6 +25,27 @@ final class LiveGLMAcceptanceTests: XCTestCase {
         XCTAssertEqual(try harness.resolvedAPIKey(), "simctl-secret")
     }
 
+    func testHarnessAcceptsStandardBYOKEnvironmentKeys() throws {
+        let appKeyHarness = LiveGLMAcceptanceHarness(environment: [
+            "MINGSI_LIVE_GLM_ACCEPTANCE": "1",
+            "MINGSI_GLM_API_KEY": " app-secret "
+        ])
+        let genericKeyHarness = LiveGLMAcceptanceHarness(environment: [
+            "MINGSI_LIVE_GLM_ACCEPTANCE": "1",
+            "GLM_API_KEY": " generic-secret "
+        ])
+        let precedenceHarness = LiveGLMAcceptanceHarness(environment: [
+            "MINGSI_LIVE_GLM_ACCEPTANCE": "1",
+            "MINGSI_LIVE_GLM_API_KEY": " live-secret ",
+            "MINGSI_GLM_API_KEY": " app-secret ",
+            "GLM_API_KEY": " generic-secret "
+        ])
+
+        XCTAssertEqual(try appKeyHarness.resolvedAPIKey(), "app-secret")
+        XCTAssertEqual(try genericKeyHarness.resolvedAPIKey(), "generic-secret")
+        XCTAssertEqual(try precedenceHarness.resolvedAPIKey(), "live-secret")
+    }
+
     func testHarnessFallsBackToKeychainAPIKeyWhenEnvironmentKeyIsMissing() throws {
         var loadCount = 0
         let harness = LiveGLMAcceptanceHarness(
@@ -43,7 +64,7 @@ final class LiveGLMAcceptanceTests: XCTestCase {
         let harness = LiveGLMAcceptanceHarness(environment: ProcessInfo.processInfo.environment)
 
         guard harness.isEnabled else {
-            throw XCTSkip("Set MINGSI_LIVE_GLM_ACCEPTANCE=1 and MINGSI_LIVE_GLM_API_KEY to run the live BYOK GLM acceptance test.")
+            throw XCTSkip("Set MINGSI_LIVE_GLM_ACCEPTANCE=1 and one of MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, or GLM_API_KEY to run the live BYOK GLM acceptance test.")
         }
 
         let data = try await harness.runCompleteProbe()
@@ -66,7 +87,7 @@ private struct LiveGLMAcceptanceHarness {
 
     func runCompleteProbe() async throws -> Data {
         guard let apiKey = try resolvedAPIKey() else {
-            throw XCTSkip("MINGSI_LIVE_GLM_API_KEY is not set, so the live BYOK GLM acceptance test was skipped.")
+            throw XCTSkip("No live BYOK GLM API key is set; provide MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY, or a Keychain key to run this test.")
         }
 
         let client = DirectGLMClient(
@@ -85,8 +106,10 @@ private struct LiveGLMAcceptanceHarness {
     }
 
     func resolvedAPIKey() throws -> String? {
-        if let environmentAPIKey = value("MINGSI_LIVE_GLM_API_KEY"), !environmentAPIKey.isEmpty {
-            return environmentAPIKey
+        for key in ["MINGSI_LIVE_GLM_API_KEY", "MINGSI_GLM_API_KEY", "GLM_API_KEY"] {
+            if let environmentAPIKey = value(key), !environmentAPIKey.isEmpty {
+                return environmentAPIKey
+            }
         }
 
         let keychainKey = try keychainAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines)
