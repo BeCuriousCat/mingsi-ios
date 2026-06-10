@@ -6095,3 +6095,46 @@ Residual risk:
 
 - This automates the acceptance harness path only. A real BYOK GLM network success still requires a real user-provided key and an approved external call window.
 - `shellcheck` is not installed in this local environment, so script static verification used `bash -n` plus the repository shell contract test.
+
+## 2026-06-11: UI Automation Runner Script
+
+Scope:
+
+- Turn the rendered XCTest accessibility-driver path into a reusable local command.
+- Keep Alpha UI automation repeatable with configurable destination, DerivedData, result bundle, and focused `--only-testing` selector.
+- Preserve a safe `--dry-run` mode that prints the exact command without creating an `.xcresult`.
+
+Changed areas:
+
+- `scripts/run_ui_automation.sh`
+- `Tests/Scripts/test_ui_automation_runner_script.sh`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash Tests/Scripts/test_ui_automation_runner_script.sh
+chmod +x scripts/run_ui_automation.sh Tests/Scripts/test_ui_automation_runner_script.sh && bash Tests/Scripts/test_ui_automation_runner_script.sh
+bash -n scripts/run_ui_automation.sh Tests/Scripts/test_ui_automation_runner_script.sh
+scripts/run_ui_automation.sh --dry-run
+scripts/run_ui_automation.sh --derived-data-path /tmp/mingsi-ui-automation-runner-dd --result-bundle-path /tmp/mingsi-ui-automation-runner.xcresult
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- RED first failed because `scripts/run_ui_automation.sh` did not exist.
+- The first GREEN attempt exposed that the dry-run command escaped the destination string, so the runner now prints readable configuration lines plus the copyable shell-escaped `xcodebuild` command.
+- The shell contract test verifies custom destination, DerivedData path, result bundle path, focused `--only-testing`, default `MingSiUITests`, and dry-run not creating an `.xcresult`.
+- `bash -n` passed for the runner and script test.
+- `scripts/run_ui_automation.sh --dry-run` passed and printed the default `MingSiUITests` command.
+- A real runner invocation passed `MingSiUITests` with 11 executed and 0 failures, writing `/tmp/mingsi-ui-automation-runner.xcresult`.
+- Full `MingSiTests` passed with 580 executed, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This adds a repeatable runner for existing UI automation. It does not add new rendered UI coverage beyond the current `MingSiUITests` suite.
+- Real simulator execution still depends on an available iPhone 17 simulator and the local Xcode runtime.
