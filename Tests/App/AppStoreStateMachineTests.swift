@@ -1997,6 +1997,181 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.assetPackInstallMessage, "没有已启用的资产包目录订阅。")
     }
 
+    func testSyncDueAssetPackRegistrySubscriptions_fetchesOnlyDueSubscriptions() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let staleURL = URL(string: "https://registry.mingsi.test/stale.json")!
+        let neverURL = URL(string: "https://registry.mingsi.test/never.json")!
+        let freshURL = URL(string: "https://registry.mingsi.test/fresh.json")!
+        let disabledURL = URL(string: "https://registry.mingsi.test/disabled.json")!
+
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.stale",
+            displayName: "Stale Registry",
+            catalogURL: staleURL,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-61),
+            lastSyncStatus: .succeeded,
+            lastSyncMessage: "Previous success."
+        ))
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.never",
+            displayName: "Never Registry",
+            catalogURL: neverURL,
+            isEnabled: true,
+            lastSyncedAt: nil,
+            lastSyncStatus: .neverSynced
+        ))
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.fresh",
+            displayName: "Fresh Registry",
+            catalogURL: freshURL,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-30),
+            lastSyncStatus: .succeeded,
+            lastSyncMessage: "Still fresh."
+        ))
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.disabled",
+            displayName: "Disabled Registry",
+            catalogURL: disabledURL,
+            isEnabled: false,
+            lastSyncedAt: nil,
+            lastSyncStatus: .neverSynced
+        ))
+
+        let staleCatalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.stale",
+                    displayName: "Stale Due Pack",
+                    summary: "Fetched from a stale subscription.",
+                    manifestURL: URL(string: "manifests/stale.json")!
+                )
+            ]
+        )
+        let neverCatalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.never",
+                    displayName: "Never Due Pack",
+                    summary: "Fetched from a never-synced subscription.",
+                    manifestURL: URL(string: "manifests/never.json")!
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(dataByURL: [
+            staleURL: try Self.assetPackJSONEncoder.encode(staleCatalog),
+            neverURL: try Self.assetPackJSONEncoder.encode(neverCatalog),
+            freshURL: Data(),
+            disabledURL: Data()
+        ])
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let syncedEntries = try await store.syncDueAssetPackRegistrySubscriptions(
+            now: now,
+            schedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60),
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(Set(fetcher.requestedURLs), Set([staleURL, neverURL]))
+        XCTAssertEqual(fetcher.requestedURLs.count, 2)
+        XCTAssertEqual(Set(syncedEntries.map(\.id)), Set(["marketplace.stale", "marketplace.never"]))
+        XCTAssertEqual(Set(store.assetPackRegistryCatalogEntries.map(\.id)), Set(["marketplace.stale", "marketplace.never"]))
+        XCTAssertTrue(store.assetPackInstallMessage.contains("自动同步 2 个资产包目录订阅"))
+
+        let subscriptions = try await subscriptionRepo.allSubscriptions()
+        let stale = try XCTUnwrap(subscriptions.first { $0.id == "registry.stale" })
+        let never = try XCTUnwrap(subscriptions.first { $0.id == "registry.never" })
+        let fresh = try XCTUnwrap(subscriptions.first { $0.id == "registry.fresh" })
+        let disabled = try XCTUnwrap(subscriptions.first { $0.id == "registry.disabled" })
+        XCTAssertEqual(stale.lastSyncStatus, .succeeded)
+        XCTAssertEqual(never.lastSyncStatus, .succeeded)
+        XCTAssertEqual(fresh.lastSyncStatus, .succeeded)
+        XCTAssertEqual(fresh.lastSyncMessage, "Still fresh.")
+        XCTAssertEqual(disabled.lastSyncStatus, .neverSynced)
+    }
+
+    func testSyncDueAssetPackRegistrySubscriptions_skipsNetworkWhenNothingIsDue() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let catalogURL = URL(string: "https://registry.mingsi.test/fresh.json")!
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.fresh",
+            displayName: "Fresh Registry",
+            catalogURL: catalogURL,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-30),
+            lastSyncStatus: .succeeded,
+            lastSyncMessage: "Still fresh."
+        ))
+        let fetcher = FakeAssetPackInstallManifestFetcher(dataByURL: [catalogURL: Data()])
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let syncedEntries = try await store.syncDueAssetPackRegistrySubscriptions(
+            now: now,
+            schedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60),
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [])
+        XCTAssertEqual(syncedEntries, [])
+        XCTAssertEqual(store.assetPackRegistryCatalogEntries, [])
+        XCTAssertEqual(store.assetPackInstallMessage, "资产包目录订阅未到自动同步时间。")
+    }
+
+    func testLoadPersistedState_runsDueAssetPackRegistrySubscriptionSync() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let catalogURL = URL(string: "https://registry.mingsi.test/due.json")!
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.due",
+            displayName: "Due Registry",
+            catalogURL: catalogURL,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-61),
+            lastSyncStatus: .succeeded,
+            lastSyncMessage: "Previous success."
+        ))
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.due",
+                    displayName: "Due Pack",
+                    summary: "Fetched during persisted-state load.",
+                    manifestURL: URL(string: "manifests/due.json")!
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [catalogURL: try Self.assetPackJSONEncoder.encode(catalog)]
+        )
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60),
+            assetPackRegistrySyncFetcher: fetcher,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL])
+        XCTAssertEqual(store.assetPackRegistryCatalogEntries.map(\.id), ["marketplace.due"])
+        XCTAssertTrue(store.assetPackInstallMessage.contains("自动同步 1 个资产包目录订阅"))
+    }
+
     func testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRepo = SQLitePromptAssetPackRepository(database: database)

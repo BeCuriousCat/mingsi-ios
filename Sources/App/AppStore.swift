@@ -205,6 +205,8 @@ final class AppStore: ObservableObject {
     private let reminderService: ReminderService?
     private let promptProvider: PromptProvider
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
+    private let assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy
+    private let assetPackRegistrySyncFetcher: AssetPackInstallManifestFetching
     private var runtimePromptAssetPacks: [PromptAssetPack] = []
     private var assetPackRegistryCatalogURL: URL?
     private var assetPackRegistryCatalogEntrySourceURLs: [String: URL] = [:]
@@ -286,6 +288,10 @@ final class AppStore: ObservableObject {
         reminderService: ReminderService? = nil,
         promptProvider: PromptProvider = LocalPromptProvider(),
         promptEvalSchedulePolicy: PromptEvalSchedulePolicy = PromptEvalSchedulePolicy(),
+        assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy =
+            AssetPackRegistrySubscriptionSyncSchedulePolicy(),
+        assetPackRegistrySyncFetcher: AssetPackInstallManifestFetching =
+            URLSessionAssetPackInstallManifestFetcher(),
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
         refreshesAIServiceFromKeychain: Bool = true,
@@ -319,6 +325,8 @@ final class AppStore: ObservableObject {
         self.reminderService = reminderService
         self.promptProvider = promptProvider
         self.promptEvalSchedulePolicy = promptEvalSchedulePolicy
+        self.assetPackRegistrySyncSchedulePolicy = assetPackRegistrySyncSchedulePolicy
+        self.assetPackRegistrySyncFetcher = assetPackRegistrySyncFetcher
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
@@ -1402,6 +1410,7 @@ final class AppStore: ObservableObject {
         await loadPromptAssetSelections()
         await loadRuntimeLensPacks()
         await runScheduledPromptEvalIfNeeded()
+        await runScheduledAssetPackRegistrySubscriptionSyncIfNeeded()
 
         guard let dailyEntryRepository else {
             updateSettingsMessage()
@@ -1477,6 +1486,20 @@ final class AppStore: ObservableObject {
         }
 
         updateSettingsMessage()
+    }
+
+    private func runScheduledAssetPackRegistrySubscriptionSyncIfNeeded(now: Date = .now) async {
+        guard assetPackRegistrySubscriptionRepository != nil else { return }
+
+        do {
+            _ = try await syncDueAssetPackRegistrySubscriptions(
+                now: now,
+                schedulePolicy: assetPackRegistrySyncSchedulePolicy,
+                fetcher: assetPackRegistrySyncFetcher
+            )
+        } catch {
+            assetPackInstallMessage = "自动同步资产包目录订阅失败：\(error.localizedDescription)"
+        }
     }
 
     private func runScheduledPromptEvalIfNeeded(now: Date = .now) async {
@@ -1850,6 +1873,52 @@ final class AppStore: ObservableObject {
             return []
         }
 
+        return try await syncAssetPackRegistrySubscriptions(
+            subscriptions,
+            repository: assetPackRegistrySubscriptionRepository,
+            fetcher: fetcher,
+            syncedAt: .now,
+            messagePrefix: "已同步"
+        )
+    }
+
+    @discardableResult
+    func syncDueAssetPackRegistrySubscriptions(
+        now: Date = .now,
+        schedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy = AssetPackRegistrySubscriptionSyncSchedulePolicy(),
+        fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
+    ) async throws -> [AssetPackRegistryCatalogEntry] {
+        guard let assetPackRegistrySubscriptionRepository else {
+            assetPackInstallMessage = "资产包目录自动同步不可用：本地数据库未启用。"
+            throw PersistenceError.unimplemented
+        }
+
+        let subscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
+        let dueSubscriptions = schedulePolicy.dueSubscriptions(subscriptions, now: now)
+        assetPackRegistrySubscriptions = subscriptions
+        guard !dueSubscriptions.isEmpty else {
+            assetPackRegistryCatalogEntries = []
+            assetPackRegistryCatalogEntrySourceURLs = [:]
+            assetPackInstallMessage = "资产包目录订阅未到自动同步时间。"
+            return []
+        }
+
+        return try await syncAssetPackRegistrySubscriptions(
+            dueSubscriptions,
+            repository: assetPackRegistrySubscriptionRepository,
+            fetcher: fetcher,
+            syncedAt: now,
+            messagePrefix: "自动同步"
+        )
+    }
+
+    private func syncAssetPackRegistrySubscriptions(
+        _ subscriptions: [AssetPackRegistrySubscription],
+        repository assetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository,
+        fetcher: AssetPackInstallManifestFetching,
+        syncedAt: Date,
+        messagePrefix: String
+    ) async throws -> [AssetPackRegistryCatalogEntry] {
         var entries: [AssetPackRegistryCatalogEntry] = []
         var sourceURLs: [String: URL] = [:]
         var failedCount = 0
@@ -1866,7 +1935,7 @@ final class AppStore: ObservableObject {
                     subscriptionId: subscription.id,
                     status: .succeeded,
                     message: "Fetched \(catalog.entries.count) entries.",
-                    syncedAt: .now
+                    syncedAt: syncedAt
                 )
             } catch {
                 failedCount += 1
@@ -1874,7 +1943,7 @@ final class AppStore: ObservableObject {
                     subscriptionId: subscription.id,
                     status: .failed,
                     message: error.localizedDescription,
-                    syncedAt: .now
+                    syncedAt: syncedAt
                 )
             }
         }
@@ -1884,8 +1953,8 @@ final class AppStore: ObservableObject {
         assetPackRegistryCatalogEntrySourceURLs = sourceURLs
         assetPackRegistrySubscriptions = try await assetPackRegistrySubscriptionRepository.allSubscriptions()
         assetPackInstallMessage = failedCount == 0
-            ? "已同步 \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目。"
-            : "已同步 \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目；\(failedCount) 个失败。"
+            ? "\(messagePrefix) \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目。"
+            : "\(messagePrefix) \(subscriptions.count) 个资产包目录订阅，获取 \(entries.count) 个条目；\(failedCount) 个失败。"
         return entries
     }
 

@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-11: Asset Pack Registry Subscription Auto-Sync Policy
+
+Scope:
+
+- Add `AssetPackRegistrySubscriptionSyncSchedulePolicy` to select enabled registry subscriptions that are never synced, stale, or on an older sync-policy version.
+- Add `AppStore.syncDueAssetPackRegistrySubscriptions(now:schedulePolicy:fetcher:)` to fetch only due subscriptions, record per-subscription results, and preserve fresh/disabled subscriptions without network requests.
+- Run due subscription sync from `AppStore.loadPersistedState()` through injectable schedule-policy and fetcher boundaries.
+- Keep this as app-load scheduled sync only; no iOS background task, real external registry service, publisher onboarding, external key-distribution UX, or live external registry acceptance run is added.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Sources/Services/PersistenceCore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistrySubscriptionSyncSchedulePolicy_selectsDueEnabledSubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncDueAssetPackRegistrySubscriptions_fetchesOnlyDueSubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncDueAssetPackRegistrySubscriptions_skipsNetworkWhenNothingIsDue
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadPersistedState_runsDueAssetPackRegistrySubscriptionSync
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistrySubscriptionSyncSchedulePolicy_selectsDueEnabledSubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncDueAssetPackRegistrySubscriptions_fetchesOnlyDueSubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncDueAssetPackRegistrySubscriptions_skipsNetworkWhenNothingIsDue -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadPersistedState_runsDueAssetPackRegistrySubscriptionSync
+git diff --check
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+```
+
+Result:
+
+- RED first failed because `AssetPackRegistrySubscriptionSyncSchedulePolicy` did not exist.
+- GREEN passed with 3 focused tests and 0 failures after adding the schedule policy and due-sync AppStore API.
+- A second RED failed because `AppStore` could not inject an asset-pack registry sync policy/fetcher for `loadPersistedState()`.
+- GREEN passed after adding injectable sync policy/fetcher and running due sync from persisted-state load.
+- Final verification passed: `git diff --check`, full `AppStoreStateMachineTests` with 257 tests and 0 failures, full `PersistenceCoreTests` with 125 tests and 0 failures, and full `MingSiTests` with 567 tests, 1 skipped, and 0 failures.
+
+Residual risk:
+
+- This is app-load scheduled catalog sync. It is not an iOS background refresh task and does not automatically install catalog entries.
+- Real registry service, publisher onboarding, external key-distribution UX, remote prompt/lens rollout acceptance, and real BYOK GLM network confirmation remain open.
+
 ## 2026-06-11: Settings Asset Pack Registry Subscription Management Surface
 
 Scope:

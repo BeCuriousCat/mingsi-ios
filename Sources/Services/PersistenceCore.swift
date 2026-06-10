@@ -3545,6 +3545,35 @@ struct AssetPackRegistrySubscription: Codable, Equatable, Identifiable {
     }
 }
 
+struct AssetPackRegistrySubscriptionSyncSchedulePolicy: Hashable {
+    var minimumSyncInterval: TimeInterval
+
+    init(minimumSyncInterval: TimeInterval = 24 * 60 * 60) {
+        self.minimumSyncInterval = minimumSyncInterval
+    }
+
+    func dueSubscriptions(
+        _ subscriptions: [AssetPackRegistrySubscription],
+        now: Date = .now
+    ) -> [AssetPackRegistrySubscription] {
+        subscriptions.filter { isDue($0, now: now) }
+    }
+
+    private func isDue(_ subscription: AssetPackRegistrySubscription, now: Date) -> Bool {
+        guard subscription.isEnabled else { return false }
+        if subscription.syncPolicyVersion != AssetPackRegistrySubscription.currentSyncPolicyVersion {
+            return true
+        }
+        if subscription.lastSyncStatus == .neverSynced || subscription.lastSyncedAt == nil {
+            return true
+        }
+        guard minimumSyncInterval > 0,
+              let lastSyncedAt = subscription.lastSyncedAt
+        else { return false }
+        return now.timeIntervalSince(lastSyncedAt) >= minimumSyncInterval
+    }
+}
+
 struct AssetPackInstallManifest: Codable, Equatable {
     var trustPolicyURL: URL?
     var promptPacks: [PromptAssetPack]

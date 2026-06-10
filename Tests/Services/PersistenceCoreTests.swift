@@ -2220,6 +2220,59 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(enabledIds, ["mingsi.registry.default"])
     }
 
+    func testAssetPackRegistrySubscriptionSyncSchedulePolicy_selectsDueEnabledSubscriptions() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let policy = AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60)
+        let neverSynced = AssetPackRegistrySubscription(
+            id: "registry.never",
+            displayName: "Never Synced",
+            catalogURL: URL(string: "https://registry.mingsi.test/never.json")!,
+            isEnabled: true,
+            lastSyncedAt: nil,
+            lastSyncStatus: .neverSynced
+        )
+        let stale = AssetPackRegistrySubscription(
+            id: "registry.stale",
+            displayName: "Stale",
+            catalogURL: URL(string: "https://registry.mingsi.test/stale.json")!,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-61),
+            lastSyncStatus: .succeeded
+        )
+        let fresh = AssetPackRegistrySubscription(
+            id: "registry.fresh",
+            displayName: "Fresh",
+            catalogURL: URL(string: "https://registry.mingsi.test/fresh.json")!,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-30),
+            lastSyncStatus: .succeeded
+        )
+        let disabled = AssetPackRegistrySubscription(
+            id: "registry.disabled",
+            displayName: "Disabled",
+            catalogURL: URL(string: "https://registry.mingsi.test/disabled.json")!,
+            isEnabled: false,
+            lastSyncedAt: nil,
+            lastSyncStatus: .neverSynced
+        )
+        let oldPolicy = AssetPackRegistrySubscription(
+            id: "registry.old-policy",
+            displayName: "Old Policy",
+            catalogURL: URL(string: "https://registry.mingsi.test/old-policy.json")!,
+            syncPolicyVersion: "asset-pack-registry-sync.old",
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-30),
+            lastSyncStatus: .succeeded
+        )
+
+        let due = policy.dueSubscriptions(
+            [fresh, neverSynced, disabled, stale, oldPolicy],
+            now: now
+        )
+
+        XCTAssertEqual(due.map(\.id), ["registry.never", "registry.stale", "registry.old-policy"])
+    }
+
     func testAssetPackInstallManifest_filtersInstallablePromptAndLensPacksThroughTrustGate() throws {
         let trustedPromptUnsigned = PromptAssetPack(
             id: "marketplace.prompts.installable",
