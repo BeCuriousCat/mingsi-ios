@@ -5796,3 +5796,48 @@ Residual risk:
 
 - A real BYOK GLM network success is still not proven in this environment because `MINGSI_GLM_API_KEY`, `GLM_API_KEY`, and `SIMCTL_CHILD_MINGSI_GLM_API_KEY` are absent. Keep Subtask 115 live harness as the acceptance path once a key/network window is available.
 - Remote prompt/lens registry, source trust, and signature verification remain future work.
+
+## 2026-06-11: Asset Pack Registry Publisher Trust Metadata
+
+Scope:
+
+- Continue remote registry / publisher-onboarding readiness without requiring an external registry or BYOK GLM key.
+- Add publisher and trust-policy metadata to remote asset-pack catalog entries.
+- Let catalog entry trust-policy metadata authorize a selected entry install when the fetched manifest omits `trustPolicyURL`.
+- Surface publisher/policy metadata in Settings remote catalog rows.
+
+Changed areas:
+
+- `Sources/Services/PersistenceCore.swift`
+- `Sources/App/AppStore.swift`
+- `Sources/Features/FeatureTabs.swift`
+- `Tests/Services/PersistenceCoreTests.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistryCatalog_decodesPublisherAndTrustPolicyMetadata -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistryCatalog_decodesManifestEntries -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistryCatalog_resolvesRelativeManifestURLsAgainstCatalogURL -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackRegistryCatalog_decodesPublisherAndTrustPolicyMetadata -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackInstallManifest_filtersInstallablePromptAndLensPacksThroughTrustGate -only-testing:MingSiTests/PersistenceCoreTests/testAssetPackInstallManifestInstaller_savesOnlyValidatedPromptAndLensPacks -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_reusesTrustedInstallGateAndRefreshesRuntimeAssets -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAndInstallAssetPackInstallManifest_usesRemoteTrustPolicyBeforeInstalling -only-testing:MingSiTests/AppStoreStateMachineTests/testFetchAssetPackRegistryCatalog_loadsRemoteEntriesForSettingsSelection -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncAssetPackRegistrySubscriptions_fetchesEnabledCatalogsAndRecordsStatus -only-testing:MingSiTests/AppStoreStateMachineTests/testSyncDueAssetPackRegistrySubscriptions_fetchesOnlyDueSubscriptions -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_fetchesEntryManifestAndInstallsThroughTrustGate -only-testing:MingSiTests/AppStoreStateMachineTests/testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy -only-testing:MingSiTests/AppStoreStateMachineTests/testSettingsAutomationIdentifiers_areStableForAssetPackInstallManifest
+git diff --check
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+```
+
+Result:
+
+- RED first failed as intended because `AssetPackRegistryCatalogEntry` did not accept publisher/trust-policy metadata and did not expose `trustPolicySourceURL(baseURL:)`.
+- Added optional `publisherId`, `publisherDisplayName`, `trustPolicyURL`, and `requiredVerificationPolicyVersion` catalog-entry fields with relative trust-policy URL resolution.
+- `AppStore.installAssetPackRegistryCatalogEntry` now passes a catalog-entry trust-policy URL as the fallback policy for `fetchAndInstallAssetPackInstallManifest` when the manifest itself has no `trustPolicyURL`.
+- Settings remote catalog rows now display publisher and trust-policy metadata.
+- Focused GREEN passed with 2 tests and 0 failures.
+- Registry/manifest regression coverage passed with 13 tests and 0 failures.
+- `git diff --check` passed.
+- Full `MingSiTests` passed with 574 tests executed, 1 skipped, and 0 failures.
+- Full `MingSiUITests` passed with 11 tests and 0 failures.
+
+Residual risk:
+
+- This is still local/test registry readiness. There is no real external registry service, publisher onboarding workflow, external key-distribution UX, or live registry acceptance run yet.

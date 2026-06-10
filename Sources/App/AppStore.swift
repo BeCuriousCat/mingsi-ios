@@ -1773,6 +1773,7 @@ final class AppStore: ObservableObject {
     @discardableResult
     func fetchAndInstallAssetPackInstallManifest(
         from url: URL,
+        fallbackTrustPolicyURL: URL? = nil,
         fetcher: AssetPackInstallManifestFetching = URLSessionAssetPackInstallManifestFetcher()
     ) async throws -> AssetPackInstallValidationReport {
         let data: Data
@@ -1786,7 +1787,7 @@ final class AppStore: ObservableObject {
         do {
             let manifest = try Self.assetPackJSONDecoder.decode(AssetPackInstallManifest.self, from: data)
             let signatureVerifier: AssetPackSignatureVerifier?
-            if let trustPolicyURL = manifest.trustPolicyURL {
+            if let trustPolicyURL = manifest.trustPolicyURL ?? fallbackTrustPolicyURL {
                 let trustPolicyData: Data
                 do {
                     trustPolicyData = try await fetcher.fetchTrustPolicyData(from: trustPolicyURL)
@@ -1972,7 +1973,13 @@ final class AppStore: ObservableObject {
 
         let sourceURL = assetPackRegistryCatalogEntrySourceURLs[entry.id] ?? assetPackRegistryCatalogURL
         let manifestURL = sourceURL.map { entry.sourceURL(baseURL: $0) } ?? entry.manifestURL
-        let report = try await fetchAndInstallAssetPackInstallManifest(from: manifestURL, fetcher: fetcher)
+        let fallbackTrustPolicyURL = sourceURL.flatMap { entry.trustPolicySourceURL(baseURL: $0) }
+            ?? entry.trustPolicyURL
+        let report = try await fetchAndInstallAssetPackInstallManifest(
+            from: manifestURL,
+            fallbackTrustPolicyURL: fallbackTrustPolicyURL,
+            fetcher: fetcher
+        )
         assetPackInstallMessage = "已从 \(entry.displayName) 安装：\(Self.assetPackInstallSummary(report))"
         return report
     }

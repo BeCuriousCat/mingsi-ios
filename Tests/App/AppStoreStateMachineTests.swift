@@ -2234,6 +2234,90 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.assetPackInstallMessage, "已从 Coach Starter Pack 安装：已安装 1 个 Prompt 包、0 个透镜包；拒绝 0 个 Prompt 包、0 个透镜包。")
     }
 
+    func testInstallAssetPackRegistryCatalogEntry_usesCatalogTrustPolicyWhenManifestOmitsPolicy() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let promptRepo = SQLitePromptAssetPackRepository(database: database)
+        let lensRepo = SQLiteLensAssetPackRepository(database: database)
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog/index.json")!
+        let manifestURL = URL(string: "https://registry.mingsi.test/catalog/manifests/coach.json")!
+        let policyURL = URL(string: "https://registry.mingsi.test/catalog/trust/policies/coach.json")!
+        let remotePolicyVersion = "asset-trust.remote.catalog-entry.v1"
+        let prompt = PromptAssetPack(
+            id: "marketplace.prompts.catalog-policy",
+            version: "2026.06",
+            displayName: "Catalog Policy Prompts",
+            sourceKind: .marketplace,
+            isEnabled: true,
+            templates: [
+                Self.makePromptPackTemplate(
+                    promptId: .generateQuestions,
+                    version: "catalog.policy.questions.v1",
+                    userText: "Catalog trust policy prompt should be active."
+                )
+            ]
+        )
+        let trustedPrompt = try Self.trusted(
+            prompt,
+            verificationPolicyVersion: remotePolicyVersion,
+            privateKeyBase64: Self.rotatedPublisherPrivateKeyBase64
+        )
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.catalog-policy",
+                    displayName: "Catalog Policy Pack",
+                    summary: "Catalog entry supplies trust policy metadata.",
+                    manifestURL: URL(string: "manifests/coach.json")!,
+                    updatedAt: nil,
+                    publisherId: "mingsi.test.publisher",
+                    publisherDisplayName: "MingSi Test Publisher",
+                    trustPolicyURL: URL(string: "trust/policies/coach.json")!,
+                    requiredVerificationPolicyVersion: remotePolicyVersion
+                )
+            ]
+        )
+        let manifest = AssetPackInstallManifest(promptPacks: [trustedPrompt])
+        let policy = try Self.signedTrustPolicyDocument(
+            AssetPackTrustPolicyDocument(
+                policies: [
+                    AssetPackTrustPolicy(
+                        version: remotePolicyVersion,
+                        trustedPublisherPublicKeys: [
+                            "mingsi.test.publisher": [Self.rotatedPublisherPublicKeyBase64]
+                        ],
+                        revokedPublisherIds: []
+                    )
+                ]
+            )
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [
+                catalogURL: try Self.assetPackJSONEncoder.encode(catalog),
+                manifestURL: try Self.assetPackJSONEncoder.encode(manifest),
+                policyURL: try Self.assetPackJSONEncoder.encode(policy)
+            ]
+        )
+        let store = AppStore(
+            lensAssetPackRepository: lensRepo,
+            promptAssetPackRepository: promptRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        _ = try await store.fetchAssetPackRegistryCatalog(from: catalogURL, fetcher: fetcher)
+        let report = try await store.installAssetPackRegistryCatalogEntry(
+            entryId: "marketplace.catalog-policy",
+            fetcher: fetcher
+        )
+
+        XCTAssertEqual(fetcher.requestedURLs, [catalogURL, manifestURL, policyURL])
+        XCTAssertEqual(report.installablePromptPacks.map(\.id), ["marketplace.prompts.catalog-policy"])
+        XCTAssertTrue(report.rejectedPromptPacks.isEmpty)
+        XCTAssertEqual(store.promptAssetPacks.map(\.id), ["marketplace.prompts.catalog-policy"])
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "catalog.policy.questions.v1")
+        XCTAssertEqual(store.assetPackInstallMessage, "已从 Catalog Policy Pack 安装：已安装 1 个 Prompt 包、0 个透镜包；拒绝 0 个 Prompt 包、0 个透镜包。")
+    }
+
     func testSelectLens_generateQuestionsUsesHistoricalActivePrinciplesAndShowsReferences() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let principleRepo = SQLitePrincipleRepository(database: database)

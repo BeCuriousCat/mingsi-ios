@@ -2310,6 +2310,39 @@ final class PersistenceCoreTests: XCTestCase {
         )
     }
 
+    func testAssetPackRegistryCatalog_decodesPublisherAndTrustPolicyMetadata() throws {
+        let catalogURL = URL(string: "https://registry.mingsi.test/catalog/index.json")!
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.publisher-backed",
+                    displayName: "Publisher Backed Pack",
+                    summary: "Catalog entry with publisher metadata.",
+                    manifestURL: URL(string: "manifests/publisher-backed.json")!,
+                    updatedAt: Date(timeIntervalSince1970: 1_804_032_000),
+                    publisherId: "mingsi.test.publisher",
+                    publisherDisplayName: "MingSi Test Publisher",
+                    trustPolicyURL: URL(string: "trust/policies/publisher.json")!,
+                    requiredVerificationPolicyVersion: "asset-trust.remote.catalog.v1"
+                )
+            ]
+        )
+
+        let data = try Self.assetPackJSONEncoder.encode(catalog)
+        let decoded = try Self.assetPackJSONDecoder.decode(AssetPackRegistryCatalog.self, from: data)
+        let entry = try XCTUnwrap(decoded.entries.first)
+
+        XCTAssertEqual(entry.publisherId, "mingsi.test.publisher")
+        XCTAssertEqual(entry.publisherDisplayName, "MingSi Test Publisher")
+        XCTAssertEqual(entry.trustPolicyURL, URL(string: "trust/policies/publisher.json")!)
+        XCTAssertEqual(entry.requiredVerificationPolicyVersion, "asset-trust.remote.catalog.v1")
+        XCTAssertEqual(
+            entry.trustPolicySourceURL(baseURL: catalogURL),
+            URL(string: "https://registry.mingsi.test/catalog/trust/policies/publisher.json")!
+        )
+    }
+
     func testAssetPackRegistrySubscriptionRepository_saveLoadAndRecordSyncResult() async throws {
         let repo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
         let catalogURL = URL(string: "https://registry.mingsi.test/catalog.json")!

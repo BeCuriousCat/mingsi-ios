@@ -2420,6 +2420,12 @@ struct SettingsView: View {
                                         .font(.caption)
                                         .foregroundStyle(DS.mutedInk)
                                         .lineLimit(2)
+                                    if let publisherLine = assetPackRegistryCatalogPublisherLine(entry) {
+                                        Text(publisherLine)
+                                            .font(.caption2)
+                                            .foregroundStyle(DS.mutedInk)
+                                            .lineLimit(1)
+                                    }
                                 }
 
                                 Spacer(minLength: 0)
@@ -2439,6 +2445,13 @@ struct SettingsView: View {
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(DS.mutedInk)
                                 .lineLimit(1)
+
+                            if let trustPolicyLine = assetPackRegistryCatalogTrustPolicyLine(entry) {
+                                Text(trustPolicyLine)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(DS.mutedInk)
+                                    .lineLimit(1)
+                            }
                         }
                         .padding(10)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -3309,6 +3322,22 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func assetPackRegistryCatalogPublisherLine(_ entry: AssetPackRegistryCatalogEntry) -> String? {
+        var parts: [String] = []
+        if let publisher = entry.publisherDisplayName ?? entry.publisherId {
+            parts.append("发布方 \(publisher)")
+        }
+        if let requiredPolicy = entry.requiredVerificationPolicyVersion {
+            parts.append("策略 \(requiredPolicy)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func assetPackRegistryCatalogTrustPolicyLine(_ entry: AssetPackRegistryCatalogEntry) -> String? {
+        guard let trustPolicyURL = entry.trustPolicyURL else { return nil }
+        return "信任策略 \(trustPolicyURL.relativeString)"
     }
 
     private func fetchRemoteAssetPackRegistryCatalog() {

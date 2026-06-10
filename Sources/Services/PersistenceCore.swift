@@ -3486,24 +3486,42 @@ struct AssetPackRegistryCatalogEntry: Codable, Equatable, Identifiable {
     var summary: String
     var manifestURL: URL
     var updatedAt: Date?
+    var publisherId: String?
+    var publisherDisplayName: String?
+    var trustPolicyURL: URL?
+    var requiredVerificationPolicyVersion: String?
 
     init(
         id: String,
         displayName: String,
         summary: String,
         manifestURL: URL,
-        updatedAt: Date? = nil
+        updatedAt: Date? = nil,
+        publisherId: String? = nil,
+        publisherDisplayName: String? = nil,
+        trustPolicyURL: URL? = nil,
+        requiredVerificationPolicyVersion: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.summary = summary
         self.manifestURL = manifestURL
         self.updatedAt = updatedAt
+        self.publisherId = publisherId
+        self.publisherDisplayName = publisherDisplayName
+        self.trustPolicyURL = trustPolicyURL
+        self.requiredVerificationPolicyVersion = requiredVerificationPolicyVersion
     }
 
     func sourceURL(baseURL: URL) -> URL {
         guard manifestURL.scheme == nil else { return manifestURL }
         return URL(string: manifestURL.relativeString, relativeTo: baseURL)?.absoluteURL ?? manifestURL
+    }
+
+    func trustPolicySourceURL(baseURL: URL) -> URL? {
+        guard let trustPolicyURL else { return nil }
+        guard trustPolicyURL.scheme == nil else { return trustPolicyURL }
+        return URL(string: trustPolicyURL.relativeString, relativeTo: baseURL)?.absoluteURL ?? trustPolicyURL
     }
 }
 
