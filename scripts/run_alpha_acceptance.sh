@@ -41,6 +41,8 @@ Options:
 
 Accepted BYOK key env vars, in precedence order:
   MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY
+If those are absent, the runner also checks the app Keychain item:
+  service com.codex.mingsi.glm, account glm_api_key
 USAGE
 }
 
@@ -107,14 +109,37 @@ if [[ "$SKIP_XCODE_SELECT" == "1" ]]; then
   precheck_args+=(--skip-xcode-select)
 fi
 
-provided_key_name=""
-if [[ -n "${MINGSI_LIVE_GLM_API_KEY:-}" ]]; then
-  provided_key_name="MINGSI_LIVE_GLM_API_KEY"
-elif [[ -n "${MINGSI_GLM_API_KEY:-}" ]]; then
-  provided_key_name="MINGSI_GLM_API_KEY"
-elif [[ -n "${GLM_API_KEY:-}" ]]; then
-  provided_key_name="GLM_API_KEY"
-fi
+keychain_has_key() {
+  case "${MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE:-auto}" in
+    present)
+      return 0
+      ;;
+    missing)
+      return 1
+      ;;
+    auto|"")
+      security find-generic-password -s com.codex.mingsi.glm -a glm_api_key >/dev/null 2>&1
+      ;;
+    *)
+      printf 'Invalid MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE: %s\n' "$MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE" >&2
+      return 1
+      ;;
+  esac
+}
+
+resolve_provided_key_name() {
+  if [[ -n "${MINGSI_LIVE_GLM_API_KEY:-}" ]]; then
+    printf 'MINGSI_LIVE_GLM_API_KEY'
+  elif [[ -n "${MINGSI_GLM_API_KEY:-}" ]]; then
+    printf 'MINGSI_GLM_API_KEY'
+  elif [[ -n "${GLM_API_KEY:-}" ]]; then
+    printf 'GLM_API_KEY'
+  elif keychain_has_key; then
+    printf 'Keychain'
+  fi
+}
+
+provided_key_name="$(resolve_provided_key_name)"
 
 json_escape() {
   local value="$1"

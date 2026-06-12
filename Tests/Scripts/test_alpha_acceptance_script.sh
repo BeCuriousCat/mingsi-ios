@@ -23,7 +23,7 @@ assert_not_contains() {
   [[ "$haystack" != *"$needle"* ]] || fail "expected output not to contain: $needle"
 }
 
-dry_output="$("$SCRIPT" \
+dry_output="$(MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing "$SCRIPT" \
   --dry-run \
   --skip-xcode-select \
   --summary-json "$TMP_DIR/dry-summary.json" \
@@ -63,7 +63,7 @@ assert summary["accepted_key_envs"] == ["MINGSI_LIVE_GLM_API_KEY", "MINGSI_GLM_A
 PY
 
 set +e
-missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY "$SCRIPT" --skip-xcode-select --skip-ui --summary-json "$TMP_DIR/missing-summary.json" 2>&1)"
+missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing "$SCRIPT" --skip-xcode-select --skip-ui --summary-json "$TMP_DIR/missing-summary.json" 2>&1)"
 missing_status=$?
 set -e
 
@@ -106,6 +106,24 @@ assert summary["exit_code"] == 0, summary
 assert summary["ui_automation"] == "skipped", summary
 assert summary["live_glm"] == "ready", summary
 assert summary["provided_key_env"] == "MINGSI_GLM_API_KEY", summary
+PY
+
+keychain_ready_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present "$SCRIPT" --dry-run --skip-xcode-select --skip-ui --summary-json "$TMP_DIR/keychain-summary.json")"
+assert_contains "live_glm: ready" "$keychain_ready_output"
+assert_contains "Keychain=<provided>" "$keychain_ready_output"
+[[ -f "$TMP_DIR/keychain-summary.json" ]] || fail "keychain dry-run should write summary JSON"
+python3 - "$TMP_DIR/keychain-summary.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+
+assert summary["status"] == "dry_run", summary
+assert summary["exit_code"] == 0, summary
+assert summary["ui_automation"] == "skipped", summary
+assert summary["live_glm"] == "ready", summary
+assert summary["provided_key_env"] == "Keychain", summary
 PY
 
 printf 'PASS: alpha acceptance script contract\n'

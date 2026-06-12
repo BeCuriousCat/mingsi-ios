@@ -2,6 +2,55 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-12: Alpha Keychain Preflight Alignment
+
+Scope:
+
+- Align the shell Alpha prerequisite preflight and Alpha acceptance runner with the live XCTest harness key-resolution behavior.
+- Detect accepted environment variables first, then the app Keychain item used by `KeychainAPIKeyStore`: service `com.codex.mingsi.glm`, account `glm_api_key`.
+- Keep shell output and summary JSON sanitized so simulated or real BYOK secrets are never printed.
+- Add a test-only `MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present|missing` override so script contracts can prove both missing-key and Keychain-present paths without touching the user's real Keychain or executing arbitrary shell text.
+
+Changed areas:
+
+- `scripts/check_alpha_prerequisites.sh`
+- `Tests/Scripts/test_alpha_prerequisites_script.sh`
+- `scripts/run_alpha_acceptance.sh`
+- `Tests/Scripts/test_alpha_acceptance_script.sh`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash Tests/Scripts/test_alpha_prerequisites_script.sh
+bash Tests/Scripts/test_alpha_acceptance_script.sh
+bash Tests/Scripts/test_ui_automation_runner_script.sh
+bash Tests/Scripts/test_live_glm_acceptance_script.sh
+bash -n scripts/check_alpha_prerequisites.sh Tests/Scripts/test_alpha_prerequisites_script.sh scripts/run_alpha_acceptance.sh Tests/Scripts/test_alpha_acceptance_script.sh scripts/run_ui_automation.sh Tests/Scripts/test_ui_automation_runner_script.sh scripts/run_live_glm_acceptance.sh Tests/Scripts/test_live_glm_acceptance_script.sh
+env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing scripts/check_alpha_prerequisites.sh --skip-xcode-select; rc=$?; printf 'exit_status=%s\n' "$rc"; exit 0
+tmp=$(mktemp -d); env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present scripts/run_alpha_acceptance.sh --dry-run --skip-xcode-select --skip-ui --summary-json "$tmp/alpha-summary.json"; python3 - <<PY "$tmp/alpha-summary.json"
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as handle:
+    data = json.load(handle)
+print('summary_key_env=' + data['provided_key_env'])
+PY
+rm -rf "$tmp"
+git diff --check
+```
+
+Result:
+
+- RED first failed because the shell preflight/acceptance scripts did not recognize Keychain-only BYOK state even though the live XCTest harness can use the app Keychain fallback.
+- GREEN passed after both scripts shared the same precedence: `MINGSI_LIVE_GLM_API_KEY`, `MINGSI_GLM_API_KEY`, `GLM_API_KEY`, then Keychain.
+- The script contracts now force no-key checks with `MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing`, avoiding accidental dependence on the developer's real Keychain.
+- Simulated Keychain acceptance dry-run reports `Keychain=<provided>` and writes summary JSON with `provided_key_env=Keychain` without carrying any secret value through the test harness.
+- The no-key preflight still reports `live_glm: missing_key` and exits `3`, preserving the explicit external blocker.
+
+Residual risk:
+
+- This proves local detection and sanitized reporting only. A real BYOK GLM network success still requires a user-provided key and an approved external network-call window.
+
 ## 2026-06-12: Alpha Acceptance Runner Script
 
 Scope:

@@ -21,6 +21,10 @@ Exit codes:
   0  UI automation and live GLM runner prerequisites are locally ready.
   2  Local tooling or runner files are missing.
   3  Local runners are ready, but no BYOK GLM key is visible.
+
+Key detection checks accepted environment variables first, then the app Keychain
+item used by KeychainAPIKeyStore: service com.codex.mingsi.glm, account
+glm_api_key. Set MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present|missing for tests only.
 USAGE
 }
 
@@ -80,6 +84,24 @@ fi
 
 printf 'accepted_key_envs: MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY\n'
 
+keychain_has_key() {
+  case "${MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE:-auto}" in
+    present)
+      return 0
+      ;;
+    missing)
+      return 1
+      ;;
+    auto|"")
+      security find-generic-password -s com.codex.mingsi.glm -a glm_api_key >/dev/null 2>&1
+      ;;
+    *)
+      printf 'Invalid MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE: %s\n' "$MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE" >&2
+      return 1
+      ;;
+  esac
+}
+
 provided_key_name=""
 if [[ -n "${MINGSI_LIVE_GLM_API_KEY:-}" ]]; then
   provided_key_name="MINGSI_LIVE_GLM_API_KEY"
@@ -87,6 +109,8 @@ elif [[ -n "${MINGSI_GLM_API_KEY:-}" ]]; then
   provided_key_name="MINGSI_GLM_API_KEY"
 elif [[ -n "${GLM_API_KEY:-}" ]]; then
   provided_key_name="GLM_API_KEY"
+elif keychain_has_key; then
+  provided_key_name="Keychain"
 fi
 
 if [[ -n "$provided_key_name" ]]; then

@@ -22,7 +22,7 @@ assert_not_contains() {
 }
 
 set +e
-missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY "$SCRIPT" --skip-xcode-select 2>&1)"
+missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing "$SCRIPT" --skip-xcode-select 2>&1)"
 missing_status=$?
 set -e
 
@@ -38,5 +38,10 @@ provided_output="$(MINGSI_GLM_API_KEY="super-secret-value" "$SCRIPT" --skip-xcod
 assert_contains "live_glm: ready" "$provided_output"
 assert_contains "MINGSI_GLM_API_KEY=<provided>" "$provided_output"
 assert_not_contains "super-secret-value" "$provided_output"
+
+keychain_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present "$SCRIPT" --skip-xcode-select)"
+assert_contains "live_glm: ready" "$keychain_output"
+assert_contains "Keychain=<provided>" "$keychain_output"
+assert_not_contains "live_glm: missing_key" "$keychain_output"
 
 printf 'PASS: alpha prerequisites script contract\n'
