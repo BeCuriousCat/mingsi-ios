@@ -6138,3 +6138,46 @@ Residual risk:
 
 - This adds a repeatable runner for existing UI automation. It does not add new rendered UI coverage beyond the current `MingSiUITests` suite.
 - Real simulator execution still depends on an available iPhone 17 simulator and the local Xcode runtime.
+
+## 2026-06-12: Alpha Prerequisites Preflight Script
+
+Scope:
+
+- Add a single local preflight command for the two post-MVP Alpha external prerequisites.
+- Check project/Xcode presence, the UI automation runner, the live GLM runner, and accepted BYOK key environment variables without making a network call.
+- Use machine-readable exit codes so automation can distinguish missing local tooling from the expected missing external key.
+
+Changed areas:
+
+- `scripts/check_alpha_prerequisites.sh`
+- `Tests/Scripts/test_alpha_prerequisites_script.sh`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+bash Tests/Scripts/test_alpha_prerequisites_script.sh
+chmod +x scripts/check_alpha_prerequisites.sh Tests/Scripts/test_alpha_prerequisites_script.sh && bash Tests/Scripts/test_alpha_prerequisites_script.sh
+env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY scripts/check_alpha_prerequisites.sh; rc=$?; printf 'exit_status=%s\n' "$rc"; exit 0
+bash Tests/Scripts/test_ui_automation_runner_script.sh
+bash Tests/Scripts/test_live_glm_acceptance_script.sh
+bash -n scripts/check_alpha_prerequisites.sh Tests/Scripts/test_alpha_prerequisites_script.sh scripts/run_ui_automation.sh Tests/Scripts/test_ui_automation_runner_script.sh scripts/run_live_glm_acceptance.sh Tests/Scripts/test_live_glm_acceptance_script.sh
+xcodebuild test -project MingSi.xcodeproj -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- RED first failed with exit status 127 because `scripts/check_alpha_prerequisites.sh` did not exist; the contract expected status 3 for the missing external BYOK key state.
+- The shell contract test verifies no-key output, key-present output, exit status 3 for missing key, exit status 0 when a key env var is present, UI runner dry-run readiness, live GLM runner dry-run readiness, accepted key names, and secret masking.
+- Real no-key preflight reported project, `xcodebuild`, UI automation runner, and live GLM runner as ready; it reported `live_glm: missing_key` and returned `exit_status=3`.
+- Existing UI automation runner and live GLM runner script contracts still pass.
+- `bash -n` passed for all Alpha runner/preflight scripts and contract tests.
+- Full `MingSiTests` passed with 580 executed, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This is a preflight only. It intentionally does not make a live GLM network call.
+- Real BYOK GLM acceptance still requires a user-provided key and approved external network window.
