@@ -12,6 +12,7 @@ UI_RESULT_BUNDLE_PATH="${TMPDIR:-/tmp}/mingsi-alpha-ui.xcresult"
 UI_ONLY_TESTING="MingSiUITests"
 LIVE_DERIVED_DATA_PATH="${TMPDIR:-/tmp}/mingsi-alpha-live-glm-dd"
 LIVE_OUTPUT_XCTESTRUN=""
+SUMMARY_JSON=""
 SKIP_XCODE_SELECT=0
 SKIP_UI=0
 DRY_RUN=0
@@ -32,6 +33,7 @@ Options:
   --ui-only-testing VALUE         XCTest selector for UI automation. Default: MingSiUITests.
   --live-derived-data-path PATH   DerivedData path for live GLM acceptance.
   --live-output-xctestrun PATH    Output .xctestrun path for live GLM environment injection.
+  --summary-json PATH             Write a machine-readable acceptance summary JSON.
   --skip-xcode-select             Skip checking for xcodebuild during preflight.
   --skip-ui                       Skip UI automation, but still require live GLM readiness.
   --dry-run                       Print sanitized plan and key readiness; do not run tests.
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --live-output-xctestrun)
       LIVE_OUTPUT_XCTESTRUN="${2:-}"
+      shift 2
+      ;;
+    --summary-json)
+      SUMMARY_JSON="${2:-}"
       shift 2
       ;;
     --skip-xcode-select)
@@ -110,6 +116,46 @@ elif [[ -n "${GLM_API_KEY:-}" ]]; then
   provided_key_name="GLM_API_KEY"
 fi
 
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
+
+write_summary() {
+  local status="$1"
+  local exit_code="$2"
+  local preflight_status="$3"
+  local ui_status="$4"
+  local live_status="$5"
+  [[ -n "$SUMMARY_JSON" ]] || return 0
+
+  mkdir -p "$(dirname "$SUMMARY_JSON")"
+  cat >"$SUMMARY_JSON" <<JSON
+{
+  "status": "$(json_escape "$status")",
+  "exit_code": $exit_code,
+  "preflight": "$(json_escape "$preflight_status")",
+  "ui_automation": "$(json_escape "$ui_status")",
+  "live_glm": "$(json_escape "$live_status")",
+  "provided_key_env": "$(json_escape "$provided_key_name")",
+  "accepted_key_envs": ["MINGSI_LIVE_GLM_API_KEY", "MINGSI_GLM_API_KEY", "GLM_API_KEY"],
+  "destination": "$(json_escape "$DESTINATION")",
+  "skip_ui": $([[ "$SKIP_UI" == "1" ]] && printf true || printf false),
+  "dry_run": $([[ "$DRY_RUN" == "1" ]] && printf true || printf false),
+  "ui_only_testing": "$(json_escape "$UI_ONLY_TESTING")",
+  "ui_derived_data_path": "$(json_escape "$UI_DERIVED_DATA_PATH")",
+  "ui_result_bundle_path": "$(json_escape "$UI_RESULT_BUNDLE_PATH")",
+  "live_derived_data_path": "$(json_escape "$LIVE_DERIVED_DATA_PATH")",
+  "live_output_xctestrun": "$(json_escape "$LIVE_OUTPUT_XCTESTRUN")"
+}
+JSON
+}
+
 print_key_readiness() {
   printf 'accepted_key_envs: MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY\n'
   if [[ -n "$provided_key_name" ]]; then
@@ -144,6 +190,17 @@ print_plan() {
 
 if [[ "$DRY_RUN" == "1" ]]; then
   print_plan
+  if [[ -n "$provided_key_name" ]]; then
+    live_status="ready"
+  else
+    live_status="missing_key"
+  fi
+  if [[ "$SKIP_UI" == "1" ]]; then
+    ui_status="skipped"
+  else
+    ui_status="planned"
+  fi
+  write_summary "dry_run" 0 "not_run" "$ui_status" "$live_status"
   exit 0
 fi
 
@@ -157,21 +214,27 @@ if [[ "$precheck_status" != "0" ]]; then
   if [[ "$precheck_status" == "3" ]]; then
     if [[ "$SKIP_UI" == "1" ]]; then
       printf 'ui_automation: skipped\n'
+      ui_status="skipped"
     else
       printf 'ui_automation: not_run_preflight_blocked\n'
+      ui_status="not_run_preflight_blocked"
     fi
     printf 'alpha_acceptance: blocked_missing_live_glm_key\n'
     printf 'next_step: provide a BYOK key and approved external network window, then run scripts/run_alpha_acceptance.sh\n'
+    write_summary "blocked_missing_live_glm_key" "$precheck_status" "missing_key" "$ui_status" "missing_key"
   else
     printf 'alpha_acceptance: blocked_local_prerequisites\n'
+    write_summary "blocked_local_prerequisites" "$precheck_status" "missing_local" "not_run_preflight_blocked" "not_run_preflight_blocked"
   fi
   exit "$precheck_status"
 fi
 
 printf '%s\n' "$precheck_output"
+ui_status="accepted"
 
 if [[ "$SKIP_UI" == "1" ]]; then
   printf 'ui_automation: skipped\n'
+  ui_status="skipped"
 else
   "$UI_RUNNER" \
     --destination "$DESTINATION" \
@@ -187,3 +250,4 @@ fi
   --output-xctestrun "$LIVE_OUTPUT_XCTESTRUN"
 printf 'live_glm: accepted\n'
 printf 'alpha_acceptance: accepted\n'
+write_summary "accepted" 0 "ready" "$ui_status" "accepted"

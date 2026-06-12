@@ -26,6 +26,7 @@ assert_not_contains() {
 dry_output="$("$SCRIPT" \
   --dry-run \
   --skip-xcode-select \
+  --summary-json "$TMP_DIR/dry-summary.json" \
   --ui-only-testing "MingSiUITests/MingSiUITests/testTodayReviewCardsSeedCanDriveRenderedLoopToCompletion" \
   --ui-derived-data-path "$TMP_DIR/ui-dd" \
   --ui-result-bundle-path "$TMP_DIR/ui.xcresult" \
@@ -45,9 +46,24 @@ assert_contains "$TMP_DIR/live.xctestrun" "$dry_output"
 assert_contains "accepted_key_envs: MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY" "$dry_output"
 assert_not_contains "** TEST SUCCEEDED **" "$dry_output"
 assert_not_contains "secret-value" "$dry_output"
+[[ -f "$TMP_DIR/dry-summary.json" ]] || fail "dry-run should write summary JSON when requested"
+python3 - "$TMP_DIR/dry-summary.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+
+assert summary["status"] == "dry_run", summary
+assert summary["exit_code"] == 0, summary
+assert summary["ui_automation"] == "planned", summary
+assert summary["live_glm"] == "missing_key", summary
+assert summary["provided_key_env"] == "", summary
+assert summary["accepted_key_envs"] == ["MINGSI_LIVE_GLM_API_KEY", "MINGSI_GLM_API_KEY", "GLM_API_KEY"], summary
+PY
 
 set +e
-missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY "$SCRIPT" --skip-xcode-select --skip-ui 2>&1)"
+missing_output="$(env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY "$SCRIPT" --skip-xcode-select --skip-ui --summary-json "$TMP_DIR/missing-summary.json" 2>&1)"
 missing_status=$?
 set -e
 
@@ -55,11 +71,41 @@ set -e
 assert_contains "alpha_acceptance: blocked_missing_live_glm_key" "$missing_output"
 assert_contains "ui_automation: skipped" "$missing_output"
 assert_contains "next_step: provide a BYOK key and approved external network window, then run scripts/run_alpha_acceptance.sh" "$missing_output"
+[[ -f "$TMP_DIR/missing-summary.json" ]] || fail "missing-key acceptance should write summary JSON"
+python3 - "$TMP_DIR/missing-summary.json" <<'PY'
+import json
+import sys
 
-ready_output="$(MINGSI_GLM_API_KEY="secret-value" "$SCRIPT" --dry-run --skip-xcode-select --skip-ui)"
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+
+assert summary["status"] == "blocked_missing_live_glm_key", summary
+assert summary["exit_code"] == 3, summary
+assert summary["preflight"] == "missing_key", summary
+assert summary["ui_automation"] == "skipped", summary
+assert summary["live_glm"] == "missing_key", summary
+assert summary["provided_key_env"] == "", summary
+PY
+
+ready_output="$(MINGSI_GLM_API_KEY="secret-value" "$SCRIPT" --dry-run --skip-xcode-select --skip-ui --summary-json "$TMP_DIR/ready-summary.json")"
 assert_contains "live_glm: ready" "$ready_output"
 assert_contains "MINGSI_GLM_API_KEY=<provided>" "$ready_output"
 assert_contains "skip_ui: true" "$ready_output"
 assert_not_contains "secret-value" "$ready_output"
+[[ -f "$TMP_DIR/ready-summary.json" ]] || fail "ready dry-run should write summary JSON"
+assert_not_contains "secret-value" "$(cat "$TMP_DIR/ready-summary.json")"
+python3 - "$TMP_DIR/ready-summary.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    summary = json.load(handle)
+
+assert summary["status"] == "dry_run", summary
+assert summary["exit_code"] == 0, summary
+assert summary["ui_automation"] == "skipped", summary
+assert summary["live_glm"] == "ready", summary
+assert summary["provided_key_env"] == "MINGSI_GLM_API_KEY", summary
+PY
 
 printf 'PASS: alpha acceptance script contract\n'

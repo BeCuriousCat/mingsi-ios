@@ -9,6 +9,7 @@ Scope:
 - Add a single repeatable Alpha acceptance entry point over the existing prerequisite preflight, UI automation runner, and live BYOK GLM harness.
 - Keep the command safe by default: `--dry-run` prints a sanitized plan, missing BYOK exits `3`, and the live GLM request still runs only through the existing explicit live harness.
 - Preserve key masking for `MINGSI_LIVE_GLM_API_KEY`, `MINGSI_GLM_API_KEY`, and `GLM_API_KEY`.
+- Add optional `--summary-json` output so Alpha acceptance attempts leave machine-readable evidence without exposing BYOK secrets.
 
 Changed areas:
 
@@ -26,7 +27,17 @@ bash Tests/Scripts/test_ui_automation_runner_script.sh
 bash Tests/Scripts/test_live_glm_acceptance_script.sh
 bash -n scripts/run_alpha_acceptance.sh Tests/Scripts/test_alpha_acceptance_script.sh scripts/check_alpha_prerequisites.sh Tests/Scripts/test_alpha_prerequisites_script.sh scripts/run_ui_automation.sh Tests/Scripts/test_ui_automation_runner_script.sh scripts/run_live_glm_acceptance.sh Tests/Scripts/test_live_glm_acceptance_script.sh
 scripts/run_alpha_acceptance.sh --dry-run --skip-xcode-select --skip-ui
-env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY scripts/run_alpha_acceptance.sh --skip-xcode-select --skip-ui; rc=$?; printf 'exit_status=%s\n' "$rc"; exit 0
+tmp=$(mktemp -d); env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY scripts/run_alpha_acceptance.sh --skip-xcode-select --skip-ui --summary-json "$tmp/alpha-summary.json"; rc=$?; printf 'exit_status=%s\n' "$rc"; python3 - <<PY "$tmp/alpha-summary.json"
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as handle:
+    data = json.load(handle)
+print('summary_status=' + data['status'])
+print('summary_exit_code=' + str(data['exit_code']))
+print('summary_ui=' + data['ui_automation'])
+print('summary_live=' + data['live_glm'])
+print('summary_key_env=' + data['provided_key_env'])
+PY
+rm -rf "$tmp"; exit 0
 env -u MINGSI_LIVE_GLM_API_KEY -u MINGSI_GLM_API_KEY -u GLM_API_KEY scripts/check_alpha_prerequisites.sh --skip-xcode-select; rc=$?; printf 'exit_status=%s\n' "$rc"; exit 0
 git diff --check
 ```
@@ -35,9 +46,10 @@ Result:
 
 - RED first failed with exit status `127` because `scripts/run_alpha_acceptance.sh` did not exist.
 - The first GREEN attempt failed with exit status `126` because the new script lacked executable permission; adding executable bits fixed the real CLI invocation path.
-- The script contract passed and proved dry-run planning, sanitized key output, missing-key exit `3`, `--skip-ui`, and the delegated runner command arguments.
+- The script contract passed and proved dry-run planning, sanitized key output, missing-key exit `3`, `--skip-ui`, summary JSON output, and the delegated runner command arguments.
 - Existing alpha prerequisite, UI automation runner, and live GLM runner shell contracts all passed.
 - Real no-key alpha acceptance preflight reported local project/UI/live runners ready, skipped UI by request, emitted `alpha_acceptance: blocked_missing_live_glm_key`, and exited `3` without running a live network request.
+- The no-key summary JSON recorded `status=blocked_missing_live_glm_key`, `exit_code=3`, `ui_automation=skipped`, `live_glm=missing_key`, and an empty `provided_key_env`.
 - `git diff --check` passed.
 
 Residual risk:
