@@ -1346,6 +1346,125 @@ struct CoachDecisionAssessment: Codable, Hashable {
     var learningSignals: [CoachLensLearningSignal]
 }
 
+struct CoachTeachingPlan: Codable, Hashable {
+    var policyVersion: String
+    var missingMoveTitle: String
+    var trainingTargetTitle: String
+    var whyNotAnswer: String
+    var proceedStandard: String
+    var routeSteps: [String]
+    var auditNote: String?
+}
+
+struct CoachTeachingPolicy {
+    static let policyVersion = "coach-teaching.local-v1"
+
+    func makePlan(
+        turn: CoachTurnState,
+        prescription: TrainingPrescription?
+    ) -> CoachTeachingPlan {
+        if turn.decisionSource == .userOverrideProgress {
+            return CoachTeachingPlan(
+                policyVersion: Self.policyVersion,
+                missingMoveTitle: "证据缺口仍然存在，但你选择先推进。",
+                trainingTargetTitle: "带着审计边界行动",
+                whyNotAnswer: "override 是推进许可，不是缺口已经消失；后续任务仍要留下校准证据。",
+                proceedStandard: "任务必须留下可回看证据，方便明天校准。",
+                routeSteps: ["记录用户主动推进", "保留未关闭缺口", "明天重点验证这个缺口是否造成偏差"],
+                auditNote: "用户 override 不是缺口已经消失的证明。"
+            )
+        }
+
+        if turn.readiness == .ready || turn.openEvidenceGaps.isEmpty {
+            return CoachTeachingPlan(
+                policyVersion: Self.policyVersion,
+                missingMoveTitle: "现在不是继续分析，而是把判断转成明天能留下证据的行动。",
+                trainingTargetTitle: (prescription?.primaryTrainingDimension ?? .testableActionDesign).displayTitle,
+                whyNotAnswer: "当前证据已经足够形成小实验，继续追问的收益低于行动校准。",
+                proceedStandard: "明日行动能留下负责人、验收标准和可观察结果。",
+                routeSteps: ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"],
+                auditNote: nil
+            )
+        }
+
+        let primaryDimension = prescription?.primaryTrainingDimension ?? dimension(for: turn)
+        return CoachTeachingPlan(
+            policyVersion: Self.policyVersion,
+            missingMoveTitle: missingMoveTitle(for: turn),
+            trainingTargetTitle: primaryDimension.displayTitle,
+            whyNotAnswer: whyNotAnswer(for: turn),
+            proceedStandard: proceedStandard(for: turn),
+            routeSteps: routeSteps(for: turn),
+            auditNote: nil
+        )
+    }
+
+    private func dimension(for turn: CoachTurnState) -> ThinkingTrainingDimension {
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return .judgmentCalibration
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return .systemFeedbackAwareness
+        }
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return .evidenceDiscipline
+        }
+        return .assumptionTesting
+    }
+
+    private func missingMoveTitle(for turn: CoachTurnState) -> String {
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return "你已经有行动倾向，但还没有说明可观察证据。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return "你已经有判断，但还没有说明明天用什么信号校准。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return "你描述了现象，但还没有看清因果链或反馈回路。"
+        }
+        return "当前真正要解决的问题还没有被定义清楚。"
+    }
+
+    private func whyNotAnswer(for turn: CoachTurnState) -> String {
+        if turn.recommendedMove == .slowDownConvergence {
+            return "现在直接行动会把未经验证的解释当成事实。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return "没有校准信号时，任务完成也不一定能更新判断。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return "如果不先看清反馈结构，行动可能只修表面问题。"
+        }
+        return "问题边界不清时，答案容易变成泛泛建议。"
+    }
+
+    private func proceedStandard(for turn: CoachTurnState) -> String {
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return "先说清一个可观察事实和一个验收基线。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return "先说清一个实际结果信号，以及它会如何改变判断。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return "先说清一个反馈信号，以及它的延迟或下游影响。"
+        }
+        return "先说清要解决的问题和一个关键前提。"
+    }
+
+    private func routeSteps(for turn: CoachTurnState) -> [String] {
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return ["补上一个可观察事实", "回答校准问题", "再形成明日验证行动"]
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return ["说清原判断", "定义校准信号", "把信号转成明日观察"]
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return ["画出因果链", "找到反馈或延迟", "选择能测试结构的行动"]
+        }
+        return ["定义问题边界", "暴露关键前提", "再选择行动"]
+    }
+}
+
 struct CoachDecisionPolicyV2 {
     static let policyVersion = "coach-decision.local-v2"
 

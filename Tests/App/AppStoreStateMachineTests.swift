@@ -944,6 +944,106 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(decision.proceedWhen.contains("明日"))
     }
 
+    func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
+        let turn = CoachTurnState(
+            phase: .fillEvidenceGap,
+            readiness: .notReady,
+            recommendedMove: .slowDownConvergence,
+            reason: "当前存在高风险、问题或明确证据缺口，直接行动会过早收敛。",
+            openEvidenceGaps: [.missingObservation, .missingBaseline],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap, .testableAction],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "回答仍未关闭主要证据缺口，继续追问而不是直接收敛。"
+        )
+        let prescription = TrainingPrescription(
+            recommendedLensId: ThinkingLens.evidenceCheck.rawValue,
+            recommendedPromptId: ThinkingLens.evidenceCheck.catalogItem.promptId,
+            recommendationReason: "当前最需要先补证据。",
+            confidence: 0.82,
+            policyVersion: "test",
+            alternativeLensIds: [],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap, .testableAction],
+            primaryTrainingDimension: .evidenceDiscipline,
+            secondaryTrainingDimensions: [],
+            baselineTrainingDimensions: [.factInterpretationSeparation, .testableActionDesign],
+            userSelectedLensId: nil,
+            finalLensId: ThinkingLens.evidenceCheck.rawValue,
+            source: .coachRecommended,
+            overrideBoundary: ""
+        )
+
+        let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
+
+        XCTAssertEqual(plan.policyVersion, CoachTeachingPolicy.policyVersion)
+        XCTAssertTrue(plan.missingMoveTitle.contains("可观察证据"))
+        XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
+        XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
+        XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
+    }
+
+    func testCoachTeachingPolicy_readyRouteFormsTomorrowExperiment() {
+        let turn = CoachTurnState(
+            phase: .formAction,
+            readiness: .ready,
+            recommendedMove: .generateQuest,
+            reason: "已有任务、事实或判断，可以把下一步设计成校准实验。",
+            openEvidenceGaps: [],
+            baselineChecks: [.testableAction, .judgmentUpdate],
+            decisionSource: .coachAccepted,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "回答补足了关键证据，教练轮次从追问推进到形成可验证行动。"
+        )
+        let prescription = TrainingPrescription(
+            recommendedLensId: ThinkingLens.judgmentCalibration.rawValue,
+            recommendedPromptId: ThinkingLens.judgmentCalibration.catalogItem.promptId,
+            recommendationReason: "当前可以把判断转成校准实验。",
+            confidence: 0.76,
+            policyVersion: "test",
+            alternativeLensIds: [],
+            baselineChecks: [.testableAction, .judgmentUpdate],
+            primaryTrainingDimension: .testableActionDesign,
+            secondaryTrainingDimensions: [],
+            baselineTrainingDimensions: [.judgmentCalibration],
+            userSelectedLensId: nil,
+            finalLensId: ThinkingLens.judgmentCalibration.rawValue,
+            source: .coachRecommended,
+            overrideBoundary: ""
+        )
+
+        let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
+
+        XCTAssertTrue(plan.missingMoveTitle.contains("明天能留下证据"))
+        XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.testableActionDesign.displayTitle)
+        XCTAssertTrue(plan.whyNotAnswer.contains("足够形成小实验"))
+        XCTAssertTrue(plan.proceedStandard.contains("明日行动"))
+        XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"])
+    }
+
+    func testCoachTeachingPolicy_overrideRouteKeepsAuditBoundary() {
+        let turn = CoachTurnState(
+            phase: .formAction,
+            readiness: .ready,
+            recommendedMove: .generateQuest,
+            reason: "用户主动推进到行动生成。",
+            openEvidenceGaps: [.missingObservation],
+            baselineChecks: [.evidenceGap, .testableAction],
+            decisionSource: .userOverrideProgress,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留审计边界。"
+        )
+
+        let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: nil)
+
+        XCTAssertTrue(plan.missingMoveTitle.contains("证据缺口仍然存在"))
+        XCTAssertTrue(plan.trainingTargetTitle.contains("审计边界"))
+        XCTAssertTrue(plan.whyNotAnswer.contains("override 是推进许可"))
+        XCTAssertTrue(plan.proceedStandard.contains("可回看证据"))
+        XCTAssertEqual(plan.routeSteps.first, "记录用户主动推进")
+        XCTAssertTrue(plan.auditNote?.contains("不是缺口已经消失") ?? false)
+    }
+
     func testCoachLensLearningPolicy_reinforcesHighValueCompletedLensMove() {
         let question = ReflectionQuestion(
             question: "明天能观察到什么信号，证明书面验收减少返工？",
