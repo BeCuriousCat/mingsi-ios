@@ -376,6 +376,8 @@ struct PromptContextPayload: Codable, Hashable {
         var trainingTargetTitle: String
         var whyNotAnswer: String
         var proceedStandard: String
+        var repairQuestion: String
+        var experienceReplayPrompt: String
         var routeSteps: [String]
         var auditNote: String?
 
@@ -385,6 +387,8 @@ struct PromptContextPayload: Codable, Hashable {
             trainingTargetTitle: String,
             whyNotAnswer: String,
             proceedStandard: String,
+            repairQuestion: String,
+            experienceReplayPrompt: String,
             routeSteps: [String],
             auditNote: String? = nil
         ) {
@@ -393,6 +397,8 @@ struct PromptContextPayload: Codable, Hashable {
             self.trainingTargetTitle = trainingTargetTitle
             self.whyNotAnswer = whyNotAnswer
             self.proceedStandard = proceedStandard
+            self.repairQuestion = repairQuestion
+            self.experienceReplayPrompt = experienceReplayPrompt
             self.routeSteps = routeSteps
             self.auditNote = auditNote
         }
@@ -404,8 +410,37 @@ struct PromptContextPayload: Codable, Hashable {
                 trainingTargetTitle: plan.trainingTargetTitle,
                 whyNotAnswer: plan.whyNotAnswer,
                 proceedStandard: plan.proceedStandard,
+                repairQuestion: plan.repairQuestion,
+                experienceReplayPrompt: plan.experienceReplayPrompt,
                 routeSteps: plan.routeSteps,
                 auditNote: plan.auditNote
+            )
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case policyVersion
+            case missingMoveTitle
+            case trainingTargetTitle
+            case whyNotAnswer
+            case proceedStandard
+            case repairQuestion
+            case experienceReplayPrompt
+            case routeSteps
+            case auditNote
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try self.init(
+                policyVersion: container.decode(String.self, forKey: .policyVersion),
+                missingMoveTitle: container.decode(String.self, forKey: .missingMoveTitle),
+                trainingTargetTitle: container.decode(String.self, forKey: .trainingTargetTitle),
+                whyNotAnswer: container.decode(String.self, forKey: .whyNotAnswer),
+                proceedStandard: container.decode(String.self, forKey: .proceedStandard),
+                repairQuestion: container.decodeIfPresent(String.self, forKey: .repairQuestion) ?? "",
+                experienceReplayPrompt: container.decodeIfPresent(String.self, forKey: .experienceReplayPrompt) ?? "",
+                routeSteps: container.decode([String].self, forKey: .routeSteps),
+                auditNote: container.decodeIfPresent(String.self, forKey: .auditNote)
             )
         }
     }
@@ -780,6 +815,8 @@ struct PromptContextPayload: Codable, Hashable {
             values["coachTeachingTrainingTarget"] = coachTeachingPlan.trainingTargetTitle
             values["coachTeachingWhyNotAnswer"] = coachTeachingPlan.whyNotAnswer
             values["coachTeachingProceedStandard"] = coachTeachingPlan.proceedStandard
+            values["coachTeachingRepairQuestion"] = coachTeachingPlan.repairQuestion
+            values["coachTeachingExperienceReplayPrompt"] = coachTeachingPlan.experienceReplayPrompt
             values["coachTeachingRouteSteps"] = coachTeachingPlan.routeSteps.joined(separator: " -> ")
             if let auditNote = coachTeachingPlan.auditNote,
                !auditNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -4202,6 +4239,8 @@ final class LocalPromptProvider: PromptProvider {
             - Use trainingTargetTitle to keep this as training, not an AI answer.
             - Keep whyNotAnswer visible in why_this_matters or why_now.
             - Use proceedStandard to define proceed_when.
+            - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
+            - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
             - routeSteps are teaching route cues, not permission to add extra workflow steps.
 
             Required coaching coverage:
@@ -4278,6 +4317,7 @@ final class LocalPromptProvider: PromptProvider {
             When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
             When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
             Use coachTeachingPlan.proceedStandard to preserve the evidence or answer standard that made action safe.
+            Use coachTeachingPlan.experienceReplayPrompt when a quest should reuse, adapt, or reject past experience.
             If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
             Do not erase unresolved teaching gaps just because a quest can be generated.
 

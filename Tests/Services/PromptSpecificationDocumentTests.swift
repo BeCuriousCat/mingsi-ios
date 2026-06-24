@@ -84,6 +84,8 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("trainingTargetTitle"))
         XCTAssertTrue(spec.contains("whyNotAnswer"))
         XCTAssertTrue(spec.contains("proceedStandard"))
+        XCTAssertTrue(spec.contains("repairQuestion"))
+        XCTAssertTrue(spec.contains("experienceReplayPrompt"))
         XCTAssertTrue(spec.contains("routeSteps"))
         XCTAssertTrue(spec.contains("missing thinking move"))
         XCTAssertTrue(spec.contains("not an AI answer"))

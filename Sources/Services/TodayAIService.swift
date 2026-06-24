@@ -641,7 +641,7 @@ struct DefaultContextAssembler: ContextAssembler {
                     ? "Use coachTurnState as the stateful coach turn plan. If readiness is not_ready, ask clarification or evidence-gap questions before converging. If readiness is ready, form a verifiable action. Treat user override as permission to proceed, not proof that the coach was wrong."
                     : nil,
                 coachTeachingRule: memory.coachTeachingPlan != nil
-                    ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, and only proceed when the proceed standard is satisfied."
+                    ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, use repairQuestion when the user's answer still leaves the gap open, ask whether prior experience should be reproduced/adapted/rejected, and only proceed when the proceed standard is satisfied."
                     : nil
             )
         )

@@ -981,6 +981,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
         XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
         XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
+        XCTAssertTrue(plan.repairQuestion.contains("刚才的回答"))
+        XCTAssertTrue(plan.repairQuestion.contains("事实"))
+        XCTAssertTrue(plan.experienceReplayPrompt.contains("过往"))
+        XCTAssertTrue(plan.experienceReplayPrompt.contains("复现"))
     }
 
     func testCoachTeachingPolicy_readyRouteFormsTomorrowExperiment() {
@@ -1446,6 +1450,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayLoopMessage.contains("本轮训练还差"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
         XCTAssertTrue(store.todayLoopMessage.contains("先说清"))
+        XCTAssertTrue(store.todayLoopMessage.contains("教练追问"))
+        XCTAssertTrue(store.todayLoopMessage.contains("过往经验"))
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
 

@@ -4033,7 +4033,7 @@ final class AppStore: ObservableObject {
             turn: turn,
             prescription: trainingPrescription
         )
-        return "本轮训练还差：\(gapLine)。\(plan.proceedStandard)"
+        return "本轮训练还差：\(gapLine)。\(plan.proceedStandard) 教练追问：\(plan.repairQuestion) 过往经验：\(plan.experienceReplayPrompt)"
     }
 
     private func makeCoachTrainingPrescription() -> TrainingPrescription {

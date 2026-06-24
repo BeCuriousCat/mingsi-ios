@@ -225,6 +225,8 @@ context may carry:
     "trainingTargetTitle": "localized primary training target",
     "whyNotAnswer": "why this is not an AI answer or direct advice moment",
     "proceedStandard": "what answer or evidence is sufficient to continue",
+    "repairQuestion": "the concrete question that asks the user to repair their own prior answer",
+    "experienceReplayPrompt": "the prompt that asks whether prior experience should be reproduced, adapted, or rejected",
     "routeSteps": ["first teaching step", "second teaching step", "third teaching step"],
     "auditNote": "optional override or boundary note"
   }
@@ -238,6 +240,10 @@ Rules:
 - `generateQuestions` must use `coachTeachingPlan` before wording questions:
   start from the missing thinking move, train the named target, and keep
   `whyNotAnswer` visible in `why_this_matters` or `why_now`.
+- If the user's prior answer still leaves the gap open, use `repairQuestion` to
+  ask the user to repair their own answer instead of receiving an AI answer.
+- Use `experienceReplayPrompt` to ask whether a prior experience should be
+  reproduced, adapted, or rejected in this case.
 - `generateQuests` may use `coachTeachingPlan` to preserve the proceed standard
   when forming an action after the coach turn is ready or explicitly overridden.
 - organizeCards must not receive `coachTeachingPlan`; it only cleans current raw

@@ -173,6 +173,8 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("missing thinking move"))
         XCTAssertTrue(text.contains("whyNotAnswer"))
         XCTAssertTrue(text.contains("proceedStandard"))
+        XCTAssertTrue(text.contains("repairQuestion"))
+        XCTAssertTrue(text.contains("experienceReplayPrompt"))
         XCTAssertTrue(text.contains("not an AI answer"))
         XCTAssertTrue(text.contains("Use coachTeachingPlan before wording questions"))
     }

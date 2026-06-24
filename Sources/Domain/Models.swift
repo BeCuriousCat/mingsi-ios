@@ -1436,6 +1436,8 @@ struct CoachTeachingPlan: Codable, Hashable {
     var trainingTargetTitle: String
     var whyNotAnswer: String
     var proceedStandard: String
+    var repairQuestion: String
+    var experienceReplayPrompt: String
     var routeSteps: [String]
     var auditNote: String?
 }
@@ -1454,6 +1456,8 @@ struct CoachTeachingPolicy {
                 trainingTargetTitle: "带着审计边界行动",
                 whyNotAnswer: "override 是推进许可，不是缺口已经消失；后续任务仍要留下校准证据。",
                 proceedStandard: "任务必须留下可回看证据，方便明天校准。",
+                repairQuestion: "如果明天结果和当前判断相反，你要回看哪条证据来校准这次 override？",
+                experienceReplayPrompt: "回想过往一次先推进后校准的经验：这次应该复现、调整，还是避免那个做法？",
                 routeSteps: ["记录用户主动推进", "保留未关闭缺口", "明天重点验证这个缺口是否造成偏差"],
                 auditNote: "用户 override 不是缺口已经消失的证明。"
             )
@@ -1466,6 +1470,8 @@ struct CoachTeachingPolicy {
                 trainingTargetTitle: (prescription?.primaryTrainingDimension ?? .testableActionDesign).displayTitle,
                 whyNotAnswer: "当前证据已经足够形成小实验，继续追问的收益低于行动校准。",
                 proceedStandard: "明日行动能留下负责人、验收标准和可观察结果。",
+                repairQuestion: "明天这个行动会留下什么结果证据，让你回看今天的判断是否成立？",
+                experienceReplayPrompt: "回想过往一次小实验有效的经验：这次应该复现哪条做法，哪些条件不同？",
                 routeSteps: ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"],
                 auditNote: nil
             )
@@ -1478,6 +1484,8 @@ struct CoachTeachingPolicy {
             trainingTargetTitle: primaryDimension.displayTitle,
             whyNotAnswer: whyNotAnswer(for: turn),
             proceedStandard: proceedStandard(for: turn),
+            repairQuestion: repairQuestion(for: turn),
+            experienceReplayPrompt: experienceReplayPrompt(for: turn),
             routeSteps: routeSteps(for: turn),
             auditNote: nil
         )
@@ -1535,6 +1543,44 @@ struct CoachTeachingPolicy {
             return "先说清一个反馈信号，以及它的延迟或下游影响。"
         }
         return "先说清要解决的问题和一个关键前提。"
+    }
+
+    private func repairQuestion(for turn: CoachTurnState) -> String {
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return "刚才的回答里，哪一句是可观察事实？如果没有，请补一句事实和一句验收基线。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return "刚才的回答里，哪个实际结果信号会改变你的判断？如果没有，请补一个明天能观察到的信号。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return "刚才的回答里，哪条因果链或反馈回路解释了这个结果？如果没有，请补一条因果链。"
+        }
+        if turn.openEvidenceGaps.contains(.missingCounterexample) {
+            return "刚才的回答里，什么证据会推翻你现在的解释？如果没有，请补一个反例或替代解释。"
+        }
+        if turn.openEvidenceGaps.contains(.missingConstraint) {
+            return "刚才的回答里，哪个约束决定了行动边界？如果没有，请补一个关键约束。"
+        }
+        return "刚才的回答里，哪句话能让你安全推进？如果没有，请补一个可验证判断。"
+    }
+
+    private func experienceReplayPrompt(for turn: CoachTurnState) -> String {
+        if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
+            return "回想过往一次因为缺少事实或验收标准导致返工的经验：这次要复现哪条防错做法？"
+        }
+        if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
+            return "回想过往一次任务完成但判断没有更新的经验：这次要复现哪条校准做法？"
+        }
+        if turn.openEvidenceGaps.contains(.missingCausalLink) {
+            return "回想过往一次只处理表面问题、没有看反馈回路的经验：这次要复现哪条结构化检查？"
+        }
+        if turn.openEvidenceGaps.contains(.missingCounterexample) {
+            return "回想过往一次忽略反例而判断过早收敛的经验：这次要复现哪条反证检查？"
+        }
+        if turn.openEvidenceGaps.contains(.missingConstraint) {
+            return "回想过往一次忽略约束导致行动失效的经验：这次要复现哪条边界检查？"
+        }
+        return "回想过往一次判断推进有效的经验：这次应该复现、调整，还是拒绝那条经验？"
     }
 
     private func routeSteps(for turn: CoachTurnState) -> [String] {

@@ -867,11 +867,17 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
         XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
         XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
+        XCTAssertTrue(plan.repairQuestion.contains("刚才的回答"))
+        XCTAssertTrue(plan.experienceReplayPrompt.contains("过往"))
         XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
         XCTAssertEqual(payload.legacyKeyValues["coachTeachingMissingMove"], plan.missingMoveTitle)
         XCTAssertEqual(payload.legacyKeyValues["coachTeachingTrainingTarget"], ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertEqual(payload.legacyKeyValues["coachTeachingRepairQuestion"], plan.repairQuestion)
+        XCTAssertEqual(payload.legacyKeyValues["coachTeachingExperienceReplayPrompt"], plan.experienceReplayPrompt)
         XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTeachingRule"]).contains("missing thinking move"))
+        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTeachingRule"]).contains("repairQuestion"))
         XCTAssertTrue(try XCTUnwrap(payload.directives.coachTeachingRule).contains("missing thinking move"))
+        XCTAssertTrue(try XCTUnwrap(payload.directives.coachTeachingRule).contains("repairQuestion"))
     }
 
     func testStructuredContext_reframesRecalledPrinciplesAsExperienceReplay() async throws {
