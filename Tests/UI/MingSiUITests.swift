@@ -170,6 +170,21 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Visual QA seed matched meeting ownership with 会前确认负责人 using local keyword policy; score=4."].waitForExistence(timeout: 4))
     }
 
+    func testTodayAnswerQuestionsFramesPrinciplesAsExperienceReplay() throws {
+        let app = seededTodayApp(stage: "answer_questions")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
+        let replayPrompt = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "这次先判断")
+        ).firstMatch
+        XCTAssertTrue(replayPrompt.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["today.principle.feedback.helpful-action"].label.contains("适用"))
+        XCTAssertTrue(app.buttons["today.principle.feedback.not-applicable-action"].label.contains("不复现"))
+        XCTAssertTrue(app.buttons["today.principle.feedback.misrecalled-action"].label.contains("召回错了"))
+    }
+
     func testTodayReviewQuestsSeedShowsQuestCalibrationTarget() throws {
         let app = seededTodayApp(stage: "review_quests")
         app.launch()

@@ -2696,17 +2696,22 @@ private struct ReferencedPrinciplesView: View {
                     Image(systemName: "quote.bubble")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.accent)
-                    Text("本次参考的原则")
+                    Text("过往经验复现")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
-                    Text("仅作对照")
+                    Text("先判断是否适用")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(DS.surface, in: Capsule())
                 }
+
+                Text("这次先判断：这些经验是否应该复现；如果不适用，就把原因标出来。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 ForEach(principles) { principle in
                     VStack(alignment: .leading, spacing: 7) {
@@ -2736,7 +2741,7 @@ private struct ReferencedPrinciplesView: View {
                             .padding(.top, 2)
                         }
                         TextField(
-                            "可选：这条原则哪里不适用？",
+                            "可选：为什么复现或不复现？",
                             text: Binding(
                                 get: { feedbackNotes[principle.id, default: ""] },
                                 set: { feedbackNotes[principle.id] = $0 }
@@ -2752,7 +2757,7 @@ private struct ReferencedPrinciplesView: View {
                                 endEditing()
                                 onFeedback(principle, .helpful, feedbackNotes[principle.id, default: ""])
                             } label: {
-                                Label("有帮助", systemImage: "hand.thumbsup")
+                                Label("适用，今天要复现", systemImage: "hand.thumbsup")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackHelpfulAction)
 
@@ -2760,7 +2765,7 @@ private struct ReferencedPrinciplesView: View {
                                 endEditing()
                                 onFeedback(principle, .notApplicable, feedbackNotes[principle.id, default: ""])
                             } label: {
-                                Label("不适用", systemImage: "xmark.circle")
+                                Label("场景不同，不复现", systemImage: "xmark.circle")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackNotApplicableAction)
 
@@ -2768,7 +2773,7 @@ private struct ReferencedPrinciplesView: View {
                                 endEditing()
                                 onFeedback(principle, .misrecalled, feedbackNotes[principle.id, default: ""])
                             } label: {
-                                Label("误召回", systemImage: "exclamationmark.bubble")
+                                Label("召回错了", systemImage: "exclamationmark.bubble")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackMisrecalledAction)
                         }
