@@ -404,7 +404,13 @@ struct TodayView: View {
             }
 
             if let prescription, let recommendedItem {
-                trainingPrescriptionCard(prescription, item: recommendedItem)
+                trainingPrescriptionCard(
+                    prescription,
+                    item: recommendedItem,
+                    teachingPlan: store.coachTurnState.map {
+                        CoachTeachingPolicy().makePlan(turn: $0, prescription: prescription)
+                    }
+                )
             }
 
             HStack(spacing: 10) {
@@ -923,7 +929,8 @@ struct TodayView: View {
 
     private func trainingPrescriptionCard(
         _ prescription: TrainingPrescription,
-        item: LensCatalogItem
+        item: LensCatalogItem,
+        teachingPlan: CoachTeachingPlan?
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
@@ -955,6 +962,10 @@ struct TodayView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(lensTint(for: item).opacity(0.10), in: Capsule())
+
+            if let teachingPlan {
+                teachingRouteView(teachingPlan)
+            }
 
             if !prescription.baselineChecks.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1028,6 +1039,49 @@ struct TodayView: View {
         .overlay(
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
                 .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.42) : lensTint(for: item).opacity(0.22), lineWidth: isLensItemSelected(item) ? 1.25 : 1)
+        )
+    }
+
+    private func teachingRouteView(_ plan: CoachTeachingPlan) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            BriefRow(title: "本轮漏想点", body: plan.missingMoveTitle, accent: DS.brick)
+            BriefRow(title: "训练目标", body: plan.trainingTargetTitle, accent: DS.accent)
+            BriefRow(title: "为什么不是直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
+            BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("训练路线")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                ForEach(Array(plan.routeSteps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("\(index + 1)")
+                            .font(.caption2.monospacedDigit().weight(.bold))
+                            .foregroundStyle(DS.accent)
+                            .frame(width: 18, height: 18)
+                            .background(DS.accent.opacity(0.10), in: Circle())
+                        Text(step)
+                            .font(.caption)
+                            .foregroundStyle(DS.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if let auditNote = plan.auditNote {
+                Text(auditNote)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
         )
     }
 

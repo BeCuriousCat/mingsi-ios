@@ -40,6 +40,24 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["证据缺口"].exists)
     }
 
+    func testTodayTrainingPrescriptionShowsTeachingRoute() throws {
+        let app = seededTodayApp(stage: "review_cards_confirmed")
+        app.launch()
+
+        tapPrimaryAction(in: app, expectingState: "select_lens")
+
+        XCTAssertTrue(app.staticTexts["本轮漏想点"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["训练路线"].waitForExistence(timeout: 4))
+        let missingMove = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "可观察证据")
+        ).firstMatch
+        XCTAssertTrue(missingMove.waitForExistence(timeout: 4))
+        let routeStep = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "补上一个可观察事实")
+        ).firstMatch
+        XCTAssertTrue(routeStep.waitForExistence(timeout: 4))
+    }
+
     func testTodayTrainingPrescriptionOverrideShowsCoachAuditBoundary() throws {
         let app = seededTodayApp(stage: "review_cards_confirmed")
         app.launch()
