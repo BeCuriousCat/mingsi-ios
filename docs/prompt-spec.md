@@ -110,6 +110,8 @@ Mode affects prompt depth, not the underlying data model.
 }
 ```
 
+`why_now`, `expected_update`, and `proceed_when` are user-visible teaching fields, not hidden parser metadata. Together they must explain why this question now, what the answer will change, and what is sufficient to proceed. Today may render them directly inside question teaching cues, so they must be concrete, short, and grounded in the current coach turn.
+
 ### Lens Feedback
 
 ```json

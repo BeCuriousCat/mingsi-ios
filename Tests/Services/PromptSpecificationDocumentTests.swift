@@ -135,6 +135,22 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(productRisks.contains("missing source grounding for questions, quests, or principles"))
     }
 
+    func testPromptSpecDocumentsQuestionFieldsAsTeachingCuesAndExperienceReplay() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+        let productRisks = try readRepositoryFile("docs/product-risks-and-design-language.md")
+
+        XCTAssertTrue(spec.contains("user-visible teaching fields"))
+        XCTAssertTrue(spec.contains("why_now"))
+        XCTAssertTrue(spec.contains("expected_update"))
+        XCTAssertTrue(spec.contains("proceed_when"))
+        XCTAssertTrue(spec.contains("why this question now"))
+        XCTAssertTrue(spec.contains("what the answer will change"))
+        XCTAssertTrue(spec.contains("what is sufficient to proceed"))
+        XCTAssertTrue(productRisks.contains("experience replay"))
+        XCTAssertTrue(productRisks.contains("not passive references"))
+        XCTAssertTrue(productRisks.contains("复现"))
+    }
+
     private func readRepositoryFile(_ relativePath: String) throws -> String {
         let sourceFilePath = String(#filePath)
         guard let testsRange = sourceFilePath.range(of: "/Tests/") else {
