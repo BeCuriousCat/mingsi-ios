@@ -4024,6 +4024,18 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func coachAnswerTrainingFeedbackMessage(for turn: CoachTurnState) -> String {
+        let gapTitles = turn.openEvidenceGaps
+            .filter { $0 != .none }
+            .map(\.displayTitle)
+        let gapLine = gapTitles.isEmpty ? "本轮训练缺口还没有关闭" : gapTitles.joined(separator: "、")
+        let plan = CoachTeachingPolicy().makePlan(
+            turn: turn,
+            prescription: trainingPrescription
+        )
+        return "本轮训练还差：\(gapLine)。\(plan.proceedStandard)"
+    }
+
     private func makeCoachTrainingPrescription() -> TrainingPrescription {
         LocalTrainingPrescriptionPolicy().prescribe(
             cards: confirmedCardsForAI,
@@ -4781,6 +4793,10 @@ final class AppStore: ObservableObject {
             return
         }
         refreshCoachTurnStateAfterAnswers()
+        if let coachTurnState, coachTurnState.readiness != .ready {
+            todayLoopMessage = coachAnswerTrainingFeedbackMessage(for: coachTurnState)
+            return
+        }
         let draftID = todayDraft.id
         todayLoopMessage = "正在生成明日任务。"
         lastAIFailureMessage = nil

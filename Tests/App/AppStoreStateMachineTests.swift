@@ -1412,6 +1412,43 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachTurnRecommendedMove"], NextCoachMove.generateQuest.rawValue)
     }
 
+    func testAnswerQuestions_unresolvedCoachGapStaysInQuestionStageWithTrainingFeedback() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        store.updateQuestionAnswer(
+            questionID: question.id,
+            answer: "先让 Alex 写清验收标准。"
+        )
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
+        XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
+        XCTAssertTrue(store.todayLoopMessage.contains("本轮训练还差"))
+        XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
+        XCTAssertTrue(store.todayLoopMessage.contains("先说清"))
+        XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
+    }
+
     func testSelectLens_recordsUserOverrideSeparatelyFromCoachRecommendation() async throws {
         let client = RecordingLLMClient(response: Self.opposingViewQuestionsResponse)
         store = AppStore(
@@ -3978,10 +4015,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
     }
 
-    func testAnswerQuestions_withAnsweredQuestion_generatesQuests() async throws {
+    func testAnswerQuestions_withGapClosingAnswer_generatesQuests() async throws {
         try await advanceTo(.answerQuestions)
         store.questions = [
-            ReflectionQuestion(question: "Q?", whyItMatters: "Matters", answer: "My answer")
+            ReflectionQuestion(question: "Q?", whyItMatters: "Matters", answer: "事实是今天已经确认关键证据。")
         ]
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
@@ -4553,7 +4590,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         // answerQuestions -> reviewQuests (async quest generation)
         store.questions = store.questions.map { q in
-            var question = q; question.answer = "Focus on the main blocker."; return question
+            var question = q; question.answer = "事实是今天已经确认关键证据，验收标准是负责人和下一步在文档中写清。"; return question
         }
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
@@ -4616,7 +4653,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForGeneratedQuestions()
 
         let questionID = try XCTUnwrap(store.questions.first?.id)
-        store.updateQuestionAnswer(questionID: questionID, answer: "先验证最小闭环是否真的写进历史证据。")
+        store.updateQuestionAnswer(
+            questionID: questionID,
+            answer: "事实是今天要验证最小闭环是否写进历史证据，验收标准是历史记录能看到主任务和原则。"
+        )
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
 
@@ -4698,7 +4738,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let question = ReflectionQuestion(
             question: "这个闭环应该归属哪一天？",
             whyItMatters: "补完不能改写原始记录日期。",
-            answer: "应该归属创建草稿的那一天。"
+            answer: "事实是草稿创建于昨天，验收标准是历史记录日期仍归属创建草稿的那一天。"
         )
         try await dailyRepo.saveDraft(unfinished)
         try await cardRepo.saveCards([confirmedCard], dailyEntryId: unfinished.id)
@@ -4851,7 +4891,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForGeneratedQuestions()
 
         let questionID = try XCTUnwrap(store.questions.first?.id)
-        store.updateQuestionAnswer(questionID: questionID, answer: "证据链必须能指向真实任务、透镜和历史日期。")
+        store.updateQuestionAnswer(
+            questionID: questionID,
+            answer: "事实是证据链要指向真实任务、透镜和历史日期，验收标准是长期议题和成长归因能回链到这条历史记录。"
+        )
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
 
@@ -5125,7 +5168,7 @@ final class AppStoreStateMachineTests: XCTestCase {
                 lensMove: .predictionCalibration,
                 sourceCardTitles: ["Confirmed"],
                 calibrationTarget: "Written owner acknowledgement reduces meeting rework",
-                answer: "Track whether follow-up questions drop after owner acknowledgement."
+                answer: "实际结果信号是 owner 确认后追问次数是否下降；如果结果没有下降，就更新判断。"
             )
         ]
         store.submitTodayStep()
@@ -7396,7 +7439,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         case .reviewQuests:
             try await advanceTo(.answerQuestions)
             store.questions = [
-                ReflectionQuestion(question: "Q?", whyItMatters: "M", answer: "Focus on the main blocker.")
+                ReflectionQuestion(question: "Q?", whyItMatters: "M", answer: "事实是今天已经确认关键证据。")
             ]
             store.submitTodayStep()
             try await waitForState(.reviewQuests)
