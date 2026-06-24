@@ -136,6 +136,45 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(unwrapped.state, .answerQuestions)
     }
 
+    func testSaveDraft_preservesTrainingPrescription() async throws {
+        let repo = SQLiteDailyEntryRepository(database: database)
+        let prescription = TrainingPrescription(
+            recommendedLensId: ThinkingLens.evidenceCheck.rawValue,
+            recommendedPromptId: ThinkingLens.evidenceCheck.catalogItem.promptId,
+            recommendationReason: "当前材料需要先校验证据。",
+            confidence: 0.78,
+            policyVersion: LocalTrainingPrescriptionPolicy.policyVersion,
+            alternativeLensIds: [ThinkingLens.opposingView.rawValue],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap, .counterexample],
+            userSelectedLensId: ThinkingLens.opposingView.rawValue,
+            finalLensId: ThinkingLens.opposingView.rawValue,
+            source: .userOverride,
+            overrideBoundary: "用户改选为 opposingView，保留 evidenceCheck 作为审计。"
+        )
+        let draft = DailyEntryDraft(
+            rawText: "Training prescription persistence",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            selectedLens: .opposingView,
+            trainingPrescription: prescription,
+            state: .answerQuestions
+        )
+
+        try await repo.saveDraft(draft)
+        let loadedDraft = try await repo.latestDraft()
+        let loaded = try XCTUnwrap(loadedDraft)
+        let restored = try XCTUnwrap(loaded.trainingPrescription)
+
+        XCTAssertEqual(restored.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(restored.recommendedPromptId, ThinkingLens.evidenceCheck.catalogItem.promptId)
+        XCTAssertEqual(restored.finalLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(restored.userSelectedLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(restored.source, .userOverride)
+        XCTAssertEqual(restored.policyVersion, LocalTrainingPrescriptionPolicy.policyVersion)
+        XCTAssertEqual(restored.baselineChecks, [.factInterpretationSplit, .evidenceGap, .counterexample])
+        XCTAssertTrue(restored.overrideBoundary.contains("opposingView"))
+    }
+
     // MARK: - ThinkingCardRepository
 
     func testSaveCards_andLoad() async throws {
@@ -209,6 +248,64 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(loaded[1].type, .side)
     }
 
+    func testSaveQuests_preservesCalibrationTargetInRawPayload() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Quest calibration target test", state: .reviewQuests)
+        try await entryRepo.saveDraft(draft)
+
+        let quest = Quest(
+            type: .main,
+            title: "Run small acceptance check",
+            whyItMatters: "It calibrates the next decision.",
+            completionCriteria: "One stakeholder accepts or rejects the criteria.",
+            expectedResistance: "The owner may be busy.",
+            reflectionQuestion: "Did the check reduce rework risk?",
+            calibrationTarget: "Small acceptance checks reduce rework more than adding implementation detail",
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["Acceptance criteria unclear", "Stakeholder rework repeated"],
+            status: .active
+        )
+
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: draft.id)
+
+        let loaded = try await questRepo.quests(for: draft.id)
+        XCTAssertEqual(
+            loaded.first?.calibrationTarget,
+            "Small acceptance checks reduce rework more than adding implementation detail"
+        )
+        XCTAssertEqual(
+            loaded.first?.sourceCardTitles,
+            ["Acceptance criteria unclear", "Stakeholder rework repeated"]
+        )
+        XCTAssertEqual(loaded.first?.lensMove, .predictionCalibration)
+    }
+
+    func testSaveQuests_preservesSelectedTrainingPrincipleInRawPayload() async throws {
+        let entryRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+
+        let draft = DailyEntryDraft(rawText: "Quest training target test", state: .reviewQuests)
+        try await entryRepo.saveDraft(draft)
+        let selectedPrincipleId = UUID()
+        let quest = Quest(
+            type: .main,
+            title: "Manually train one principle",
+            whyItMatters: "The automatic target is not quite right.",
+            completionCriteria: "The chosen principle is practiced tomorrow.",
+            expectedResistance: "The local matcher may prefer another principle.",
+            reflectionQuestion: "Did the chosen principle change behavior?",
+            trainingPrincipleId: selectedPrincipleId,
+            status: .active
+        )
+
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: draft.id)
+
+        let loaded = try await questRepo.quests(for: draft.id)
+        XCTAssertEqual(loaded.first?.trainingPrincipleId, selectedPrincipleId)
+    }
+
     func testActiveMainQuest_returnsActiveMainQuest() async throws {
         let entryRepo = SQLiteDailyEntryRepository(database: database)
         let questRepo = SQLiteQuestRepository(database: database)
@@ -268,7 +365,8 @@ final class PersistenceCoreTests: XCTestCase {
         let principles = [
             PrincipleAsset(title: "Clarify before execution", summary: "Make ownership explicit.",
                           triggerContext: "Cross-functional work.", actions: ["Write owner.", "Write criteria."],
-                          successCriteria: "People know who owns what.", exceptions: "Low-stakes sync.")
+                          successCriteria: "People know who owns what.", exceptions: "Low-stakes sync.",
+                          sourceCardTitles: ["Acceptance criteria unclear", "Stakeholder rework repeated"])
         ]
         try await principleRepo.savePrinciples(principles, sourceDailyEntryId: draft.id)
 
@@ -276,6 +374,7 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded[0].title, "Clarify before execution")
         XCTAssertEqual(loaded[0].actions.count, 2)
+        XCTAssertEqual(loaded[0].sourceCardTitles, ["Acceptance criteria unclear", "Stakeholder rework repeated"])
     }
 
     func testActivePrinciples_returnsOnlyActive() async throws {
@@ -464,6 +563,7 @@ final class PersistenceCoreTests: XCTestCase {
             promptId: .generateQuestions,
             retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
             retrievalReason: "Matched meeting ownership with 会前明确负责人 using local keyword policy; score=4.",
+            retrievalSignal: "meeting ownership",
             feedback: .notApplicable,
             note: "这次是临时同步，不需要负责人机制。",
             createdAt: Date(timeIntervalSince1970: 100)
@@ -475,6 +575,7 @@ final class PersistenceCoreTests: XCTestCase {
             promptId: .generateQuests,
             retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
             retrievalReason: "Matched keyword overlap with 会前明确负责人 using local keyword policy; score=2.",
+            retrievalSignal: "keyword overlap",
             feedback: .misrecalled,
             note: "关键词撞上了，但场景不是会议。",
             createdAt: Date(timeIntervalSince1970: 200)
@@ -487,6 +588,8 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(loaded.map(\.feedback), [.misrecalled, .notApplicable])
         XCTAssertEqual(loaded.first?.promptId, .generateQuests)
         XCTAssertEqual(loaded.first?.retrievalPolicyVersion, "principle-retrieval.local-keyword.v1")
+        XCTAssertEqual(loaded.first?.retrievalSignal, "keyword overlap")
+        XCTAssertEqual(loaded.last?.retrievalSignal, "meeting ownership")
         XCTAssertEqual(loaded.first?.note, "关键词撞上了，但场景不是会议。")
     }
 
@@ -504,6 +607,9 @@ final class PersistenceCoreTests: XCTestCase {
             evidenceSource: .verification,
             strength: .intentionalPractice,
             evidenceSummary: "用户在复盘中说明先写负责人再推进会议。",
+            matchSignal: "写负责人",
+            attributionPolicyVersion: "principle-practice-attribution.local-match.v1",
+            practiceRole: .secondaryPractice,
             createdAt: Date(timeIntervalSince1970: 100)
         )
         let later = PrinciplePracticeEvidence(
@@ -514,6 +620,7 @@ final class PersistenceCoreTests: XCTestCase {
             evidenceSource: .quest,
             strength: .attempted,
             evidenceSummary: "明日任务明确要求先确认负责人。",
+            practiceRole: .targetedPractice,
             createdAt: Date(timeIntervalSince1970: 200)
         )
 
@@ -522,10 +629,13 @@ final class PersistenceCoreTests: XCTestCase {
 
         let loaded = try await repo.evidence(for: principleID, limit: 10)
         XCTAssertEqual(loaded.map(\.strength), [.attempted, .intentionalPractice])
+        XCTAssertEqual(loaded.map(\.practiceRole), [.targetedPractice, .secondaryPractice])
         XCTAssertEqual(loaded.first?.evidenceSource, .quest)
         XCTAssertEqual(loaded.first?.sourceDailyEntryId, entryID)
         XCTAssertEqual(loaded.last?.verificationId, verificationID)
         XCTAssertEqual(loaded.last?.evidenceSummary, "用户在复盘中说明先写负责人再推进会议。")
+        XCTAssertEqual(loaded.last?.matchSignal, "写负责人")
+        XCTAssertEqual(loaded.last?.attributionPolicyVersion, "principle-practice-attribution.local-match.v1")
     }
 
     func testPrinciplePracticeEvidence_loadsVerificationEvidenceByBusinessKey() async throws {
@@ -566,6 +676,32 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(loaded?.id, matching.id)
         XCTAssertEqual(loaded?.verificationId, verificationID)
         XCTAssertEqual(loaded?.evidenceSource, .verification)
+    }
+
+    func testPrinciplePracticeEvidence_disputeEvidenceExcludesItFromActiveEvidence() async throws {
+        let repo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let principleID = UUID()
+        let evidence = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证显示用户练习了原则。匹配信号：写负责人"
+        )
+
+        try await repo.saveEvidence(evidence)
+        try await repo.disputeEvidence(
+            evidence.id,
+            note: "这次只是写了会议纪要，不是主动练习原则。"
+        )
+
+        let activeEvidence = try await repo.evidence(for: principleID, limit: 10)
+        let disputed = try await repo.disputedEvidence(for: principleID, limit: 10)
+
+        XCTAssertTrue(activeEvidence.isEmpty)
+        XCTAssertEqual(disputed.map(\.id), [evidence.id])
+        XCTAssertTrue(disputed.first?.isDisputed == true)
+        XCTAssertEqual(disputed.first?.disputeNote, "这次只是写了会议纪要，不是主动练习原则。")
     }
 
     // MARK: - VerificationRepository
@@ -1045,6 +1181,75 @@ final class PersistenceCoreTests: XCTestCase {
 
         let recent = try await repo.recentPromptRuns(limit: 1)
         XCTAssertEqual(recent.first?.userFeedback, .denied)
+    }
+
+    func testPromptRun_mostRecentPromptRunFindsLatestRunForPromptAndSourceRecord() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let sourceID = UUID()
+        let olderRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [sourceID.uuidString],
+            requestSummary: "older question generation",
+            responseJSON: #"{"questions":[{"question":"Older?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+        let otherSourceRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [UUID().uuidString],
+            requestSummary: "newer but unrelated question generation",
+            responseJSON: #"{"questions":[{"question":"Unrelated?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+        let newestRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.1",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [sourceID.uuidString, UUID().uuidString],
+            requestSummary: "newest linked question generation",
+            responseJSON: #"{"questions":[{"question":"Newest?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+        let wrongPromptRun = PromptRun(
+            promptId: PromptID.generateQuests.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [sourceID.uuidString],
+            requestSummary: "quest generation should not match",
+            responseJSON: #"{"main_quest":{"title":"Unrelated"}}"#,
+            createdAt: Date(timeIntervalSince1970: 400)
+        )
+        try await repo.savePromptRun(olderRun)
+        try await repo.savePromptRun(otherSourceRun)
+        try await repo.savePromptRun(newestRun)
+        try await repo.savePromptRun(wrongPromptRun)
+
+        let found = try await repo.mostRecentPromptRun(
+            promptId: .generateQuestions,
+            sourceRecordId: sourceID
+        )
+
+        XCTAssertEqual(found?.id, newestRun.id)
+        XCTAssertEqual(found?.promptVersion, "1.0.1")
     }
 
     func testPromptRun_statsCalculatesFailureEmptyResultAndDenialRates() async throws {
@@ -3037,6 +3242,7 @@ final class PersistenceCoreTests: XCTestCase {
             promptId: .generateQuestions,
             retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
             retrievalReason: "Matched meeting ownership.",
+            retrievalSignal: "meeting ownership",
             feedback: .notApplicable,
             note: "当前场景不适用。"
         )
@@ -3054,6 +3260,7 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(exported["prompt_run_id"] as? String, promptRunID.uuidString)
         XCTAssertEqual(exported["feedback"] as? String, PrincipleRecallFeedbackValue.notApplicable.rawValue)
         XCTAssertEqual(exported["retrieval_policy_version"] as? String, "principle-retrieval.local-keyword.v1")
+        XCTAssertEqual(exported["retrieval_signal"] as? String, "meeting ownership")
     }
 
     func testDataExport_includesPrinciplePracticeEvidence() async throws {
@@ -3068,7 +3275,10 @@ final class PersistenceCoreTests: XCTestCase {
             questId: questID,
             evidenceSource: .quest,
             strength: .intentionalPractice,
-            evidenceSummary: "任务证据显示用户主动练习了该原则。"
+            evidenceSummary: "任务证据显示用户主动练习了该原则。",
+            matchSignal: "写负责人",
+            attributionPolicyVersion: "principle-practice-attribution.local-match.v1",
+            practiceRole: .targetedPractice
         )
 
         try await practiceRepo.saveEvidence(evidence)
@@ -3085,6 +3295,43 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(exported["quest_id"] as? String, questID.uuidString)
         XCTAssertEqual(exported["evidence_source"] as? String, PrinciplePracticeEvidenceSource.quest.rawValue)
         XCTAssertEqual(exported["strength"] as? String, PrinciplePracticeEvidenceStrength.intentionalPractice.rawValue)
+        XCTAssertEqual(exported["match_signal"] as? String, "写负责人")
+        XCTAssertEqual(exported["attribution_policy_version"] as? String, "principle-practice-attribution.local-match.v1")
+        XCTAssertEqual(exported["practice_role"] as? String, MetricContributionPracticeRole.targetedPractice.rawValue)
+        XCTAssertEqual(exported["is_disputed"] as? Int64, 0)
+        XCTAssertEqual(exported["dispute_note"] as? String, "")
+    }
+
+    func testDataExport_includesDisputedPrinciplePracticeEvidenceForAudit() async throws {
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let exportRepo = SQLiteDataExportRepository(database: database)
+        let principleID = UUID()
+        let evidence = PrinciplePracticeEvidence(
+            principleId: principleID,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证显示用户练习了原则。匹配信号：写负责人"
+        )
+
+        try await practiceRepo.saveEvidence(evidence)
+        try await practiceRepo.disputeEvidence(
+            evidence.id,
+            note: "这次只是完成任务，不应算作原则练习。"
+        )
+
+        let data = try await exportRepo.exportJSON()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let evidenceRows = try XCTUnwrap(sections["principle_practice_evidence"] as? [[String: Any]])
+        let exported = try XCTUnwrap(evidenceRows.first)
+
+        XCTAssertEqual(evidenceRows.count, 1)
+        XCTAssertEqual(exported["id"] as? String, evidence.id.uuidString)
+        XCTAssertEqual(exported["principle_id"] as? String, principleID.uuidString)
+        XCTAssertEqual(exported["evidence_summary"] as? String, "验证显示用户练习了原则。匹配信号：写负责人")
+        XCTAssertEqual(exported["is_disputed"] as? Int64, 1)
+        XCTAssertEqual(exported["dispute_note"] as? String, "这次只是完成任务，不应算作原则练习。")
     }
 
     func testPromptTracingLLMClient_recordsSuccessAndFailure() async throws {
@@ -3497,6 +3744,7 @@ final class PersistenceCoreTests: XCTestCase {
             XCTAssertTrue(columns.contains("prompt_id"))
             XCTAssertTrue(columns.contains("retrieval_policy_version"))
             XCTAssertTrue(columns.contains("retrieval_reason"))
+            XCTAssertTrue(columns.contains("retrieval_signal"))
             XCTAssertTrue(columns.contains("feedback"))
             XCTAssertTrue(columns.contains("note"))
 
@@ -3504,6 +3752,14 @@ final class PersistenceCoreTests: XCTestCase {
             XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_principle_id"))
             XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_prompt_run_id"))
             XCTAssertTrue(indexes.contains("idx_principle_recall_feedback_feedback"))
+        }
+    }
+
+    func testMigration_v26_addsPrincipleRecallFeedbackRetrievalSignal() throws {
+        try dbQueue.read { db in
+            XCTAssertTrue(try db.tableExists("principle_recall_feedback"))
+            let columns = Set(try db.columns(in: "principle_recall_feedback").map(\.name))
+            XCTAssertTrue(columns.contains("retrieval_signal"))
         }
     }
 
@@ -3681,6 +3937,11 @@ final class PersistenceCoreTests: XCTestCase {
             XCTAssertTrue(columns.contains("evidence_source"))
             XCTAssertTrue(columns.contains("strength"))
             XCTAssertTrue(columns.contains("evidence_summary"))
+            XCTAssertTrue(columns.contains("match_signal"))
+            XCTAssertTrue(columns.contains("attribution_policy_version"))
+            XCTAssertTrue(columns.contains("practice_role"))
+            XCTAssertTrue(columns.contains("is_disputed"))
+            XCTAssertTrue(columns.contains("dispute_note"))
 
             let indexes = try db.indexes(on: "principle_practice_evidence").map(\.name)
             XCTAssertTrue(indexes.contains("idx_principle_practice_evidence_principle_id"))
@@ -3859,6 +4120,290 @@ final class PersistenceCoreTests: XCTestCase {
         try legacyQueue.read { db in
             let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
             XCTAssertTrue(dailyEntryColumns.contains("custom_lens_questions_json"))
+        }
+    }
+
+    func testMigration_v27_addsTrainingPrescriptionForDatabasesAlreadyPastV26() throws {
+        let legacyQueue = try DatabaseQueue()
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE daily_entries (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    raw_text TEXT NOT NULL,
+                    session_mode TEXT NOT NULL,
+                    has_selected_session_mode BOOLEAN NOT NULL DEFAULT 0,
+                    selected_lens TEXT,
+                    selected_custom_lens_id TEXT,
+                    custom_lens_items_json TEXT,
+                    custom_lens_questions_json TEXT,
+                    yesterday_completion TEXT,
+                    yesterday_value_rating TEXT,
+                    state TEXT NOT NULL,
+                    privacy_flags_json TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates",
+                "v9_daily_entry_custom_lens_id",
+                "v10_daily_entry_custom_lens_items",
+                "v11_daily_entry_custom_lens_questions",
+                "v12_prompt_run_asset_versions",
+                "v13_prompt_run_feedback",
+                "v14_principle_recall_feedback",
+                "v15_principle_practice_evidence",
+                "v16_prompt_eval_runs",
+                "v17_prompt_asset_selections",
+                "v18_lens_asset_packs",
+                "v19_prompt_asset_packs",
+                "v20_asset_pack_trust_metadata",
+                "v21_prompt_asset_pack_provenance",
+                "v22_asset_pack_trust_policies",
+                "v23_asset_pack_registry_subscriptions",
+                "v24_principle_practice_evidence_dispute",
+                "v25_principle_practice_evidence_attribution_metadata",
+                "v26_principle_recall_feedback_retrieval_signal"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let dailyEntryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            XCTAssertTrue(dailyEntryColumns.contains("training_prescription_json"))
+        }
+    }
+
+    func testMigration_v28_addsPracticeRoleForMetricContributionsAlreadyPastV27() throws {
+        let legacyQueue = try DatabaseQueue()
+        let contributionId = UUID()
+        let timestamp = Self.storageString(Date(timeIntervalSince1970: 1_700_400_000))
+
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE metric_contributions (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    snapshot_id TEXT NOT NULL,
+                    metric TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    delta DOUBLE NOT NULL,
+                    title TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    source_daily_entry_id TEXT NOT NULL,
+                    user_feedback TEXT NOT NULL,
+                    candidate_status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO metric_contributions (
+                        id, schema_version, snapshot_id, metric, direction, delta, title, reason,
+                        source_type, source_id, source_daily_entry_id, user_feedback, candidate_status,
+                        created_at, updated_at, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    contributionId.uuidString,
+                    1,
+                    UUID().uuidString,
+                    GrowthMetric.clarity.rawValue,
+                    MetricContributionDirection.positive.rawValue,
+                    0.1,
+                    "Legacy contribution",
+                    "Legacy contribution reason",
+                    MetricContributionSourceType.quest.rawValue,
+                    UUID().uuidString,
+                    UUID().uuidString,
+                    MetricContributionFeedback.none.rawValue,
+                    MetricContributionStatus.accepted.rawValue,
+                    timestamp,
+                    timestamp,
+                    nil
+                ]
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates",
+                "v9_daily_entry_custom_lens_id",
+                "v10_daily_entry_custom_lens_items",
+                "v11_daily_entry_custom_lens_questions",
+                "v12_prompt_run_asset_versions",
+                "v13_prompt_run_feedback",
+                "v14_principle_recall_feedback",
+                "v15_principle_practice_evidence",
+                "v16_prompt_eval_runs",
+                "v17_prompt_asset_selections",
+                "v18_lens_asset_packs",
+                "v19_prompt_asset_packs",
+                "v20_asset_pack_trust_metadata",
+                "v21_prompt_asset_pack_provenance",
+                "v22_asset_pack_trust_policies",
+                "v23_asset_pack_registry_subscriptions",
+                "v24_principle_practice_evidence_dispute",
+                "v25_principle_practice_evidence_attribution_metadata",
+                "v26_principle_recall_feedback_retrieval_signal",
+                "v27_daily_entry_training_prescription"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let contributionColumns = Set(try db.columns(in: "metric_contributions").map(\.name))
+            XCTAssertTrue(contributionColumns.contains("practice_role"))
+            let practiceRole = try String.fetchOne(
+                db,
+                sql: "SELECT practice_role FROM metric_contributions WHERE id = ?",
+                arguments: [contributionId.uuidString]
+            )
+            XCTAssertEqual(practiceRole, MetricContributionPracticeRole.possibleSignal.rawValue)
+        }
+    }
+
+    func testMigration_v29_addsPracticeRoleForPrinciplePracticeEvidenceAlreadyPastV28() throws {
+        let legacyQueue = try DatabaseQueue()
+        let evidenceId = UUID()
+        let timestamp = Self.storageString(Date(timeIntervalSince1970: 1_700_500_000))
+
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE principle_practice_evidence (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    principle_id TEXT NOT NULL,
+                    source_daily_entry_id TEXT NOT NULL,
+                    quest_id TEXT,
+                    verification_id TEXT,
+                    evidence_source TEXT NOT NULL,
+                    strength TEXT NOT NULL,
+                    evidence_summary TEXT NOT NULL,
+                    match_signal TEXT NOT NULL DEFAULT '',
+                    attribution_policy_version TEXT NOT NULL DEFAULT '',
+                    is_disputed INTEGER NOT NULL DEFAULT 0,
+                    dispute_note TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO principle_practice_evidence (
+                        id, schema_version, principle_id, source_daily_entry_id, quest_id,
+                        verification_id, evidence_source, strength, evidence_summary,
+                        match_signal, attribution_policy_version, is_disputed, dispute_note,
+                        created_at, updated_at, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    evidenceId.uuidString,
+                    1,
+                    UUID().uuidString,
+                    UUID().uuidString,
+                    UUID().uuidString,
+                    UUID().uuidString,
+                    PrinciplePracticeEvidenceSource.verification.rawValue,
+                    PrinciplePracticeEvidenceStrength.intentionalPractice.rawValue,
+                    "Legacy practice evidence",
+                    "写负责人",
+                    "principle-practice-attribution.local-match.v1",
+                    0,
+                    "",
+                    timestamp,
+                    timestamp,
+                    nil
+                ]
+            )
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            for identifier in [
+                "v1_core_records",
+                "v2_daily_loop_fields",
+                "v3_verification_and_lens_sessions",
+                "v4_project_evidence_layer",
+                "v5_growth_attribution_layer",
+                "v6_metric_contribution_source_entry_backfill",
+                "v7_prompt_run_context_refs",
+                "v8_historical_retry_candidates",
+                "v9_daily_entry_custom_lens_id",
+                "v10_daily_entry_custom_lens_items",
+                "v11_daily_entry_custom_lens_questions",
+                "v12_prompt_run_asset_versions",
+                "v13_prompt_run_feedback",
+                "v14_principle_recall_feedback",
+                "v15_principle_practice_evidence",
+                "v16_prompt_eval_runs",
+                "v17_prompt_asset_selections",
+                "v18_lens_asset_packs",
+                "v19_prompt_asset_packs",
+                "v20_asset_pack_trust_metadata",
+                "v21_prompt_asset_pack_provenance",
+                "v22_asset_pack_trust_policies",
+                "v23_asset_pack_registry_subscriptions",
+                "v24_principle_practice_evidence_dispute",
+                "v25_principle_practice_evidence_attribution_metadata",
+                "v26_principle_recall_feedback_retrieval_signal",
+                "v27_daily_entry_training_prescription",
+                "v28_metric_contribution_practice_role"
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [identifier]
+                )
+            }
+        }
+
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(legacyQueue)
+
+        try legacyQueue.read { db in
+            let columns = Set(try db.columns(in: "principle_practice_evidence").map(\.name))
+            XCTAssertTrue(columns.contains("practice_role"))
+            let role = try String.fetchOne(
+                db,
+                sql: "SELECT practice_role FROM principle_practice_evidence WHERE id = ?",
+                arguments: [evidenceId.uuidString]
+            )
+            XCTAssertEqual(role, MetricContributionPracticeRole.possibleSignal.rawValue)
         }
     }
 

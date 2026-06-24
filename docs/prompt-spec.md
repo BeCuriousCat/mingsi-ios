@@ -98,9 +98,115 @@ Mode affects prompt depth, not the underlying data model.
 {
   "question": "string",
   "why_this_matters": "string",
+  "why_now": "why this question is the right next move in the current coach turn",
+  "expected_update": "what judgment, action, evidence plan, or calibration signal the answer is expected to change",
+  "proceed_when": "what kind of answer is sufficient to move toward action",
+  "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+  "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+  "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+  "source_card_titles": ["string"],
+  "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this question will calibrate",
   "expected_answer_type": "fact | judgment | tradeoff | validation"
 }
 ```
+
+### Lens Feedback
+
+```json
+{
+  "lensId": "string",
+  "lensTitle": "string",
+  "signal": "reinforce | adjust | avoid",
+  "completion": "done | partial | missed",
+  "valueRating": "high | medium | low | uncertain",
+  "calibrationNote": "short verified outcome summary",
+  "recommendation": "short next calibration recommendation",
+  "questionTargets": ["specific prior calibration target"],
+  "evidenceGapTypes": ["missing_calibration_signal"],
+  "lensMoves": ["prediction_calibration"]
+}
+```
+
+Rules:
+
+- `lensFeedback` contains only verified outcomes from previous completed loops with both a lens session and next-day verification.
+- `reinforce` means the lens move produced high-value calibration evidence.
+- `adjust` means the move produced partial, medium, or uncertain evidence and should be made more concrete.
+- `avoid` means the move led to missed, low-value, or uncalibratable work.
+- Use `lensMoves` to tune specific reasoning moves; do not discard an entire lens because one move performed poorly.
+- Use at most a small recent sample; do not insert full history or raw daily text into lens feedback.
+
+### Training Dimension
+
+Coach-led training uses `TrainingPrescription` as a plan, not just a selected lens. Prompt context carries:
+
+```json
+{
+  "primaryTrainingDimension": "evidence_discipline",
+  "secondaryTrainingDimensions": ["fact_interpretation_separation", "counterexample_seeking"],
+  "baselineTrainingDimensions": [
+    "fact_interpretation_separation",
+    "evidence_discipline",
+    "counterexample_seeking",
+    "assumption_testing",
+    "testable_action_design",
+    "system_feedback_awareness",
+    "judgment_calibration"
+  ]
+}
+```
+
+Supported `ThinkingTrainingDimension` values:
+
+- `fact_interpretation_separation`: separate what happened from the user's interpretation.
+- `evidence_discipline`: name missing evidence, weak evidence, and what observation would close the gap.
+- `counterexample_seeking`: ask what would make the user's current view wrong or incomplete.
+- `assumption_testing`: expose inherited assumptions and test the smallest necessary premise.
+- `system_feedback_awareness`: look for feedback loops, delays, constraints, and second-order effects.
+- `judgment_calibration`: compare prediction, confidence, actual evidence, and judgment update.
+- `testable_action_design`: turn thinking into one action with observable completion or calibration evidence.
+
+Rules:
+
+- The generateQuestions prompt must apply this plan before output generation.
+- Do not rely on the deterministic quality gate as the first place where training-dimension alignment happens.
+- Every question must serve either the primary training dimension or one baseline training dimension.
+- The first question should usually train `primaryTrainingDimension`; later questions may cover `secondaryTrainingDimensions` or unresolved baseline gaps.
+- Baseline dimensions are checks, not permission to generate a broad questionnaire. Keep one main coaching focus per loop.
+- Do not treat a user's override lens as proof that the coach diagnosis was wrong. Keep `primaryTrainingDimension` tied to the coach recommendation and use `finalTrainingLens` for the generated lens move.
+
+### Coach Turn State
+
+Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. Prompt context may carry:
+
+```json
+{
+  "coachTurnState": {
+    "phase": "explore_problem | clarify_judgment | fill_evidence_gap | form_action",
+    "readiness": "not_ready | ready",
+    "recommendedMove": "ask_clarifying_question | surface_evidence_gap | slow_down_convergence | recommend_training_lens | generate_quest",
+    "reason": "short coach rationale",
+    "openEvidenceGaps": ["missing_observation", "missing_baseline"],
+    "baselineChecks": ["fact_interpretation_separation", "evidence_gap", "testable_action"],
+    "decisionSource": "coachRecommended | coachAccepted | userSlowDown | userOverrideProgress",
+    "policyVersion": "coach-turn.local-v1",
+    "turnSummary": "short summary of where this coach turn currently stands"
+  }
+}
+```
+
+The prompt directive key is `coachTurnRule`.
+
+Rules:
+
+- organizeCards must not receive `coachTurnState`. It also must not receive `coachDiagnosis`, historical principles, or training history. It only cleans current raw input into reviewable cards.
+- `generateQuestions` must use `coachTurnState` before choosing question style. If readiness is `not_ready`, ask clarification or evidence-gap questions before converging.
+- `generateQuests` may form a verifiable action when readiness is `ready`.
+- If readiness is `not_ready`, `generateQuests` should not produce a quest unless `decisionSource` is `userOverrideProgress`.
+- A user override is permission to proceed, not proof that the coach was wrong.
+- `openEvidenceGaps` should guide the next question before the model invents broader advice.
+- `baselineChecks` are quiet guardrails; they should prevent premature convergence without turning the loop into a broad questionnaire.
+- `turnSummary` is an audit summary for the current coach turn, not source evidence.
 
 ### Quest
 
@@ -112,9 +218,77 @@ Mode affects prompt depth, not the underlying data model.
   "completion_criteria": "string",
   "expected_resistance": "string",
   "reflection_question": "string",
+  "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this quest will calibrate",
+  "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
   "linked_cards": ["string"]
 }
 ```
+
+Rules:
+
+- Quest must carry the calibration target into tomorrow's verification.
+- Quest must carry the selected lens's reasoning move into `lens_move`; this is parsed into `Quest.lensMove` and persisted with the quest's calibration payload.
+- Quest must cite confirmed card titles in `linked_cards`; these are parsed into `Quest.sourceCardTitles` and persisted with the quest's calibration payload.
+- Use the reflection answer's `calibrationTarget` when present; otherwise derive a concrete target from confirmed cards and the user's answer.
+- Do not switch the task into a different lens move just because it sounds useful; the quest is the action form of the selected thinking lens.
+- Do not invent `linked_cards`; use only confirmed card titles from the current context.
+- Do not use vague targets such as "user thinking" or "this situation".
+
+## Deterministic Coaching Quality Gate
+
+`PromptCoachingQualityPolicy` is a local, deterministic quality gate for obvious coaching regressions. It does not call the LLM and does not replace deeper human or LLM review. It protects the core coaching loop from accepting outputs that are syntactically valid but not useful as thinking training.
+
+Question output can be flagged with:
+
+- `genericQuestion`: question invites generic reflection, opinion, venting, or mood description.
+- `missingFunctionalCoachField`: question does not state why it is the right next move now, what its answer will update, or what answer is sufficient to proceed.
+- `missingEvidenceGapType`: question does not classify the evidence gap.
+- `missingAnswerUse`: question does not state how the answer will update judgment, action, evidence, assumption testing, or calibration.
+- `missingLensMove`: question does not state the trained reasoning move.
+- `missingSourceGrounding`: question cites no confirmed source card.
+- `vagueCalibrationTarget`: question names an abstract target such as "the user's thinking" or "this situation" instead of a concrete belief, prediction, causal explanation, or tradeoff.
+- `missingSelectedLensMove`: question batch does not include the reasoning move required by the selected built-in lens.
+- `missingTrainingDimensionAlignment`: question does not serve the primary training dimension or any baseline training dimension.
+- `missingPrimaryTrainingDimensionFocus`: first question does not serve the primary training dimension, so the coach-led main focus is being diluted by baseline checks.
+- `missingCoachTurnAlignment`: question ignores the current coach turn phase, readiness, or recommended move. For example, a `not_ready` turn that recommends evidence gathering should not accept a generic action-choice question.
+- `repeatedAvoidedLensMove`: question repeats a `lensMove` that recent verified `lensFeedback` marked as `avoid`.
+- `unadjustedLensMove`: question repeats a `lensMove` and calibration target that recent verified `lensFeedback` marked as `adjust`, instead of making the move smaller or more observable.
+- `missingReinforcedLensMove`: question batch ignores a `lensMove` that recent verified `lensFeedback` marked as `reinforce`.
+- `missingSystemThinkingLensMove`: question batch ignores `feedback_loop`, `delayed_effect`, and `second_order_consequence` when the selected lens is `system_thinking`.
+
+Selected built-in lens move mapping:
+
+- `evidence_check`: requires `fact_interpretation_split`.
+- `opposing_view`: requires `alternative_explanation`.
+- `leverage_analysis`: requires `leverage_tradeoff`.
+- `first_principles`: requires `constraint_decomposition`.
+- `system_thinking`: requires `feedback_loop`, `delayed_effect`, or `second_order_consequence`.
+- `judgment_calibration`: requires `prediction_calibration`.
+
+Quest output can be flagged with:
+
+- `busyworkQuest`: quest looks productive but does not reduce uncertainty, test a judgment, or create a calibration signal.
+- `weakCompletionCriteria`: quest completion criteria are too short or not observable enough.
+- `vagueCalibrationTarget`: quest calibration target is too abstract to verify tomorrow.
+- `missingSourceGrounding`: quest cites no linked confirmed card, so tomorrow's action cannot be traced back to today's evidence.
+- `missingSelectedLensMove`: quest output does not include the reasoning move required by the selected built-in lens.
+- `missingCoachTurnAlignment`: quest is generated while the coach turn is not ready and the user has not explicitly chosen `userOverrideProgress`.
+- `missingSystemThinkingLensMove`: quest output ignores `feedback_loop`, `delayed_effect`, and `second_order_consequence` when the selected lens is `system_thinking`.
+
+Verification output can be flagged with:
+
+- `weakVerificationCalibrationNote`: verification has a `targetJudgment` but the calibration note does not cover the original prediction, actual evidence, evidence gained, judgment update, observable evidence or signal, and completion criteria or acceptance criteria evidence.
+- `weakVerificationRecommendation`: verification has a `targetJudgment` but the recommendation does not name a next calibration action, test, or observable signal to watch.
+- `missingExpectedPrinciplePracticeAssessment`: verification has a `trainingPrinciple` context but the parsed output omits the separate `expected_principle_practice_assessment` audit field.
+
+Principle output can be flagged with:
+
+- `missingPrincipleSourceGrounding`: principle candidate cites no confirmed source card, so the reusable rule cannot be traced back to today's evidence.
+- `weakPrincipleActionability`: principle candidate is grounded but still too slogan-like, lacks at least two concrete next-time actions, or has no observable success criteria.
+
+The gate should stay conservative: it catches low-cost, high-confidence failures. Passing the gate means "not obviously bad"; it does not mean the prompt is high quality.
+
+At runtime, `TodayAIService.generateQuestions`, `TodayAIService.generateQuests`, `TodayAIService.verifyQuest`, and `TodayAIService.extractPrinciple` run this gate after JSON parsing and before returning output to the app state machine. If the gate finds issues, the service throws `TodayAIParsingError.qualityGateFailed` with issue reason codes only. The app should treat this like a parse-quality failure and use the existing fallback and retry path rather than showing low-quality AI output to the user.
 
 ### Principle Candidate
 
@@ -129,6 +303,15 @@ Mode affects prompt depth, not the underlying data model.
   "source_card_titles": ["string"]
 }
 ```
+
+Rules:
+
+- Principle candidate must cite confirmed card titles in `source_card_titles`; these are parsed into `PrincipleAsset.sourceCardTitles` and persisted with the principle raw payload.
+- Principle candidate must include at least two concrete actions the user can do next time.
+- `success_criteria` must name observable evidence, a visible artifact, owner confirmation, acceptance criteria, or another verifiable signal.
+- Do not return vague slogans such as "keep clear", "be better", or "improve efficiency".
+- Do not invent `source_card_titles`; use exact titles from `confirmedCards`.
+- If no confirmed card supports the reusable rule, return `principle_candidate: null`.
 
 ### Project Link Candidate
 
@@ -373,6 +556,8 @@ Questions must be specific to the user's content.
 Do not ask generic self-help questions.
 At least one question should challenge a hidden assumption.
 At least one question should connect to tomorrow's action.
+Use lensFeedback verified outcomes and lensMoves when present: reinforce moves marked reinforce, make moves marked adjust more concrete, and avoid moves marked avoid.
+Do not repeat a lens move that produced low-value or uncalibratable work.
 Use the session mode to control depth.
 ```
 
@@ -404,6 +589,13 @@ Create exactly one main quest unless information is insufficient.
 Create at most two side quests and at most one observation quest.
 The main quest should target the highest-value action, not the easiest task.
 Each quest must include why it matters, concrete completion criteria, expected resistance, and one reflection question.
+Each quest must include calibration_target: the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate.
+Each quest must include linked_cards with confirmed card titles from today's context; do not invent linked card titles.
+Quest must carry the calibration target into tomorrow's verification.
+Use lensFeedback as verified lens outcomes from previous days.
+Reinforce lensMoves that produced high-value calibration evidence.
+When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
+When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
 If information is insufficient, ask for clarification rather than inventing a task.
 ```
 
@@ -428,9 +620,15 @@ Instruction:
 
 ```text
 Review yesterday's quest, completion status, and actual value.
+Verify Quest input includes targetJudgment when yesterday's quest had a calibration target.
+Compare targetJudgment with actual evidence when targetJudgment is present.
+Name the observable evidence or signal that proves what actually happened.
+Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
 Identify whether the task was well-chosen, too vague, too large, blocked, avoided, or lower-value than expected.
 Do not blame the user.
 Return a concise calibration note and one recommendation for today's quest design.
+The calibration note must include the original prediction, actual evidence, evidence gained, judgment update, observable evidence or signal, and completion criteria or acceptance criteria evidence.
+The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.
 ```
 
 Output:
@@ -456,6 +654,11 @@ From the confirmed cards, answers, and quest, identify at most one reusable prin
 Do not create a principle if the lesson is too situational.
 The principle must be concrete enough to apply later.
 Frame it as a behavior rule, not a slogan.
+The principle must include at least two concrete actions the user can do next time.
+The success_criteria must name observable evidence, a visible artifact, owner confirmation, acceptance criteria, or another verifiable signal.
+Do not return vague slogans such as "keep clear", "be better", or "improve efficiency".
+The principle must cite source_card_titles using exact titles from confirmedCards.
+Do not invent source_card_titles. If no confirmed card supports the rule, return principle_candidate: null.
 ```
 
 Output:

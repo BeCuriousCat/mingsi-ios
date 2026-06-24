@@ -218,6 +218,158 @@ struct PromptContextPayload: Codable, Hashable {
         var lensCatalog: LensCatalogContext?
     }
 
+    struct TrainingPrescriptionContext: Codable, Hashable {
+        var recommendedLensId: String
+        var recommendedPromptId: String
+        var recommendationReason: String
+        var confidence: Double
+        var policyVersion: String
+        var alternativeLensIds: [String]
+        var baselineChecks: [BaselineThinkingCheck]
+        var primaryTrainingDimension: ThinkingTrainingDimension
+        var secondaryTrainingDimensions: [ThinkingTrainingDimension]
+        var baselineTrainingDimensions: [ThinkingTrainingDimension]
+        var userSelectedLensId: String?
+        var finalLensId: String
+        var source: TrainingPrescriptionSource
+        var overrideBoundary: String
+
+        init(
+            recommendedLensId: String,
+            recommendedPromptId: String,
+            recommendationReason: String,
+            confidence: Double,
+            policyVersion: String,
+            alternativeLensIds: [String],
+            baselineChecks: [BaselineThinkingCheck],
+            primaryTrainingDimension: ThinkingTrainingDimension,
+            secondaryTrainingDimensions: [ThinkingTrainingDimension],
+            baselineTrainingDimensions: [ThinkingTrainingDimension],
+            userSelectedLensId: String? = nil,
+            finalLensId: String,
+            source: TrainingPrescriptionSource,
+            overrideBoundary: String = ""
+        ) {
+            self.recommendedLensId = recommendedLensId
+            self.recommendedPromptId = recommendedPromptId
+            self.recommendationReason = recommendationReason
+            self.confidence = confidence
+            self.policyVersion = policyVersion
+            self.alternativeLensIds = alternativeLensIds
+            self.baselineChecks = baselineChecks
+            self.primaryTrainingDimension = primaryTrainingDimension
+            self.secondaryTrainingDimensions = secondaryTrainingDimensions
+            self.baselineTrainingDimensions = baselineTrainingDimensions
+            self.userSelectedLensId = userSelectedLensId
+            self.finalLensId = finalLensId
+            self.source = source
+            self.overrideBoundary = overrideBoundary
+        }
+
+        init(_ prescription: TrainingPrescription) {
+            self.init(
+                recommendedLensId: prescription.recommendedLensId,
+                recommendedPromptId: prescription.recommendedPromptId,
+                recommendationReason: prescription.recommendationReason,
+                confidence: prescription.confidence,
+                policyVersion: prescription.policyVersion,
+                alternativeLensIds: prescription.alternativeLensIds,
+                baselineChecks: prescription.baselineChecks,
+                primaryTrainingDimension: prescription.primaryTrainingDimension,
+                secondaryTrainingDimensions: prescription.secondaryTrainingDimensions,
+                baselineTrainingDimensions: prescription.baselineTrainingDimensions,
+                userSelectedLensId: prescription.userSelectedLensId,
+                finalLensId: prescription.finalLensId,
+                source: prescription.source,
+                overrideBoundary: prescription.overrideBoundary
+            )
+        }
+    }
+
+    struct CoachDiagnosisContext: Codable, Hashable {
+        var phase: ThinkingPhase
+        var readiness: ConvergenceReadiness
+        var recommendedMove: NextCoachMove
+        var reason: String
+        var source: CoachDiagnosisSource
+        var policyVersion: String
+
+        init(
+            phase: ThinkingPhase,
+            readiness: ConvergenceReadiness,
+            recommendedMove: NextCoachMove,
+            reason: String,
+            source: CoachDiagnosisSource,
+            policyVersion: String
+        ) {
+            self.phase = phase
+            self.readiness = readiness
+            self.recommendedMove = recommendedMove
+            self.reason = reason
+            self.source = source
+            self.policyVersion = policyVersion
+        }
+
+        init(_ diagnosis: CoachDiagnosis) {
+            self.init(
+                phase: diagnosis.phase,
+                readiness: diagnosis.readiness,
+                recommendedMove: diagnosis.recommendedMove,
+                reason: diagnosis.reason,
+                source: diagnosis.source,
+                policyVersion: diagnosis.policyVersion
+            )
+        }
+    }
+
+    struct CoachTurnStateContext: Codable, Hashable {
+        var phase: ThinkingPhase
+        var readiness: ConvergenceReadiness
+        var recommendedMove: NextCoachMove
+        var reason: String
+        var openEvidenceGaps: [EvidenceGapType]
+        var baselineChecks: [BaselineThinkingCheck]
+        var decisionSource: CoachDiagnosisSource
+        var policyVersion: String
+        var turnSummary: String
+
+        init(
+            phase: ThinkingPhase,
+            readiness: ConvergenceReadiness,
+            recommendedMove: NextCoachMove,
+            reason: String,
+            openEvidenceGaps: [EvidenceGapType],
+            baselineChecks: [BaselineThinkingCheck],
+            decisionSource: CoachDiagnosisSource,
+            policyVersion: String,
+            turnSummary: String
+        ) {
+            self.phase = phase
+            self.readiness = readiness
+            self.recommendedMove = recommendedMove
+            self.reason = reason
+            self.openEvidenceGaps = openEvidenceGaps
+            self.baselineChecks = baselineChecks
+            self.decisionSource = decisionSource
+            self.policyVersion = policyVersion
+            self.turnSummary = turnSummary
+        }
+
+        init(_ state: CoachTurnState) {
+            self.init(
+                phase: state.phase,
+                readiness: state.readiness,
+                recommendedMove: state.recommendedMove,
+                reason: state.reason,
+                openEvidenceGaps: state.openEvidenceGaps,
+                baselineChecks: state.baselineChecks,
+                decisionSource: state.decisionSource,
+                policyVersion: state.policyVersion,
+                turnSummary: state.turnSummary
+            )
+        }
+    }
+
     struct Card: Codable, Hashable {
         var id: String
         var type: String
@@ -232,6 +384,7 @@ struct PromptContextPayload: Codable, Hashable {
         var id: String
         var question: String
         var answer: String
+        var calibrationTarget: String? = nil
     }
 
     struct QuestContext: Codable, Hashable {
@@ -239,6 +392,7 @@ struct PromptContextPayload: Codable, Hashable {
         var type: String
         var title: String
         var completionCriteria: String
+        var calibrationTarget: String? = nil
     }
 
     struct PrincipleContext: Codable, Hashable {
@@ -251,6 +405,7 @@ struct PromptContextPayload: Codable, Hashable {
         var status: PrincipleStatus
         var retrievalReason: String
         var retrievalPolicyVersion: String
+        var retrievalSignal: String
 
         init(
             id: String,
@@ -261,7 +416,8 @@ struct PromptContextPayload: Codable, Hashable {
             exceptions: String,
             status: PrincipleStatus,
             retrievalReason: String = "",
-            retrievalPolicyVersion: String = ""
+            retrievalPolicyVersion: String = "",
+            retrievalSignal: String = ""
         ) {
             self.id = id
             self.title = title
@@ -272,6 +428,7 @@ struct PromptContextPayload: Codable, Hashable {
             self.status = status
             self.retrievalReason = retrievalReason
             self.retrievalPolicyVersion = retrievalPolicyVersion
+            self.retrievalSignal = retrievalSignal
         }
     }
 
@@ -283,13 +440,48 @@ struct PromptContextPayload: Codable, Hashable {
         var privacyRules: String?
         var streamProtocol: String?
         var principleUsageRule: String?
+        var coachDiagnosisRule: String?
+        var coachTurnRule: String?
     }
 
     struct VerificationContext: Codable, Hashable {
         var questTitle: String
         var completionCriteria: String
+        var targetJudgment: String? = nil
+        var trainingPrinciple: VerificationTrainingPrincipleContext? = nil
         var completion: String
         var valueRating: String
+    }
+
+    struct VerificationTrainingPrincipleContext: Codable, Hashable {
+        var principleId: String
+        var principleTitle: String
+        var matchSignal: String
+
+        init(principleId: UUID, principleTitle: String, matchSignal: String) {
+            self.principleId = principleId.uuidString
+            self.principleTitle = principleTitle
+            self.matchSignal = matchSignal
+        }
+
+        init(principleId: String, principleTitle: String, matchSignal: String) {
+            self.principleId = principleId
+            self.principleTitle = principleTitle
+            self.matchSignal = matchSignal
+        }
+    }
+
+    struct LensFeedbackContext: Codable, Hashable {
+        var lensId: String
+        var lensTitle: String
+        var signal: String
+        var completion: String
+        var valueRating: String
+        var calibrationNote: String
+        var recommendation: String?
+        var questionTargets: [String]
+        var evidenceGapTypes: [String]
+        var lensMoves: [String]
     }
 
     struct GrowthRecordContext: Codable, Hashable {
@@ -377,6 +569,9 @@ struct PromptContextPayload: Codable, Hashable {
 
     var currentInput: CurrentInput
     var userChoice: UserChoice
+    var trainingPrescription: TrainingPrescriptionContext?
+    var coachDiagnosis: CoachDiagnosisContext?
+    var coachTurnState: CoachTurnStateContext?
     var cards: [Card]
     var answers: [Answer]
     var quests: [QuestContext]
@@ -385,6 +580,7 @@ struct PromptContextPayload: Codable, Hashable {
     var privacy: Privacy
     var directives: PromptDirectives
     var verification: VerificationContext?
+    var lensFeedback: [LensFeedbackContext]
     var growth: GrowthContext?
     var project: ProjectContext?
 
@@ -423,11 +619,18 @@ struct PromptContextPayload: Codable, Hashable {
         privacy: Privacy = Privacy(),
         directives: PromptDirectives = PromptDirectives(),
         verification: VerificationContext? = nil,
+        lensFeedback: [LensFeedbackContext] = [],
         growth: GrowthContext? = nil,
-        project: ProjectContext? = nil
+        project: ProjectContext? = nil,
+        trainingPrescription: TrainingPrescriptionContext? = nil,
+        coachDiagnosis: CoachDiagnosisContext? = nil,
+        coachTurnState: CoachTurnStateContext? = nil
     ) {
         self.currentInput = currentInput
         self.userChoice = userChoice
+        self.trainingPrescription = trainingPrescription
+        self.coachDiagnosis = coachDiagnosis
+        self.coachTurnState = coachTurnState
         self.cards = cards
         self.answers = answers
         self.quests = quests
@@ -436,6 +639,7 @@ struct PromptContextPayload: Codable, Hashable {
         self.privacy = privacy
         self.directives = directives
         self.verification = verification
+        self.lensFeedback = lensFeedback
         self.growth = growth
         self.project = project
     }
@@ -451,6 +655,12 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let principleUsageRule = directives.principleUsageRule {
             copy.directives.principleUsageRule = principleUsageRule
+        }
+        if let coachDiagnosisRule = directives.coachDiagnosisRule {
+            copy.directives.coachDiagnosisRule = coachDiagnosisRule
+        }
+        if let coachTurnRule = directives.coachTurnRule {
+            copy.directives.coachTurnRule = coachTurnRule
         }
         return copy
     }
@@ -478,6 +688,45 @@ struct PromptContextPayload: Codable, Hashable {
             values["lensPackVersion"] = lensCatalog.packVersion
             values["lensPackDisplayName"] = lensCatalog.packDisplayName
         }
+        if let trainingPrescription {
+            values["coachRecommendedLens"] = trainingPrescription.recommendedLensId
+            values["coachRecommendedPrompt"] = trainingPrescription.recommendedPromptId
+            values["coachRecommendationReason"] = trainingPrescription.recommendationReason
+            values["coachRecommendationConfidence"] = String(format: "%.2f", trainingPrescription.confidence)
+            values["coachRecommendationPolicyVersion"] = trainingPrescription.policyVersion
+            values["coachAlternativeLenses"] = trainingPrescription.alternativeLensIds.joined(separator: ",")
+            values["baselineThinkingChecks"] = trainingPrescription.baselineChecks.map(\.rawValue).joined(separator: ",")
+            values["primaryTrainingDimension"] = trainingPrescription.primaryTrainingDimension.rawValue
+            values["secondaryTrainingDimensions"] = trainingPrescription.secondaryTrainingDimensions.map(\.rawValue).joined(separator: ",")
+            values["baselineTrainingDimensions"] = trainingPrescription.baselineTrainingDimensions.map(\.rawValue).joined(separator: ",")
+            if let userSelectedLensId = trainingPrescription.userSelectedLensId {
+                values["userSelectedTrainingLens"] = userSelectedLensId
+            }
+            values["finalTrainingLens"] = trainingPrescription.finalLensId
+            values["trainingPrescriptionSource"] = trainingPrescription.source.rawValue
+            if !trainingPrescription.overrideBoundary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                values["trainingOverrideBoundary"] = trainingPrescription.overrideBoundary
+            }
+        }
+        if let coachDiagnosis {
+            values["coachThinkingPhase"] = coachDiagnosis.phase.rawValue
+            values["coachReadiness"] = coachDiagnosis.readiness.rawValue
+            values["coachRecommendedMove"] = coachDiagnosis.recommendedMove.rawValue
+            values["coachDiagnosisReason"] = coachDiagnosis.reason
+            values["coachDiagnosisSource"] = coachDiagnosis.source.rawValue
+            values["coachDiagnosisPolicyVersion"] = coachDiagnosis.policyVersion
+        }
+        if let coachTurnState {
+            values["coachTurnPhase"] = coachTurnState.phase.rawValue
+            values["coachTurnReadiness"] = coachTurnState.readiness.rawValue
+            values["coachTurnRecommendedMove"] = coachTurnState.recommendedMove.rawValue
+            values["coachTurnReason"] = coachTurnState.reason
+            values["coachTurnOpenEvidenceGaps"] = coachTurnState.openEvidenceGaps.map(\.rawValue).joined(separator: ",")
+            values["coachTurnBaselineChecks"] = coachTurnState.baselineChecks.map(\.rawValue).joined(separator: ",")
+            values["coachTurnDecisionSource"] = coachTurnState.decisionSource.rawValue
+            values["coachTurnPolicyVersion"] = coachTurnState.policyVersion
+            values["coachTurnSummary"] = coachTurnState.turnSummary
+        }
         if let rawText = currentInput.rawText {
             values["rawText"] = rawText
         }
@@ -497,14 +746,24 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if !answers.isEmpty {
             let renderedAnswers = answers.map { answer in
-                "question: \(answer.question), answer: \(answer.answer)"
+                var parts = ["question: \(answer.question)", "answer: \(answer.answer)"]
+                if let calibrationTarget = answer.calibrationTarget,
+                   !calibrationTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    parts.append("calibrationTarget: \(calibrationTarget)")
+                }
+                return parts.joined(separator: ", ")
             }.joined(separator: "\n")
             values["priorAnswers"] = renderedAnswers
             values["reflectionAnswers"] = renderedAnswers
         }
         if !quests.isEmpty {
             values["selectedQuest"] = quests.map { quest in
-                "type: \(quest.type), title: \(quest.title), completionCriteria: \(quest.completionCriteria)"
+                var parts = ["type: \(quest.type)", "title: \(quest.title)", "completionCriteria: \(quest.completionCriteria)"]
+                if let calibrationTarget = quest.calibrationTarget,
+                   !calibrationTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    parts.append("calibrationTarget: \(calibrationTarget)")
+                }
+                return parts.joined(separator: ", ")
             }.joined(separator: "\n")
         }
         if !principles.isEmpty {
@@ -515,6 +774,12 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let principleUsageRule = directives.principleUsageRule {
             values["principleUsageRule"] = principleUsageRule
+        }
+        if let coachDiagnosisRule = directives.coachDiagnosisRule {
+            values["coachDiagnosisRule"] = coachDiagnosisRule
+        }
+        if let coachTurnRule = directives.coachTurnRule {
+            values["coachTurnRule"] = coachTurnRule
         }
         if let streamProtocol = directives.streamProtocol {
             values["streamProtocol"] = streamProtocol
@@ -528,8 +793,46 @@ struct PromptContextPayload: Codable, Hashable {
         if let verification {
             values["questTitle"] = verification.questTitle
             values["completionCriteria"] = verification.completionCriteria
+            if let targetJudgment = verification.targetJudgment,
+               !targetJudgment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                values["targetJudgment"] = targetJudgment
+            }
+            if let trainingPrinciple = verification.trainingPrinciple {
+                values["trainingPrinciple"] = [
+                    "id: \(trainingPrinciple.principleId)",
+                    "title: \(trainingPrinciple.principleTitle)",
+                    "matchSignal: \(trainingPrinciple.matchSignal)"
+                ].joined(separator: ", ")
+            }
             values["completion"] = verification.completion
             values["valueRating"] = verification.valueRating
+        }
+        if !lensFeedback.isEmpty {
+            values["lensFeedback"] = lensFeedback.map { feedback in
+                var parts = [
+                    "lens=\(feedback.lensTitle)",
+                    "lensId=\(feedback.lensId)",
+                    "signal=\(feedback.signal)",
+                    "completion=\(feedback.completion)",
+                    "value=\(feedback.valueRating)",
+                    "calibrationNote=\(feedback.calibrationNote)"
+                ]
+                if let recommendation = feedback.recommendation?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !recommendation.isEmpty {
+                    parts.append("recommendation=\(recommendation)")
+                }
+                if !feedback.questionTargets.isEmpty {
+                    parts.append("targets=\(feedback.questionTargets.joined(separator: " | "))")
+                }
+                if !feedback.evidenceGapTypes.isEmpty {
+                    parts.append("evidenceGaps=\(feedback.evidenceGapTypes.joined(separator: ","))")
+                }
+                if !feedback.lensMoves.isEmpty {
+                    parts.append("lensMoves=\(feedback.lensMoves.joined(separator: ","))")
+                }
+                return parts.joined(separator: "; ")
+            }
+            .joined(separator: "\n")
         }
         if let growth {
             mergeGrowthLegacyValues(growth, into: &values)
@@ -646,7 +949,8 @@ struct PromptContextPayload: Codable, Hashable {
                 "exceptions": principle.exceptions,
                 "status": principle.status.rawValue,
                 "retrievalReason": principle.retrievalReason,
-                "retrievalPolicyVersion": principle.retrievalPolicyVersion
+                "retrievalPolicyVersion": principle.retrievalPolicyVersion,
+                "retrievalSignal": principle.retrievalSignal
             ]
             .map { "\($0.key): \($0.value)" }
             .sorted()
@@ -885,6 +1189,554 @@ struct PromptEvalRunner {
     }
 }
 
+enum PromptCoachingQualityIssueReason: String, Codable, CaseIterable, Identifiable {
+    case genericQuestion
+    case missingEvidenceGapType
+    case missingAnswerUse
+    case missingLensMove
+    case missingSourceGrounding
+    case vagueCalibrationTarget
+    case missingSelectedLensMove
+    case missingTrainingDimensionAlignment
+    case missingPrimaryTrainingDimensionFocus
+    case missingCoachTurnAlignment
+    case missingFunctionalCoachField
+    case repeatedAvoidedLensMove
+    case unadjustedLensMove
+    case missingReinforcedLensMove
+    case missingSystemThinkingLensMove
+    case weakVerificationCalibrationNote
+    case weakVerificationRecommendation
+    case missingExpectedPrinciplePracticeAssessment
+    case missingPrincipleSourceGrounding
+    case weakPrincipleActionability
+    case busyworkQuest
+    case weakCompletionCriteria
+
+    var id: String { rawValue }
+}
+
+struct PromptCoachingQualityIssue: Hashable, Identifiable {
+    var id: String { "\(reason.rawValue):\(subject)" }
+    var reason: PromptCoachingQualityIssueReason
+    var subject: String
+}
+
+enum PromptCoachingQualityPolicy {
+    static func evaluateQuestions(
+        _ questions: [ReflectionQuestion],
+        selectedLens: ThinkingLens? = nil,
+        lensFeedback: [PromptContextPayload.LensFeedbackContext] = [],
+        primaryTrainingDimension: ThinkingTrainingDimension? = nil,
+        baselineTrainingDimensions: [ThinkingTrainingDimension] = [],
+        coachTurnState: CoachTurnState? = nil
+    ) -> [PromptCoachingQualityIssue] {
+        let trainingDimensions = normalizedTrainingDimensions(
+            primaryTrainingDimension: primaryTrainingDimension,
+            baselineTrainingDimensions: baselineTrainingDimensions
+        )
+        let avoidedMoves = Set(
+            lensFeedback
+                .filter { $0.signal == "avoid" }
+                .flatMap(\.lensMoves)
+        )
+        let reinforcedMoves = Set(
+            lensFeedback
+                .filter { $0.signal == "reinforce" }
+                .flatMap(\.lensMoves)
+        )
+        let adjustedTargetsByMove = lensFeedback
+            .filter { $0.signal == "adjust" }
+            .flatMap { feedback in
+                feedback.lensMoves.flatMap { move in
+                    feedback.questionTargets.map { target in (move, target) }
+                }
+            }
+            .reduce(into: [String: Set<String>]()) { result, pair in
+                result[pair.0, default: []].insert(pair.1)
+            }
+
+        var allIssues = questions.flatMap { question in
+            var issues: [PromptCoachingQualityIssue] = []
+            let subject = question.question
+
+            if containsGenericQuestionPattern(question.question) {
+                issues.append(issue(.genericQuestion, subject: subject))
+            }
+            if !hasFunctionalCoachFields(question) {
+                issues.append(issue(.missingFunctionalCoachField, subject: subject))
+            }
+            if question.evidenceGapType == nil {
+                issues.append(issue(.missingEvidenceGapType, subject: subject))
+            }
+            if question.answerUse == nil {
+                issues.append(issue(.missingAnswerUse, subject: subject))
+            }
+            if question.lensMove == nil {
+                issues.append(issue(.missingLensMove, subject: subject))
+            }
+            if question.sourceCardTitles.isEmpty {
+                issues.append(issue(.missingSourceGrounding, subject: subject))
+            }
+            if isVagueCalibrationTarget(question.calibrationTarget) {
+                issues.append(issue(.vagueCalibrationTarget, subject: subject))
+            }
+            if !trainingDimensions.isEmpty,
+               !isAlignedWithAnyTrainingDimension(question, dimensions: trainingDimensions) {
+                issues.append(issue(.missingTrainingDimensionAlignment, subject: subject))
+            }
+            if let coachTurnState,
+               !isAligned(question, with: coachTurnState) {
+                issues.append(issue(.missingCoachTurnAlignment, subject: subject))
+            }
+            if let lensMove = question.lensMove,
+               avoidedMoves.contains(lensMove.rawValue) {
+                issues.append(issue(.repeatedAvoidedLensMove, subject: subject))
+            }
+            if let lensMove = question.lensMove,
+               repeatsAdjustedTarget(
+                   question.calibrationTarget,
+                   previousTargets: adjustedTargetsByMove[lensMove.rawValue]
+               ) {
+                issues.append(issue(.unadjustedLensMove, subject: subject))
+            }
+
+            return issues
+        }
+        if let primaryTrainingDimension,
+           let firstQuestion = questions.first,
+           isAlignedWithAnyTrainingDimension(firstQuestion, dimensions: trainingDimensions),
+           !isAligned(firstQuestion, with: primaryTrainingDimension) {
+            allIssues.append(issue(.missingPrimaryTrainingDimensionFocus, subject: firstQuestion.question))
+        }
+        if !reinforcedMoves.isEmpty {
+            let outputMoves = Set(questions.compactMap { $0.lensMove?.rawValue })
+            if reinforcedMoves.isDisjoint(with: outputMoves) {
+                allIssues.append(issue(.missingReinforcedLensMove, subject: reinforcedMoves.sorted().joined(separator: ",")))
+            }
+        }
+        if let selectedLens,
+           let requiredMoves = requiredLensMoves(for: selectedLens) {
+            let outputMoves = Set(questions.compactMap(\.lensMove))
+            if requiredMoves.isDisjoint(with: outputMoves) {
+                if selectedLens == .systemThinking {
+                    allIssues.append(issue(.missingSystemThinkingLensMove, subject: ThinkingLens.systemThinking.rawValue))
+                } else {
+                    allIssues.append(issue(.missingSelectedLensMove, subject: selectedLens.rawValue))
+                }
+            }
+        }
+        return allIssues
+    }
+
+    static func evaluateQuests(
+        _ quests: [Quest],
+        selectedLens: ThinkingLens? = nil,
+        coachTurnState: CoachTurnState? = nil
+    ) -> [PromptCoachingQualityIssue] {
+        var allIssues = quests.flatMap { quest in
+            var issues: [PromptCoachingQualityIssue] = []
+            let subject = quest.title
+
+            if isBusyworkQuest(quest) {
+                issues.append(issue(.busyworkQuest, subject: subject))
+            }
+            if hasWeakCompletionCriteria(quest.completionCriteria) {
+                issues.append(issue(.weakCompletionCriteria, subject: subject))
+            }
+            if isVagueCalibrationTarget(quest.calibrationTarget) {
+                issues.append(issue(.vagueCalibrationTarget, subject: subject))
+            }
+            if quest.sourceCardTitles.isEmpty {
+                issues.append(issue(.missingSourceGrounding, subject: subject))
+            }
+
+            return issues
+        }
+
+        if let coachTurnState,
+           coachTurnState.readiness != .ready,
+           coachTurnState.decisionSource != .userOverrideProgress {
+            allIssues.append(
+                issue(.missingCoachTurnAlignment, subject: coachTurnState.recommendedMove.rawValue)
+            )
+        }
+
+        if let selectedLens,
+           let requiredMoves = requiredLensMoves(for: selectedLens) {
+            let questMoves = Set(quests.compactMap(\.lensMove))
+            if requiredMoves.isDisjoint(with: questMoves) {
+                if selectedLens == .systemThinking {
+                    allIssues.append(issue(.missingSystemThinkingLensMove, subject: ThinkingLens.systemThinking.rawValue))
+                } else {
+                    allIssues.append(issue(.missingSelectedLensMove, subject: selectedLens.rawValue))
+                }
+            }
+        }
+
+        return allIssues
+    }
+
+    static func evaluateVerification(
+        _ result: VerifyQuestResult,
+        targetJudgment: String?,
+        hasTrainingPrinciple: Bool = false
+    ) -> [PromptCoachingQualityIssue] {
+        let target = targetJudgment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let subject = target.isEmpty ? "trainingPrinciple" : target
+
+        var issues: [PromptCoachingQualityIssue] = []
+        if !target.isEmpty {
+            if hasWeakVerificationCalibrationNote(result.calibrationNote) {
+                issues.append(issue(.weakVerificationCalibrationNote, subject: target))
+            }
+            if hasWeakVerificationRecommendation(result.recommendation) {
+                issues.append(issue(.weakVerificationRecommendation, subject: target))
+            }
+        }
+        if hasTrainingPrinciple,
+           (result.expectedPrinciplePracticeAssessment ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(issue(.missingExpectedPrinciplePracticeAssessment, subject: subject))
+        }
+        return issues
+    }
+
+    static func evaluatePrinciples(_ principles: [PrincipleAsset]) -> [PromptCoachingQualityIssue] {
+        principles.flatMap { principle in
+            var issues: [PromptCoachingQualityIssue] = []
+            if principle.sourceCardTitles.isEmpty {
+                issues.append(issue(.missingPrincipleSourceGrounding, subject: principle.title))
+            }
+            if hasWeakPrincipleActionability(principle) {
+                issues.append(issue(.weakPrincipleActionability, subject: principle.title))
+            }
+            return issues
+        }
+    }
+
+    private static func issue(
+        _ reason: PromptCoachingQualityIssueReason,
+        subject: String
+    ) -> PromptCoachingQualityIssue {
+        PromptCoachingQualityIssue(reason: reason, subject: subject)
+    }
+
+    private static func hasFunctionalCoachFields(_ question: ReflectionQuestion) -> Bool {
+        [
+            question.whyNow,
+            question.expectedUpdate,
+            question.proceedWhen
+        ].allSatisfy { field in
+            !(field?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+    }
+
+    private static func containsGenericQuestionPattern(_ text: String) -> Bool {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let genericPatterns = [
+            "你怎么看",
+            "这说明了什么",
+            "感觉如何",
+            "有什么感受",
+            "有什么启发",
+            "如何更好",
+            "what do you think",
+            "how do you feel"
+        ]
+        return genericPatterns.contains { normalized.contains($0) }
+    }
+
+    private static func isVagueCalibrationTarget(_ target: String?) -> Bool {
+        let normalized = target?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard normalized.count >= 8 else { return true }
+        let vagueTargets = [
+            "用户的思考",
+            "这个情况",
+            "明天最值得验证的关键判断",
+            "当前透镜是否能改变下一步判断",
+            "improve thinking",
+            "understand the situation",
+            "the user's thinking",
+            "the situation"
+        ]
+        return vagueTargets.contains { normalized.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func repeatsAdjustedTarget(
+        _ target: String?,
+        previousTargets: Set<String>?
+    ) -> Bool {
+        let current = normalizedComparableText(target)
+        guard current.count >= 6, let previousTargets, !previousTargets.isEmpty else {
+            return false
+        }
+
+        return previousTargets.contains { previous in
+            let normalizedPrevious = normalizedComparableText(previous)
+            guard normalizedPrevious.count >= 6 else { return false }
+            return current == normalizedPrevious ||
+                current.contains(normalizedPrevious) ||
+                normalizedPrevious.contains(current)
+        }
+    }
+
+    private static func requiredLensMoves(for lens: ThinkingLens) -> Set<QuestionLensMove>? {
+        switch lens {
+        case .evidenceCheck:
+            return [.factInterpretationSplit]
+        case .opposingView:
+            return [.alternativeExplanation]
+        case .leverageAnalysis:
+            return [.leverageTradeoff]
+        case .firstPrinciples:
+            return [.constraintDecomposition]
+        case .systemThinking:
+            return [.feedbackLoop, .delayedEffect, .secondOrderConsequence]
+        case .judgmentCalibration:
+            return [.predictionCalibration]
+        }
+    }
+
+    private static func normalizedTrainingDimensions(
+        primaryTrainingDimension: ThinkingTrainingDimension?,
+        baselineTrainingDimensions: [ThinkingTrainingDimension]
+    ) -> [ThinkingTrainingDimension] {
+        var seen: Set<ThinkingTrainingDimension> = []
+        return ([primaryTrainingDimension].compactMap { $0 } + baselineTrainingDimensions).filter { dimension in
+            seen.insert(dimension).inserted
+        }
+    }
+
+    private static func isAlignedWithAnyTrainingDimension(
+        _ question: ReflectionQuestion,
+        dimensions: [ThinkingTrainingDimension]
+    ) -> Bool {
+        dimensions.contains { isAligned(question, with: $0) }
+    }
+
+    private static func isAligned(
+        _ question: ReflectionQuestion,
+        with coachTurnState: CoachTurnState
+    ) -> Bool {
+        guard coachTurnState.readiness != .ready else { return true }
+        guard coachTurnState.decisionSource != .userOverrideProgress else { return true }
+
+        switch coachTurnState.recommendedMove {
+        case .surfaceEvidenceGap, .slowDownConvergence:
+            return question.evidenceGapType.map { $0 != .none } ?? false ||
+                question.answerUse == .collectEvidence ||
+                question.answerUse == .testAssumption ||
+                question.answerUse == .watchCalibrationSignal
+        case .askClarifyingQuestion:
+            return question.answerUse != .chooseAction
+        case .recommendTrainingLens, .generateQuest:
+            return true
+        }
+    }
+
+    private static func isAligned(
+        _ question: ReflectionQuestion,
+        with dimension: ThinkingTrainingDimension
+    ) -> Bool {
+        switch dimension {
+        case .factInterpretationSeparation:
+            return question.lensMove == .factInterpretationSplit
+        case .evidenceDiscipline:
+            return question.evidenceGapType.map { $0 != .none } ?? false ||
+                question.answerUse == .collectEvidence ||
+                question.answerUse == .watchCalibrationSignal ||
+                question.answerUse == .updateJudgment ||
+                question.lensMove == .factInterpretationSplit
+        case .counterexampleSeeking:
+            return question.evidenceGapType == .missingCounterexample ||
+                question.lensMove == .alternativeExplanation
+        case .assumptionTesting:
+            return question.answerUse == .testAssumption ||
+                question.lensMove == .constraintDecomposition
+        case .systemFeedbackAwareness:
+            return question.lensMove == .feedbackLoop ||
+                question.lensMove == .delayedEffect ||
+                question.lensMove == .secondOrderConsequence
+        case .judgmentCalibration:
+            return question.evidenceGapType == .missingCalibrationSignal ||
+                question.answerUse == .watchCalibrationSignal ||
+                question.lensMove == .predictionCalibration
+        case .testableActionDesign:
+            return question.answerUse == .chooseAction ||
+                question.answerUse == .testAssumption ||
+                question.lensMove == .leverageTradeoff
+        }
+    }
+
+    private static func normalizedComparableText(_ text: String?) -> String {
+        (text ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .filter { !$0.isWhitespace && !$0.isPunctuation }
+    }
+
+    private static func isBusyworkQuest(_ quest: Quest) -> Bool {
+        let combined = [
+            quest.title,
+            quest.whyItMatters,
+            quest.completionCriteria,
+            quest.reflectionQuestion
+        ].joined(separator: " ")
+        let busyworkSignals = ["排版", "整理会议纪要", "补更多说明", "看起来更完整", "format", "polish"]
+        let calibrationSignals = ["证据", "校准", "验证", "观察", "预测", "判断", "反例", "信号"]
+        return busyworkSignals.contains { combined.localizedCaseInsensitiveContains($0) } &&
+            !calibrationSignals.contains { combined.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func hasWeakCompletionCriteria(_ criteria: String) -> Bool {
+        let trimmed = criteria.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 16 else { return true }
+        let observableSignals = ["记录", "完成", "包含", "发送", "确认", "验收", "校准信号", "可观察", "before", "record"]
+        return !observableSignals.contains { trimmed.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func hasWeakPrincipleActionability(_ principle: PrincipleAsset) -> Bool {
+        let concreteActions = principle.actions
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { action in
+                action.count >= 6 && !containsVaguePrincipleLanguage(action)
+            }
+        guard concreteActions.count >= 2 else { return true }
+
+        let successCriteria = principle.successCriteria.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard successCriteria.count >= 16 else { return true }
+
+        let observableSignals = [
+            "记录", "写", "列出", "确认", "复述", "发送", "验收", "标准", "负责人", "完成", "可观察",
+            "record", "write", "confirm", "send", "owner", "acceptance", "criteria", "observable", "before"
+        ]
+        guard observableSignals.contains(where: { successCriteria.localizedCaseInsensitiveContains($0) }) else {
+            return true
+        }
+
+        let combined = [
+            principle.title,
+            principle.summary,
+            principle.triggerContext,
+            principle.successCriteria
+        ].joined(separator: " ")
+        return containsVaguePrincipleLanguage(combined)
+    }
+
+    private static func containsVaguePrincipleLanguage(_ text: String) -> Bool {
+        let vagueSignals = [
+            "做得更好",
+            "保持清晰",
+            "清晰沟通很重要",
+            "事情更顺利",
+            "持续改进",
+            "提高效率",
+            "be better",
+            "keep clear",
+            "improve efficiency",
+            "things go smoother"
+        ]
+        return vagueSignals.contains { text.localizedCaseInsensitiveContains($0) }
+    }
+
+    private static func hasWeakVerificationCalibrationNote(_ note: String) -> Bool {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 40 else { return true }
+
+        let originalPredictionSignals = [
+            "原判断",
+            "原预测",
+            "原先判断",
+            "original prediction",
+            "original judgment",
+            "target judgment"
+        ]
+        let actualEvidenceSignals = [
+            "实际证据",
+            "实际情况",
+            "实际结果",
+            "actual evidence",
+            "evidence showed",
+            "evidence shows",
+            "actual result",
+            "actual outcome"
+        ]
+        let evidenceGainedSignals = [
+            "证据收获",
+            "获得的证据",
+            "证据显示",
+            "evidence gained",
+            "gained evidence",
+            "what we learned",
+            "learned that"
+        ]
+        let judgmentUpdateSignals = [
+            "判断更新",
+            "更新判断",
+            "下一步判断",
+            "judgment update",
+            "updated judgment",
+            "update the judgment",
+            "next judgment"
+        ]
+        let observableEvidenceSignals = [
+            "可观察证据",
+            "可观察信号",
+            "观察到",
+            "observable evidence",
+            "observable signal",
+            "observed signal",
+            "observed evidence"
+        ]
+        let completionCriteriaSignals = [
+            "完成标准",
+            "验收标准",
+            "验收口径",
+            "完成口径",
+            "completion criteria",
+            "acceptance criteria",
+            "criteria matched",
+            "criteria met"
+        ]
+
+        return !containsAnySignal(trimmed, originalPredictionSignals) ||
+            !containsAnySignal(trimmed, actualEvidenceSignals) ||
+            !containsAnySignal(trimmed, evidenceGainedSignals) ||
+            !containsAnySignal(trimmed, judgmentUpdateSignals) ||
+            !containsAnySignal(trimmed, observableEvidenceSignals) ||
+            !containsAnySignal(trimmed, completionCriteriaSignals)
+    }
+
+    private static func hasWeakVerificationRecommendation(_ recommendation: String?) -> Bool {
+        let trimmed = recommendation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard trimmed.count >= 16 else { return true }
+
+        let nextStepSignals = [
+            "下一次",
+            "下一步",
+            "明天",
+            "校准",
+            "验证",
+            "测试",
+            "观察",
+            "信号",
+            "行动",
+            "next calibration",
+            "next action",
+            "next step",
+            "observable signal",
+            "signal to observe",
+            "test whether",
+            "observe whether"
+        ]
+        return !containsAnySignal(trimmed, nextStepSignals)
+    }
+
+    private static func containsAnySignal(_ text: String, _ signals: [String]) -> Bool {
+        signals.contains { text.localizedCaseInsensitiveContains($0) }
+    }
+}
+
 private struct PromptEvalFailure: Error, CustomStringConvertible {
     var description: String
 }
@@ -977,6 +1829,424 @@ private struct PromptEvalCase {
             try expect(questions.contains { $0.question.contains("最可能") && $0.question.contains("推翻") }, "Expected disconfirming evidence question.")
         },
         PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.evidence_gap_taxonomy",
+            name: "Questions classify evidence gaps",
+            inputSummary: "Evidence-check and judgment-calibration cards with missing observations, counterexamples, and calibration signals.",
+            expectedBehavior: "Classify question evidence gaps without forcing every question into a missing evidence category."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.evidenceGapTaxonomyQuestionsFixture.utf8))
+            try expect(questions.count == 4, "Expected four taxonomy questions.")
+            let gapTypes = Set(questions.compactMap(\.evidenceGapType))
+            try expect(gapTypes.contains(.missingObservation), "Expected missing observation type.")
+            try expect(gapTypes.contains(.missingCounterexample), "Expected missing counterexample type.")
+            try expect(gapTypes.contains(.missingCalibrationSignal), "Expected missing calibration signal type.")
+            try expect(gapTypes.contains(.none), "Expected non-gap tradeoff question to use none.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.answer_use_not_pseudo_depth",
+            name: "Questions declare how answers will be used",
+            inputSummary: "Real reflection cards where broad introspection would feel smart but would not update judgment or action.",
+            expectedBehavior: "Every question should declare whether the answer updates judgment, chooses action, tests an assumption, collects evidence, or watches a calibration signal."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.answerUseQuestionsFixture.utf8))
+            try expect(questions.count == 4, "Expected four answer-use questions.")
+            let uses = Set(questions.compactMap(\.answerUse))
+            try expect(uses.contains(.updateJudgment), "Expected update judgment question.")
+            try expect(uses.contains(.chooseAction), "Expected choose action question.")
+            try expect(uses.contains(.testAssumption), "Expected test assumption question.")
+            try expect(uses.contains(.watchCalibrationSignal), "Expected calibration signal question.")
+            try expect(
+                questions.allSatisfy { !$0.question.contains("你怎么看") && !$0.question.contains("这说明了什么") },
+                "Expected no pseudo-depth questions."
+            )
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.lens_move_taxonomy",
+            name: "Questions declare lens-specific reasoning moves",
+            inputSummary: "System-thinking and judgment-calibration cards requiring feedback-loop, delayed-effect, second-order, and prediction-calibration moves.",
+            expectedBehavior: "Every question should declare the concrete reasoning move trained by the selected lens."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.lensMoveQuestionsFixture.utf8))
+            try expect(questions.count == 4, "Expected four lens-move questions.")
+            let moves = Set(questions.compactMap(\.lensMove))
+            try expect(moves.contains(.feedbackLoop), "Expected feedback loop move.")
+            try expect(moves.contains(.delayedEffect), "Expected delayed effect move.")
+            try expect(moves.contains(.secondOrderConsequence), "Expected second-order consequence move.")
+            try expect(moves.contains(.predictionCalibration), "Expected prediction calibration move.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.source_card_grounding",
+            name: "Questions cite confirmed source cards",
+            inputSummary: "Confirmed meeting and ownership cards where useful follow-up questions must stay tied to card evidence.",
+            expectedBehavior: "Every question should cite at least one confirmed card title instead of floating above the user's records."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.sourceGroundedQuestionsFixture.utf8))
+            try expect(questions.count == 3, "Expected three grounded questions.")
+            try expect(questions.allSatisfy { !$0.sourceCardTitles.isEmpty }, "Expected every question to cite source cards.")
+            try expect(
+                questions.flatMap(\.sourceCardTitles).contains("会议目标不清"),
+                "Expected questions to cite the meeting-goal card."
+            )
+            try expect(
+                questions.flatMap(\.sourceCardTitles).contains("接口归属未确认"),
+                "Expected questions to cite the ownership card."
+            )
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.calibration_target_declared",
+            name: "Questions name the judgment they calibrate",
+            inputSummary: "Judgment-calibration and opposing-view cards where useful questions must make the target judgment explicit.",
+            expectedBehavior: "Every question should declare a concrete judgment, assumption, prediction, causal explanation, or tradeoff that the answer will calibrate."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.calibrationTargetQuestionsFixture.utf8))
+            try expect(questions.count == 3, "Expected three calibration-target questions.")
+            let targets = questions.compactMap(\.calibrationTarget)
+            try expect(targets.count == questions.count, "Expected every question to include calibration_target.")
+            try expect(
+                targets.allSatisfy { target in
+                    let trimmed = target.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.count >= 8 && !trimmed.contains("用户的思考") && !trimmed.contains("这个情况")
+                },
+                "Expected concrete calibration targets instead of vague labels."
+            )
+            try expect(
+                targets.contains { $0.contains("接口归属未确认") },
+                "Expected ownership assumption calibration target."
+            )
+            try expect(
+                targets.contains { $0.contains("小范围验收") },
+                "Expected small-acceptance prediction calibration target."
+            )
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.lens_feedback_tunes_moves",
+            name: "Verified lens feedback tunes future questions",
+            inputSummary: "Prior verified lens outcomes where one move should be reinforced and low-value moves should be avoided.",
+            expectedBehavior: "Use lensFeedback verified outcomes to reinforce effective lens moves and avoid low-value or uncalibratable moves."
+        ) { _ in
+            let text = LocalPromptProvider().template(for: .generateQuestions, mode: .standard).userText
+            try expect(text.contains("lensFeedback"), "Expected prompt to mention lensFeedback.")
+            try expect(text.contains("verified outcomes"), "Expected prompt to use verified outcomes.")
+            try expect(text.contains("lensMoves"), "Expected prompt to use specific lens moves from feedback.")
+            try expect(text.contains("reinforce"), "Expected reinforce instruction.")
+            try expect(text.contains("avoid"), "Expected avoid instruction.")
+            try expect(
+                text.contains("low-value or uncalibratable"),
+                "Expected low-value or uncalibratable move guardrail."
+            )
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_functional_coach_fields",
+            name: "Question quality gate requires functional coach fields",
+            inputSummary: "A grounded question that lacks why-now, expected-update, and proceed-when coach fields.",
+            expectedBehavior: "Flag questions whose answer cannot be used to decide why this question now, what changes, and when to proceed."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "这次会议返工里，哪条是可观察事实？",
+                    whyItMatters: "它把事实和解释拆开。",
+                    evidenceGapType: .missingObservation,
+                    answerUse: .collectEvidence,
+                    lensMove: .factInterpretationSplit,
+                    sourceCardTitles: ["会议返工来自验收口径不清"],
+                    calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions).map(\.reason))
+            try expect(reasons.contains(.missingFunctionalCoachField), "Expected missing functional coach field issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_blocks_generic_uncalibratable_output",
+            name: "Question quality gate blocks generic uncalibratable output",
+            inputSummary: "A generated question that sounds reflective but lacks evidence gap, answer use, grounding, and a concrete calibration target.",
+            expectedBehavior: "Flag generic or uncalibratable questions before they can count as passing prompt output."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "你怎么看这个情况？",
+                    whyItMatters: "帮助你思考。",
+                    evidenceGapType: nil,
+                    answerUse: nil,
+                    lensMove: nil,
+                    sourceCardTitles: [],
+                    calibrationTarget: "用户的思考"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions).map(\.reason))
+            try expect(reasons.contains(.genericQuestion), "Expected generic question issue.")
+            try expect(reasons.contains(.missingEvidenceGapType), "Expected missing evidence gap issue.")
+            try expect(reasons.contains(.missingAnswerUse), "Expected missing answer use issue.")
+            try expect(reasons.contains(.missingLensMove), "Expected missing lens move issue.")
+            try expect(reasons.contains(.missingSourceGrounding), "Expected missing source grounding issue.")
+            try expect(reasons.contains(.vagueCalibrationTarget), "Expected vague calibration target issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_honors_avoid_lens_moves",
+            name: "Question quality gate honors avoided lens moves",
+            inputSummary: "Verified lens feedback marks a prior prediction-calibration move as low-value and uncalibratable.",
+            expectedBehavior: "Flag repeated avoided lens moves so the next prompt must choose a smaller, more observable move."
+        ) { _ in
+            let feedback = [
+                PromptContextPayload.LensFeedbackContext(
+                    lensId: ThinkingLens.judgmentCalibration.rawValue,
+                    lensTitle: ThinkingLens.judgmentCalibration.title,
+                    signal: "avoid",
+                    completion: YesterdayCompletion.missed.rawValue,
+                    valueRating: YesterdayValueRating.low.rawValue,
+                    calibrationNote: "上一次预测校准问题太抽象，未产生可观察信号。",
+                    recommendation: "下一次先明确证据缺口。",
+                    questionTargets: ["小范围验收减少返工"],
+                    evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                    lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+                )
+            ]
+            let questions = [
+                ReflectionQuestion(
+                    question: "明天能观察到哪个信号，证明小范围验收确实减少返工？",
+                    whyItMatters: "校准信号让判断可以被事实更新。",
+                    whyNow: "当前教练轮次需要避免重复低价值校准方式。",
+                    expectedUpdate: "答案会更新下一次校准信号的选择。",
+                    proceedWhen: "当答案给出一个更清晰的可观察信号时推进。",
+                    evidenceGapType: .missingCalibrationSignal,
+                    answerUse: .watchCalibrationSignal,
+                    lensMove: .predictionCalibration,
+                    sourceCardTitles: ["返工来自验收口径"],
+                    calibrationTarget: "小范围验收能显著减少返工"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions, lensFeedback: feedback).map(\.reason))
+            try expect(reasons == [.repeatedAvoidedLensMove], "Expected only repeated avoided lens move issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_adjusted_lens_move",
+            name: "Question quality gate requires adjusted lens moves",
+            inputSummary: "Verified lens feedback marks a prior prediction-calibration move as useful but too broad.",
+            expectedBehavior: "Flag reuse of the same lens move and same calibration target when adjust feedback asked for a smaller observable signal."
+        ) { _ in
+            let feedback = [
+                PromptContextPayload.LensFeedbackContext(
+                    lensId: ThinkingLens.judgmentCalibration.rawValue,
+                    lensTitle: ThinkingLens.judgmentCalibration.title,
+                    signal: "adjust",
+                    completion: YesterdayCompletion.partial.rawValue,
+                    valueRating: YesterdayValueRating.medium.rawValue,
+                    calibrationNote: "预测校准方向有用，但目标太大，完成后仍不知道验收机制是否真的减少返工。",
+                    recommendation: "下一次把 prediction_calibration 缩小到一个可观察信号。",
+                    questionTargets: ["验收机制减少返工"],
+                    evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                    lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+                )
+            ]
+            let questions = [
+                ReflectionQuestion(
+                    question: "明天能观察到哪个信号，证明验收机制减少返工？",
+                    whyItMatters: "它继续校准同一个判断。",
+                    whyNow: "当前教练轮次需要把上次过大的校准目标缩小。",
+                    expectedUpdate: "答案会更新校准目标的观察粒度。",
+                    proceedWhen: "当答案把目标缩小到一个可观察信号时推进。",
+                    evidenceGapType: .missingCalibrationSignal,
+                    answerUse: .watchCalibrationSignal,
+                    lensMove: .predictionCalibration,
+                    sourceCardTitles: ["验收机制不清"],
+                    calibrationTarget: "验收机制减少返工"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions, lensFeedback: feedback).map(\.reason))
+            try expect(reasons == [.unadjustedLensMove], "Expected only unadjusted lens move issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_reinforced_lens_move",
+            name: "Question quality gate requires reinforced lens moves",
+            inputSummary: "Verified lens feedback marks a prior prediction-calibration move as high-value and worth reusing on current evidence.",
+            expectedBehavior: "Flag question batches that ignore a reinforced lens move instead of carrying the useful reasoning move into current grounding and targets."
+        ) { _ in
+            let feedback = [
+                PromptContextPayload.LensFeedbackContext(
+                    lensId: ThinkingLens.judgmentCalibration.rawValue,
+                    lensTitle: ThinkingLens.judgmentCalibration.title,
+                    signal: "reinforce",
+                    completion: YesterdayCompletion.done.rawValue,
+                    valueRating: YesterdayValueRating.high.rawValue,
+                    calibrationNote: "prediction_calibration produced a clear calibration signal.",
+                    recommendation: "Keep prediction_calibration, but ground it in today's cards.",
+                    questionTargets: ["书面验收减少返工"],
+                    evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                    lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+                )
+            ]
+            let questions = [
+                ReflectionQuestion(
+                    question: "还有什么替代解释能说明今天的返工？",
+                    whyItMatters: "它检查解释是否过早收敛。",
+                    whyNow: "当前教练轮次需要检查是否忽略了已验证的有效 lens move。",
+                    expectedUpdate: "答案会更新本轮是否沿用 prediction_calibration。",
+                    proceedWhen: "当答案说明是否有必要改用替代解释时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .testAssumption,
+                    lensMove: .alternativeExplanation,
+                    sourceCardTitles: ["今天返工来自验收口径"],
+                    calibrationTarget: "今天返工主要来自验收口径不清"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions, lensFeedback: feedback).map(\.reason))
+            try expect(reasons == [.missingReinforcedLensMove], "Expected only missing reinforced lens move issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_training_dimension_alignment",
+            name: "Question quality gate requires training dimension alignment",
+            inputSummary: "Coach plan sets evidence discipline as the primary training dimension while the generated question only chooses an action.",
+            expectedBehavior: "Flag questions that serve neither the primary training dimension nor any baseline training dimension."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "明天应该优先做哪个动作来减少会议返工？",
+                    whyItMatters: "它帮助选择下一步动作。",
+                    whyNow: "当前教练轮次需要先判断行动选择是否跳过证据训练重点。",
+                    expectedUpdate: "答案会更新下一步行动边界。",
+                    proceedWhen: "当答案说明一个可执行动作和取舍理由时推进。",
+                    evidenceGapType: EvidenceGapType.none,
+                    answerUse: .chooseAction,
+                    lensMove: .leverageTradeoff,
+                    sourceCardTitles: ["会议返工来自验收口径不清"],
+                    calibrationTarget: "优先做高杠杆动作能减少会议返工"
+                )
+            ]
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateQuestions(
+                    questions,
+                    primaryTrainingDimension: .evidenceDiscipline,
+                    baselineTrainingDimensions: [.counterexampleSeeking]
+                ).map(\.reason)
+            )
+            try expect(reasons == [.missingTrainingDimensionAlignment], "Expected only missing training dimension alignment issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_primary_training_dimension_focus",
+            name: "Question quality gate requires first question primary training focus",
+            inputSummary: "Coach plan sets judgment calibration as the primary training dimension while the generated first question only performs a baseline counterexample check.",
+            expectedBehavior: "Flag question batches whose first question dilutes the coach-led main training focus by serving only a baseline check."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "还有哪个反例会推翻验收口径不清是返工主因？",
+                    whyItMatters: "它检查当前解释是否过早收敛。",
+                    whyNow: "当前教练轮次需要检查首问是否偏离主训练焦点。",
+                    expectedUpdate: "答案会更新是否应该先做判断校准。",
+                    proceedWhen: "当答案说明反例是否改变主判断时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .testAssumption,
+                    lensMove: .alternativeExplanation,
+                    sourceCardTitles: ["验收口径导致返工"],
+                    calibrationTarget: "验收口径不清是返工主要原因"
+                )
+            ]
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateQuestions(
+                    questions,
+                    primaryTrainingDimension: .judgmentCalibration,
+                    baselineTrainingDimensions: [.counterexampleSeeking]
+                ).map(\.reason)
+            )
+            try expect(reasons == [.missingPrimaryTrainingDimensionFocus], "Expected only missing primary training dimension focus issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_system_thinking_lens_move",
+            name: "Question quality gate requires system thinking moves",
+            inputSummary: "System-thinking lens selected but generated questions only test an alternative explanation.",
+            expectedBehavior: "Flag question batches that ignore feedback-loop, delayed-effect, and second-order consequence moves when system thinking is selected."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "还有什么替代解释能说明今天的返工？",
+                    whyItMatters: "它检查解释是否过早收敛。",
+                    whyNow: "当前教练轮次需要确认系统思维是否被替代解释稀释。",
+                    expectedUpdate: "答案会更新是否需要回到反馈回路或延迟影响。",
+                    proceedWhen: "当答案说明替代解释是否足以替代系统信号时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .testAssumption,
+                    lensMove: .alternativeExplanation,
+                    sourceCardTitles: ["临时修复带来返工"],
+                    calibrationTarget: "返工主要来自解释过早收敛"
+                )
+            ]
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateQuestions(
+                    questions,
+                    selectedLens: .systemThinking
+                ).map(\.reason)
+            )
+            try expect(reasons == [.missingSystemThinkingLensMove], "Expected only missing system thinking lens move issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_requires_selected_lens_move",
+            name: "Question quality gate requires selected lens moves",
+            inputSummary: "Leverage-analysis lens selected but generated questions only test an alternative explanation.",
+            expectedBehavior: "Flag question batches that do not include the reasoning move required by the selected built-in lens."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "还有什么替代解释能说明今天的返工？",
+                    whyItMatters: "它检查解释是否过早收敛。",
+                    whyNow: "当前教练轮次需要确认杠杆分析透镜是否被替代解释稀释。",
+                    expectedUpdate: "答案会更新是否需要回到高杠杆取舍。",
+                    proceedWhen: "当答案说明替代解释是否改变最高杠杆动作时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .testAssumption,
+                    lensMove: .alternativeExplanation,
+                    sourceCardTitles: ["会议返工来自低价值任务"],
+                    calibrationTarget: "明天最能减少返工的是最高杠杆动作"
+                )
+            ]
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateQuestions(
+                    questions,
+                    selectedLens: .leverageAnalysis
+                ).map(\.reason)
+            )
+            try expect(reasons == [.missingSelectedLensMove], "Expected only missing selected lens move issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.system_thinking_calibration",
+            name: "System thinking questions expose loops and calibration signals",
+            inputSummary: "Repeated rework and delayed integration cost cards selected with system_thinking lens.",
+            expectedBehavior: "Generate system-thinking questions about feedback loops, delayed effects, second-order consequences, and next calibration signals."
+        ) { parser in
+            let questions = try parser.parseQuestions(from: Data(Self.systemThinkingQuestionsFixture.utf8))
+            try expect(questions.count == 3, "Expected three system-thinking questions.")
+            try expect(
+                questions.contains { $0.question.contains("反馈回路") || $0.question.contains("回路") },
+                "Expected feedback-loop question."
+            )
+            try expect(
+                questions.contains { $0.question.contains("延迟") || $0.question.contains("两周后") },
+                "Expected delayed-effect question."
+            )
+            try expect(
+                questions.contains { $0.question.contains("二阶后果") || $0.question.contains("后果") },
+                "Expected second-order consequence question."
+            )
+            try expect(
+                questions.contains { $0.question.contains("校准信号") || $0.question.contains("证明") },
+                "Expected calibration signal question."
+            )
+        },
+        PromptEvalCase(
             promptId: .generateQuests,
             caseId: "quests.main_quest_verifiable",
             name: "Main quest has verifiable criteria",
@@ -990,6 +2260,95 @@ private struct PromptEvalCase {
             try expect(quests[0].completionCriteria.count > quests[0].title.count, "Expected detailed completion criteria.")
         },
         PromptEvalCase(
+            promptId: .generateQuests,
+            caseId: "quests.calibration_signal_task",
+            name: "Main quest tests a judgment with a calibration signal",
+            inputSummary: "System-thinking cards about repeated rework and delayed integration cost.",
+            expectedBehavior: "Generate a main quest that closes an evidence gap and produces an observable calibration signal."
+        ) { parser in
+            let quests = try parser.parseQuests(from: Data(Self.calibrationQuestFixture.utf8))
+            try expect(quests.count == 1, "Expected exactly one calibration quest.")
+            let quest = quests[0]
+            try expect(quest.type == .main, "Expected main quest.")
+            try expect(quest.whyItMatters.contains("证据缺口"), "Expected evidence gap in why_it_matters.")
+            try expect(quest.completionCriteria.contains("校准信号"), "Expected calibration signal in completion criteria.")
+            try expect(quest.reflectionQuestion.contains("反馈回路"), "Expected feedback loop in reflection question.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuests,
+            caseId: "quests.quality_gate_blocks_busywork_without_calibration",
+            name: "Quest quality gate blocks busywork without calibration",
+            inputSummary: "A generated main quest that polishes meeting notes but does not reduce uncertainty or create a calibration signal.",
+            expectedBehavior: "Flag busywork, weak completion criteria, and vague calibration targets before accepting quest output."
+        ) { _ in
+            let quests = [
+                Quest(
+                    type: .main,
+                    title: "整理会议纪要排版",
+                    whyItMatters: "看起来更完整。",
+                    completionCriteria: "把会议纪要排版好。",
+                    expectedResistance: "会觉得还有很多要补。",
+                    reflectionQuestion: "今天感觉如何？",
+                    calibrationTarget: "这个情况",
+                    sourceCardTitles: ["会议返工来自验收口径"]
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuests(quests).map(\.reason))
+            try expect(reasons.contains(.busyworkQuest), "Expected busywork quest issue.")
+            try expect(reasons.contains(.weakCompletionCriteria), "Expected weak completion criteria issue.")
+            try expect(reasons.contains(.vagueCalibrationTarget), "Expected vague calibration target issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuests,
+            caseId: "quests.quality_gate_requires_source_grounding",
+            name: "Quest quality gate requires source grounding",
+            inputSummary: "A generated main quest that has a calibration signal but no linked card titles.",
+            expectedBehavior: "Flag ungrounded quests before accepting tomorrow's action."
+        ) { _ in
+            let quests = [
+                Quest(
+                    type: .main,
+                    title: "用一次小验收测试返工来源",
+                    whyItMatters: "它补上返工判断里的证据缺口。",
+                    completionCriteria: "明天下午前完成一次小范围验收，记录是否减少一轮返工，并写下一个可观察的校准信号。",
+                    expectedResistance: "你会想先继续推进功能，因为短期看起来更快。",
+                    reflectionQuestion: "这次验收有没有减少一轮返工？",
+                    calibrationTarget: "小验收能比继续补说明更有效地减少返工",
+                    sourceCardTitles: []
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuests(quests).map(\.reason))
+            try expect(reasons.contains(.missingSourceGrounding), "Expected missing source grounding issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuests,
+            caseId: "quests.quality_gate_requires_selected_lens_move",
+            name: "Quest quality gate requires selected lens moves",
+            inputSummary: "Leverage-analysis lens selected but generated quest uses an opposing-view action.",
+            expectedBehavior: "Flag quest output that does not include the reasoning move required by the selected built-in lens."
+        ) { _ in
+            let quests = [
+                Quest(
+                    type: .main,
+                    title: "访谈一个反对方来测试解释",
+                    whyItMatters: "它可以检查当前解释是否过早收敛。",
+                    completionCriteria: "明天完成一次 15 分钟访谈，记录一个反方证据和一个可观察的校准信号。",
+                    expectedResistance: "你会想直接推进当前判断，因为找反方反馈比较慢。",
+                    reflectionQuestion: "这条反方证据是否推翻了当前解释？",
+                    calibrationTarget: "返工主要来自对方没有理解当前解释",
+                    lensMove: .alternativeExplanation,
+                    sourceCardTitles: ["会议返工来自低价值任务"]
+                )
+            ]
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateQuests(
+                    quests,
+                    selectedLens: .leverageAnalysis
+                ).map(\.reason)
+            )
+            try expect(reasons == [.missingSelectedLensMove], "Expected only missing selected lens move issue.")
+        },
+        PromptEvalCase(
             promptId: .verifyQuest,
             caseId: "verify.calibration_note_required",
             name: "Verification requires a calibration note",
@@ -1001,16 +2360,141 @@ private struct PromptEvalCase {
             try expect(result.recommendation?.isEmpty == false, "Expected recommendation.")
         },
         PromptEvalCase(
+            promptId: .verifyQuest,
+            caseId: "verify.judgment_update_from_evidence",
+            name: "Verification updates judgment from evidence",
+            inputSummary: "Quest predicted one small acceptance check would reveal the source of rework.",
+            expectedBehavior: "Compare the original prediction with actual evidence, state evidence gained, and recommend the next calibration."
+        ) { parser in
+            let result = try parser.parseVerification(from: Data(Self.judgmentUpdateVerificationFixture.utf8))
+            try expect(result.calibrationNote.contains("原判断"), "Expected original judgment in calibration note.")
+            try expect(result.calibrationNote.contains("实际证据"), "Expected actual evidence in calibration note.")
+            try expect(result.calibrationNote.contains("证据收获"), "Expected evidence gained in calibration note.")
+            try expect(result.calibrationNote.contains("判断更新"), "Expected judgment update in calibration note.")
+            try expect(result.calibrationNote.contains("可观察证据"), "Expected observable evidence in calibration note.")
+            try expect(result.calibrationNote.contains("完成标准"), "Expected completion criteria evidence in calibration note.")
+            let issues = PromptCoachingQualityPolicy.evaluateVerification(result, targetJudgment: "小范围验收可以暴露返工来源")
+            try expect(issues.isEmpty, "Expected judgment-update verification to pass quality gate.")
+            try expect(result.recommendation?.contains("下一次校准") == true, "Expected next calibration recommendation.")
+        },
+        PromptEvalCase(
+            promptId: .verifyQuest,
+            caseId: "verify.quality_gate_blocks_weak_calibration_note",
+            name: "Verification quality gate blocks weak calibration notes",
+            inputSummary: "Quest verification result with a target judgment but only a generic usefulness note.",
+            expectedBehavior: "Flag verification output that does not compare original prediction, actual evidence, evidence gained, and judgment update."
+        ) { _ in
+            let result = VerifyQuestResult(
+                calibrationNote: "The quest was useful.",
+                likelyIssue: nil,
+                recommendation: "Next calibration: test whether written owner acknowledgement reduces ambiguity."
+            )
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateVerification(
+                    result,
+                    targetJudgment: "Written owner acknowledgement reduces ambiguity"
+                ).map(\.reason)
+            )
+            try expect(reasons == [.weakVerificationCalibrationNote], "Expected weak verification calibration note issue.")
+        },
+        PromptEvalCase(
+            promptId: .verifyQuest,
+            caseId: "verify.quality_gate_blocks_weak_recommendation",
+            name: "Verification quality gate blocks weak recommendations",
+            inputSummary: "Quest verification result with a strong calibration note but generic encouragement.",
+            expectedBehavior: "Flag verification recommendation that does not name the next calibration action or observable signal."
+        ) { _ in
+            let result = VerifyQuestResult(
+                calibrationNote: "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
+                likelyIssue: "none",
+                recommendation: "Keep going."
+            )
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateVerification(
+                    result,
+                    targetJudgment: "Written owner acknowledgement reduces ambiguity"
+                ).map(\.reason)
+            )
+            try expect(reasons == [.weakVerificationRecommendation], "Expected weak verification recommendation issue.")
+        },
+        PromptEvalCase(
+            promptId: .verifyQuest,
+            caseId: "verify.training_principle_assessment_required",
+            name: "Verification requires expected principle practice assessment when training target exists",
+            inputSummary: "Quest verification has an expected training principle but no separate practice assessment.",
+            expectedBehavior: "Flag verification output that omits expected_principle_practice_assessment when trainingPrinciple was present."
+        ) { _ in
+            let result = VerifyQuestResult(
+                calibrationNote: "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
+                likelyIssue: "none",
+                recommendation: "Next calibration: test whether earlier owner confirmation reduces rework."
+            )
+            let reasons = Set(
+                PromptCoachingQualityPolicy.evaluateVerification(
+                    result,
+                    targetJudgment: "Written owner acknowledgement reduces ambiguity",
+                    hasTrainingPrinciple: true
+                ).map(\.reason)
+            )
+            try expect(
+                reasons == [.missingExpectedPrinciplePracticeAssessment],
+                "Expected missing expected principle practice assessment issue."
+            )
+        },
+        PromptEvalCase(
             promptId: .extractPrinciple,
             caseId: "principle.behavior_rule_not_slogan",
             name: "Principle is a behavior rule rather than a slogan",
             inputSummary: "Repeated meeting ownership pattern suitable for a reusable behavior rule.",
-            expectedBehavior: "Extract a principle with concrete actions and success criteria rather than a vague slogan."
+            expectedBehavior: "Extract a principle with concrete actions, success criteria, and source card grounding rather than a vague slogan."
         ) { parser in
             let principles = try parser.parsePrinciples(from: Data(Self.principleFixture.utf8))
             try expect(principles.count == 1, "Expected one principle.")
             try expect(principles[0].actions.count >= 3, "Expected concrete actions.")
             try expect(principles[0].successCriteria.contains("负责人"), "Expected success criteria.")
+            try expect(principles[0].sourceCardTitles.contains("会议目标不清"), "Expected principle to cite source cards.")
+        },
+        PromptEvalCase(
+            promptId: .extractPrinciple,
+            caseId: "principle.quality_gate_requires_source_grounding",
+            name: "Principle quality gate requires source grounding",
+            inputSummary: "Reusable-looking principle that names behavior but cites no confirmed source card.",
+            expectedBehavior: "Flag principle output that cannot be traced back to confirmed evidence."
+        ) { _ in
+            let principles = [
+                PrincipleAsset(
+                    title: "会议前先定义要确认的决策",
+                    summary: "重要会议前先写清要确认什么、谁负责、什么算完成。",
+                    triggerContext: "跨角色会议或需要推进协作时。",
+                    actions: ["写出要确认的决策", "标出负责人", "写出验收标准"],
+                    successCriteria: "参会者能复述下一步负责人和完成标准。",
+                    exceptions: "低风险同步会可以只写一句目标。",
+                    sourceCardTitles: []
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluatePrinciples(principles).map(\.reason))
+            try expect(reasons == [.missingPrincipleSourceGrounding], "Expected missing principle source grounding issue.")
+        },
+        PromptEvalCase(
+            promptId: .extractPrinciple,
+            caseId: "principle.quality_gate_requires_actionability",
+            name: "Principle quality gate requires actionability",
+            inputSummary: "Reusable-looking principle that cites evidence but only offers vague advice.",
+            expectedBehavior: "Flag principle output that is grounded but not actionable or verifiable."
+        ) { _ in
+            let principles = [
+                PrincipleAsset(
+                    title: "保持清晰",
+                    summary: "清晰沟通很重要。",
+                    triggerContext: "工作中需要沟通时。",
+                    actions: ["做得更好"],
+                    successCriteria: "事情更顺利。",
+                    exceptions: "无。",
+                    sourceCardTitles: ["会议目标不清"]
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluatePrinciples(principles).map(\.reason))
+            try expect(reasons == [.weakPrincipleActionability], "Expected weak principle actionability issue.")
         },
         PromptEvalCase(
             promptId: .suggestProjectLinks,
@@ -1090,17 +2574,234 @@ private struct PromptEvalCase {
         {
           "question": "这次会议中，哪些内容是事实，哪些只是你对对方意图的判断？",
           "why_this_matters": "证据校验透镜要求先分开事实和解释，避免把感觉当结论。",
+          "evidence_gap_type": "missing_observation",
+          "answer_use": "collect_evidence",
           "expected_answer_type": "fact"
         },
         {
           "question": "如果你对会议低效的判断是错的，最可能被哪条证据推翻？",
           "why_this_matters": "反方问题可以阻止只证明自己原本的看法。",
+          "evidence_gap_type": "missing_counterexample",
+          "answer_use": "test_assumption",
           "expected_answer_type": "validation"
         },
         {
           "question": "明天只做一件事时，哪一个动作最能减少后续返工？",
           "why_this_matters": "杠杆分析必须把思考落到可执行取舍。",
+          "evidence_gap_type": "none",
+          "answer_use": "choose_action",
           "expected_answer_type": "tradeoff"
+        }
+      ]
+    }
+    """
+
+    private static let evidenceGapTaxonomyQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "现在缺少哪条可观察事实，才能判断返工是不是由验收口径造成？",
+          "why_this_matters": "先补观察事实，避免把感觉当成原因。",
+          "evidence_gap_type": "missing_observation",
+          "answer_use": "collect_evidence",
+          "expected_answer_type": "fact"
+        },
+        {
+          "question": "如果负责人确认不是返工来源，哪个反例会最先推翻你的解释？",
+          "why_this_matters": "反例能防止只收集支持原判断的证据。",
+          "evidence_gap_type": "missing_counterexample",
+          "answer_use": "test_assumption",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天能观察到哪个校准信号，证明小范围验收确实减少返工？",
+          "why_this_matters": "校准信号让判断可以被后续行动更新。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "watch_calibration_signal",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "如果只能做一个动作，你会先确认负责人还是先补实现，取舍标准是什么？",
+          "why_this_matters": "这是行动取舍问题，不应该被伪装成证据缺口。",
+          "evidence_gap_type": "none",
+          "answer_use": "choose_action",
+          "expected_answer_type": "tradeoff"
+        }
+      ]
+    }
+    """
+
+    private static let answerUseQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "如果明天的小范围验收没有减少返工，你会更新哪个关于返工来源的判断？",
+          "why_this_matters": "答案必须直接改变你对返工来源的判断，而不是停留在感受描述。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "update_judgment",
+          "expected_answer_type": "judgment"
+        },
+        {
+          "question": "明天先确认负责人还是先补实现，哪一个更可能改变后续结果，取舍标准是什么？",
+          "why_this_matters": "答案会直接决定下一步行动，而不是生成更多泛泛反思。",
+          "evidence_gap_type": "none",
+          "answer_use": "choose_action",
+          "expected_answer_type": "tradeoff"
+        },
+        {
+          "question": "如果负责人不清不是主要原因，哪个最小反证会推翻这个假设？",
+          "why_this_matters": "答案会把假设变成可测试对象，避免只证明原解释正确。",
+          "evidence_gap_type": "missing_counterexample",
+          "answer_use": "test_assumption",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天结束时看哪个信号，能校准小验收是否真的降低了返工？",
+          "why_this_matters": "答案会定义后续观察点，让判断可以被事实更新。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "watch_calibration_signal",
+          "expected_answer_type": "validation"
+        }
+      ]
+    }
+    """
+
+    private static let lensMoveQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "这个临时修复不断制造返工的反馈回路是什么：哪个动作让下一轮问题更容易发生？",
+          "why_this_matters": "答案要暴露系统如何持续制造同一类结果。",
+          "evidence_gap_type": "missing_causal_link",
+          "answer_use": "test_assumption",
+          "lens_move": "feedback_loop",
+          "expected_answer_type": "judgment"
+        },
+        {
+          "question": "今天省掉验收会在两周后的集成阶段产生什么延迟影响？",
+          "why_this_matters": "延迟影响能校准短期效率和长期返工之间的关系。",
+          "evidence_gap_type": "missing_baseline",
+          "answer_use": "update_judgment",
+          "lens_move": "delayed_effect",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "如果继续用临时修复推进，除了返工之外还会产生哪个二阶后果？",
+          "why_this_matters": "二阶后果能避免只优化眼前动作。",
+          "evidence_gap_type": "missing_constraint",
+          "answer_use": "test_assumption",
+          "lens_move": "second_order_consequence",
+          "expected_answer_type": "judgment"
+        },
+        {
+          "question": "原先认为小验收能减少返工的预测，被明天的实际证据怎样校准？",
+          "why_this_matters": "判断校准要求把原预测和实际证据放在一起更新。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "update_judgment",
+          "lens_move": "prediction_calibration",
+          "expected_answer_type": "validation"
+        }
+      ]
+    }
+    """
+
+    private static let sourceGroundedQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "会议目标不清这张卡里，哪些内容是事实，哪些只是你对会议低效的解释？",
+          "why_this_matters": "答案必须回到已确认卡片，才能关闭真实证据缺口。",
+          "evidence_gap_type": "missing_observation",
+          "answer_use": "collect_evidence",
+          "lens_move": "fact_interpretation_split",
+          "source_card_titles": ["会议目标不清"],
+          "calibration_target": "会议低效主要来自目标不清",
+          "expected_answer_type": "fact"
+        },
+        {
+          "question": "接口归属未确认如果不是返工主因，哪条反例会最先推翻这个判断？",
+          "why_this_matters": "反例问题必须绑定具体卡片，避免变成空泛反思。",
+          "evidence_gap_type": "missing_counterexample",
+          "answer_use": "test_assumption",
+          "lens_move": "alternative_explanation",
+          "source_card_titles": ["接口归属未确认"],
+          "calibration_target": "接口归属未确认是返工主因",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "会议目标不清和接口归属未确认之间，哪个反馈回路最可能持续制造返工？",
+          "why_this_matters": "系统思维需要从来源卡片中寻找结构，而不是凭空讲道理。",
+          "evidence_gap_type": "missing_causal_link",
+          "answer_use": "test_assumption",
+          "lens_move": "feedback_loop",
+          "source_card_titles": ["会议目标不清", "接口归属未确认"],
+          "calibration_target": "会议目标不清和接口归属未确认会形成持续返工回路",
+          "expected_answer_type": "judgment"
+        }
+      ]
+    }
+    """
+
+    private static let calibrationTargetQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "如果接口归属未确认不是返工主因，哪个反例会先出现？",
+          "why_this_matters": "反例能把根因解释变成可校准判断。",
+          "evidence_gap_type": "missing_counterexample",
+          "answer_use": "test_assumption",
+          "lens_move": "alternative_explanation",
+          "source_card_titles": ["接口归属未确认"],
+          "calibration_target": "接口归属未确认是返工主因",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天的小范围验收能观察到哪个信号，证明返工确实下降？",
+          "why_this_matters": "预测必须绑定后续可观察信号。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "watch_calibration_signal",
+          "lens_move": "prediction_calibration",
+          "source_card_titles": ["返工来自验收口径"],
+          "calibration_target": "小范围验收能显著减少返工",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天先确认负责人还是先补实现，哪个选择更能降低后续返工？",
+          "why_this_matters": "行动取舍需要说明被校准的权衡标准。",
+          "evidence_gap_type": "none",
+          "answer_use": "choose_action",
+          "lens_move": "leverage_tradeoff",
+          "source_card_titles": ["接口归属未确认", "会议目标不清"],
+          "calibration_target": "先确认负责人比先补实现更能降低返工",
+          "expected_answer_type": "tradeoff"
+        }
+      ]
+    }
+    """
+
+    private static let systemThinkingQuestionsFixture = """
+    {
+      "questions": [
+        {
+          "question": "这个临时修复不断制造返工的反馈回路是什么：哪个动作让下一轮问题更容易发生？",
+          "why_this_matters": "系统思维先看问题如何被结构持续制造，而不是只修一次症状。",
+          "evidence_gap_type": "missing_causal_link",
+          "answer_use": "test_assumption",
+          "expected_answer_type": "judgment"
+        },
+        {
+          "question": "今天省掉验收会在两周后的集成阶段产生什么延迟影响和二阶后果？",
+          "why_this_matters": "延迟影响会让短期看似高效的选择在后面放大成本。",
+          "evidence_gap_type": "missing_baseline",
+          "answer_use": "update_judgment",
+          "expected_answer_type": "validation"
+        },
+        {
+          "question": "明天能观察到哪个校准信号，证明你对返工来源的系统判断是对还是错？",
+          "why_this_matters": "没有可观察信号，系统解释就会变成宏大叙事而不是可校准判断。",
+          "evidence_gap_type": "missing_calibration_signal",
+          "answer_use": "watch_calibration_signal",
+          "expected_answer_type": "validation"
         }
       ]
     }
@@ -1115,11 +2816,30 @@ private struct PromptEvalCase {
         "completion_criteria": "会议开始前完成一页清单，包含要确认的决策、负责人、验收标准，并在会后发出确认摘要。",
         "expected_resistance": "临时事项会诱导你直接开会而不先写清楚目标。",
         "reflection_question": "这次准备是否让会议少绕了一轮？",
+        "lens_move": "leverage_tradeoff",
         "linked_cards": ["会前没有明确要确认的决策"]
       },
       "side_quests": [],
       "observation_quest": null,
       "rejected_low_value_tasks": ["先把会议纪要排版得更完整"]
+    }
+    """
+
+    private static let calibrationQuestFixture = """
+    {
+      "main_quest": {
+        "type": "main",
+        "title": "用一次小验收测试返工来源",
+        "why_it_matters": "这不是普通待办，而是用明天的行动补上返工判断里的证据缺口。",
+        "completion_criteria": "明天下午前完成一次小范围验收，记录是否减少一轮返工，并写下一个可观察的校准信号。",
+        "expected_resistance": "你会想先继续推进功能，因为短期看起来更快。",
+        "reflection_question": "这次验收有没有打断临时修复继续制造返工的反馈回路？",
+        "lens_move": "feedback_loop",
+        "linked_cards": ["临时修复反复制造返工", "集成问题延迟两周才暴露"]
+      },
+      "side_quests": [],
+      "observation_quest": null,
+      "rejected_low_value_tasks": ["继续补更多临时说明但不验证返工来源"]
     }
     """
 
@@ -1131,6 +2851,15 @@ private struct PromptEvalCase {
     }
     """
 
+    private static let judgmentUpdateVerificationFixture = """
+    {
+      "calibration_note": "原判断是小范围验收可以暴露返工来源；实际证据显示返工主要来自负责人未确认，而不是实现细节。可观察证据是负责人没有在验收标准里确认完成口径。证据收获是下一次要先验证负责人和验收口径。判断更新是先确认负责人和完成标准，再继续投入实现。",
+      "likely_issue": "unclear_criteria",
+      "recommendation": "下一次校准先把负责人确认作为可观察信号，再决定是否继续投入实现。",
+      "expected_principle_practice_assessment": "预期原则被部分实践：用户用小验收发现负责人确认缺口，但还没有在开始前完成负责人确认。"
+    }
+    """
+
     private static let principleFixture = """
     {
       "principle_candidate": {
@@ -1139,7 +2868,8 @@ private struct PromptEvalCase {
         "trigger_context": "跨角色会议或需要推进协作时。",
         "actions": ["写出要确认的决策", "标出负责人", "写出验收标准", "会后发送确认摘要"],
         "success_criteria": "参会者能复述下一步负责人和完成标准。",
-        "exceptions": "低风险同步会可以只写一句目标。"
+        "exceptions": "低风险同步会可以只写一句目标。",
+        "source_card_titles": ["会议目标不清", "接口归属未确认"]
       }
     }
     """
@@ -1350,19 +3080,37 @@ final class LocalPromptProvider: PromptProvider {
     }
 
     private static func assetMetadata(for id: PromptID) -> PromptAssetMetadata {
+        let promptVersion: String
         let rollbackTargetVersion: String?
+        let outputSchemaVersion: Int
         switch id {
         case .generateQuestions:
-            rollbackTargetVersion = "0.9.0"
+            promptVersion = "1.7.0"
+            rollbackTargetVersion = "1.6.0"
+            outputSchemaVersion = 6
+        case .generateQuests:
+            promptVersion = "1.3.0"
+            rollbackTargetVersion = "1.2.0"
+            outputSchemaVersion = 3
+        case .verifyQuest:
+            promptVersion = "1.6.0"
+            rollbackTargetVersion = "1.5.0"
+            outputSchemaVersion = 2
+        case .extractPrinciple:
+            promptVersion = "1.2.0"
+            rollbackTargetVersion = "1.1.0"
+            outputSchemaVersion = 1
         default:
+            promptVersion = "1.0.0"
             rollbackTargetVersion = nil
+            outputSchemaVersion = 1
         }
 
         return PromptAssetMetadata(
-            promptVersion: "1.0.0",
+            promptVersion: promptVersion,
             systemPolicyVersion: "system.v1",
             contextPolicyVersion: "context.\(id.rawValue).v1",
-            outputSchemaVersion: 1,
+            outputSchemaVersion: outputSchemaVersion,
             evalSuiteVersion: "\(id.rawValue).eval.v1",
             rollbackTargetVersion: rollbackTargetVersion
         )
@@ -1374,21 +3122,541 @@ final class LocalPromptProvider: PromptProvider {
         version: String,
         current: PromptTemplate
     ) -> PromptTemplate? {
-        guard id == .generateQuestions, version == "0.9.0" else {
+        switch (id, version) {
+        case (.generateQuestions, "1.6.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.5.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV160UserText(for: mode),
+                outputSchemaVersion: 6
+            )
+        case (.generateQuestions, "1.5.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.4.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV150UserText(for: mode),
+                outputSchemaVersion: 5
+            )
+        case (.generateQuestions, "1.4.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.3.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV140UserText(for: mode),
+                outputSchemaVersion: 4
+            )
+        case (.generateQuestions, "1.3.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.2.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV130UserText(for: mode),
+                outputSchemaVersion: 3
+            )
+        case (.generateQuestions, "1.2.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.1.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV120UserText(for: mode),
+                outputSchemaVersion: 2
+            )
+        case (.generateQuestions, "1.1.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.0.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV110UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.generateQuestions, "1.0.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "0.9.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.generateQuestions, "0.9.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: nil,
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV090UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.generateQuests, "1.2.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.1.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestsV120UserText(for: mode),
+                outputSchemaVersion: 2
+            )
+        case (.generateQuests, "1.1.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.0.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestsV110UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.generateQuests, "1.0.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: nil,
+                systemText: current.systemText,
+                userText: Self.generateQuestsV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.5.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.4.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV150UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.4.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.3.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV140UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.3.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.2.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV130UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.2.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.1.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV120UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.1.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.0.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV110UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.verifyQuest, "1.0.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: nil,
+                systemText: current.systemText,
+                userText: Self.verifyQuestV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.extractPrinciple, "1.1.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.0.0",
+                systemText: current.systemText,
+                userText: Self.extractPrincipleV110UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.extractPrinciple, "1.0.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: nil,
+                systemText: current.systemText,
+                userText: Self.extractPrincipleV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        default:
             return nil
         }
+    }
 
-        return PromptTemplate(
-            id: id,
-            version: version,
-            systemPolicyVersion: current.systemPolicyVersion,
-            contextPolicyVersion: current.contextPolicyVersion,
-            evalSuiteVersion: current.evalSuiteVersion,
-            rollbackTargetVersion: nil,
-            systemText: current.systemText,
-            userText: Self.generateQuestionsV090UserText(for: mode),
-            outputSchemaVersion: current.outputSchemaVersion
-        )
+    private static func generateQuestionsV110UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV120UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV130UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV140UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - Each question must declare the lens-specific reasoning move it trains with lens_move.
+        - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+        - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV150UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - Each question must declare the lens-specific reasoning move it trains with lens_move.
+        - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+        - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+        - Every question must cite at least one confirmed card title in source_card_titles.
+        - Do not invent source_card_titles; use exact titles from confirmedCards.
+        - If a question cannot be tied to a confirmed card, replace it with a grounded question.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+              "source_card_titles": ["exact confirmed card title"],
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV160UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - Each question must declare the lens-specific reasoning move it trains with lens_move.
+        - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+        - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+        - Every question must cite at least one confirmed card title in source_card_titles.
+        - Do not invent source_card_titles; use exact titles from confirmedCards.
+        - If a question cannot be tied to a confirmed card, replace it with a grounded question.
+        - Every question must name the judgment or assumption it will calibrate in calibration_target.
+        - Do not use vague calibration targets like "the user's thinking" or "the situation"; name a concrete belief, prediction, causal explanation, or tradeoff.
+        - If the target cannot be stated, replace the question with one whose calibration target is explicit.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        - When lensFeedback is present, use verified outcomes and lensMoves to tune the next questions: reinforce lensMoves marked reinforce, make lensMoves marked adjust more concrete, and avoid lensMoves marked avoid.
+        - Do not repeat a lens move that produced low-value or uncalibratable work; replace it with a question that names a clearer evidence gap and calibration target.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, lensFeedback, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+              "source_card_titles": ["exact confirmed card title"],
+              "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this question will calibrate",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV100UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        At least one question should challenge a hidden assumption.
+        At least one question should connect to tomorrow's action.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
     }
 
     private static func systemText(for mode: SessionMode) -> String {
@@ -1439,6 +3707,344 @@ final class LocalPromptProvider: PromptProvider {
               "expected_answer_type": "fact | judgment | tradeoff | validation"
             }
           ]
+        }
+        """
+    }
+
+    private static func generateQuestsV100UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate tomorrow's quests from confirmed cards and user answers.
+        Create exactly one main quest unless information is insufficient.
+        Create at most two side quests and at most one observation quest.
+        The main quest should target the highest-value action, not the easiest task.
+        Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+        If information is insufficient, ask for clarification rather than inventing a task.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedLens, and sessionMode.
+        Return JSON:
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "string",
+            "why_it_matters": "string",
+            "completion_criteria": "string",
+            "expected_resistance": "string",
+            "reflection_question": "string",
+            "linked_cards": ["string"]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": ["string"]
+        }
+        """
+    }
+
+    private static func verifyQuestV100UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Return a concise calibration note and one recommendation for today's quest design.
+        \(modeGuidance)
+
+        Input will include yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string"
+        }
+        """
+    }
+
+    private static func generateQuestsV110UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate tomorrow's quests from confirmed cards and user answers.
+        Create exactly one main quest unless information is insufficient.
+        Create at most two side quests and at most one observation quest.
+        The main quest should target the highest-value action, not the easiest task.
+        Treat the main quest as a calibration instrument, not a generic todo.
+        Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+        Each quest must include lens_move matching the selected lens's required reasoning move.
+        The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+        Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
+        If information is insufficient, ask for clarification rather than inventing a task.
+
+        Lens-specific quest rules:
+        - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
+        - When selectedLens is evidence_check, choose an action that gathers missing evidence or separates fact from interpretation.
+        - When selectedLens is opposing_view, choose an action that can test the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, choose the smallest action likely to change the result, not the easiest visible work.
+        - When selectedLens is first_principles, choose an action that validates a hard constraint or strips away an inherited assumption.
+        - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedLens, and sessionMode.
+        Return JSON:
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "string",
+            "why_it_matters": "string",
+            "completion_criteria": "string",
+            "expected_resistance": "string",
+            "reflection_question": "string",
+            "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+            "linked_cards": ["string"]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": ["string"]
+        }
+        """
+    }
+
+    private static func generateQuestsV120UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate tomorrow's quests from confirmed cards and user answers.
+        Create exactly one main quest unless information is insufficient.
+        Create at most two side quests and at most one observation quest.
+        The main quest should target the highest-value action, not the easiest task.
+        Treat the main quest as a calibration instrument, not a generic todo.
+        Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+        The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+        Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
+        Use reflectionAnswers calibrationTarget when it exists; otherwise derive a concrete target from confirmedCards and the user's answer.
+        Do not invent vague calibration targets like "improve thinking" or "understand the situation".
+        Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
+        If information is insufficient, ask for clarification rather than inventing a task.
+        Use lensFeedback as verified lens outcomes from previous days.
+        Reinforce lensMoves that produced high-value calibration evidence.
+        When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
+        When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
+
+        Lens-specific quest rules:
+        - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
+        - When selectedLens is evidence_check, choose an action that gathers missing evidence or separates fact from interpretation.
+        - When selectedLens is opposing_view, choose an action that can test the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, choose the smallest action likely to change the result, not the easiest visible work.
+        - When selectedLens is first_principles, choose an action that validates a hard constraint or strips away an inherited assumption.
+        - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, and sessionMode.
+        Return JSON:
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "string",
+            "why_it_matters": "string",
+            "completion_criteria": "string",
+            "expected_resistance": "string",
+            "reflection_question": "string",
+            "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this quest will calibrate",
+            "linked_cards": ["string"]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": ["string"]
+        }
+        """
+    }
+
+    private static func verifyQuestV110UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Compare the original prediction or intended judgment with the actual evidence.
+        Name what evidence gained changes, confirms, or weakens the user's judgment.
+        Return a concise calibration note and one recommendation for today's quest design.
+        The calibration_note must include the original prediction, actual evidence, evidence gained, and judgment update.
+        The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.
+        \(modeGuidance)
+
+        Input will include yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string"
+        }
+        """
+    }
+
+    private static func verifyQuestV120UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Compare the original prediction or intended judgment with the actual evidence.
+        Compare targetJudgment with actual evidence when targetJudgment is present.
+        Name what evidence gained changes, confirms, or weakens the user's judgment.
+        Return a concise calibration note and one recommendation for today's quest design.
+        The calibration_note must include the original prediction, actual evidence, evidence gained, and judgment update.
+        The recommendation must name the next calibration action or signal to observe.
+        \(modeGuidance)
+
+        Input will include targetJudgment, yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string"
+        }
+        """
+    }
+
+    private static func verifyQuestV130UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Compare the original prediction or intended judgment with the actual evidence.
+        Compare targetJudgment with actual evidence when targetJudgment is present.
+        Name what evidence gained changes, confirms, or weakens the user's judgment.
+        Name the observable evidence or signal that proves what actually happened.
+        Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
+        Return a concise calibration note and one recommendation for today's quest design.
+        The calibration_note must include the original prediction, actual evidence, evidence gained, judgment update, observable evidence or signal, and completion criteria or acceptance criteria evidence.
+        The recommendation must name the next calibration action or signal to observe.
+        \(modeGuidance)
+
+        Input will include targetJudgment, yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string"
+        }
+        """
+    }
+
+    private static func verifyQuestV140UserText(for mode: SessionMode) -> String {
+        verifyQuestV130UserText(for: mode)
+    }
+
+    private static func verifyQuestV150UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Compare the original prediction or intended judgment with the actual evidence.
+        Compare targetJudgment with actual evidence when targetJudgment is present.
+        If trainingPrinciple is present, assess whether the expected principle was actually practiced, using the provided matchSignal as the user's or local system's intended training signal.
+        Do not create or confirm principle practice evidence yourself; only explain whether the verification evidence supports the expected principle practice.
+        Name what evidence gained changes, confirms, or weakens the user's judgment.
+        Name the observable evidence or signal that proves what actually happened.
+        Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
+        Return a concise calibration note and one recommendation for today's quest design.
+        The calibration_note must include the original prediction, actual evidence, evidence gained, judgment update, observable evidence or signal, and completion criteria or acceptance criteria evidence.
+        When trainingPrinciple is present, the calibration_note must also mention whether the expected principle was actually practiced.
+        The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.
+        \(modeGuidance)
+
+        Input will include targetJudgment, trainingPrinciple, yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string"
+        }
+        """
+    }
+
+    private static func verifyQuestV160UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Review yesterday's quest, completion status, and actual value.
+        Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
+        Do not blame the user.
+        Compare the original prediction or intended judgment with the actual evidence.
+        Compare targetJudgment with actual evidence when targetJudgment is present.
+        If trainingPrinciple is present, assess whether the expected principle was actually practiced, using the provided matchSignal as the user's or local system's intended training signal.
+        Do not create or confirm principle practice evidence yourself; only explain whether the verification evidence supports the expected principle practice.
+        Do not use expected_principle_practice_assessment as practice evidence; it is audit feedback only.
+        Name what evidence gained changes, confirms, or weakens the user's judgment.
+        Name the observable evidence or signal that proves what actually happened.
+        Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
+        Return a concise calibration note, one recommendation for today's quest design, and a separate expected principle practice assessment.
+        The calibration_note must include the original prediction, actual evidence, evidence gained, judgment update, observable evidence or signal, and completion criteria or acceptance criteria evidence.
+        When trainingPrinciple is present, expected_principle_practice_assessment must state whether the expected principle was practiced, partially practiced, not practiced, or not assessable from the evidence, and name the evidence signal behind that judgment.
+        The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.
+        \(modeGuidance)
+
+        Input will include targetJudgment, trainingPrinciple, yesterdayQuest, userVerification, completionEvidence, and actualValue.
+        Return JSON:
+        {
+          "calibration_note": "string",
+          "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
+          "recommendation": "string",
+          "expected_principle_practice_assessment": "string; required when trainingPrinciple is present, otherwise empty string"
+        }
+        """
+    }
+
+    private static func extractPrincipleV100UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        From the confirmed cards, answers, and selected quest, identify at most one reusable principle.
+        Do not create a principle if the lesson is too situational.
+        The principle must be concrete enough to apply later.
+        Frame it as a behavior rule, not a slogan.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedQuest, and sessionMode.
+        Return JSON:
+        {
+          "principle_candidate": {
+            "title": "string",
+            "summary": "string",
+            "trigger_context": "string",
+            "actions": ["string"],
+            "success_criteria": "string",
+            "exceptions": "string",
+            "source_card_titles": ["string"]
+          }
+        }
+        If no reusable rule is justified, return:
+        {
+          "principle_candidate": null
+        }
+        """
+    }
+
+    private static func extractPrincipleV110UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        From the confirmed cards, answers, and selected quest, identify at most one reusable principle.
+        Do not create a principle if the lesson is too situational.
+        The principle must be concrete enough to apply later.
+        Frame it as a behavior rule, not a slogan.
+        The principle must cite source_card_titles using exact titles from confirmedCards.
+        Do not invent source_card_titles. If no confirmed card supports the rule, return principle_candidate: null.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedQuest, and sessionMode.
+        Return JSON:
+        {
+          "principle_candidate": {
+            "title": "string",
+            "summary": "string",
+            "trigger_context": "string",
+            "actions": ["string"],
+            "success_criteria": "string",
+            "exceptions": "string",
+            "source_card_titles": ["string"]
+          }
+        }
+        If no reusable rule is justified, return:
+        {
+          "principle_candidate": null
         }
         """
     }
@@ -1494,7 +4100,7 @@ final class LocalPromptProvider: PromptProvider {
             return """
             Review the confirmed cards and recommend up to two thinking lenses.
             Choose lenses that improve the user's thinking quality today.
-            Prefer lenses that expose unclear goals, weak evidence, opportunity cost, hidden assumptions, or low-leverage execution.
+            Prefer lenses that expose unclear goals, weak evidence, opportunity cost, hidden assumptions, low-leverage execution, feedback loops, delayed effects, second-order consequences, prediction error, or judgment calibration needs.
             Explain briefly why each lens is useful.
             \(modeGuidance)
 
@@ -1503,7 +4109,7 @@ final class LocalPromptProvider: PromptProvider {
             {
               "recommended_lenses": [
                 {
-                  "id": "first_principles | occams_razor | opposing_view | opportunity_cost | leverage_analysis | evidence_check | execution_bias_check",
+                  "id": "first_principles | opposing_view | leverage_analysis | evidence_check | system_thinking | judgment_calibration",
                   "name": "string",
                   "why_recommended": "string"
                 }
@@ -1517,18 +4123,65 @@ final class LocalPromptProvider: PromptProvider {
             Generate lens-specific reflection questions from the confirmed cards.
             Questions must be specific to the user's content.
             Do not ask generic self-help questions.
-            At least one question should challenge a hidden assumption.
-            At least one question should connect to tomorrow's action.
+            Do not ask questions that only invite opinions, venting, or vague self-description.
+            Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+            Coach-led training plan:
+            - Use trainingPrescription as the coach plan, not a lens picker.
+            - Read primaryTrainingDimension, secondaryTrainingDimensions, and baselineTrainingDimensions before writing questions.
+            - The first question must train primaryTrainingDimension unless the confirmed cards make that unsafe or impossible.
+            - Every question must serve either primaryTrainingDimension or one baselineTrainingDimension; use secondaryTrainingDimensions as optional follow-up, not as a second main focus.
+            - Use selectedLens/finalTrainingLens to choose lens_move, but use training dimensions to decide what skill the question trains.
+            - Do not treat a user override as proof that the coach diagnosis was wrong; keep override boundaries explicit in why_this_matters.
+
+            Required coaching coverage:
+            - At least one question must name an evidence gap or missing observation.
+            - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+            - At least one question must connect to tomorrow's action or next calibration signal.
+            - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+            - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+            - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+            - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+            - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+            - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+            - Every question must include why_now: why this question is the right next move in the current coach turn.
+            - Every question must include expected_update: what judgment, action, evidence plan, or calibration signal the answer is expected to change.
+            - Every question must include proceed_when: what kind of answer is sufficient to move toward action.
+            - Each question must declare the lens-specific reasoning move it trains with lens_move.
+            - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+            - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+            - Every question must cite at least one confirmed card title in source_card_titles.
+            - Do not invent source_card_titles; use exact titles from confirmedCards.
+            - If a question cannot be tied to a confirmed card, replace it with a grounded question.
+            - Every question must name the judgment or assumption it will calibrate in calibration_target.
+            - Do not use vague calibration targets like "the user's thinking" or "the situation"; name a concrete belief, prediction, causal explanation, or tradeoff.
+            - If the target cannot be stated, replace the question with one whose calibration target is explicit.
+            - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+            - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+            - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+            - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+            - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+            - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+            - When lensFeedback is present, use verified outcomes and lensMoves to tune the next questions: reinforce lensMoves marked reinforce, make lensMoves marked adjust more concrete, and avoid lensMoves marked avoid.
+            - Do not repeat a lens move that produced low-value or uncalibratable work; replace it with a question that names a clearer evidence gap and calibration target.
             \(modeGuidance)
 
             Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
-            Input will include confirmedCards, selectedLens, priorAnswers, and sessionMode.
+            Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, priorAnswers, lensFeedback, and sessionMode.
             Return JSON:
             {
               "questions": [
                 {
                   "question": "string",
                   "why_this_matters": "string",
+                  "why_now": "why this question is the right next move in the current coach turn",
+                  "expected_update": "what judgment, action, evidence plan, or calibration signal the answer is expected to change",
+                  "proceed_when": "what kind of answer is sufficient to move toward action",
+                  "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+                  "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+                  "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+                  "source_card_titles": ["exact confirmed card title"],
+                  "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this question will calibrate",
                   "expected_answer_type": "fact | judgment | tradeoff | validation"
                 }
               ]
@@ -1541,11 +4194,30 @@ final class LocalPromptProvider: PromptProvider {
             Create exactly one main quest unless information is insufficient.
             Create at most two side quests and at most one observation quest.
             The main quest should target the highest-value action, not the easiest task.
+            Treat the main quest as a calibration instrument, not a generic todo.
             Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+            The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+            Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
+            Every quest must name the selected lens reasoning move it trains in lens_move.
+            Use reflectionAnswers calibrationTarget when it exists; otherwise derive a concrete target from confirmedCards and the user's answer.
+            Do not invent vague calibration targets like "improve thinking" or "understand the situation".
+            Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
             If information is insufficient, ask for clarification rather than inventing a task.
+            Use lensFeedback as verified lens outcomes from previous days.
+            Reinforce lensMoves that produced high-value calibration evidence.
+            When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
+            When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
+
+            Lens-specific quest rules:
+            - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
+            - When selectedLens is evidence_check, choose an action that gathers missing evidence or separates fact from interpretation.
+            - When selectedLens is opposing_view, choose an action that can test the strongest alternative explanation or stakeholder objection.
+            - When selectedLens is leverage_analysis, choose the smallest action likely to change the result, not the easiest visible work.
+            - When selectedLens is first_principles, choose an action that validates a hard constraint or strips away an inherited assumption.
+            - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
             \(modeGuidance)
 
-            Input will include confirmedCards, reflectionAnswers, selectedLens, and sessionMode.
+            Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, and sessionMode.
             Return JSON:
             {
               "main_quest": {
@@ -1555,6 +4227,8 @@ final class LocalPromptProvider: PromptProvider {
                 "completion_criteria": "string",
                 "expected_resistance": "string",
                 "reflection_question": "string",
+                "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this quest will calibrate",
+                "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
                 "linked_cards": ["string"]
               },
               "side_quests": [],
@@ -1564,21 +4238,7 @@ final class LocalPromptProvider: PromptProvider {
             """
 
         case .verifyQuest:
-            return """
-            Review yesterday's quest, completion status, and actual value.
-            Identify whether the task was well-chosen, too vague, too large, blocked, avoided, interrupted, or lower-value than expected.
-            Do not blame the user.
-            Return a concise calibration note and one recommendation for today's quest design.
-            \(modeGuidance)
-
-            Input will include yesterdayQuest, userVerification, completionEvidence, and actualValue.
-            Return JSON:
-            {
-              "calibration_note": "string",
-              "likely_issue": "none | task_too_large | unclear_criteria | low_value | dependency_blocked | avoidance | interruption",
-              "recommendation": "string"
-            }
-            """
+            return verifyQuestV160UserText(for: mode)
 
         case .extractPrinciple:
             return """
@@ -1586,6 +4246,11 @@ final class LocalPromptProvider: PromptProvider {
             Do not create a principle if the lesson is too situational.
             The principle must be concrete enough to apply later.
             Frame it as a behavior rule, not a slogan.
+            The principle must include at least two concrete actions the user can do next time.
+            The success_criteria must name observable evidence, a visible artifact, owner confirmation, acceptance criteria, or another verifiable signal.
+            Do not return vague slogans such as "keep clear", "be better", or "improve efficiency".
+            The principle must cite source_card_titles using exact titles from confirmedCards.
+            Do not invent source_card_titles. If no confirmed card supports the rule, return principle_candidate: null.
             \(modeGuidance)
 
             Input will include confirmedCards, reflectionAnswers, selectedQuest, and sessionMode.

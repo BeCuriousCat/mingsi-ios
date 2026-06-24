@@ -46,7 +46,9 @@ protocol PrincipleRecallFeedbackRepository {
 
 protocol PrinciplePracticeEvidenceRepository {
     func saveEvidence(_ evidence: PrinciplePracticeEvidence) async throws
+    func disputeEvidence(_ evidenceId: UUID, note: String) async throws
     func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence]
+    func disputedEvidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence]
     func evidence(
         for principleId: UUID,
         sourceDailyEntryId: UUID,
@@ -119,6 +121,7 @@ protocol PromptRunRepository {
     func savePromptRun(_ run: PromptRun) async throws
     func recentPromptRuns(limit: Int) async throws -> [PromptRun]
     func unresolvedFailures(limit: Int) async throws -> [PromptRun]
+    func mostRecentPromptRun(promptId: PromptID, sourceRecordId: UUID) async throws -> PromptRun?
     func updatePromptRunFeedback(_ feedback: PromptRunFeedback, runId: UUID) async throws
     func promptRunStats(limit: Int) async throws -> PromptRunStats
     func promptAssetRunQualitySummaries(limit: Int) async throws -> [PromptAssetRunQualitySummary]
@@ -720,6 +723,10 @@ final class AppDatabase {
                 table.column("evidence_source", .text).notNull()
                 table.column("strength", .text).notNull()
                 table.column("evidence_summary", .text).notNull()
+                table.column("match_signal", .text).notNull().defaults(to: "")
+                table.column("attribution_policy_version", .text).notNull().defaults(to: "")
+                table.column("is_disputed", .integer).notNull().defaults(to: 0)
+                table.column("dispute_note", .text).notNull().defaults(to: "")
                 table.column("created_at", .text).notNull()
                 table.column("updated_at", .text).notNull()
                 table.column("deleted_at", .text)
@@ -976,6 +983,86 @@ final class AppDatabase {
                 on: "asset_pack_registry_subscriptions",
                 columns: ["updated_at"]
             )
+        }
+
+        migrator.registerMigration("v24_principle_practice_evidence_dispute") { db in
+            guard try db.tableExists("principle_practice_evidence") else { return }
+            let columns = Set(try db.columns(in: "principle_practice_evidence").map(\.name))
+            try db.alter(table: "principle_practice_evidence") { table in
+                if !columns.contains("is_disputed") {
+                    table.add(column: "is_disputed", .integer)
+                        .notNull()
+                        .defaults(to: 0)
+                }
+                if !columns.contains("dispute_note") {
+                    table.add(column: "dispute_note", .text)
+                        .notNull()
+                        .defaults(to: "")
+                }
+            }
+        }
+
+        migrator.registerMigration("v25_principle_practice_evidence_attribution_metadata") { db in
+            guard try db.tableExists("principle_practice_evidence") else { return }
+            let columns = Set(try db.columns(in: "principle_practice_evidence").map(\.name))
+            try db.alter(table: "principle_practice_evidence") { table in
+                if !columns.contains("match_signal") {
+                    table.add(column: "match_signal", .text)
+                        .notNull()
+                        .defaults(to: "")
+                }
+                if !columns.contains("attribution_policy_version") {
+                    table.add(column: "attribution_policy_version", .text)
+                        .notNull()
+                        .defaults(to: "")
+                }
+            }
+        }
+
+        migrator.registerMigration("v26_principle_recall_feedback_retrieval_signal") { db in
+            guard try db.tableExists("principle_recall_feedback") else { return }
+            let columns = Set(try db.columns(in: "principle_recall_feedback").map(\.name))
+            guard !columns.contains("retrieval_signal") else { return }
+
+            try db.alter(table: "principle_recall_feedback") { table in
+                table.add(column: "retrieval_signal", .text)
+                    .notNull()
+                    .defaults(to: "")
+            }
+        }
+
+        migrator.registerMigration("v27_daily_entry_training_prescription") { db in
+            guard try db.tableExists("daily_entries") else { return }
+            let columns = Set(try db.columns(in: "daily_entries").map(\.name))
+            guard !columns.contains("training_prescription_json") else { return }
+
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "training_prescription_json", .text)
+            }
+        }
+
+        migrator.registerMigration("v28_metric_contribution_practice_role") { db in
+            guard try db.tableExists("metric_contributions") else { return }
+            let columns = Set(try db.columns(in: "metric_contributions").map(\.name))
+            guard !columns.contains("practice_role") else { return }
+
+            try db.alter(table: "metric_contributions") { table in
+                table.add(column: "practice_role", .text)
+                    .notNull()
+                    .defaults(to: MetricContributionPracticeRole.possibleSignal.rawValue)
+            }
+        }
+
+        migrator.registerMigration("v29_principle_practice_evidence_practice_role") { db in
+            guard try db.tableExists("principle_practice_evidence") else { return }
+            let columns = Set(try db.columns(in: "principle_practice_evidence").map(\.name))
+            guard !columns.contains("practice_role") else { return }
+
+            try db.alter(table: "principle_practice_evidence") { table in
+                table.add(column: "practice_role", .text)
+                    .notNull()
+                    .defaults(to: MetricContributionPracticeRole.possibleSignal.rawValue)
+            }
         }
 
         return migrator
@@ -1329,12 +1416,36 @@ final class SQLitePrinciplePracticeEvidenceRepository: PrinciplePracticeEvidence
         }
     }
 
+    func disputeEvidence(_ evidenceId: UUID, note: String) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try PrinciplePracticeEvidenceRow.fetchOne(db, key: evidenceId.uuidString) else { return }
+            row.isDisputed = 1
+            row.disputeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
+        }
+    }
+
     func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
         try await database.dbQueue.read { db in
             try PrinciplePracticeEvidenceRow
                 .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("is_disputed") == 0)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("created_at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func disputedEvidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
+        try await database.dbQueue.read { db in
+            try PrinciplePracticeEvidenceRow
+                .filter(Column("principle_id") == principleId.uuidString)
+                .filter(Column("is_disputed") == 1)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
                 .limit(limit)
                 .fetchAll(db)
                 .map { try $0.domainModel() }
@@ -1353,6 +1464,7 @@ final class SQLitePrinciplePracticeEvidenceRepository: PrinciplePracticeEvidence
                 .filter(Column("source_daily_entry_id") == sourceDailyEntryId.uuidString)
                 .filter(Column("quest_id") == questId.uuidString)
                 .filter(Column("evidence_source") == evidenceSource.rawValue)
+                .filter(Column("is_disputed") == 0)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("created_at").desc)
                 .fetchOne(db)?
@@ -1705,6 +1817,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
     var hasSelectedSessionMode: Bool
     var selectedLens: String?
     var selectedCustomLensId: String?
+    var trainingPrescriptionJson: String?
     var customLensItemsJson: String?
     var customLensQuestionsJson: String?
     var yesterdayCompletion: String?
@@ -1729,6 +1842,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         hasSelectedSessionMode = draft.hasSelectedSessionMode
         selectedLens = draft.selectedLens?.rawValue
         selectedCustomLensId = draft.selectedCustomLensId
+        trainingPrescriptionJson = try? PersistenceJSON.encodeOptional(draft.trainingPrescription)
         customLensItemsJson = try? PersistenceJSON.encode(draft.customLensItems)
         customLensQuestionsJson = try? PersistenceJSON.encode(draft.customLensQuestions)
         yesterdayCompletion = draft.yesterdayCompletion?.rawValue
@@ -1761,6 +1875,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         }
         let customLensItems: [LensCatalogItem] = try PersistenceJSON.decode(customLensItemsJson) ?? []
         let customLensQuestions: [ReflectionQuestion] = try PersistenceJSON.decode(customLensQuestionsJson) ?? []
+        let trainingPrescription: TrainingPrescription? = try PersistenceJSON.decode(trainingPrescriptionJson)
         let completion: YesterdayCompletion?
         if let yesterdayCompletion {
             guard let parsedCompletion = YesterdayCompletion(rawValue: yesterdayCompletion) else {
@@ -1787,6 +1902,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
             hasSelectedSessionMode: hasSelectedSessionMode,
             selectedLens: lens,
             selectedCustomLensId: selectedCustomLensId,
+            trainingPrescription: trainingPrescription,
             customLensItems: customLensItems,
             customLensQuestions: customLensQuestions,
             yesterdayCompletion: completion,
@@ -1888,6 +2004,13 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
     var updatedAt: String
     var deletedAt: String?
 
+    private struct RawPayload: Codable {
+        var calibrationTarget: String?
+        var lensMove: String?
+        var sourceCardTitles: [String]?
+        var trainingPrincipleId: String?
+    }
+
     init(quest: Quest, sourceDailyEntryId: UUID) {
         let now = Date().mingsiStorageString
         id = quest.id.uuidString
@@ -1903,7 +2026,12 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
         dueDate = nil
         reminderId = nil
         linkedCardIdsJson = nil
-        rawPayloadJson = nil
+        rawPayloadJson = Self.rawPayloadJson(
+            calibrationTarget: quest.calibrationTarget,
+            lensMove: quest.lensMove,
+            sourceCardTitles: quest.sourceCardTitles,
+            trainingPrincipleId: quest.trainingPrincipleId
+        )
         createdAt = now
         updatedAt = now
         deletedAt = nil
@@ -1927,8 +2055,43 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
             completionCriteria: completionCriteria,
             expectedResistance: expectedResistance ?? "",
             reflectionQuestion: reflectionQuestion ?? "",
+            calibrationTarget: Self.rawPayload(from: rawPayloadJson)?.calibrationTarget,
+            lensMove: Self.rawPayload(from: rawPayloadJson)?.lensMove.flatMap(QuestionLensMove.init(aiRawValue:)),
+            sourceCardTitles: Self.rawPayload(from: rawPayloadJson)?.sourceCardTitles ?? [],
+            trainingPrincipleId: Self.rawPayload(from: rawPayloadJson)?.trainingPrincipleId.flatMap(UUID.init(uuidString:)),
             status: status
         )
+    }
+
+    private static func rawPayloadJson(
+        calibrationTarget: String?,
+        lensMove: QuestionLensMove?,
+        sourceCardTitles: [String],
+        trainingPrincipleId: UUID?
+    ) -> String? {
+        let trimmedCalibrationTarget = calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedCalibrationTarget = trimmedCalibrationTarget.isEmpty ? nil : trimmedCalibrationTarget
+        let normalizedSourceCardTitles = sourceCardTitles.reduce(into: [String]()) { result, title in
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+            result.append(trimmed)
+        }
+        guard normalizedCalibrationTarget != nil || lensMove != nil || !normalizedSourceCardTitles.isEmpty || trainingPrincipleId != nil,
+              let data = try? JSONEncoder().encode(
+                  RawPayload(
+                      calibrationTarget: normalizedCalibrationTarget,
+                      lensMove: lensMove?.rawValue,
+                      sourceCardTitles: normalizedSourceCardTitles.isEmpty ? nil : normalizedSourceCardTitles,
+                      trainingPrincipleId: trainingPrincipleId?.uuidString
+                  )
+              )
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func rawPayload(from json: String?) -> RawPayload? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(RawPayload.self, from: data)
     }
 }
 
@@ -1970,7 +2133,7 @@ private struct PrincipleAssetRow: Codable, FetchableRecord, PersistableRecord {
         validationCount = 0
         lastValidatedAt = nil
         status = principle.status.rawValue
-        rawPayloadJson = nil
+        rawPayloadJson = Self.rawPayloadJson(sourceCardTitles: principle.sourceCardTitles)
         createdAt = now
         updatedAt = now
         deletedAt = nil
@@ -1992,8 +2155,28 @@ private struct PrincipleAssetRow: Codable, FetchableRecord, PersistableRecord {
             actions: actions,
             successCriteria: successCriteria,
             exceptions: exceptions ?? "",
+            sourceCardTitles: Self.rawPayload(from: rawPayloadJson)?.sourceCardTitles ?? [],
             status: status
         )
+    }
+
+    private struct RawPayload: Codable {
+        var sourceCardTitles: [String]
+    }
+
+    private static func rawPayloadJson(sourceCardTitles: [String]) -> String? {
+        let normalizedSourceCardTitles = sourceCardTitles.reduce(into: [String]()) { result, title in
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+            result.append(trimmed)
+        }
+        guard !normalizedSourceCardTitles.isEmpty else { return nil }
+        return try? PersistenceJSON.encode(RawPayload(sourceCardTitles: normalizedSourceCardTitles))
+    }
+
+    private static func rawPayload(from json: String?) -> RawPayload? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(RawPayload.self, from: data)
     }
 }
 
@@ -2010,6 +2193,7 @@ private struct PrincipleRecallFeedbackRow: Codable, FetchableRecord, Persistable
     var promptId: String
     var retrievalPolicyVersion: String
     var retrievalReason: String
+    var retrievalSignal: String
     var feedback: String
     var note: String
     var createdAt: String
@@ -2026,6 +2210,7 @@ private struct PrincipleRecallFeedbackRow: Codable, FetchableRecord, Persistable
         promptId = feedback.promptId.rawValue
         retrievalPolicyVersion = feedback.retrievalPolicyVersion
         retrievalReason = feedback.retrievalReason
+        retrievalSignal = feedback.retrievalSignal
         self.feedback = feedback.feedback.rawValue
         note = feedback.note
         createdAt = feedback.createdAt.mingsiStorageString
@@ -2067,6 +2252,7 @@ private struct PrincipleRecallFeedbackRow: Codable, FetchableRecord, Persistable
             promptId: prompt,
             retrievalPolicyVersion: retrievalPolicyVersion,
             retrievalReason: retrievalReason,
+            retrievalSignal: retrievalSignal,
             feedback: feedbackValue,
             note: note,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
@@ -2089,6 +2275,11 @@ private struct PrinciplePracticeEvidenceRow: Codable, FetchableRecord, Persistab
     var evidenceSource: String
     var strength: String
     var evidenceSummary: String
+    var matchSignal: String
+    var attributionPolicyVersion: String
+    var practiceRole: String
+    var isDisputed: Int
+    var disputeNote: String
     var createdAt: String
     var updatedAt: String
     var deletedAt: String?
@@ -2104,6 +2295,11 @@ private struct PrinciplePracticeEvidenceRow: Codable, FetchableRecord, Persistab
         evidenceSource = evidence.evidenceSource.rawValue
         strength = evidence.strength.rawValue
         evidenceSummary = evidence.evidenceSummary
+        matchSignal = evidence.matchSignal
+        attributionPolicyVersion = evidence.attributionPolicyVersion
+        practiceRole = evidence.practiceRole.rawValue
+        isDisputed = evidence.isDisputed ? 1 : 0
+        disputeNote = evidence.disputeNote
         createdAt = evidence.createdAt.mingsiStorageString
         updatedAt = now
         deletedAt = nil
@@ -2137,6 +2333,9 @@ private struct PrinciplePracticeEvidenceRow: Codable, FetchableRecord, Persistab
         guard let strength = PrinciplePracticeEvidenceStrength(rawValue: strength) else {
             throw PersistenceError.invalidStoredValue("principle_practice_evidence.strength")
         }
+        guard let role = MetricContributionPracticeRole(rawValue: practiceRole) else {
+            throw PersistenceError.invalidStoredValue("principle_practice_evidence.practice_role")
+        }
         return PrinciplePracticeEvidence(
             id: uuid,
             schemaVersion: schemaVersion,
@@ -2147,6 +2346,11 @@ private struct PrinciplePracticeEvidenceRow: Codable, FetchableRecord, Persistab
             evidenceSource: source,
             strength: strength,
             evidenceSummary: evidenceSummary,
+            matchSignal: matchSignal,
+            attributionPolicyVersion: attributionPolicyVersion,
+            practiceRole: role,
+            isDisputed: isDisputed != 0,
+            disputeNote: disputeNote,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
             updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
         )
@@ -2770,6 +2974,25 @@ final class SQLitePromptRunRepository: PromptRunRepository {
             }
 
             return failures
+        }
+    }
+
+    func mostRecentPromptRun(promptId: PromptID, sourceRecordId: UUID) async throws -> PromptRun? {
+        try await database.dbQueue.read { db in
+            let rows = try PromptRunRow
+                .filter(Column("prompt_id") == promptId.rawValue)
+                .order(Column("created_at").desc)
+                .fetchAll(db)
+            let sourceId = sourceRecordId.uuidString
+
+            for row in rows {
+                let run = try row.domainModel()
+                if run.sourceRecordIds.contains(sourceId) {
+                    return run
+                }
+            }
+
+            return nil
         }
     }
 
@@ -4322,6 +4545,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
     var sourceDailyEntryId: String
     var userFeedback: String
     var candidateStatus: String
+    var practiceRole: String
     var createdAt: String
     var updatedAt: String
     var deletedAt: String?
@@ -4341,6 +4565,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
         sourceDailyEntryId = contribution.sourceDailyEntryId.uuidString
         userFeedback = contribution.userFeedback.rawValue
         candidateStatus = contribution.candidateStatus.rawValue
+        practiceRole = contribution.practiceRole.rawValue
         createdAt = contribution.createdAt.mingsiStorageString
         updatedAt = now
         deletedAt = nil
@@ -4371,6 +4596,9 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
         guard let candidateStatus = MetricContributionStatus(rawValue: candidateStatus) else {
             throw PersistenceError.invalidStoredValue("metric_contributions.candidate_status")
         }
+        guard let practiceRole = MetricContributionPracticeRole(rawValue: practiceRole) else {
+            throw PersistenceError.invalidStoredValue("metric_contributions.practice_role")
+        }
         return MetricContribution(
             id: uuid,
             snapshotId: snapshotUUID,
@@ -4384,6 +4612,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
             sourceDailyEntryId: sourceDailyEntryUUID,
             userFeedback: feedback,
             candidateStatus: candidateStatus,
+            practiceRole: practiceRole,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
             updatedAt: Date(mingsiStorageString: updatedAt) ?? .now
         )

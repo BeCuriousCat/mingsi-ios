@@ -94,8 +94,17 @@ private struct PromptAssetPackProvider: PromptProvider {
 
 @MainActor
 final class AppStore: ObservableObject {
+    static let principlePracticeAttributionPolicyVersion = "principle-practice-attribution.local-match.v1"
+
     @Published var selectedTab: AppTab = .today
     @Published var todayDraft: DailyEntryDraft
+    @Published private(set) var trainingPrescription: TrainingPrescription? {
+        didSet {
+            todayDraft.trainingPrescription = trainingPrescription
+        }
+    }
+    @Published private(set) var coachDiagnosis: CoachDiagnosis?
+    @Published private(set) var coachTurnState: CoachTurnState?
     @Published var thinkingCards: [ThinkingCard]
     @Published var customLensItems: [LensCatalogItem] = [] {
         didSet {
@@ -172,6 +181,14 @@ final class AppStore: ObservableObject {
     }
 
     var selectedLensItem: LensCatalogItem? {
+        if let finalLensId = trainingPrescription?.finalLensId {
+            if let item = (customLensItems + runtimeLensItems).first(where: { $0.lensId == finalLensId }) {
+                return item
+            }
+            if let lens = ThinkingLens(rawValue: finalLensId) {
+                return lens.catalogItem
+            }
+        }
         if let customId = todayDraft.selectedCustomLensId,
            let item = (customLensItems + runtimeLensItems).first(where: { $0.lensId == customId }) {
             return item
@@ -209,6 +226,7 @@ final class AppStore: ObservableObject {
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
     private let assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy
     private let assetPackRegistrySyncFetcher: AssetPackInstallManifestFetching
+    private let syncsAssetPackRegistryOnLoad: Bool
     private var runtimePromptAssetPacks: [PromptAssetPack] = []
     private var assetPackRegistryCatalogURL: URL?
     private var assetPackRegistryCatalogEntrySourceURLs: [String: URL] = [:]
@@ -252,6 +270,7 @@ final class AppStore: ObservableObject {
     private(set) var loadsPersistedStateOnLaunch: Bool = true
     private(set) var visualQAProjectDetailDirectEntryProjectID: UUID?
     private var visualQASettingsAuditProofActive = false
+    private var visualQAGrowthPracticeCorrectionSeed: (principle: PrincipleAsset, evidence: PrinciplePracticeEvidence)?
     #endif
 
     init(
@@ -294,6 +313,7 @@ final class AppStore: ObservableObject {
             AssetPackRegistrySubscriptionSyncSchedulePolicy(),
         assetPackRegistrySyncFetcher: AssetPackInstallManifestFetching =
             URLSessionAssetPackInstallManifestFetcher(),
+        syncsAssetPackRegistryOnLoad: Bool = false,
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
         refreshesAIServiceFromKeychain: Bool = true,
@@ -329,11 +349,14 @@ final class AppStore: ObservableObject {
         self.promptEvalSchedulePolicy = promptEvalSchedulePolicy
         self.assetPackRegistrySyncSchedulePolicy = assetPackRegistrySyncSchedulePolicy
         self.assetPackRegistrySyncFetcher = assetPackRegistrySyncFetcher
+        self.syncsAssetPackRegistryOnLoad = syncsAssetPackRegistryOnLoad
         self.todayAIService = todayAIService
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
         self.growthAIService = growthAIService
-        self.todayDraft = todayDraft ?? DailyEntryDraft()
+        let initialDraft = todayDraft ?? DailyEntryDraft()
+        self.todayDraft = initialDraft
+        self.trainingPrescription = initialDraft.trainingPrescription
         self.thinkingCards = thinkingCards ?? []
         self.questions = questions ?? []
         self.quests = quests ?? []
@@ -424,6 +447,9 @@ final class AppStore: ObservableObject {
             return
         }
         selectedTab = visualQATab
+        if visualQATab == .growth {
+            applyVisualQAGrowthPrinciplePracticeCorrectionSeed()
+        }
     }
 
     static func isVisualQASettingsAuditProof(
@@ -468,6 +494,88 @@ final class AppStore: ObservableObject {
     ) -> Bool {
         environment["MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST"] != nil ||
             environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST"] != nil
+    }
+
+    private func applyVisualQAGrowthPrinciplePracticeCorrectionSeed() {
+        guard principleTrainingSummaries.isEmpty else {
+            loadsPersistedStateOnLaunch = false
+            return
+        }
+
+        let principle = PrincipleAsset(
+            title: "Visual QA - 先写验收标准",
+            summary: "开始前先写清完成证据。",
+            triggerContext: "任务启动",
+            actions: ["写验收标准"],
+            successCriteria: "完成时能直接验证",
+            exceptions: "",
+            status: .active
+        )
+        let evidence = PrinciplePracticeEvidence(
+            principleId: principle.id,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证中实践了验收标准。匹配信号：写验收标准",
+            matchSignal: "写验收标准",
+            attributionPolicyVersion: Self.principlePracticeAttributionPolicyVersion,
+            createdAt: Date(timeIntervalSince1970: 1_700_300_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_300_000)
+        )
+        let needsReviewPrinciple = PrincipleAsset(
+            title: "Visual QA - 所有会议都要拉齐",
+            summary: "看似有用但经常不适用。",
+            triggerContext: "Meeting ownership",
+            actions: ["拉齐所有人"],
+            successCriteria: "没有遗漏",
+            exceptions: "低风险同步可简化",
+            status: .needsReview
+        )
+        let negativeRecallFeedback = PrincipleRecallFeedback(
+            principleId: needsReviewPrinciple.id,
+            promptId: .generateQuests,
+            retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+            retrievalReason: "Owner keyword was a false positive.",
+            retrievalSignal: "meeting ownership",
+            feedback: .misrecalled,
+            note: "This meeting had no action owner.",
+            createdAt: Date(timeIntervalSince1970: 1_700_310_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_310_000)
+        )
+
+        activePrinciples = [principle]
+        visualQAGrowthPracticeCorrectionSeed = (principle: principle, evidence: evidence)
+        principleTrainingSummaries = PrincipleTrainingSummary.summaries(
+            for: [principle, needsReviewPrinciple],
+            practiceEvidence: [evidence],
+            recallFeedback: [negativeRecallFeedback]
+        )
+        loadsPersistedStateOnLaunch = false
+    }
+
+    private func disputeVisualQAGrowthPracticeCorrectionSeedIfNeeded(
+        _ evidenceID: UUID,
+        note: String
+    ) -> Bool {
+        guard let seed = visualQAGrowthPracticeCorrectionSeed,
+              seed.evidence.id == evidenceID else {
+            return false
+        }
+
+        var disputedEvidence = seed.evidence
+        disputedEvidence.isDisputed = true
+        disputedEvidence.disputeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        disputedEvidence.updatedAt = .now
+        visualQAGrowthPracticeCorrectionSeed = (principle: seed.principle, evidence: disputedEvidence)
+        activePrinciples = [seed.principle]
+        principleTrainingSummaries = PrincipleTrainingSummary.summaries(
+            for: [seed.principle],
+            practiceEvidence: [],
+            recallFeedback: [],
+            disputedPracticeEvidence: [disputedEvidence]
+        )
+        todayLoopMessage = "已标记这条原则练习归因不准确。"
+        return true
     }
 
     static func resolveVisualQATodayInput(
@@ -584,12 +692,14 @@ final class AppStore: ObservableObject {
         case .reviewQuests:
             seedVisualQAQuestions(from: input, answered: true)
             generateLocalQuests()
+            seedVisualQAQuestTrainingTarget()
             seedVisualQAReferencedPrinciple(promptID: .generateQuests)
             todayDraft.state = .reviewQuests
 
         case .extractPrinciple:
             seedVisualQAQuestions(from: input, answered: true)
             generateLocalQuests()
+            seedVisualQAQuestTrainingTarget()
             activateVisualQAMainQuest()
             generateLocalPrinciple()
             todayDraft.state = .extractPrinciple
@@ -597,6 +707,7 @@ final class AppStore: ObservableObject {
         case .sessionComplete:
             seedVisualQAQuestions(from: input, answered: true)
             generateLocalQuests()
+            seedVisualQAQuestTrainingTarget()
             activateVisualQAMainQuest()
             generateLocalPrinciple()
             todayDraft.state = .sessionComplete
@@ -645,10 +756,20 @@ final class AppStore: ObservableObject {
                 principle: principle,
                 score: 4,
                 retrievalReason: "Visual QA seed matched meeting ownership with 会前确认负责人 using local keyword policy; score=4.",
+                retrievalSignal: "meeting ownership",
                 policyVersion: LocalPrincipleRetriever.policyVersion
             )
         ]
         activePrinciples = [principle]
+    }
+
+    private func seedVisualQAQuestTrainingTarget() {
+        quests = quests.map { quest in
+            guard quest.type == .main else { return quest }
+            var updated = quest
+            updated.completionCriteria = "写出负责人和验收标准，并在明天结束前产出一个可检查结果。"
+            return updated
+        }
     }
 
     private func activateVisualQAMainQuest() {
@@ -1382,7 +1503,7 @@ final class AppStore: ObservableObject {
             if todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil {
                 return nil
             }
-            return "先选择一个思考透镜。"
+            return trainingPrescription == nil ? "等待教练生成思考透镜训练处方。" : "先接受教练推荐的思考透镜、改选训练焦点或跳过。"
         case .answerQuestions:
             if hasAnsweredReflectionQuestion {
                 return nil
@@ -1420,7 +1541,8 @@ final class AppStore: ObservableObject {
         }
 
         do {
-            guard let draft = try await dailyEntryRepository.latestDraft() else {
+            let recentDrafts = try await dailyEntryRepository.recentEntries(limit: 14)
+            guard let draft = draftToRestore(from: recentDrafts) else {
                 pendingAIRepairPrompts = []
                 await initializeFromLastActiveQuest()
                 persistDraft()
@@ -1431,8 +1553,9 @@ final class AppStore: ObservableObject {
                 return
             }
 
-            if !Calendar.current.isDateInToday(draft.date) {
+            if shouldStartFreshToday(insteadOfRestoring: draft) {
                 todayDraft = DailyEntryDraft()
+                trainingPrescription = nil
                 thinkingCards = []
                 questions = []
                 quests = []
@@ -1451,6 +1574,7 @@ final class AppStore: ObservableObject {
             }
 
             todayDraft = draft
+            trainingPrescription = draft.trainingPrescription
             customLensItems = draft.customLensItems
             if draft.selectedCustomLensId != nil, !draft.customLensQuestions.isEmpty {
                 questions = draft.customLensQuestions
@@ -1490,7 +1614,40 @@ final class AppStore: ObservableObject {
         updateSettingsMessage()
     }
 
+    private func draftToRestore(from drafts: [DailyEntryDraft]) -> DailyEntryDraft? {
+        if let todayStartedDraft = drafts.first(where: { draft in
+            Calendar.current.isDateInToday(draft.date) && hasUserStartedDraft(draft)
+        }) {
+            return todayStartedDraft
+        }
+        if let inProgressDraft = drafts.first(where: shouldRestoreInProgressDraft) {
+            return inProgressDraft
+        }
+        return drafts.first
+    }
+
+    private func shouldRestoreInProgressDraft(_ draft: DailyEntryDraft) -> Bool {
+        guard draft.state != .sessionComplete else { return false }
+        guard !Calendar.current.isDateInToday(draft.date) else { return false }
+        return hasUserStartedDraft(draft)
+    }
+
+    private func shouldStartFreshToday(insteadOfRestoring draft: DailyEntryDraft) -> Bool {
+        !Calendar.current.isDateInToday(draft.date) && !shouldRestoreInProgressDraft(draft)
+    }
+
+    private func hasUserStartedDraft(_ draft: DailyEntryDraft) -> Bool {
+        if !draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        if draft.hasSelectedSessionMode { return true }
+        if draft.selectedLens != nil || draft.selectedCustomLensId != nil { return true }
+        if draft.trainingPrescription != nil { return true }
+        if !draft.customLensItems.isEmpty || !draft.customLensQuestions.isEmpty { return true }
+        if draft.yesterdayCompletion != nil || draft.yesterdayValueRating != nil { return true }
+        return draft.state != .verifyYesterday && draft.state != .capture
+    }
+
     private func runScheduledAssetPackRegistrySubscriptionSyncIfNeeded(now: Date = .now) async {
+        guard syncsAssetPackRegistryOnLoad else { return }
         guard assetPackRegistrySubscriptionRepository != nil else { return }
 
         do {
@@ -1500,7 +1657,7 @@ final class AppStore: ObservableObject {
                 fetcher: assetPackRegistrySyncFetcher
             )
         } catch {
-            assetPackInstallMessage = "自动同步资产包目录订阅失败：\(error.localizedDescription)"
+            assetPackInstallMessage = "自动刷新资产包扩展源失败：\(error.localizedDescription)"
         }
     }
 
@@ -2857,7 +3014,9 @@ final class AppStore: ObservableObject {
         return try await metricContributionRepository
             .contributions(for: snapshot.id)
             .filter { contribution in
-                contribution.isAcceptedForTrend &&
+                contribution.candidateStatus != .rejected &&
+                contribution.userFeedback != .inaccurate &&
+                contribution.userFeedback != .dismissed &&
                 !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
     }
@@ -2947,15 +3106,16 @@ final class AppStore: ObservableObject {
             records: completedRecords
         )
         guard !contributions.isEmpty else { return }
+        let reinforcingContributions = contributions.filter { $0.practiceRole != .possibleSignal }
 
-        let positiveRefs = contributions
+        let positiveRefs = reinforcingContributions
             .filter { $0.direction == .positive }
             .map { $0.id.uuidString }
-        let negativeRefs = contributions
+        let negativeRefs = reinforcingContributions
             .filter { $0.direction == .negative }
             .map { $0.id.uuidString }
-        let scores = growthScores(from: contributions)
-        let reasons = growthReasons(from: contributions)
+        let scores = growthScores(from: reinforcingContributions)
+        let reasons = growthReasons(from: reinforcingContributions)
         let summary = localGrowthSummary(
             completeLoopCount: completedRecords.count,
             positiveCount: positiveRefs.count,
@@ -3024,7 +3184,8 @@ final class AppStore: ObservableObject {
                         sourceType: .quest,
                         sourceId: mainQuest.id.uuidString,
                         sourceDailyEntryId: record.draft.id,
-                        candidateStatus: .accepted
+                        candidateStatus: .accepted,
+                        practiceRole: .secondaryPractice
                     )
                 )
             }
@@ -3043,7 +3204,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 case .partial:
@@ -3058,7 +3220,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 case .missed:
@@ -3073,7 +3236,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 }
@@ -3091,7 +3255,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 case .medium:
@@ -3106,7 +3271,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 case .low:
@@ -3121,7 +3287,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 case .uncertain:
@@ -3136,7 +3303,8 @@ final class AppStore: ObservableObject {
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted
+                            candidateStatus: .accepted,
+                            practiceRole: .secondaryPractice
                         )
                     )
                 }
@@ -3155,13 +3323,27 @@ final class AppStore: ObservableObject {
                         sourceType: .dailyEntry,
                         sourceId: record.draft.id.uuidString,
                         sourceDailyEntryId: record.draft.id,
-                        candidateStatus: .accepted
+                        candidateStatus: .accepted,
+                        practiceRole: lensPracticeRole(for: record, lensSession: lensSession)
                     )
                 )
             }
         }
 
         return contributions
+    }
+
+    private func lensPracticeRole(
+        for record: HistoryRecord,
+        lensSession: LensSession
+    ) -> MetricContributionPracticeRole {
+        guard let prescription = record.draft.trainingPrescription else {
+            return .possibleSignal
+        }
+        if prescription.finalLensId == lensSession.selectedLens.rawValue {
+            return .targetedPractice
+        }
+        return .secondaryPractice
     }
 
     private func growthScores(from contributions: [MetricContribution]) -> [GrowthMetric: Double] {
@@ -3650,13 +3832,65 @@ final class AppStore: ObservableObject {
     }
 
     func selectThinkingLens(_ lens: ThinkingLens) {
-        todayDraft.selectedLens = lens
-        todayDraft.selectedCustomLensId = nil
-        trimDerivedState(after: .selectLens)
-        Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
+        applyFinalTrainingLens(lens.rawValue)
+    }
+
+    func acceptTrainingPrescription() {
+        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        applyTrainingPrescription(
+            updatedTrainingPrescription(
+                from: base,
+                finalLensId: base.recommendedLensId,
+                userSelectedLensId: nil,
+                source: .coachRecommended,
+                overrideBoundary: ""
+            )
+        )
+    }
+
+    func overrideTrainingPrescription(with lens: ThinkingLens) {
+        applyFinalTrainingLens(lens.rawValue)
+    }
+
+    func skipTrainingPrescription() {
+        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        applyTrainingPrescription(
+            updatedTrainingPrescription(
+                from: base,
+                finalLensId: base.recommendedLensId,
+                userSelectedLensId: nil,
+                source: .skipped,
+                overrideBoundary: "用户跳过显式训练选择；本次仍使用教练推荐 \(base.recommendedLensId) 作为主训练焦点，并保留基础思维检查。"
+            )
+        )
+    }
+
+    func acceptCoachDiagnosis() {
+        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        diagnosis.source = .coachAccepted
+        coachDiagnosis = diagnosis
+        syncCoachTurnState(with: diagnosis)
         clearTodayLoopMessage()
-        persistDraft()
-        persistLensSession()
+    }
+
+    func slowDownCoachDiagnosis() {
+        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        diagnosis.source = .userSlowDown
+        diagnosis.readiness = .notReady
+        diagnosis.recommendedMove = .slowDownConvergence
+        coachDiagnosis = diagnosis
+        syncCoachTurnState(with: diagnosis)
+        todayLoopMessage = "已按教练建议减缓收敛，先补齐关键证据。"
+    }
+
+    func overrideCoachDiagnosisToProgress() {
+        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        diagnosis.source = .userOverrideProgress
+        diagnosis.readiness = .ready
+        diagnosis.recommendedMove = .generateQuest
+        coachDiagnosis = diagnosis
+        syncCoachTurnState(with: diagnosis)
+        todayLoopMessage = "已记录为用户主动推进；后续仍保留证据缺口提示。"
     }
 
     @discardableResult
@@ -3750,11 +3984,114 @@ final class AppStore: ObservableObject {
 
     func selectCustomLens(_ lensId: String) {
         guard (customLensItems + runtimeLensItems).contains(where: { $0.lensId == lensId }) else { return }
-        todayDraft.selectedCustomLensId = lensId
-        todayDraft.selectedLens = nil
+        applyFinalTrainingLens(lensId)
+    }
+
+    private func prepareTrainingPrescriptionForCurrentCards() {
+        let diagnosis = CoachEngine().diagnose(cards: confirmedCardsForAI)
+        coachDiagnosis = diagnosis
+        coachTurnState = CoachTurnPolicy().makeInitialTurn(
+            cards: confirmedCardsForAI,
+            diagnosis: diagnosis
+        )
+        trainingPrescription = makeCoachTrainingPrescription()
+    }
+
+    private func syncCoachTurnState(with diagnosis: CoachDiagnosis) {
+        let policy = CoachTurnPolicy()
+        let base = coachTurnState ?? policy.makeInitialTurn(
+            cards: confirmedCardsForAI,
+            diagnosis: diagnosis
+        )
+        coachTurnState = policy.applyingUserDecision(diagnosis.source, to: base)
+    }
+
+    private func refreshCoachTurnStateAfterAnswers() {
+        coachTurnState = CoachTurnPolicy().updateAfterAnswers(
+            cards: confirmedCardsForAI,
+            questions: questions,
+            previous: coachTurnState
+        )
+        if let coachTurnState {
+            coachDiagnosis = CoachDiagnosis(
+                phase: coachTurnState.phase,
+                readiness: coachTurnState.readiness,
+                recommendedMove: coachTurnState.recommendedMove,
+                reason: coachTurnState.reason,
+                source: coachTurnState.decisionSource,
+                policyVersion: CoachEngine.policyVersion
+            )
+        }
+    }
+
+    private func makeCoachTrainingPrescription() -> TrainingPrescription {
+        LocalTrainingPrescriptionPolicy().prescribe(
+            cards: confirmedCardsForAI,
+            mode: todayDraft.sessionMode,
+            userSelectedLens: nil
+        )
+    }
+
+    private func applyFinalTrainingLens(_ finalLensId: String) {
+        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        let source: TrainingPrescriptionSource = finalLensId == base.recommendedLensId ? .coachRecommended : .userOverride
+        let userSelectedLensId = source == .userOverride ? finalLensId : nil
+        applyTrainingPrescription(
+            updatedTrainingPrescription(
+                from: base,
+                finalLensId: finalLensId,
+                userSelectedLensId: userSelectedLensId,
+                source: source,
+                overrideBoundary: overrideBoundary(
+                    finalLensId: finalLensId,
+                    recommendedLensId: base.recommendedLensId,
+                    source: source
+                )
+            )
+        )
+    }
+
+    private func applyTrainingPrescription(_ prescription: TrainingPrescription) {
+        trainingPrescription = prescription
+        if let lens = ThinkingLens(rawValue: prescription.finalLensId) {
+            todayDraft.selectedLens = lens
+            todayDraft.selectedCustomLensId = nil
+        } else if (customLensItems + runtimeLensItems).contains(where: { $0.lensId == prescription.finalLensId }) {
+            todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = prescription.finalLensId
+        } else {
+            todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+        }
         trimDerivedState(after: .selectLens)
+        Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
         clearTodayLoopMessage()
         persistDraft()
+        persistLensSession()
+    }
+
+    private func updatedTrainingPrescription(
+        from base: TrainingPrescription,
+        finalLensId: String,
+        userSelectedLensId: String?,
+        source: TrainingPrescriptionSource,
+        overrideBoundary: String
+    ) -> TrainingPrescription {
+        var updated = base
+        updated.finalLensId = finalLensId
+        updated.userSelectedLensId = userSelectedLensId
+        updated.source = source
+        updated.overrideBoundary = overrideBoundary
+        return updated
+    }
+
+    private func overrideBoundary(
+        finalLensId: String,
+        recommendedLensId: String,
+        source: TrainingPrescriptionSource
+    ) -> String {
+        guard source == .userOverride, finalLensId != recommendedLensId else { return "" }
+        return "用户改选为 \(finalLensId)，保留教练推荐 \(recommendedLensId) 作为审计；后续问题和任务以最终选择为主，同时保留基础思维检查。"
     }
 
     func updateQuestionAnswer(questionID: ReflectionQuestion.ID, answer: String) {
@@ -3788,6 +4125,32 @@ final class AppStore: ObservableObject {
         trimDerivedState(after: .reviewQuests)
         clearTodayLoopMessage()
         persistQuests()
+    }
+
+    func questTrainingTarget(for questID: Quest.ID) -> QuestTrainingTarget? {
+        guard let quest = quests.first(where: { $0.id == questID }) else { return nil }
+        return Self.questTrainingTarget(for: quest, principles: activePrinciples)
+    }
+
+    @discardableResult
+    func updateQuestTrainingPrinciple(_ principleID: PrincipleAsset.ID?, for questID: Quest.ID) -> Bool {
+        guard let index = quests.firstIndex(where: { $0.id == questID }) else { return false }
+        guard let principleID else {
+            quests[index].trainingPrincipleId = nil
+            trimDerivedState(after: .reviewQuests)
+            clearTodayLoopMessage()
+            persistQuests()
+            return true
+        }
+        guard activePrinciples.contains(where: { $0.id == principleID && $0.status == .active }) else {
+            return false
+        }
+
+        quests[index].trainingPrincipleId = principleID
+        trimDerivedState(after: .reviewQuests)
+        clearTodayLoopMessage()
+        persistQuests()
+        return true
     }
 
     func updatePrinciple(
@@ -3957,6 +4320,27 @@ final class AppStore: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func disputePrinciplePracticeEvidence(_ evidenceID: UUID, note: String = "") async -> Bool {
+        #if DEBUG
+        if disputeVisualQAGrowthPracticeCorrectionSeedIfNeeded(evidenceID, note: note) {
+            return true
+        }
+        #endif
+
+        guard let principlePracticeEvidenceRepository else { return false }
+
+        do {
+            try await principlePracticeEvidenceRepository.disputeEvidence(evidenceID, note: note)
+            await refreshPrincipleTrainingSummaries()
+            todayLoopMessage = "已标记这条原则练习归因不准确。"
+            return true
+        } catch {
+            todayLoopMessage = "保存原则练习反馈失败，已保留当前状态。"
+            return false
+        }
+    }
+
     func skipPrinciple() {
         principles = []
         persistPrinciples()
@@ -3965,6 +4349,7 @@ final class AppStore: ObservableObject {
 
     func resetTodayLoop() {
         todayDraft = DailyEntryDraft()
+        trainingPrescription = nil
         thinkingCards = []
         streamingCards = []
         streamingStatusText = ""
@@ -4031,6 +4416,10 @@ final class AppStore: ObservableObject {
                         sourceRecordIDs: [quest.id.uuidString, draftID.uuidString],
                         questTitle: quest.title,
                         completionCriteria: quest.completionCriteria,
+                        targetJudgment: quest.calibrationTarget,
+                        trainingPrinciple: Self.verificationTrainingPrincipleContext(
+                            from: Self.questTrainingTarget(for: quest, principles: activePrinciples)
+                        ),
                         completion: completion.rawValue,
                         valueRating: rating.rawValue,
                         rawText: todayDraft.rawText
@@ -4102,6 +4491,10 @@ final class AppStore: ObservableObject {
             candidatePrinciples = activePrinciples
         }
 
+        let selectedPrinciple = quest.trainingPrincipleId.flatMap { selectedID in
+            candidatePrinciples.first { $0.id == selectedID && $0.status == .active }
+        }
+
         let practiceText = [
             quest.title,
             quest.whyItMatters,
@@ -4115,10 +4508,31 @@ final class AppStore: ObservableObject {
             .compactMap { $0 }
             .joined(separator: "\n")
 
-        for principle in candidatePrinciples where Self.practiceText(practiceText, matches: principle) {
+        let selectedMatchSignal = "用户选择"
+        let evidenceTargets: [(principle: PrincipleAsset, matchSignal: String, practiceRole: MetricContributionPracticeRole)]
+        if let selectedPrinciple {
+            evidenceTargets = [(selectedPrinciple, selectedMatchSignal, .targetedPractice)]
+        } else {
+            evidenceTargets = candidatePrinciples.compactMap { principle in
+                guard let practiceMatch = Self.practiceMatch(in: practiceText, principle: principle) else {
+                    return nil
+                }
+                return (principle, practiceMatch.signal, .secondaryPractice)
+            }
+        }
+
+        for target in evidenceTargets {
             do {
+                let disputedEvidence = try await principlePracticeEvidenceRepository.disputedEvidence(
+                    for: target.principle.id,
+                    limit: 20
+                )
+                guard !Self.disputedEvidence(disputedEvidence, containsPracticeSignal: target.matchSignal) else {
+                    continue
+                }
+
                 let existing = try await principlePracticeEvidenceRepository.evidence(
-                    for: principle.id,
+                    for: target.principle.id,
                     sourceDailyEntryId: sourceDailyEntryId,
                     questId: quest.id,
                     evidenceSource: .verification
@@ -4126,13 +4540,16 @@ final class AppStore: ObservableObject {
                 guard existing == nil else { continue }
 
                 let evidence = PrinciplePracticeEvidence(
-                    principleId: principle.id,
+                    principleId: target.principle.id,
                     sourceDailyEntryId: sourceDailyEntryId,
                     questId: quest.id,
                     verificationId: verification.id,
                     evidenceSource: .verification,
                     strength: .intentionalPractice,
-                    evidenceSummary: "验证任务显示原则「\(principle.title)」被实际练习：\(quest.title)"
+                    evidenceSummary: "验证任务显示原则「\(target.principle.title)」被实际练习：\(quest.title)。匹配信号：\(target.matchSignal)",
+                    matchSignal: target.matchSignal,
+                    attributionPolicyVersion: Self.principlePracticeAttributionPolicyVersion,
+                    practiceRole: target.practiceRole
                 )
                 try await principlePracticeEvidenceRepository.saveEvidence(evidence)
             } catch {
@@ -4141,12 +4558,117 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private static func practiceText(_ text: String, matches principle: PrincipleAsset) -> Bool {
+    private static func disputedEvidence(
+        _ evidence: [PrinciplePracticeEvidence],
+        containsPracticeSignal signal: String
+    ) -> Bool {
+        let normalizedSignal = normalizePracticeMatchText(signal)
+        guard !normalizedSignal.isEmpty else { return false }
+
+        return evidence.contains { disputed in
+            let storedSignal = normalizePracticeMatchText(disputed.matchSignal)
+            if !storedSignal.isEmpty {
+                return storedSignal == normalizedSignal
+            }
+            return normalizePracticeMatchText(disputed.evidenceSummary).contains(normalizedSignal)
+        }
+    }
+
+    private static func questTrainingTarget(
+        for quest: Quest,
+        principles: [PrincipleAsset]
+    ) -> QuestTrainingTarget? {
+        if let selectedPrinciple = quest.trainingPrincipleId.flatMap({ selectedID in
+            principles.first { $0.id == selectedID && $0.status == .active }
+        }) {
+            return QuestTrainingTarget(
+                principleId: selectedPrinciple.id,
+                principleTitle: selectedPrinciple.title,
+                matchSignal: "用户选择"
+            )
+        }
+
+        let questText = [
+            quest.title,
+            quest.whyItMatters,
+            quest.completionCriteria,
+            quest.expectedResistance,
+            quest.reflectionQuestion,
+            quest.calibrationTarget ?? "",
+            quest.sourceCardTitles.joined(separator: " ")
+        ]
+        .joined(separator: " ")
+
+        guard let match = principles
+            .filter({ $0.status == .active })
+            .compactMap({ principle -> (principle: PrincipleAsset, match: PrinciplePracticeMatch)? in
+                guard let match = practiceMatch(in: questText, principle: principle) else {
+                    return nil
+                }
+                return (principle, match)
+            })
+            .first
+        else {
+            return nil
+        }
+
+        return QuestTrainingTarget(
+            principleId: match.principle.id,
+            principleTitle: match.principle.title,
+            matchSignal: match.match.signal
+        )
+    }
+
+    private static func verificationTrainingPrincipleContext(
+        from target: QuestTrainingTarget?
+    ) -> PromptContextPayload.VerificationTrainingPrincipleContext? {
+        guard let target else { return nil }
+        return PromptContextPayload.VerificationTrainingPrincipleContext(
+            principleId: target.principleId,
+            principleTitle: target.principleTitle,
+            matchSignal: target.matchSignal
+        )
+    }
+
+    private struct PrinciplePracticeMatch {
+        var signal: String
+    }
+
+    private static func practiceMatch(in text: String, principle: PrincipleAsset) -> PrinciplePracticeMatch? {
         let normalizedText = normalizePracticeMatchText(text)
-        let candidates = ([principle.title, principle.summary, principle.triggerContext, principle.successCriteria] + principle.actions)
-            .map(normalizePracticeMatchText)
-            .filter { $0.count >= 4 }
-        return candidates.contains { normalizedText.contains($0) }
+        let actionCandidates = principle.actions
+            .map { raw in (signal: raw.trimmingCharacters(in: .whitespacesAndNewlines), normalized: normalizePracticeMatchText(raw), allowsFragmentedMatch: true) }
+        let contextCandidates = [principle.title, principle.summary, principle.triggerContext, principle.successCriteria]
+            .map { raw in (signal: raw.trimmingCharacters(in: .whitespacesAndNewlines), normalized: normalizePracticeMatchText(raw), allowsFragmentedMatch: false) }
+
+        let candidates = (actionCandidates + contextCandidates)
+            .filter { !$0.signal.isEmpty && $0.normalized.count >= 4 }
+
+        guard let match = candidates.first(where: { candidate in
+            if normalizedText.contains(candidate.normalized) {
+                return true
+            }
+            guard candidate.allowsFragmentedMatch else { return false }
+            return fragmentedActionSignal(candidate.normalized, appearsIn: normalizedText)
+        }) else { return nil }
+
+        return PrinciplePracticeMatch(signal: match.signal)
+    }
+
+    private static func fragmentedActionSignal(_ normalizedSignal: String, appearsIn normalizedText: String) -> Bool {
+        let characters = Array(normalizedSignal)
+        guard characters.count >= 4 else { return false }
+
+        let grams = Set((0..<(characters.count - 1)).map { index in
+            String(characters[index...(index + 1)])
+        })
+        guard !grams.isEmpty else { return false }
+
+        let matchedCount = grams.reduce(0) { count, gram in
+            normalizedText.contains(gram) ? count + 1 : count
+        }
+        let threshold = max(3, Int(ceil(Double(grams.count) * 0.65)))
+        return matchedCount >= threshold
     }
 
     private static func normalizePracticeMatchText(_ text: String) -> String {
@@ -4211,6 +4733,7 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "至少确认一张卡片，才能进入思考透镜选择。"
             return
         }
+        prepareTrainingPrescriptionForCurrentCards()
         moveTodayLoop(to: .selectLens)
     }
 
@@ -4219,12 +4742,13 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "请选择 Quick、Standard 或 Deep。"
             return
         }
+        prepareTrainingPrescriptionForCurrentCards()
         moveTodayLoop(to: .selectLens)
     }
 
     private func confirmSelectedLens() {
         guard todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil else {
-            todayLoopMessage = "请选择一个思考透镜。"
+            todayLoopMessage = trainingPrescription == nil ? "正在等待教练训练处方。" : "请先接受教练推荐、改选训练焦点或跳过。"
             return
         }
         if questions.isEmpty {
@@ -4256,6 +4780,7 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "至少回答一个问题，才能生成明日任务。"
             return
         }
+        refreshCoachTurnStateAfterAnswers()
         let draftID = todayDraft.id
         todayLoopMessage = "正在生成明日任务。"
         lastAIFailureMessage = nil
@@ -4358,15 +4883,15 @@ final class AppStore: ObservableObject {
         do {
             let result = try await growthAIService.generateWeeklyReport(context: context)
             try await metricSnapshotRepository.saveSnapshot(result.snapshot)
-            let acceptedContributions = result.contributions.map { contribution in
-                acceptedGrowthContribution(contribution)
+            let reviewableContributions = result.contributions.map { contribution in
+                reviewableGrowthContribution(contribution)
             }
-            for contribution in acceptedContributions {
+            for contribution in reviewableContributions {
                 try await metricContributionRepository.saveContribution(contribution)
             }
             growthSnapshot = result.snapshot
-            metricContributions = acceptedContributions
-            growthReportReviewContributions = result.snapshot.canDisplayScores ? acceptedContributions : []
+            metricContributions = reviewableContributions
+            growthReportReviewContributions = result.snapshot.canDisplayScores ? reviewableContributions : []
             growthReportMessage = result.snapshot.canDisplayScores
                 ? "周度校准报告已生成。"
                 : "证据不足，已记录周度证据积累状态。"
@@ -4405,15 +4930,15 @@ final class AppStore: ObservableObject {
         do {
             let result = try await growthAIService.generateMonthlyReport(context: context)
             try await metricSnapshotRepository.saveSnapshot(result.snapshot)
-            let acceptedContributions = result.contributions.map { contribution in
-                acceptedGrowthContribution(contribution)
+            let reviewableContributions = result.contributions.map { contribution in
+                reviewableGrowthContribution(contribution)
             }
-            for contribution in acceptedContributions {
+            for contribution in reviewableContributions {
                 try await metricContributionRepository.saveContribution(contribution)
             }
             growthSnapshot = result.snapshot
-            metricContributions = acceptedContributions
-            growthReportReviewContributions = result.snapshot.canDisplayScores ? acceptedContributions : []
+            metricContributions = reviewableContributions
+            growthReportReviewContributions = result.snapshot.canDisplayScores ? reviewableContributions : []
             growthReportMessage = result.snapshot.canDisplayScores
                 ? "月度成长报告已生成。"
                 : "证据不足，已记录月度证据积累状态。"
@@ -4486,12 +5011,13 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func acceptedGrowthContribution(_ contribution: MetricContribution) -> MetricContribution {
-        var accepted = contribution
-        accepted.candidateStatus = .accepted
-        accepted.userFeedback = .none
-        accepted.updatedAt = .now
-        return accepted
+    private func reviewableGrowthContribution(_ contribution: MetricContribution) -> MetricContribution {
+        var candidate = contribution
+        candidate.candidateStatus = .candidate
+        candidate.practiceRole = .possibleSignal
+        candidate.userFeedback = .none
+        candidate.updatedAt = .now
+        return candidate
     }
 
     private func trimDerivedState(after state: DailyLoopState) {
@@ -4506,6 +5032,9 @@ final class AppStore: ObservableObject {
             todayDraft.sessionMode = .standard
             todayDraft.selectedLens = nil
             todayDraft.selectedCustomLensId = nil
+            trainingPrescription = nil
+            coachDiagnosis = nil
+            coachTurnState = nil
             todayDraft.customLensQuestions = []
             questions = []
             quests = []
@@ -4518,6 +5047,9 @@ final class AppStore: ObservableObject {
             streamingStatusText = ""
             todayDraft.selectedLens = nil
             todayDraft.selectedCustomLensId = nil
+            trainingPrescription = nil
+            coachDiagnosis = nil
+            coachTurnState = nil
             todayDraft.customLensQuestions = []
             questions = []
             quests = []
@@ -4528,6 +5060,9 @@ final class AppStore: ObservableObject {
             todayDraft.sessionMode = .standard
             todayDraft.selectedLens = nil
             todayDraft.selectedCustomLensId = nil
+            trainingPrescription = nil
+            coachDiagnosis = nil
+            coachTurnState = nil
             todayDraft.customLensQuestions = []
             questions = []
             quests = []
@@ -4536,6 +5071,9 @@ final class AppStore: ObservableObject {
         case .selectMode:
             todayDraft.selectedLens = nil
             todayDraft.selectedCustomLensId = nil
+            trainingPrescription = nil
+            coachDiagnosis = nil
+            coachTurnState = nil
             todayDraft.customLensQuestions = []
             questions = []
             quests = []
@@ -4610,6 +5148,10 @@ final class AppStore: ObservableObject {
     private func aiFailureMessage(for error: Error) -> String {
         if let llmError = error as? LLMClientError {
             return llmError.userFacingMessage
+        }
+        if case TodayAIParsingError.qualityGateFailed(let reasons) = error {
+            let reasonText = reasons.isEmpty ? "unknown" : reasons.joined(separator: ", ")
+            return "AI 输出质量未达标（\(reasonText)）"
         }
         return error.localizedDescription
     }
@@ -4779,18 +5321,7 @@ final class AppStore: ObservableObject {
                 thinkingCards = try await todayAIService.streamOrganizedCards(
                     for: TodayAIContext(draft: todayDraft),
                     onUpdate: { [weak self] drafts in
-                        await MainActor.run {
-                            guard let self, self.todayDraft.id == draftID else { return }
-                            self.streamingCards = drafts
-                            let closedCount = drafts.compactMap(\.domainCard).count
-                            if closedCount > 0 {
-                                self.streamingStatusText = "已闭合 \(closedCount) 张候选卡片，继续接收中。"
-                            } else if drafts.isEmpty {
-                                self.streamingStatusText = "等待第一张候选卡片。"
-                            } else {
-                                self.streamingStatusText = "正在生成第 \(drafts.count) 张候选卡片。"
-                            }
-                        }
+                        await self?.publishStreamingDrafts(drafts, draftID: draftID)
                     }
                 )
                 streamingStatusText = "已生成 \(thinkingCards.count) 张候选卡片，请查看并确认。"
@@ -4824,6 +5355,47 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func publishStreamingDrafts(
+        _ drafts: [StreamingCardDraft],
+        draftID: DailyEntryDraft.ID
+    ) async {
+        guard todayDraft.id == draftID else { return }
+
+        if drafts.isEmpty {
+            streamingCards = []
+            updateStreamingStatusText(for: [])
+            return
+        }
+
+        let visibleCount = streamingCards.count
+        guard drafts.count > visibleCount else {
+            streamingCards = drafts
+            updateStreamingStatusText(for: drafts)
+            return
+        }
+
+        for count in (visibleCount + 1)...drafts.count {
+            guard todayDraft.id == draftID else { return }
+            if count > 1 {
+                try? await Task.sleep(for: .milliseconds(140))
+            }
+            let stagedDrafts = Array(drafts.prefix(count))
+            streamingCards = stagedDrafts
+            updateStreamingStatusText(for: stagedDrafts)
+        }
+    }
+
+    private func updateStreamingStatusText(for drafts: [StreamingCardDraft]) {
+        let closedCount = drafts.compactMap(\.domainCard).count
+        if closedCount > 0 {
+            streamingStatusText = "已闭合 \(closedCount) 张候选卡片，继续接收中。"
+        } else if drafts.isEmpty {
+            streamingStatusText = "等待第一张候选卡片。"
+        } else {
+            streamingStatusText = "正在生成第 \(drafts.count) 张候选卡片。"
+        }
+    }
+
     private func generateQuestionsWithAIOrFallback(
         draftID: DailyEntryDraft.ID,
         allowsFallback: Bool = true
@@ -4837,6 +5409,7 @@ final class AppStore: ObservableObject {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
+                let lensFeedback = lensFeedbackForAI()
                 questions = try await todayAIService.generateQuestions(
                     for: TodayAIContext(
                         draft: todayDraft,
@@ -4844,7 +5417,11 @@ final class AppStore: ObservableObject {
                         questions: questions,
                         principles: contextPrinciples,
                         principleRecallFeedback: recallFeedback,
-                        selectedLensItem: selectedLensItem
+                        selectedLensItem: selectedLensItem,
+                        lensFeedback: lensFeedback,
+                        trainingPrescription: trainingPrescription,
+                        coachDiagnosis: coachDiagnosis,
+                        coachTurnState: coachTurnState
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
@@ -4888,6 +5465,7 @@ final class AppStore: ObservableObject {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
+                let lensFeedback = lensFeedbackForAI()
                 quests = try await todayAIService.generateQuests(
                     for: TodayAIContext(
                         draft: todayDraft,
@@ -4895,7 +5473,11 @@ final class AppStore: ObservableObject {
                         questions: questions,
                         principles: contextPrinciples,
                         principleRecallFeedback: recallFeedback,
-                        selectedLensItem: selectedLensItem
+                        selectedLensItem: selectedLensItem,
+                        lensFeedback: lensFeedback,
+                        trainingPrescription: trainingPrescription,
+                        coachDiagnosis: coachDiagnosis,
+                        coachTurnState: coachTurnState
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
@@ -4942,7 +5524,8 @@ final class AppStore: ObservableObject {
                         questions: questions,
                         quests: quests,
                         principles: await existingPrinciplesForDedupe(),
-                        selectedLensItem: selectedLensItem
+                        selectedLensItem: selectedLensItem,
+                        trainingPrescription: trainingPrescription
                     )
                 )
                 persistPrinciples()
@@ -4972,6 +5555,12 @@ final class AppStore: ObservableObject {
 
     private func generateLocalCards(from input: String) {
         let summary = inputSummary(from: input)
+        let parsedCards = localCardsFromStructuredLines(input)
+        if !parsedCards.isEmpty {
+            thinkingCards = parsedCards
+            return
+        }
+
         thinkingCards = [
             ThinkingCard(
                 type: .fact,
@@ -5000,9 +5589,116 @@ final class AppStore: ObservableObject {
         ]
     }
 
+    private func localCardsFromStructuredLines(_ input: String) -> [ThinkingCard] {
+        let lines = input
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var cards: [ThinkingCard] = []
+
+        for line in lines {
+            guard let parsed = parseLocalStructuredCardLine(line) else { continue }
+            cards.append(
+                ThinkingCard(
+                    type: parsed.type,
+                    title: parsed.title,
+                    body: parsed.body,
+                    priority: parsed.priority,
+                    sensitivity: .normal,
+                    confidence: 0.7
+                )
+            )
+            if cards.count >= localFallbackCardLimit {
+                break
+            }
+        }
+
+        return cards
+    }
+
+    private var localFallbackCardLimit: Int {
+        switch todayDraft.sessionMode {
+        case .quick: return 3
+        case .standard: return 6
+        case .deep: return 8
+        }
+    }
+
+    private func parseLocalStructuredCardLine(_ line: String) -> (type: ThinkingCardType, title: String, body: String, priority: PriorityLevel)? {
+        let separators = ["：", ":"]
+        guard let separator = separators.first(where: { line.contains($0) }),
+              let range = line.range(of: separator)
+        else { return nil }
+
+        let label = String(line[..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let body = String(line[range.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty, !body.isEmpty else { return nil }
+        guard let type = localCardType(for: label) else { return nil }
+
+        let priority: PriorityLevel = {
+            switch type {
+            case .risk, .problem, .task: return .high
+            case .fact, .decision, .idea, .communication: return .medium
+            }
+        }()
+        return (type, localFallbackTitle(for: type), body, priority)
+    }
+
+    private func localCardType(for label: String) -> ThinkingCardType? {
+        let normalized = label.replacingOccurrences(of: " ", with: "")
+        if ["事实", "fact", "facts", "evidence", "证据"].contains(normalized) {
+            return .fact
+        }
+        if ["问题", "困惑", "疑问", "problem", "issue", "question"].contains(normalized) {
+            return .problem
+        }
+        if ["判断", "决策", "决定", "decision", "judgment", "judgement"].contains(normalized) {
+            return .decision
+        }
+        if ["风险", "担忧", "risk"].contains(normalized) {
+            return .risk
+        }
+        if ["想法", "猜想", "假设", "idea", "thought", "hypothesis"].contains(normalized) {
+            return .idea
+        }
+        if ["沟通", "同步", "communication", "sync"].contains(normalized) {
+            return .communication
+        }
+        if ["任务", "行动", "下一步", "todo", "task", "action"].contains(normalized) {
+            return .task
+        }
+        return nil
+    }
+
+    private func localFallbackTitle(for type: ThinkingCardType) -> String {
+        switch type {
+        case .fact: return "记录到的事实"
+        case .problem: return "需要澄清的问题"
+        case .decision: return "当前判断"
+        case .risk: return "需要留意的风险"
+        case .idea: return "待验证的想法"
+        case .communication: return "沟通信号"
+        case .task: return "可执行行动"
+        }
+    }
+
     private func generateLocalQuestions(from input: String) {
         let focus = inputSummary(from: input)
         let lensItem = selectedLensItem
+        let sourceCardTitles = thinkingCards
+            .filter(\.isConfirmed)
+            .map(\.title)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let groundedSourceTitles = Array(sourceCardTitles.prefix(2))
+        let sourceSummary = groundedSourceTitles.isEmpty ? "今天输入" : groundedSourceTitles.joined(separator: "、")
+        let primaryLensMove = localLensMove(for: effectiveSelectedThinkingLens)
+        let secondaryLensMove: QuestionLensMove = primaryLensMove == .predictionCalibration
+            ? .factInterpretationSplit
+            : .predictionCalibration
         let modeQuestion: String
         switch todayDraft.sessionMode {
         case .quick:
@@ -5018,11 +5714,21 @@ final class AppStore: ObservableObject {
             questions = [
                 ReflectionQuestion(
                     question: customLens.questionSeeds.first ?? customLens.methodLine,
-                    whyItMatters: customLens.methodLine
+                    whyItMatters: customLens.methodLine,
+                    evidenceGapType: .missingCalibrationSignal,
+                    answerUse: .updateJudgment,
+                    lensMove: primaryLensMove,
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "\(sourceSummary) 中最高风险判断能否被 \(customLens.title) 改写"
                 ),
                 ReflectionQuestion(
                     question: "\(customLens.title) 会如何改写你对这件事的判断？",
-                    whyItMatters: focus
+                    whyItMatters: focus,
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .testAssumption,
+                    lensMove: secondaryLensMove,
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "使用 \(customLens.title) 后的下一步行动判断是否更可验证"
                 )
             ]
             todayDraft.customLensQuestions = questions
@@ -5033,19 +5739,62 @@ final class AppStore: ObservableObject {
         questions = [
             ReflectionQuestion(
                 question: modeQuestion,
-                whyItMatters: "让任务从泛泛而谈变成可验证行动。"
+                whyItMatters: "让任务从泛泛而谈变成可验证行动。",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal,
+                lensMove: primaryLensMove,
+                sourceCardTitles: groundedSourceTitles,
+                calibrationTarget: "\(sourceSummary) 中明天最值得验证的关键判断"
             ),
             ReflectionQuestion(
                 question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
-                whyItMatters: focus
+                whyItMatters: focus,
+                evidenceGapType: .missingCounterexample,
+                answerUse: .updateJudgment,
+                lensMove: secondaryLensMove,
+                sourceCardTitles: groundedSourceTitles,
+                calibrationTarget: "\(sourceSummary) 中当前透镜是否能改变下一步行动判断"
             )
         ]
+    }
+
+    private func localLensMove(for lens: ThinkingLens?) -> QuestionLensMove {
+        switch lens {
+        case .evidenceCheck:
+            return .factInterpretationSplit
+        case .opposingView:
+            return .alternativeExplanation
+        case .leverageAnalysis:
+            return .leverageTradeoff
+        case .firstPrinciples:
+            return .constraintDecomposition
+        case .systemThinking:
+            return .feedbackLoop
+        case .judgmentCalibration:
+            return .predictionCalibration
+        case .none:
+            return .predictionCalibration
+        }
+    }
+
+    private var effectiveSelectedThinkingLens: ThinkingLens? {
+        if let finalLensId = trainingPrescription?.finalLensId,
+           let lens = ThinkingLens(rawValue: finalLensId) {
+            return lens
+        }
+        return todayDraft.selectedLens
     }
 
     private func generateLocalQuests() {
         let firstAnswer = questions
             .map { $0.answer.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? "先澄清明天最关键的判断"
+        let firstCalibrationTarget = questions
+            .compactMap { question -> String? in
+                let target = question.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return target.isEmpty ? nil : target
+            }
+            .first ?? "明天最值得验证的关键判断"
 
         quests = [
             Quest(
@@ -5055,6 +5804,7 @@ final class AppStore: ObservableObject {
                 completionCriteria: "在明天结束前产出一个可检查结果：结论、负责人、下一步或验证记录。",
                 expectedResistance: "容易被临时消息和低价值事务打断。",
                 reflectionQuestion: "完成后，哪个不确定性被实际降低了？",
+                calibrationTarget: firstCalibrationTarget,
                 status: .draft
             ),
             Quest(
@@ -5064,6 +5814,7 @@ final class AppStore: ObservableObject {
                 completionCriteria: "写下一条原判断、实际结果和下一次调整。",
                 expectedResistance: "容易只做事不回看。",
                 reflectionQuestion: "这条判断下次可以怎样更早验证？",
+                calibrationTarget: "原判断和实际结果之间的偏差",
                 status: .draft
             )
         ]
@@ -5249,12 +6000,15 @@ final class AppStore: ObservableObject {
         }
 
         var practiceEvidence: [PrinciplePracticeEvidence] = []
+        var disputedPracticeEvidence: [PrinciplePracticeEvidence] = []
         var recallFeedback: [PrincipleRecallFeedback] = []
 
         for principle in visiblePrinciples {
             do {
                 let evidence = try await principlePracticeEvidenceRepository?.evidence(for: principle.id, limit: 20) ?? []
                 practiceEvidence.append(contentsOf: evidence)
+                let disputed = try await principlePracticeEvidenceRepository?.disputedEvidence(for: principle.id, limit: 20) ?? []
+                disputedPracticeEvidence.append(contentsOf: disputed)
             } catch {
                 continue
             }
@@ -5269,7 +6023,8 @@ final class AppStore: ObservableObject {
         principleTrainingSummaries = PrincipleTrainingSummary.summaries(
             for: visiblePrinciples,
             practiceEvidence: practiceEvidence,
-            recallFeedback: recallFeedback
+            recallFeedback: recallFeedback,
+            disputedPracticeEvidence: disputedPracticeEvidence
         )
     }
 
@@ -5333,6 +6088,63 @@ final class AppStore: ObservableObject {
         return feedback
     }
 
+    private func lensFeedbackForAI(limit: Int = 3) -> [PromptContextPayload.LensFeedbackContext] {
+        historyRecords
+            .filter { $0.draft.id != todayDraft.id }
+            .sorted { $0.draft.date > $1.draft.date }
+            .compactMap(lensFeedbackContext)
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    private func lensFeedbackContext(from record: HistoryRecord) -> PromptContextPayload.LensFeedbackContext? {
+        guard let lensSession = record.lensSession,
+              let verification = record.verification else {
+            return nil
+        }
+
+        let answeredQuestions = lensSession.questions.filter { question in
+            !question.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !answeredQuestions.isEmpty else { return nil }
+
+        let targets = answeredQuestions.compactMap { question in
+            normalizedLensFeedbackText(question.calibrationTarget, limit: 80)
+        }
+        let evidenceGaps = answeredQuestions.compactMap { question in
+            question.evidenceGapType?.rawValue
+        }
+        let learningSignals = CoachLensLearningPolicy().signals(from: lensSession, verification: verification)
+        guard !learningSignals.isEmpty else { return nil }
+        let lensMoves = learningSignals.compactMap { signal in
+            signal.lensMove?.rawValue
+        }
+        let signal = learningSignals.first?.signal ?? CoachLensLearningPolicy.signal(
+            completion: verification.completion,
+            valueRating: verification.valueRating
+        )
+
+        return PromptContextPayload.LensFeedbackContext(
+            lensId: lensSession.selectedLens.rawValue,
+            lensTitle: lensSession.selectedLens.title,
+            signal: signal,
+            completion: verification.completion.rawValue,
+            valueRating: verification.valueRating.rawValue,
+            calibrationNote: normalizedLensFeedbackText(verification.calibrationNote, limit: 140) ?? "",
+            recommendation: normalizedLensFeedbackText(verification.recommendation, limit: 100),
+            questionTargets: Array(targets.prefix(3)),
+            evidenceGapTypes: Array(Set(evidenceGaps).sorted().prefix(4)),
+            lensMoves: Array(Set(lensMoves).sorted().prefix(4))
+        )
+    }
+
+    private func normalizedLensFeedbackText(_ text: String?, limit: Int) -> String? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.count > limit else { return trimmed }
+        return "\(trimmed.prefix(limit))..."
+    }
+
     private func refreshReferencedPrinciplesForCurrentContext(promptID: PromptID) async {
         let contextPrinciples = await contextPrinciplesForAI()
         let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
@@ -5355,7 +6167,10 @@ final class AppStore: ObservableObject {
             quests: quests,
             principles: contextPrinciples,
             principleRecallFeedback: recallFeedback,
-            selectedLensItem: selectedLensItem
+            selectedLensItem: selectedLensItem,
+            trainingPrescription: trainingPrescription,
+            coachDiagnosis: coachDiagnosis,
+            coachTurnState: coachTurnState
         )
         let retrieved = LocalPrincipleRetriever().retrievePrinciples(
             for: context,
@@ -5385,12 +6200,18 @@ final class AppStore: ObservableObject {
         }
 
         let promptId: PromptID = todayDraft.state == .reviewQuests ? .generateQuests : .generateQuestions
+        let linkedPromptRun = try? await promptRunRepository?.mostRecentPromptRun(
+            promptId: promptId,
+            sourceRecordId: todayDraft.id
+        )
         let event = PrincipleRecallFeedback(
             principleId: principleId,
+            promptRunId: linkedPromptRun?.id,
             sourceDailyEntryId: todayDraft.id,
             promptId: promptId,
             retrievalPolicyVersion: retrieved.policyVersion,
             retrievalReason: retrieved.retrievalReason,
+            retrievalSignal: retrieved.retrievalSignal,
             feedback: feedback,
             note: note
         )
@@ -5398,6 +6219,9 @@ final class AppStore: ObservableObject {
         do {
             try await principleRecallFeedbackRepository.saveFeedback(event)
             if feedback == .notApplicable || feedback == .misrecalled {
+                if let linkedPromptRun {
+                    try? await promptRunRepository?.updatePromptRunFeedback(.denied, runId: linkedPromptRun.id)
+                }
                 referencedPrinciples.removeAll { $0.id == principleId }
                 referencedPrincipleRetrievals[principleId] = nil
                 await loadActivePrinciples()
@@ -5420,6 +6244,19 @@ final class AppStore: ObservableObject {
                 LensSession(dailyEntryId: todayDraft.id, selectedLens: lens, questions: questions)
             }
         )
+    }
+
+    func referencedPrincipleRetrievalReason(for principleId: UUID) -> String? {
+        let reason = referencedPrincipleRetrievals[principleId]?.retrievalReason
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return reason.isEmpty ? nil : reason
+    }
+
+    func referencedPrincipleRetrievalSignalText(for principleId: UUID) -> String? {
+        guard let signal = referencedPrincipleRetrievals[principleId]?.retrievalSignal else {
+            return nil
+        }
+        return PrincipleRetrievalSignalDisplay.displayText(for: signal)
     }
 
     private static func makeTodayAIService(

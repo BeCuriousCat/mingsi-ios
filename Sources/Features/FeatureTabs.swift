@@ -59,6 +59,27 @@ enum SettingsAutomationID {
     }
 }
 
+enum GrowthAutomationID {
+    static func disputeLatestPracticeEvidenceAction(evidenceId: String) -> String {
+        "growth.principle-practice.\(sanitized(evidenceId)).dispute-action"
+    }
+
+    static func disputedPracticeEvidenceAudit(evidenceId: String) -> String {
+        "growth.principle-practice.\(sanitized(evidenceId)).disputed-audit"
+    }
+
+    static func negativeRecallFeedbackAudit(feedbackId: String) -> String {
+        "growth.principle-recall.\(sanitized(feedbackId)).negative-audit"
+    }
+
+    private static func sanitized(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        return value.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : "_" }
+            .reduce(into: "") { $0.append($1) }
+    }
+}
+
 enum HistoryFilterChipKind {
     case project
     case lens
@@ -1638,17 +1659,13 @@ struct GrowthView: View {
             }
         }
         .sheet(item: $selectedMetric) { metric in
-            MetricDetailSheet(
-                snapshot: store.growthSnapshot,
-                metric: metric,
-                contributions: store.metricContributions.filter { contribution in
-                    contribution.metric == metric &&
-                    contribution.candidateStatus == .accepted &&
-                    !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                },
-                onSelectContribution: { contribution in
-                    selectedMetric = nil
-                    store.navigateToHistoryDeepLink(
+                MetricDetailSheet(
+                    snapshot: store.growthSnapshot,
+                    metric: metric,
+                    contributions: metricDetailContributions(for: metric),
+                    onSelectContribution: { contribution in
+                        selectedMetric = nil
+                        store.navigateToHistoryDeepLink(
                         HistoryDeepLink(
                             dailyEntryId: contribution.sourceDailyEntryId,
                             sourceId: contribution.sourceId,
@@ -1682,6 +1699,21 @@ struct GrowthView: View {
             ManualPrincipleFormSheet(repairing: principle)
         }
     }
+
+    private func metricDetailContributions(for metric: GrowthMetric) -> [MetricContribution] {
+        var seen: Set<UUID> = []
+        return (store.metricContributions + store.growthReportReviewContributions).filter { contribution in
+            guard contribution.metric == metric,
+                  contribution.candidateStatus != .rejected,
+                  contribution.userFeedback != .inaccurate,
+                  contribution.userFeedback != .dismissed,
+                  !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                return false
+            }
+            return seen.insert(contribution.id).inserted
+        }
+    }
 }
 
 private struct GrowthPrincipleAssetSection: View {
@@ -1705,6 +1737,10 @@ private struct GrowthPrincipleAssetSection: View {
                 .tint(DS.accent)
             }
 
+            if !store.todayLoopMessage.isEmpty {
+                ProjectInsightNote(message: store.todayLoopMessage)
+            }
+
             if !store.principleTrainingSummaries.isEmpty {
                 ForEach(store.principleTrainingSummaries) { summary in
                     PrincipleArchiveRow(
@@ -1716,6 +1752,16 @@ private struct GrowthPrincipleAssetSection: View {
                         onArchive: {
                             Task {
                                 await store.archivePrinciple(summary.principle.id)
+                            }
+                        },
+                        onDisputeLatestPracticeEvidence: summary.latestPracticeEvidenceId.map { evidenceId in
+                            {
+                                Task {
+                                    await store.disputePrinciplePracticeEvidence(
+                                        evidenceId,
+                                        note: "用户在 Growth 原则资产列表标记最近练习归因不准确。"
+                                    )
+                                }
                             }
                         },
                         onDelete: {
@@ -1928,24 +1974,26 @@ private struct GrowthReportReviewPanel: View {
     let contributions: [MetricContribution]
     let onSelectMetric: (GrowthMetric) -> Void
 
-    private var acceptedContributions: [MetricContribution] {
+    private var reviewableContributions: [MetricContribution] {
         contributions.filter { contribution in
-            contribution.isAcceptedForTrend &&
+            contribution.candidateStatus != .rejected &&
+            contribution.userFeedback != .inaccurate &&
+            contribution.userFeedback != .dismissed &&
             !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
     private var positiveCount: Int {
-        acceptedContributions.filter { $0.direction == .positive }.count
+        reviewableContributions.filter { $0.direction == .positive }.count
     }
 
     private var negativeCount: Int {
-        acceptedContributions.filter { $0.direction == .negative }.count
+        reviewableContributions.filter { $0.direction == .negative }.count
     }
 
     private var groupedContributions: [(metric: GrowthMetric, contributions: [MetricContribution])] {
         GrowthMetric.allCases.compactMap { metric in
-            let metricContributions = acceptedContributions.filter { $0.metric == metric }
+            let metricContributions = reviewableContributions.filter { $0.metric == metric }
             return metricContributions.isEmpty ? nil : (metric, metricContributions)
         }
     }
@@ -1969,7 +2017,7 @@ private struct GrowthReportReviewPanel: View {
                 reportLedger
 
                 if groupedContributions.isEmpty {
-                    Text("这份报告还没有可审查的已接受贡献。重新生成报告或继续积累验证证据后再查看。")
+                    Text("这份报告还没有可审查的贡献。重新生成报告或继续积累验证证据后再查看。")
                         .font(.subheadline)
                         .foregroundStyle(DS.mutedInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4295,6 +4343,7 @@ private struct PrincipleArchiveRow: View {
     var onSaveProject: (() -> Void)?
     var onRepair: (() -> Void)?
     var onArchive: (() -> Void)?
+    var onDisputeLatestPracticeEvidence: (() -> Void)?
     var onDelete: (() -> Void)?
 
     var body: some View {
@@ -4323,6 +4372,65 @@ private struct PrincipleArchiveRow: View {
                 HStack(spacing: 8) {
                     ProjectTinyChip(text: "实践 \(trainingSummary.practiceEvidenceCount)", systemImage: "checkmark.circle")
                     ProjectTinyChip(text: "负反馈 \(trainingSummary.negativeRecallFeedbackCount)", systemImage: "exclamationmark.triangle")
+                }
+                if let latestSummary = trainingSummary.latestPracticeEvidenceSummary,
+                   !latestSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if let role = trainingSummary.latestPracticeEvidenceRole {
+                        ProjectTinyChip(text: role.title, systemImage: "scope")
+                    }
+                    Text("最近证据：\(latestSummary)")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                    if let evidenceId = trainingSummary.latestPracticeEvidenceId,
+                       let onDisputeLatestPracticeEvidence {
+                        Button(action: onDisputeLatestPracticeEvidence) {
+                            Label("归因不准确", systemImage: "xmark.octagon")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DS.caution)
+                        .accessibilityIdentifier(
+                            GrowthAutomationID.disputeLatestPracticeEvidenceAction(
+                                evidenceId: evidenceId.uuidString
+                            )
+                        )
+                    }
+                }
+                if let disputedEvidenceId = trainingSummary.latestDisputedPracticeEvidenceId,
+                   let disputedSummary = trainingSummary.latestDisputedPracticeEvidenceSummary,
+                   !disputedSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(disputedPracticeEvidenceAuditText(
+                        summary: disputedSummary,
+                        note: trainingSummary.latestDisputedPracticeEvidenceNote
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(DS.caution)
+                    .lineLimit(3)
+                    .accessibilityIdentifier(
+                        GrowthAutomationID.disputedPracticeEvidenceAudit(
+                            evidenceId: disputedEvidenceId.uuidString
+                        )
+                    )
+                }
+                if let feedbackId = trainingSummary.latestNegativeRecallFeedbackId,
+                   let feedbackValue = trainingSummary.latestNegativeRecallFeedbackValue,
+                   let feedbackReason = trainingSummary.latestNegativeRecallFeedbackReason,
+                   !feedbackReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(negativeRecallFeedbackAuditText(
+                        value: feedbackValue,
+                        signal: trainingSummary.latestNegativeRecallFeedbackSignal,
+                        reason: feedbackReason,
+                        note: trainingSummary.latestNegativeRecallFeedbackNote
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(DS.caution)
+                    .lineLimit(3)
+                    .accessibilityIdentifier(
+                        GrowthAutomationID.negativeRecallFeedbackAudit(
+                            feedbackId: feedbackId.uuidString
+                        )
+                    )
                 }
             }
             if let onSaveProject {
@@ -4359,6 +4467,29 @@ private struct PrincipleArchiveRow: View {
             }
         }
         .evidenceSurface(isHighlighted: isHighlighted, base: .principle)
+    }
+
+    private func disputedPracticeEvidenceAuditText(summary: String, note: String?) -> String {
+        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedNote.isEmpty else {
+            return "已否认归因：\(summary)"
+        }
+        return "已否认归因：\(summary) 原因：\(trimmedNote)"
+    }
+
+    private func negativeRecallFeedbackAuditText(
+        value: PrincipleRecallFeedbackValue,
+        signal: String?,
+        reason: String,
+        note: String?
+    ) -> String {
+        let signalText = signal.flatMap(PrincipleRetrievalSignalDisplay.displayText(for:))
+        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let signalSegment = signalText.map { " · 命中信号：\($0)" } ?? ""
+        guard !trimmedNote.isEmpty else {
+            return "复审依据：\(value.displayTitle)\(signalSegment) · \(reason)"
+        }
+        return "复审依据：\(value.displayTitle)\(signalSegment) · \(reason) 备注：\(trimmedNote)"
     }
 }
 

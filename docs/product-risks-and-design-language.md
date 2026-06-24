@@ -34,6 +34,46 @@ Product response:
 - User should be able to mark "not useful" on AI questions or quests.
 - Weekly review should identify which lenses were useful.
 
+Current product priority:
+
+- Optimize Prompt and thinking lenses before expanding distribution, sync, or marketplace surfaces.
+- The coach should maintain a stateful Today turn, not only make a one-shot lens decision. If the turn is `not_ready`, MingSi should ask for clarification or evidence before converging on action.
+- A good question should expose one of four things: an evidence gap, a hidden assumption, a disconfirming signal, or a next calibration signal.
+- Evidence gaps should be classified when possible: missing observation, missing baseline, missing causal link, missing counterexample, missing constraint, or missing calibration signal.
+- A good question should also make its answer useful: updating a judgment, choosing an action, testing an assumption, collecting evidence, or watching a calibration signal.
+- A good question should declare the reasoning move it trains: separating fact from interpretation, testing an alternative explanation, making a leverage tradeoff, decomposing constraints, mapping feedback loops, checking delayed effects, tracing second-order consequences, or calibrating a prediction.
+- A good question should cite the confirmed card titles that triggered it, so the user can see which evidence the coach is working from.
+- The lens system should train specific reasoning moves: evidence check, opposing view, leverage analysis, first principles, system thinking, and judgment calibration.
+- A selected built-in lens must train at least one matching reasoning move: evidence check -> fact/interpretation split; opposing view -> alternative explanation; leverage analysis -> leverage tradeoff; first principles -> constraint decomposition; system thinking -> feedback loop, delayed effect, or second-order consequence; judgment calibration -> prediction calibration.
+- System thinking is used when records show feedback loops, delayed effects, repeated rework, constraints, dependency propagation, or second-order consequences.
+- When system thinking is selected, questions must train at least one system move: `feedback_loop`, `delayed_effect`, or `second_order_consequence`; generic alternative-explanation questions are not enough.
+- A good quest should work as a calibration instrument: it should test one judgment, close one evidence gap, or produce one observable signal rather than become generic busywork.
+- A good quest should cite the confirmed card titles that justify it, so tomorrow's action remains traceable to today's evidence instead of becoming a free-floating todo.
+- A good quest should also carry the selected lens's reasoning move into action. A leverage-analysis session should not silently become an opposing-view task, and a system-thinking session should not silently become generic execution work.
+- A good quest should respect coach readiness. If the coach turn is not ready and the user has not explicitly overridden to proceed, generating a task is premature convergence rather than coaching.
+- A good verification should compare the original prediction with actual evidence, name the evidence gained, identify the observable signal, compare completion or acceptance criteria against evidence, and update the next judgment or calibration action. Its recommendation should name the next calibration action, test, or signal to watch rather than offer generic encouragement.
+- A good principle should be a reusable behavior rule grounded in confirmed source cards, actionable and verifiable rather than a slogan or free-floating advice. If the rule cannot cite today's evidence, name at least two concrete next-time actions, and state observable success criteria, it should not be created.
+- Principle practice evidence should stay explainable: automatic practiced/internalized records need a structured local match signal and attribution policy version so later review can see which action or rule field caused the attribution.
+- Principle practice evidence also needs `practice_role` so Growth can distinguish `targetedPractice`, `secondaryPractice`, and `possibleSignal`; only targeted or locally verified secondary practice should reinforce training state, while possible signals remain review material.
+- Principle training summaries should surface the latest practice evidence summary instead of reducing practice to a count, otherwise users cannot audit whether the training attribution is reasonable.
+- Users must be able to mark a principle practice attribution as inaccurate from the same Growth surface where the latest evidence is shown. Disputed practice evidence should remain visible as an audit line and exportable for review, but it must be excluded from active training summaries and must not reinforce long-term principle state.
+- A structured local match signal that was already disputed for a principle should suppress repeated automatic practice attribution for that same principle/signal until a stronger structured policy can prove the new attribution is materially different. Legacy summary parsing is only a compatibility fallback.
+- ReviewQuests can show the expected training target for a quest when it locally matches an active principle, and users can manually calibrate that target to another active principle or reset it to automatic. This must not create practice evidence before the next-day verification. The selection is an attribution input, not long-term reinforcement.
+- Manual quest training targets should only accept active principles. Needs-review principles remain review material, not direct training targets.
+- VerifyQuest prompts may receive the expected training principle to explain whether the quest appears to have practiced it, but LLM output must not be the authority that creates principle practice evidence. Evidence creation remains local, structured, and auditable.
+- Needs-review principles should show the latest not-applicable or misrecalled feedback reason in Growth, not only a negative-feedback count.
+- Referenced principles in Today should show the local recall reason before asking for helpful/not-applicable/misrecalled feedback; otherwise feedback becomes a guess about a black-box retrieval.
+- Negative referenced-principle feedback should link back to the same PromptRun that produced the recall and count as user denial in Prompt asset quality, otherwise the audit panel can look healthy while real users are rejecting bad recalls.
+- Principle recall feedback should store a structured `retrievalSignal` alongside the human-readable reason, and current retrieval policy should demote the bad signal rather than blindly penalizing the whole principle. Only legacy feedback without a signal should fall back to principle-level penalty.
+- The same `retrievalSignal` must be shown back to users as a localized "命中信号" in Today and Growth review surfaces, so users can dispute a concrete recall signal instead of interpreting raw policy/debug text.
+- Verified lens outcomes should feed the next prompt as `lensFeedback`: reinforce useful lens moves, adjust uncertain moves, and avoid low-value or uncalibratable patterns.
+- Feedback should target specific `lensMoves`, not discard a whole lens after one weak outcome.
+- `lensFeedback` should be a capped structured summary from verified history, not full raw records. This protects privacy, keeps prompt cost low, and prevents old daily text from overwhelming today's context.
+- Prompt changes must be protected by fixed eval fixtures so coaching quality does not drift back to generic advice.
+- Add a deterministic coaching quality gate for obvious regressions: generic questions, missing evidence-gap / answer-use / lens-move fields, missing source grounding for questions, quests, or principles, weak principle actionability, vague calibration targets, missing selected-lens moves, missing primary-training focus on the first question, `missingCoachTurnAlignment`, repeated avoided lens moves, unadjusted lens moves, missing reinforced lens moves, missing system-thinking moves, busywork quests, weak verification notes that omit the original prediction, actual evidence, evidence gained, judgment update, observable signal, and completion or acceptance criteria evidence, weak verification recommendations that do not name the next calibration action or signal, and verification outputs that omit the expected-principle practice assessment when a training principle was provided.
+- This gate does not replace human or LLM review. It is a cheap local guardrail for "obviously not good enough" outputs, so deeper review can focus on nuance rather than schema-shaped generic advice.
+- Runtime `qualityGateFailed` results should use the same fallback and retry posture as malformed or empty AI responses: preserve user progress, show an editable local result, and keep the failed prompt auditable.
+
 ### 3. The User May Avoid Hard Questions
 
 Risk:

@@ -2,6 +2,49 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-23: Coach Turn State v1 Milestone Specification
+
+Scope:
+
+- Set the next MingSi product milestone as Coach Turn State v1.
+- Document the shift from one-shot lens/prompt decision to a Today-local stateful coach turn.
+- Keep the milestone bounded to local deterministic state, prompt context, quality gates, tests, and minimal UI.
+- Add prompt-spec document tests so `CoachTurnState`, `coachTurnRule`, `missingCoachTurnAlignment`, not-ready/ready behavior, and override semantics remain documented.
+
+Changed areas:
+
+- `Tests/Services/PromptSpecificationDocumentTests.swift`
+- `docs/mvp-current-goal.md`
+- `docs/prompt-spec.md`
+- `docs/prompt-context-engineering-prd.md`
+- `docs/product-risks-and-design-language.md`
+- `docs/coach-turn-state-v1-audit.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptSpecificationDocumentTests/testPromptSpecDocumentsCoachTurnStateForStatefulCoachLoop
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptSpecificationDocumentTests/testPromptSpecDocumentsCoachTurnStateForStatefulCoachLoop -only-testing:MingSiTests/PromptSpecificationDocumentTests/testPromptSpecDocumentsDeterministicCoachingQualityGate
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testTodayTrainingPrescriptionShowsPrimaryFocusAndBaselineChecks
+git diff --check
+```
+
+Result:
+
+- RED failed with 18 expected document-coverage assertions because the prompt spec and context PRD did not yet document Coach Turn State v1.
+- GREEN passed after documenting `CoachTurnState`, `coachTurnRule`, not-ready/ready behavior, `userOverrideProgress`, `missingCoachTurnAlignment`, and the `organizeCards` exclusion boundary.
+- Focused prompt-spec document coverage passed with 2 tests and 0 failures.
+- Full `MingSiTests` passed with 711 executed, 1 skipped, and 0 failures.
+- Focused Today UI coverage passed with 1 test and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This specification slice aligns the target and audit language and verifies the current implementation with local tests. It does not claim a production-scale adaptive curriculum, live GLM acceptance, or remote distribution behavior.
+
 ## 2026-06-12: Alpha Keychain Preflight Alignment
 
 Scope:
@@ -6285,3 +6328,116 @@ Residual risk:
 
 - This is a preflight only. It intentionally does not make a live GLM network call.
 - Real BYOK GLM acceptance still requires a user-provided key and approved external network window.
+
+## 2026-06-22: Coach Training Prescription Override Audit UI
+
+Scope:
+
+- Keep the coach recommendation visible when a user overrides the recommended training lens.
+- Render a user-facing `改选审计` block in Today Select Lens with catalog titles rather than raw lens ids.
+- Preserve the existing structured `TrainingPrescription.overrideBoundary` as the context/persistence audit string.
+
+Changed areas:
+
+- `Sources/Features/Today/TodayView.swift`
+- `Tests/UI/MingSiUITests.swift`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testTodayTrainingPrescriptionOverrideShowsCoachAuditBoundary
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- RED first failed at `XCTAssertTrue(app.staticTexts["改选审计"].waitForExistence(timeout: 4))`, proving the rendered Select Lens UI did not expose the override audit boundary.
+- GREEN added `trainingOverrideAuditText(_:)` and a compact audit block to the training prescription card. The block shows `改选为「反方视角」` and `教练推荐「证据校验」仍保留为审计` after selecting the opposing-view lens.
+- Focused UI test passed with 1 test, 0 failures.
+- Full `MingSiUITests` passed with 19 tests, 0 failures.
+- Full `MingSiTests` passed with 697 tests, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This slice only makes the override boundary visible in Today UI. The broader coach-led training system still needs a final requirement-by-requirement completion audit before the active goal can be marked complete.
+
+## 2026-06-22: Growth Possible Signal Non-Reinforcement And Coach-Led Training v1 Audit
+
+Scope:
+
+- Ensure `possibleSignal` contributions remain review material rather than score-reinforcing evidence.
+- Add a formal six-condition completion audit for the coach-led training system v1 milestone.
+
+Changed areas:
+
+- `Sources/App/AppStore.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `docs/coach-led-training-system-v1-audit.md`
+- `docs/mvp-stage-progress.md`
+- `docs/verification-log.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testLoadPersistedState_generatesLocalGrowthSnapshotFromCompletedVerifiedLoops
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- RED first failed because a `possibleSignal` lens-answer contribution still appeared in the snapshot positive refs and inflated `reflectionDepth` from the expected `3.07` to `3.21`.
+- GREEN filters local Growth snapshot score/reason/ref calculation to reinforcing contributions only: `targetedPractice` and `secondaryPractice`. The full contribution list is still saved, so `possibleSignal` remains reviewable.
+- Focused GREEN passed with 1 test and 0 failures.
+- Full `MingSiUITests` passed with 19 tests and 0 failures.
+- Full `MingSiTests` passed with 697 tests, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- The formal audit proves the local MVP scope. It does not claim a production-scale adaptive curriculum, live GLM acceptance, remote sync, subscription, or marketplace behavior.
+
+## 2026-06-24: Coach Core Alpha Completion Verification
+
+Scope:
+
+- Verify Coach Core Alpha design, decision policy v2, functional question contract, prompt quality gate, and verification-to-learning signal.
+
+Changed areas:
+
+- `docs/coach-core-alpha-design.md`
+- `docs/prompt-spec.md`
+- `Sources/Domain/Models.swift`
+- `Sources/App/AppStore.swift`
+- `Sources/Services/CoreProtocols.swift`
+- `Sources/Services/TodayAIResponseParser.swift`
+- `Sources/Services/MockLLMClient.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/Services/LocalPromptProviderTests.swift`
+- `Tests/Services/PromptEvalFixtureTests.swift`
+- `Tests/Services/TodayAIResponseParserTests.swift`
+- `Tests/Services/TodayAIServiceContextTests.swift`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachDecisionPolicyV2_diagnosesInsufficientEvidenceBeforeConvergence -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachDecisionPolicyV2_detectsPrematureConvergence -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachDecisionPolicyV2_selectsJudgmentCalibrationWhenPredictionMeetsOutcomeEvidence -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachDecisionPolicyV2_selectsSystemFeedbackForLoopsDelaysAndDownstreamEffects -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachDecisionPolicyV2_recognizesActionableStateWhenEvidenceAndCriteriaExist -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachLensLearningPolicy_reinforcesHighValueCompletedLensMove -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachLensLearningPolicy_avoidsLowValueOrMissedLensMove -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachLensLearningPolicy_adjustsPartialOrMediumLensMove -only-testing:MingSiTests/AppStoreStateMachineTests/testCoachLensLearningPolicy_recordsFrequentUserOverrideAudit -only-testing:MingSiTests/TodayAIResponseParserTests/testParseQuestions_decodesFunctionalCoachFieldsWhenPresent -only-testing:MingSiTests/LocalPromptProviderTests/testGenerateQuestionsTemplate_requiresFunctionalCoachFields -only-testing:MingSiTests/PromptEvalFixtureTests/testPromptCoachingQualityPolicy_flagsMissingFunctionalCoachFields
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- Focused Coach Core Alpha verification passed with 12 tests and 0 failures.
+- Full `MingSiTests` passed with 737 tests executed, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This slice does not introduce a general chat UI, LangChain/LangGraph, remote prompt or lens marketplace behavior, subscription/sync behavior, Growth score redesign, or broad UI redesign.

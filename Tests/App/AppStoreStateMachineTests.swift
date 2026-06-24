@@ -47,6 +47,88 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayDraft.rawText.isEmpty)
     }
 
+    func testLoadPersistedState_restoresUnfinishedPriorDayDraftWithoutChangingDate() async throws {
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let unfinished = DailyEntryDraft(
+            date: priorDate,
+            rawText: "昨天晚上写了一半，还没有完成闭环。",
+            sessionMode: .deep,
+            hasSelectedSessionMode: true,
+            state: .answerQuestions
+        )
+        try await dailyRepo.saveDraft(unfinished)
+
+        let restoringStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await restoringStore.loadPersistedState()
+
+        XCTAssertEqual(restoringStore.todayDraft.id, unfinished.id)
+        XCTAssertEqual(restoringStore.todayDraft.rawText, unfinished.rawText)
+        XCTAssertEqual(restoringStore.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(Calendar.current.isDate(restoringStore.todayDraft.date, inSameDayAs: priorDate))
+        XCTAssertFalse(Calendar.current.isDateInToday(restoringStore.todayDraft.date))
+    }
+
+    func testLoadPersistedState_restoresUnfinishedPriorDayDraftWhenBlankTodayDraftExists() async throws {
+        let dailyRepo = InMemoryDailyEntryRepository()
+        let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let unfinished = DailyEntryDraft(
+            date: priorDate,
+            rawText: "昨天整理到问题阶段，还没有完成追问。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .reviewCards
+        )
+        let blankToday = DailyEntryDraft(date: Date(), state: .verifyYesterday)
+        try await dailyRepo.saveDraft(unfinished)
+        try await dailyRepo.saveDraft(blankToday)
+
+        let restoringStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await restoringStore.loadPersistedState()
+
+        XCTAssertEqual(restoringStore.todayDraft.id, unfinished.id)
+        XCTAssertEqual(restoringStore.todayDraft.rawText, unfinished.rawText)
+        XCTAssertEqual(restoringStore.todayDraft.state, .reviewCards)
+        XCTAssertTrue(Calendar.current.isDate(restoringStore.todayDraft.date, inSameDayAs: priorDate))
+    }
+
+    func testLocalFallbackCards_preservesMultipleFactLinesAsSeparateCards() async throws {
+        let failingClient = SequencedLLMClient(results: [
+            .failure(LLMClientError.httpStatus(500, Data("server down".utf8)))
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: failingClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("""
+        事实：客户没有回复验收邮件。
+        事实：会议没有指定负责人。
+        想法：明天先补一份验收清单。
+        """)
+
+        store.submitTodayStep()
+        try await waitForGeneratedCards()
+
+        let factCards = store.thinkingCards.filter { $0.type == .fact }
+        XCTAssertGreaterThanOrEqual(factCards.count, 2)
+        XCTAssertTrue(factCards.contains { $0.body.contains("客户没有回复验收邮件") })
+        XCTAssertTrue(factCards.contains { $0.body.contains("会议没有指定负责人") })
+    }
+
     func testInitialState_growthSnapshotUsesEvidenceCollectionState() {
         XCTAssertTrue(store.growthSnapshot.hasInsufficientEvidence)
         XCTAssertFalse(store.growthSnapshot.canDisplayScores)
@@ -93,6 +175,58 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.selectYesterdayValueRating(.medium)
         store.submitTodayStep()
         try await waitForState(.capture)
+    }
+
+    func testVerifyYesterday_sendsQuestTrainingTargetToVerificationPrompt() async throws {
+        let client = RecordingLLMClient(response: Self.verificationResponse)
+        let selected = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "先把验收标准写成可检查证据。",
+            triggerContext: "acceptance contract",
+            actions: ["写出验收标准"],
+            successCriteria: "完成时能直接检查。",
+            exceptions: "",
+            status: .active
+        )
+        let automatic = PrincipleAsset(
+            title: "会前确认负责人",
+            summary: "推进前先确认唯一负责人。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人"],
+            successCriteria: "会后没有职责空白。",
+            exceptions: "",
+            status: .active
+        )
+        let quest = Quest(
+            type: .main,
+            title: "会前写出负责人",
+            whyItMatters: "避免会议后没有责任人。",
+            completionCriteria: "负责人已经写在会议记录。",
+            expectedResistance: "临时讨论太快。",
+            reflectionQuestion: "是否真的减少了职责空白？",
+            trainingPrincipleId: selected.id,
+            status: .active
+        )
+        store = AppStore(
+            quests: [quest],
+            principles: [selected, automatic],
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+
+        store.submitTodayStep()
+        try await waitForState(.capture)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == PromptID.verifyQuest })
+        let trainingPrinciple = try XCTUnwrap(request.contextPayload?.verification?.trainingPrinciple)
+        XCTAssertEqual(trainingPrinciple.principleId, selected.id.uuidString)
+        XCTAssertEqual(trainingPrinciple.principleTitle, "先写验收标准")
+        XCTAssertEqual(trainingPrinciple.matchSignal, "用户选择")
     }
 
     func testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory() async throws {
@@ -224,6 +358,95 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(evidence.first?.evidenceSource, .verification)
         XCTAssertEqual(evidence.first?.strength, .intentionalPractice)
         XCTAssertTrue(evidence.first?.evidenceSummary.contains("会前明确负责人") == true)
+        XCTAssertTrue(evidence.first?.evidenceSummary.contains("匹配信号：写出负责人") == true)
+        XCTAssertEqual(evidence.first?.matchSignal, "写出负责人")
+        XCTAssertEqual(evidence.first?.attributionPolicyVersion, AppStore.principlePracticeAttributionPolicyVersion)
+        XCTAssertEqual(evidence.first?.practiceRole, .secondaryPractice)
+    }
+
+    func testVerifyYesterday_skipsPracticeEvidenceWhenSameSignalWasDisputed() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+
+        let priorEntryId = UUID()
+        let yesterday = DailyEntryDraft(
+            date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+            rawText: "昨天围绕会议负责人机制做了行动。",
+            state: .sessionComplete
+        )
+        try await dailyRepo.saveDraft(yesterday)
+        let today = DailyEntryDraft(rawText: "今天确认会前负责人已经写清。", state: .verifyYesterday)
+        try await dailyRepo.saveDraft(today)
+
+        let quest = Quest(
+            type: .main,
+            title: "会前明确负责人并写出验收标准",
+            whyItMatters: "避免会议后没有责任人。",
+            completionCriteria: "负责人和验收标准已经写在会议记录。",
+            expectedResistance: "临时讨论太快。",
+            reflectionQuestion: "是否真的减少了职责空白？",
+            status: .active
+        )
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: yesterday.id)
+
+        let principle = PrincipleAsset(
+            title: "会前明确负责人",
+            summary: "推进前先确认唯一负责人。",
+            triggerContext: "跨团队会议",
+            actions: ["写出负责人", "写出验收标准"],
+            successCriteria: "会后没有职责空白。",
+            exceptions: "低风险同步可简化。",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: priorEntryId)
+
+        let disputedEvidence = PrinciplePracticeEvidence(
+            principleId: principle.id,
+            sourceDailyEntryId: priorEntryId,
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证任务显示原则「会前明确负责人」被实际练习：历史任务。",
+            matchSignal: "写出负责人",
+            attributionPolicyVersion: AppStore.principlePracticeAttributionPolicyVersion
+        )
+        try await practiceRepo.saveEvidence(disputedEvidence)
+        try await practiceRepo.disputeEvidence(
+            disputedEvidence.id,
+            note: "只是记录了负责人，不应算作主动练习原则。"
+        )
+
+        let verifyingStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await verifyingStore.loadPersistedState()
+
+        verifyingStore.selectYesterdayCompletion(.done)
+        verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.submitTodayStep()
+        try await waitUntil(
+            verifyingStore.todayDraft.state == .capture,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected verification flow to advance to capture"
+        ) {
+            verifyingStore.todayDraft.state == .capture
+        }
+
+        let activeEvidence = try await practiceRepo.evidence(for: principle.id, limit: 10)
+        let disputed = try await practiceRepo.disputedEvidence(for: principle.id, limit: 10)
+
+        XCTAssertTrue(activeEvidence.isEmpty)
+        XCTAssertEqual(disputed.map(\.id), [disputedEvidence.id])
     }
 
     func testVerifyYesterday_recordsPrinciplePracticeEvidenceOnlyOnceForSameVerification() async throws {
@@ -395,6 +618,84 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(persistedCards[0].isConfirmed)
     }
 
+    func testCapture_streamingCardsAreVisibleBeforeStreamCompletes() async throws {
+        let client = SuspendedStreamingLLMClient(
+            firstToken: "<MINGSI_STREAM version=\"1\"><CARD><TYPE>task</TYPE><TITLE>准备会议目标</TITLE>",
+            remainingTokens: [
+                "<BODY>会前列出必须确认的问题。</BODY><IMPORTANCE>high</IMPORTANCE><SENSITIVITY>normal</SENSITIVITY><CONFIDENCE>high</CONFIDENCE><REASON>可验证行动</REASON></CARD></MINGSI_STREAM>"
+            ]
+        )
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("明天会议前要准备目标。")
+        store.submitTodayStep()
+
+        try await waitUntil(
+            !store.streamingCards.isEmpty,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected a receiving streaming draft before stream completion"
+        ) {
+            !store.streamingCards.isEmpty
+        }
+        XCTAssertEqual(store.thinkingCards.count, 0)
+        XCTAssertEqual(store.streamingCards.first?.title, "准备会议目标")
+        XCTAssertEqual(store.streamingCards.first?.status, .receiving)
+
+        await client.releaseRemaining()
+
+        try await waitForGeneratedCards()
+        XCTAssertEqual(store.thinkingCards.first?.title, "准备会议目标")
+        XCTAssertEqual(store.streamingCards.first?.status, .closed)
+    }
+
+    func testCapture_burstStreamPresentsCardsOneAtATimeBeforeStreamCompletes() async throws {
+        let client = SuspendedStreamingLLMClient(
+            firstToken: """
+            <MINGSI_STREAM version="1"><CARD><TYPE>task</TYPE><TITLE>准备会议目标</TITLE><BODY>会前列出必须确认的问题。</BODY><IMPORTANCE>high</IMPORTANCE><SENSITIVITY>normal</SENSITIVITY><CONFIDENCE>high</CONFIDENCE><REASON>可验证行动</REASON></CARD><CARD><TYPE>risk</TYPE><TITLE>会议结论漂移</TITLE><BODY>如果目标不清楚，结论会被后续重写。</BODY><IMPORTANCE>medium</IMPORTANCE><SENSITIVITY>normal</SENSITIVITY><CONFIDENCE>medium</CONFIDENCE><REASON>影响判断校准</REASON></CARD></MINGSI_STREAM>
+            """,
+            remainingTokens: []
+        )
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("明天会议前要准备目标，也担心会议结论漂移。")
+        store.submitTodayStep()
+
+        try await waitUntil(
+            store.streamingCards.count == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected burst stream to expose the first card before showing every card"
+        ) {
+            store.streamingCards.count == 1
+        }
+        XCTAssertEqual(store.thinkingCards.count, 0)
+
+        await client.releaseRemaining()
+
+        try await waitForGeneratedCards()
+        XCTAssertEqual(store.thinkingCards.map(\.title), ["准备会议目标", "会议结论漂移"])
+        XCTAssertEqual(store.streamingCards.count, 2)
+    }
+
     func testRetryPendingAIRepairs_doesNotRerunOrganizeCardsAfterConfirmedCardsOrDownstreamState() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
@@ -520,6 +821,267 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .selectLens)
     }
 
+    func testCoachEngine_diagnosesFourThinkingPhasesFromConfirmedCards() {
+        let engine = CoachEngine()
+
+        let exploration = engine.diagnose(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "也许要重排优先级", body: "目前只是感觉。"),
+            ThinkingCard(type: .communication, title: "同步会没有结论", body: "没人确认前提。")
+        ]))
+        XCTAssertEqual(exploration.phase, .exploreProblem)
+        XCTAssertEqual(exploration.readiness, .notReady)
+        XCTAssertEqual(exploration.recommendedMove, .askClarifyingQuestion)
+
+        let judgment = engine.diagnose(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "先保留旧逻辑", body: "这是当前倾向。"),
+            ThinkingCard(type: .idea, title: "可能要重排路线", body: "还没有拆开事实和判断。")
+        ]))
+        XCTAssertEqual(judgment.phase, .clarifyJudgment)
+        XCTAssertEqual(judgment.recommendedMove, .surfaceEvidenceGap)
+
+        let evidenceGap = engine.diagnose(cards: confirmedCards([
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "缺少事实支撑。", priority: .high),
+            ThinkingCard(type: .problem, title: "判断依据不足", body: "目前只有推测。", priority: .medium)
+        ]))
+        XCTAssertEqual(evidenceGap.phase, .fillEvidenceGap)
+        XCTAssertEqual(evidenceGap.readiness, .notReady)
+        XCTAssertEqual(evidenceGap.recommendedMove, .slowDownConvergence)
+
+        let action = engine.diagnose(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "确认接口负责人", body: "明天先定边界。", priority: .high),
+            ThinkingCard(type: .decision, title: "短期兼容旧逻辑", body: "先保证交付。", priority: .medium),
+            ThinkingCard(type: .fact, title: "客户承诺未落文档", body: "需要先确认是否真实存在。", priority: .medium)
+        ]))
+        XCTAssertEqual(action.phase, .formAction)
+        XCTAssertEqual(action.readiness, .ready)
+        XCTAssertEqual(action.recommendedMove, .recommendTrainingLens)
+    }
+
+    func testCoachTurnPolicy_recordsOpenEvidenceGapsFromInsufficientCards() {
+        let turn = CoachTurnPolicy().makeInitialTurn(cards: confirmedCards([
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "缺少事实支撑。", priority: .high),
+            ThinkingCard(type: .problem, title: "判断依据不足", body: "目前只有推测。", priority: .medium)
+        ]))
+
+        XCTAssertEqual(turn.phase, .fillEvidenceGap)
+        XCTAssertEqual(turn.readiness, .notReady)
+        XCTAssertEqual(turn.recommendedMove, .slowDownConvergence)
+        XCTAssertEqual(turn.openEvidenceGaps, [.missingObservation, .missingBaseline])
+        XCTAssertTrue(turn.baselineChecks.contains(.evidenceGap))
+        XCTAssertEqual(turn.decisionSource, .coachRecommended)
+        XCTAssertEqual(turn.policyVersion, CoachTurnPolicy.policyVersion)
+        XCTAssertTrue(turn.turnSummary.contains("证据"))
+    }
+
+    func testCoachDecisionPolicyV2_diagnosesInsufficientEvidenceBeforeConvergence() {
+        let decision = CoachDecisionPolicyV2().decide(cards: confirmedCards([
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "缺少事实支撑。", priority: .high),
+            ThinkingCard(type: .problem, title: "判断依据不足", body: "目前只有推测。", priority: .medium)
+        ]))
+
+        XCTAssertEqual(decision.policyVersion, CoachDecisionPolicyV2.policyVersion)
+        XCTAssertEqual(decision.phase, .fillEvidenceGap)
+        XCTAssertEqual(decision.readiness, .notReady)
+        XCTAssertEqual(decision.recommendedMove, .slowDownConvergence)
+        XCTAssertEqual(decision.primaryTrainingDimension, .evidenceDiscipline)
+        XCTAssertEqual(decision.convergenceRisk, .high)
+        XCTAssertTrue(decision.openEvidenceGaps.contains(.missingObservation))
+        XCTAssertTrue(decision.openEvidenceGaps.contains(.missingBaseline))
+        XCTAssertLessThan(decision.scores.evidenceReadiness, 50)
+        XCTAssertTrue(decision.proceedWhen.contains("可观察"))
+    }
+
+    func testCoachDecisionPolicyV2_detectsPrematureConvergence() {
+        let decision = CoachDecisionPolicyV2().decide(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "今天直接上线", body: "我倾向于继续推进，但没有验收标准。", priority: .high),
+            ThinkingCard(type: .risk, title: "失败影响客户", body: "风险较高，依据不足。", priority: .high)
+        ]))
+
+        XCTAssertEqual(decision.readiness, .notReady)
+        XCTAssertEqual(decision.recommendedMove, .slowDownConvergence)
+        XCTAssertEqual(decision.convergenceRisk, .high)
+        XCTAssertGreaterThanOrEqual(decision.scores.convergenceRisk, 75)
+        XCTAssertTrue(decision.whyNow.contains("过早收敛"))
+    }
+
+    func testCoachDecisionPolicyV2_selectsJudgmentCalibrationWhenPredictionMeetsOutcomeEvidence() {
+        let decision = CoachDecisionPolicyV2().decide(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "原本预测返工会下降", body: "昨天有 70% 把握认为小验收能减少返工。"),
+            ThinkingCard(type: .fact, title: "实际结果相反", body: "今天实际返工没有下降，结果和预期相反。")
+        ]))
+
+        XCTAssertEqual(decision.primaryTrainingDimension, .judgmentCalibration)
+        XCTAssertGreaterThanOrEqual(decision.scores.calibrationOpportunity, 70)
+        XCTAssertTrue(decision.openEvidenceGaps.contains(.missingCalibrationSignal))
+        XCTAssertTrue(decision.expectedUpdate.contains("预测"))
+    }
+
+    func testCoachDecisionPolicyV2_selectsSystemFeedbackForLoopsDelaysAndDownstreamEffects() {
+        let decision = CoachDecisionPolicyV2().decide(cards: confirmedCards([
+            ThinkingCard(type: .problem, title: "修复越多返工越多", body: "临时修复形成反馈回路，延迟两周后放大。"),
+            ThinkingCard(type: .risk, title: "下游团队被连锁影响", body: "二阶后果是验收和沟通成本继续增加。")
+        ]))
+
+        XCTAssertEqual(decision.primaryTrainingDimension, .systemFeedbackAwareness)
+        XCTAssertGreaterThanOrEqual(decision.scores.systemFeedback, 70)
+        XCTAssertTrue(decision.expectedUpdate.contains("反馈"))
+        XCTAssertTrue(decision.proceedWhen.contains("信号"))
+    }
+
+    func testCoachDecisionPolicyV2_recognizesActionableStateWhenEvidenceAndCriteriaExist() {
+        let decision = CoachDecisionPolicyV2().decide(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "明天找 Alex 确认验收标准", body: "负责人是 Alex，明天产出一页验收文档。", priority: .high),
+            ThinkingCard(type: .decision, title: "先做小范围验证", body: "不直接全量上线。"),
+            ThinkingCard(type: .fact, title: "当前接口只影响一个客户", body: "影响范围可控，有可观察结果。")
+        ]))
+
+        XCTAssertEqual(decision.phase, .formAction)
+        XCTAssertEqual(decision.readiness, .ready)
+        XCTAssertEqual(decision.recommendedMove, .generateQuest)
+        XCTAssertEqual(decision.convergenceRisk, .low)
+        XCTAssertEqual(decision.openEvidenceGaps, [])
+        XCTAssertGreaterThanOrEqual(decision.scores.actionTestability, 75)
+        XCTAssertTrue(decision.proceedWhen.contains("明日"))
+    }
+
+    func testCoachLensLearningPolicy_reinforcesHighValueCompletedLensMove() {
+        let question = ReflectionQuestion(
+            question: "明天能观察到什么信号，证明书面验收减少返工？",
+            whyItMatters: "它把判断变成可校准信号。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口验收不清"],
+            calibrationTarget: "书面验收减少接口返工",
+            answer: "让负责人书面确认验收标准。"
+        )
+        let session = LensSession(dailyEntryId: UUID(), selectedLens: .judgmentCalibration, questions: [question])
+        let verification = Verification(
+            questId: UUID(),
+            questTitle: "确认验收标准",
+            sourceDailyEntryId: session.dailyEntryId,
+            completion: .done,
+            valueRating: .high,
+            calibrationNote: "实际证据显示返工减少。",
+            recommendation: "继续使用预测校准。"
+        )
+
+        let signals = CoachLensLearningPolicy().signals(from: session, verification: verification)
+
+        XCTAssertEqual(signals.first?.signal, "reinforce")
+        XCTAssertEqual(signals.first?.lensMove, .predictionCalibration)
+        XCTAssertEqual(signals.first?.calibrationTarget, "书面验收减少接口返工")
+        XCTAssertTrue(signals.first?.reason.contains("high") ?? false)
+    }
+
+    func testCoachLensLearningPolicy_avoidsLowValueOrMissedLensMove() {
+        let question = ReflectionQuestion(
+            question: "明天能观察到什么信号？",
+            whyItMatters: "它尝试校准判断。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口验收不清"],
+            calibrationTarget: "书面验收减少接口返工",
+            answer: "观察返工次数。"
+        )
+        let session = LensSession(dailyEntryId: UUID(), selectedLens: .judgmentCalibration, questions: [question])
+        let verification = Verification(
+            questId: UUID(),
+            questTitle: "观察返工次数",
+            sourceDailyEntryId: session.dailyEntryId,
+            completion: .missed,
+            valueRating: .high,
+            calibrationNote: "没有执行，所以没有产生证据。"
+        )
+
+        let signals = CoachLensLearningPolicy().signals(from: session, verification: verification)
+
+        XCTAssertEqual(signals.first?.signal, "avoid")
+        XCTAssertEqual(signals.first?.lensMove, .predictionCalibration)
+        XCTAssertTrue(signals.first?.reason.contains("missed") ?? false)
+    }
+
+    func testCoachLensLearningPolicy_adjustsPartialOrMediumLensMove() {
+        let question = ReflectionQuestion(
+            question: "明天能观察到什么信号？",
+            whyItMatters: "它尝试校准判断。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口验收不清"],
+            calibrationTarget: "书面验收减少接口返工",
+            answer: "观察返工次数。"
+        )
+        let session = LensSession(dailyEntryId: UUID(), selectedLens: .judgmentCalibration, questions: [question])
+        let verification = Verification(
+            questId: UUID(),
+            questTitle: "观察返工次数",
+            sourceDailyEntryId: session.dailyEntryId,
+            completion: .partial,
+            valueRating: .medium,
+            calibrationNote: "方向有用，但信号太粗。"
+        )
+
+        let signals = CoachLensLearningPolicy().signals(from: session, verification: verification)
+
+        XCTAssertEqual(signals.first?.signal, "adjust")
+        XCTAssertEqual(signals.first?.lensMove, .predictionCalibration)
+        XCTAssertTrue(signals.first?.reason.contains("smaller") ?? false)
+    }
+
+    func testCoachLensLearningPolicy_recordsFrequentUserOverrideAudit() {
+        let signal = CoachLensLearningPolicy().overrideAuditSignal(
+            recommendedLens: .evidenceCheck,
+            finalLens: .opposingView,
+            primaryTrainingDimension: .evidenceDiscipline,
+            recentOverrideCount: 3
+        )
+
+        XCTAssertEqual(signal?.signal, "override_audit")
+        XCTAssertNil(signal?.lensMove)
+        XCTAssertEqual(signal?.calibrationTarget, "evidenceCheck->opposingView")
+        XCTAssertTrue(signal?.reason.contains("frequent") ?? false)
+        XCTAssertTrue(signal?.reason.contains("evidence_discipline") ?? false)
+    }
+
+    func testReviewCards_withInsufficientEvidenceCreatesCoachDiagnosisThatDefaultsToClarification() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = confirmedCards([
+            ThinkingCard(type: .idea, title: "也许要做一个新 App", body: "还没说明为什么做。"),
+            ThinkingCard(type: .communication, title: "讨论很多但没有问题定义", body: "暂时只有想法。")
+        ])
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        let diagnosis = try XCTUnwrap(store.coachDiagnosis)
+        XCTAssertEqual(diagnosis.phase, .exploreProblem)
+        XCTAssertEqual(diagnosis.readiness, .notReady)
+        XCTAssertEqual(diagnosis.recommendedMove, .askClarifyingQuestion)
+        XCTAssertTrue(diagnosis.reason.contains("问题"))
+    }
+
+    func testCoachDiagnosis_canAcceptSlowDownOrOverrideProgression() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.acceptCoachDiagnosis()
+        XCTAssertEqual(store.coachDiagnosis?.source, .coachAccepted)
+
+        store.slowDownCoachDiagnosis()
+        XCTAssertEqual(store.coachDiagnosis?.source, .userSlowDown)
+        XCTAssertEqual(store.coachDiagnosis?.recommendedMove, .slowDownConvergence)
+        XCTAssertEqual(store.coachDiagnosis?.readiness, .notReady)
+
+        store.overrideCoachDiagnosisToProgress()
+        XCTAssertEqual(store.coachDiagnosis?.source, .userOverrideProgress)
+        XCTAssertEqual(store.coachDiagnosis?.recommendedMove, .generateQuest)
+        XCTAssertEqual(store.coachDiagnosis?.readiness, .ready)
+    }
+
     // MARK: - Legacy SelectMode -> SelectLens
 
     func testSelectMode_noModeSelected_blocksProgression() async throws {
@@ -543,6 +1105,216 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.todayDraft.selectedLens = nil
         store.submitTodayStep()
         XCTAssertEqual(store.todayDraft.state, .selectLens)
+    }
+
+    func testSelectLens_createsCoachTrainingPrescriptionForConfirmedCards() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        let prescription = try XCTUnwrap(store.trainingPrescription)
+        XCTAssertEqual(prescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.finalLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.source, .coachRecommended)
+        XCTAssertNil(prescription.userSelectedLensId)
+        XCTAssertEqual(prescription.policyVersion, LocalTrainingPrescriptionPolicy.policyVersion)
+        XCTAssertTrue(prescription.baselineChecks.contains(.evidenceGap))
+    }
+
+    func testSelectLens_acceptsCoachTrainingPrescriptionAndPassesFinalChoiceToQuestionsContext() async throws {
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
+        let prescription = try XCTUnwrap(request.contextPayload?.trainingPrescription)
+        XCTAssertEqual(prescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.finalLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.source, .coachRecommended)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachRecommendedLens"], ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["finalTrainingLens"], ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["trainingPrescriptionSource"], TrainingPrescriptionSource.coachRecommended.rawValue)
+    }
+
+    func testSelectLens_slowDownCoachDiagnosisPassesToQuestionsContext() async throws {
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.slowDownCoachDiagnosis()
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
+        let diagnosis = try XCTUnwrap(request.contextPayload?.coachDiagnosis)
+        XCTAssertEqual(diagnosis.source, .userSlowDown)
+        XCTAssertEqual(diagnosis.readiness, .notReady)
+        XCTAssertEqual(diagnosis.recommendedMove, .slowDownConvergence)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachDiagnosisSource"], CoachDiagnosisSource.userSlowDown.rawValue)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachRecommendedMove"], NextCoachMove.slowDownConvergence.rawValue)
+    }
+
+    func testAnswerQuestions_overrideCoachDiagnosisPassesToQuestContext() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.overrideCoachDiagnosisToProgress()
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        store.updateQuestionAnswer(questionID: question.id, answer: "先写清 owner 和验收标准。")
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuests })
+        let diagnosis = try XCTUnwrap(request.contextPayload?.coachDiagnosis)
+        XCTAssertEqual(diagnosis.source, .userOverrideProgress)
+        XCTAssertEqual(diagnosis.readiness, .ready)
+        XCTAssertEqual(diagnosis.recommendedMove, .generateQuest)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachDiagnosisSource"], CoachDiagnosisSource.userOverrideProgress.rawValue)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachRecommendedMove"], NextCoachMove.generateQuest.rawValue)
+        let turn = try XCTUnwrap(request.contextPayload?.coachTurnState)
+        XCTAssertEqual(turn.decisionSource, .userOverrideProgress)
+        XCTAssertEqual(turn.readiness, .ready)
+        XCTAssertEqual(turn.recommendedMove, .generateQuest)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachTurnDecisionSource"], CoachDiagnosisSource.userOverrideProgress.rawValue)
+    }
+
+    func testAnswerQuestions_updatesCoachTurnStateBeforeQuestContext() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = confirmedCards([
+            ThinkingCard(type: .risk, title: "验收口径不清", body: "缺少事实支撑。", priority: .high),
+            ThinkingCard(type: .problem, title: "判断依据不足", body: "目前只有推测。", priority: .medium)
+        ])
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
+        XCTAssertEqual(store.coachTurnState?.recommendedMove, .slowDownConvergence)
+
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        store.updateQuestionAnswer(
+            questionID: question.id,
+            answer: "事实是负责人是 Alex，验收标准是明天下午前写入文档，并用客户确认作为证据。"
+        )
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuests })
+        let turn = try XCTUnwrap(request.contextPayload?.coachTurnState)
+        XCTAssertEqual(turn.readiness, .ready)
+        XCTAssertEqual(turn.recommendedMove, .generateQuest)
+        XCTAssertEqual(turn.decisionSource, .coachRecommended)
+        XCTAssertTrue(turn.openEvidenceGaps.isEmpty)
+        XCTAssertTrue(turn.turnSummary.contains("回答"))
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachTurnReadiness"], ConvergenceReadiness.ready.rawValue)
+        XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachTurnRecommendedMove"], NextCoachMove.generateQuest.rawValue)
+    }
+
+    func testSelectLens_recordsUserOverrideSeparatelyFromCoachRecommendation() async throws {
+        let client = RecordingLLMClient(response: Self.opposingViewQuestionsResponse)
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.overrideTrainingPrescription(with: .opposingView)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let storePrescription = try XCTUnwrap(store.trainingPrescription)
+        XCTAssertEqual(storePrescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(storePrescription.userSelectedLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(storePrescription.finalLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(storePrescription.source, .userOverride)
+        XCTAssertTrue(storePrescription.overrideBoundary.contains(ThinkingLens.evidenceCheck.rawValue))
+        XCTAssertTrue(storePrescription.overrideBoundary.contains(ThinkingLens.opposingView.rawValue))
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
+        let contextPrescription = try XCTUnwrap(request.contextPayload?.trainingPrescription)
+        XCTAssertEqual(contextPrescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(contextPrescription.userSelectedLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(contextPrescription.finalLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(contextPrescription.source, .userOverride)
+    }
+
+    func testSelectLens_skipTrainingPrescriptionKeepsCoachFocusAndRecordsSkip() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.skipTrainingPrescription()
+
+        let prescription = try XCTUnwrap(store.trainingPrescription)
+        XCTAssertEqual(prescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.finalLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.source, .skipped)
+        XCTAssertNil(prescription.userSelectedLensId)
+        XCTAssertTrue(prescription.overrideBoundary.contains("跳过"))
+        XCTAssertTrue(prescription.baselineChecks.contains(.evidenceGap))
     }
 
     func testSelectLens_withExistingQuestions_advancesDirectly() async throws {
@@ -1685,7 +2457,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
@@ -1751,7 +2523,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
     }
 
     func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
@@ -1880,7 +2652,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
     }
 
     func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
@@ -1935,7 +2707,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.0.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
@@ -2280,7 +3052,53 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.assetPackInstallMessage, "资产包目录订阅未到自动同步时间。")
     }
 
-    func testLoadPersistedState_runsDueAssetPackRegistrySubscriptionSync() async throws {
+    func testLoadPersistedState_doesNotSyncAssetPackRegistrySubscriptionsByDefault() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_000)
+        let catalogURL = URL(string: "https://registry.mingsi.test/due.json")!
+        try await subscriptionRepo.saveSubscription(AssetPackRegistrySubscription(
+            id: "registry.due",
+            displayName: "Due Registry",
+            catalogURL: catalogURL,
+            isEnabled: true,
+            lastSyncedAt: now.addingTimeInterval(-61),
+            lastSyncStatus: .succeeded,
+            lastSyncMessage: "Previous success."
+        ))
+        let catalog = AssetPackRegistryCatalog(
+            version: "2026.06",
+            entries: [
+                AssetPackRegistryCatalogEntry(
+                    id: "marketplace.due",
+                    displayName: "Due Pack",
+                    summary: "Should not be fetched during default persisted-state load.",
+                    manifestURL: URL(string: "manifests/due.json")!
+                )
+            ]
+        )
+        let fetcher = FakeAssetPackInstallManifestFetcher(
+            dataByURL: [catalogURL: try Self.assetPackJSONEncoder.encode(catalog)]
+        )
+        let store = AppStore(
+            assetPackRegistrySubscriptionRepository: subscriptionRepo,
+            assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60),
+            assetPackRegistrySyncFetcher: fetcher,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+
+        XCTAssertEqual(fetcher.requestedURLs, [])
+        XCTAssertEqual(store.assetPackRegistryCatalogEntries, [])
+        let subscriptions = try await subscriptionRepo.allSubscriptions()
+        let due = try XCTUnwrap(subscriptions.first { $0.id == "registry.due" })
+        XCTAssertEqual(due.lastSyncStatus, .succeeded)
+        XCTAssertEqual(due.lastSyncMessage, "Previous success.")
+        XCTAssertEqual(due.lastSyncedAt, now.addingTimeInterval(-61))
+    }
+
+    func testLoadPersistedState_runsDueAssetPackRegistrySubscriptionSyncWhenExplicitlyEnabled() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let subscriptionRepo = SQLiteAssetPackRegistrySubscriptionRepository(database: database)
         let now = Date(timeIntervalSince1970: 1_000)
@@ -2312,6 +3130,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             assetPackRegistrySubscriptionRepository: subscriptionRepo,
             assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy(minimumSyncInterval: 60),
             assetPackRegistrySyncFetcher: fetcher,
+            syncsAssetPackRegistryOnLoad: true,
             refreshesAIServiceFromKeychain: false
         )
 
@@ -2608,6 +3427,76 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.referencedPrinciples.isEmpty)
     }
 
+    func testSelectLens_generateQuestionsUsesVerifiedLensFeedbackFromHistory() async throws {
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        let yesterday = DailyEntryDraft(
+            rawText: "昨天用判断校准确认接口验收方式。",
+            selectedLens: .judgmentCalibration,
+            state: .sessionComplete
+        )
+        let question = ReflectionQuestion(
+            question: "书面验收是否比口头确认更能减少返工？",
+            whyItMatters: "这是可验证的判断。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口验收不清"],
+            calibrationTarget: "书面验收减少接口返工",
+            answer: "明天先让负责人书面确认验收标准。"
+        )
+        let verification = Verification(
+            questId: UUID(),
+            questTitle: "让负责人书面确认验收标准",
+            sourceDailyEntryId: yesterday.id,
+            completion: .done,
+            valueRating: .high,
+            calibrationNote: "原判断是书面验收会减少返工；实际证据显示负责人确认后返工减少。",
+            likelyIssue: nil,
+            recommendation: "继续要求任务先声明可观察校准信号。"
+        )
+        store.historyRecords = [
+            HistoryRecord(
+                draft: yesterday,
+                verification: verification,
+                lensSession: LensSession(
+                    dailyEntryId: yesterday.id,
+                    selectedLens: .judgmentCalibration,
+                    questions: [question]
+                )
+            )
+        ]
+
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "接口归属仍然容易反复",
+            body: "今天又出现负责人和验收标准没有提前写清。"
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        store.selectThinkingLens(.judgmentCalibration)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuestions })
+        let feedback = try XCTUnwrap(request.contextPayload?.lensFeedback.first)
+        XCTAssertEqual(feedback.lensId, ThinkingLens.judgmentCalibration.rawValue)
+        XCTAssertEqual(feedback.signal, "reinforce")
+        XCTAssertEqual(feedback.completion, YesterdayCompletion.done.rawValue)
+        XCTAssertEqual(feedback.valueRating, YesterdayValueRating.high.rawValue)
+        XCTAssertEqual(feedback.questionTargets, ["书面验收减少接口返工"])
+        XCTAssertEqual(feedback.evidenceGapTypes, [EvidenceGapType.missingCalibrationSignal.rawValue])
+        XCTAssertEqual(feedback.lensMoves, [QuestionLensMove.predictionCalibration.rawValue])
+    }
+
     func testSelectLens_generateQuestionsUsesSingleRecallFeedbackToDemoteReferencesBeforeReviewThreshold() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let principleRepo = SQLitePrincipleRepository(database: database)
@@ -2718,7 +3607,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         await store.recordReferencedPrincipleFeedback(
             for: recalledPrinciple.id,
-            feedback: .notApplicable
+            feedback: .notApplicable,
+            note: "这个场景不是会议"
         )
 
         let savedFeedback = try await feedbackRepo.feedback(for: recalledPrinciple.id, limit: 5)
@@ -2727,7 +3617,82 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(savedFeedback.first?.promptId, .generateQuestions)
         XCTAssertEqual(savedFeedback.first?.retrievalPolicyVersion, LocalPrincipleRetriever.policyVersion)
         XCTAssertTrue(savedFeedback.first?.retrievalReason.contains("Meeting ownership alignment") == true)
+        XCTAssertEqual(savedFeedback.first?.retrievalSignal, "meeting ownership")
+        XCTAssertEqual(savedFeedback.first?.note, "这个场景不是会议")
         XCTAssertTrue(store.referencedPrinciples.isEmpty)
+    }
+
+    func testReferencedPrincipleFeedback_marksLinkedPromptRunDeniedForRejectedRecall() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let recalledPrinciple = PrincipleAsset(
+            title: "Meeting ownership alignment",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(recalledPrinciple, sourceDailyEntryId: UUID())
+
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            principleRepository: principleRepo,
+            promptRunRepository: promptRunRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "Meeting ownership unclear",
+            body: "No owner was named."
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        store.selectThinkingLens(.evidenceCheck)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let promptRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [store.todayDraft.id.uuidString],
+            requestSummary: "question generation with recalled principle",
+            responseJSON: #"{"questions":[{"question":"What owner evidence is missing?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+        try await promptRunRepo.savePromptRun(promptRun)
+
+        await store.recordReferencedPrincipleFeedback(
+            for: recalledPrinciple.id,
+            feedback: .misrecalled
+        )
+
+        let savedFeedback = try await feedbackRepo.feedback(for: recalledPrinciple.id, limit: 5)
+        XCTAssertEqual(savedFeedback.first?.promptRunId, promptRun.id)
+
+        await store.loadRecentPromptRuns(limit: 5)
+
+        XCTAssertEqual(store.promptRunStats?.userDeniedCount, 1)
+        let quality = try XCTUnwrap(store.promptAssetRunQualitySummaries.first {
+            $0.promptId == PromptID.generateQuestions.rawValue
+        })
+        XCTAssertEqual(quality.userDeniedCount, 1)
+        XCTAssertEqual(quality.userDenialRate, 1, accuracy: 0.001)
     }
 
     func testLoadPersistedState_marksRepeatedNegativeRecallFeedbackNeedsReview() async throws {
@@ -2781,6 +3746,62 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(activePrinciples.isEmpty)
         XCTAssertTrue(store.activePrinciples.isEmpty)
         XCTAssertEqual(storedPrinciples.first?.status, .needsReview)
+    }
+
+    func testLoadPersistedState_surfacesLatestNegativeRecallFeedbackInTrainingSummary() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let draft = DailyEntryDraft(rawText: "Review stale recall audit", state: .capture)
+        let principle = PrincipleAsset(
+            title: "Meeting owner rule",
+            summary: "Clarify ownership before execution.",
+            triggerContext: "Meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        let latest = PrincipleRecallFeedback(
+            principleId: principle.id,
+            promptId: .generateQuests,
+            retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+            retrievalReason: "Owner keyword was a false positive.",
+            feedback: .misrecalled,
+            note: "This meeting had no action owner.",
+            createdAt: Date(timeIntervalSince1970: 200)
+        )
+
+        try await dailyRepo.saveDraft(draft)
+        try await principleRepo.savePrinciple(principle, sourceDailyEntryId: draft.id)
+        try await feedbackRepo.saveFeedback(
+            PrincipleRecallFeedback(
+                principleId: principle.id,
+                promptId: .generateQuestions,
+                retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                retrievalReason: "Owner keyword matched but did not apply.",
+                feedback: .notApplicable,
+                createdAt: Date(timeIntervalSince1970: 100)
+            )
+        )
+        try await feedbackRepo.saveFeedback(latest)
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            principleRepository: principleRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPersistedState()
+
+        let summary = try XCTUnwrap(store.principleTrainingSummaries.first)
+        XCTAssertEqual(summary.principle.id, principle.id)
+        XCTAssertEqual(summary.state, .needsReview)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackId, latest.id)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackValue, .misrecalled)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackReason, "Owner keyword was a false positive.")
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackNote, "This meeting had no action owner.")
     }
 
     // MARK: - AnswerQuestions -> ReviewQuests (async)
@@ -2896,6 +3917,245 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(request.title, "明日主线任务")
         XCTAssertEqual(request.body, "Confirm meeting owner")
         XCTAssertTrue(store.reminderStatusMessage.contains("提醒已安排"))
+    }
+
+    func testQuestTrainingTarget_matchesActivePrincipleActionSignal() throws {
+        let principle = PrincipleAsset(
+            title: "会前确认负责人",
+            summary: "协作任务开始前先确认唯一负责人和验收标准。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人", "写出验收标准"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "",
+            status: .active
+        )
+        let quest = Quest(
+            type: .main,
+            title: "明天写出负责人并确认验收标准",
+            whyItMatters: "减少会议后返工。",
+            completionCriteria: "负责人和验收标准都被写入记录。",
+            expectedResistance: "可能只口头同步。",
+            reflectionQuestion: "负责人确认后，返工是否减少？"
+        )
+        let trainingStore = AppStore(
+            quests: [quest],
+            principles: [principle],
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: MockLLMClient()
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let target = try XCTUnwrap(trainingStore.questTrainingTarget(for: quest.id))
+        XCTAssertEqual(target.principleId, principle.id)
+        XCTAssertEqual(target.principleTitle, "会前确认负责人")
+        XCTAssertEqual(target.matchSignal, "写出负责人")
+    }
+
+    func testQuestTrainingTarget_ignoresNeedsReviewPrinciple() {
+        let principle = PrincipleAsset(
+            title: "会前确认负责人",
+            summary: "协作任务开始前先确认唯一负责人和验收标准。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "",
+            status: .needsReview
+        )
+        let quest = Quest(
+            type: .main,
+            title: "明天写出负责人",
+            whyItMatters: "减少会议后返工。",
+            completionCriteria: "负责人被写入记录。",
+            expectedResistance: "可能只口头同步。",
+            reflectionQuestion: "负责人确认后，返工是否减少？"
+        )
+        let trainingStore = AppStore(
+            quests: [quest],
+            principles: [principle],
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: MockLLMClient()
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        XCTAssertNil(trainingStore.questTrainingTarget(for: quest.id))
+    }
+
+    func testQuestTrainingTarget_usesSelectedTrainingPrincipleBeforeAutomaticMatch() throws {
+        let selected = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "先把验收标准写成可检查证据。",
+            triggerContext: "acceptance contract",
+            actions: ["写出验收标准"],
+            successCriteria: "完成时能直接检查。",
+            exceptions: "",
+            status: .active
+        )
+        let automatic = PrincipleAsset(
+            title: "会前确认负责人",
+            summary: "协作任务开始前先确认唯一负责人。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "",
+            status: .active
+        )
+        let quest = Quest(
+            type: .main,
+            title: "明天写出负责人",
+            whyItMatters: "减少会议后返工。",
+            completionCriteria: "负责人被写入记录。",
+            expectedResistance: "可能只口头同步。",
+            reflectionQuestion: "负责人确认后，返工是否减少？",
+            trainingPrincipleId: selected.id
+        )
+        let trainingStore = AppStore(
+            quests: [quest],
+            principles: [selected, automatic],
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: MockLLMClient()
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let target = try XCTUnwrap(trainingStore.questTrainingTarget(for: quest.id))
+        XCTAssertEqual(target.principleId, selected.id)
+        XCTAssertEqual(target.principleTitle, "先写验收标准")
+        XCTAssertEqual(target.matchSignal, "用户选择")
+    }
+
+    func testUpdateQuestTrainingPrinciple_onlyAcceptsActivePrincipleAndCanClearSelection() throws {
+        let active = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "先把验收标准写成可检查证据。",
+            triggerContext: "acceptance contract",
+            actions: ["写出验收标准"],
+            successCriteria: "完成时能直接检查。",
+            exceptions: "",
+            status: .active
+        )
+        let needsReview = PrincipleAsset(
+            title: "旧的会议习惯",
+            summary: "这条原则需要复核后才能训练。",
+            triggerContext: "meeting ownership",
+            actions: ["写出负责人"],
+            successCriteria: "相关人知道下一步由谁推进。",
+            exceptions: "",
+            status: .needsReview
+        )
+        let quest = Quest(
+            type: .main,
+            title: "明天写出验收标准",
+            whyItMatters: "减少返工。",
+            completionCriteria: "验收标准被写入记录。",
+            expectedResistance: "可能只写行动。",
+            reflectionQuestion: "标准是否让完成更清楚？"
+        )
+        let trainingStore = AppStore(
+            quests: [quest],
+            principles: [active, needsReview],
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: MockLLMClient()
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        XCTAssertFalse(trainingStore.updateQuestTrainingPrinciple(needsReview.id, for: quest.id))
+        XCTAssertNil(trainingStore.quests.first?.trainingPrincipleId)
+
+        XCTAssertTrue(trainingStore.updateQuestTrainingPrinciple(active.id, for: quest.id))
+        XCTAssertEqual(trainingStore.quests.first?.trainingPrincipleId, active.id)
+
+        XCTAssertTrue(trainingStore.updateQuestTrainingPrinciple(nil, for: quest.id))
+        XCTAssertNil(trainingStore.quests.first?.trainingPrincipleId)
+    }
+
+    func testVerifyYesterday_recordsPracticeEvidenceForSelectedTrainingPrincipleBeforeAutomaticMatch() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+
+        let yesterday = DailyEntryDraft(
+            date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+            rawText: "昨天做了会议任务，但我希望训练的是验收标准。",
+            state: .sessionComplete
+        )
+        try await dailyRepo.saveDraft(yesterday)
+        let today = DailyEntryDraft(rawText: "今天确认任务已经完成。", state: .verifyYesterday)
+        try await dailyRepo.saveDraft(today)
+
+        let selected = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "先把验收标准写成可检查证据。",
+            triggerContext: "acceptance contract",
+            actions: ["写出验收标准"],
+            successCriteria: "完成时能直接检查。",
+            exceptions: "",
+            status: .active
+        )
+        let automatic = PrincipleAsset(
+            title: "会前确认负责人",
+            summary: "推进前先确认唯一负责人。",
+            triggerContext: "跨团队会议",
+            actions: ["写出负责人"],
+            successCriteria: "会后没有职责空白。",
+            exceptions: "低风险同步可简化。",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(selected, sourceDailyEntryId: yesterday.id)
+        try await principleRepo.savePrinciple(automatic, sourceDailyEntryId: yesterday.id)
+
+        let quest = Quest(
+            type: .main,
+            title: "会前写出负责人",
+            whyItMatters: "避免会议后没有责任人。",
+            completionCriteria: "负责人已经写在会议记录。",
+            expectedResistance: "临时讨论太快。",
+            reflectionQuestion: "是否真的减少了职责空白？",
+            trainingPrincipleId: selected.id,
+            status: .active
+        )
+        try await questRepo.saveQuest(quest, sourceDailyEntryId: yesterday.id)
+
+        let verifyingStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            verificationRepository: verificationRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await verifyingStore.loadPersistedState()
+
+        verifyingStore.selectYesterdayCompletion(.done)
+        verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.submitTodayStep()
+        try await waitUntil(
+            verifyingStore.todayDraft.state == .capture,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected verification flow to advance to capture"
+        ) {
+            verifyingStore.todayDraft.state == .capture
+        }
+
+        let selectedEvidence = try await practiceRepo.evidence(for: selected.id, limit: 10)
+        let automaticEvidence = try await practiceRepo.evidence(for: automatic.id, limit: 10)
+
+        XCTAssertEqual(selectedEvidence.count, 1)
+        XCTAssertEqual(selectedEvidence.first?.matchSignal, "用户选择")
+        XCTAssertEqual(selectedEvidence.first?.practiceRole, .targetedPractice)
+        XCTAssertTrue(selectedEvidence.first?.evidenceSummary.contains("用户选择") == true)
+        XCTAssertTrue(automaticEvidence.isEmpty)
     }
 
     func testReviewQuests_duplicateSaveDoesNotScheduleDuplicateReminder() async throws {
@@ -3249,6 +4509,84 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(record.sourceIds.contains(completedEntryID.uuidString))
     }
 
+    func testCompletingRestoredPriorDayDraft_keepsHistoryDateOnOriginalDraftDate() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let cardRepo = SQLiteThinkingCardRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let lensRepo = SQLiteLensSessionRepository(database: database)
+        let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let unfinished = DailyEntryDraft(
+            date: priorDate,
+            rawText: "昨晚已经写到追问阶段，今天只是在补完整个闭环。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            selectedLens: .evidenceCheck,
+            state: .answerQuestions
+        )
+        let confirmedCard = ThinkingCard(
+            type: .fact,
+            title: "昨晚已经开始",
+            body: "草稿创建于昨天，今天只是继续完成。",
+            priority: .medium,
+            isConfirmed: true
+        )
+        let question = ReflectionQuestion(
+            question: "这个闭环应该归属哪一天？",
+            whyItMatters: "补完不能改写原始记录日期。",
+            answer: "应该归属创建草稿的那一天。"
+        )
+        try await dailyRepo.saveDraft(unfinished)
+        try await cardRepo.saveCards([confirmedCard], dailyEntryId: unfinished.id)
+        try await lensRepo.saveLensSession(
+            LensSession(
+                dailyEntryId: unfinished.id,
+                selectedLens: .evidenceCheck,
+                questions: [question]
+            )
+        )
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            thinkingCardRepository: cardRepo,
+            questRepository: questRepo,
+            principleRepository: principleRepo,
+            lensSessionRepository: lensRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPersistedState()
+        XCTAssertEqual(store.todayDraft.id, unfinished.id)
+        XCTAssertTrue(Calendar.current.isDate(store.todayDraft.date, inSameDayAs: priorDate))
+
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+        store.submitTodayStep()
+        try await waitForState(.extractPrinciple)
+        store.submitTodayStep()
+        try await waitForState(.sessionComplete)
+        try await waitUntilAsync(
+            timeout: 5,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected restored prior-day draft completion to persist on original date"
+        ) {
+            await store.loadHistoryRecords()
+            guard let record = store.historyRecords.first(where: { $0.draft.id == unfinished.id }) else {
+                return false
+            }
+
+            return record.draft.state == .sessionComplete &&
+                Calendar.current.isDate(record.draft.date, inSameDayAs: priorDate) &&
+                !Calendar.current.isDateInToday(record.draft.date)
+        }
+
+        let record = try XCTUnwrap(store.historyRecords.first { $0.draft.id == unfinished.id })
+        XCTAssertEqual(record.draft.state, .sessionComplete)
+        XCTAssertTrue(Calendar.current.isDate(record.draft.date, inSameDayAs: priorDate))
+        XCTAssertFalse(Calendar.current.isDateInToday(record.draft.date))
+    }
+
     func testProductionTodayEvidence_canBackProjectLinkAndGrowthContributionsThroughHistoryReload() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
@@ -3518,6 +4856,87 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertEqual(store.thinkingCards.first?.title, fallbackTitle)
         XCTAssertTrue(store.canRetryCurrentAI)
+    }
+
+    func testQuestionQualityGateFailure_usesStructuredFallbackAndRetryMessage() async throws {
+        let llmClient = SequencedLLMClient(results: [
+            .success(Self.cardsResponse(title: "Meeting ownership unclear")),
+            .success(Self.lowQualityQuestionsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("Today the meeting owner was still unclear after the discussion.")
+        store.submitTodayStep()
+        try await waitForGeneratedCards()
+        store.submitTodayStep()
+        try await waitForState(.reviewCards)
+        for card in store.thinkingCards {
+            store.confirmCard(card.id)
+        }
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.selectThinkingLens(.judgmentCalibration)
+        store.submitTodayStep()
+
+        try await waitForState(.answerQuestions)
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        XCTAssertTrue(store.canRetryCurrentAI)
+        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.genericQuestion.rawValue))
+
+        let fallbackQuestion = try XCTUnwrap(store.questions.first)
+        XCTAssertNotNil(fallbackQuestion.evidenceGapType)
+        XCTAssertNotNil(fallbackQuestion.answerUse)
+        XCTAssertNotNil(fallbackQuestion.lensMove)
+        XCTAssertFalse(fallbackQuestion.sourceCardTitles.isEmpty)
+        XCTAssertFalse((fallbackQuestion.calibrationTarget ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    func testQuestQualityGateFailure_usesFallbackAndRetryMessage() async throws {
+        let llmClient = SequencedLLMClient(results: [
+            .success(Self.cardsResponse(title: "Meeting ownership unclear")),
+            .success(Self.lowQualityQuestsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.answerQuestions)
+        store.questions = [
+            ReflectionQuestion(
+                question: "Which observable signal would prove ownership ambiguity is falling?",
+                whyItMatters: "It turns a vague concern into a calibration check.",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal,
+                lensMove: .predictionCalibration,
+                sourceCardTitles: ["Confirmed"],
+                calibrationTarget: "Written owner acknowledgement reduces meeting rework",
+                answer: "Track whether follow-up questions drop after owner acknowledgement."
+            )
+        ]
+        store.submitTodayStep()
+
+        try await waitForState(.reviewQuests)
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        XCTAssertTrue(store.canRetryCurrentAI)
+        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.busyworkQuest.rawValue))
+
+        let fallbackQuest = try XCTUnwrap(store.quests.first(where: { $0.type == .main }))
+        XCTAssertEqual(fallbackQuest.calibrationTarget, "Written owner acknowledgement reduces meeting rework")
+        XCTAssertTrue(fallbackQuest.completionCriteria.contains("可检查结果"))
     }
 
     func testAIGenerationBusyStateBlocksDuplicateRetryRequests() async throws {
@@ -4285,16 +5704,36 @@ final class AppStoreStateMachineTests: XCTestCase {
         let lensRepo = SQLiteLensSessionRepository(database: database)
         let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
         let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        var targetedPracticeEntryID: UUID?
+        var possibleSignalEntryID: UUID?
 
         for index in stride(from: 2, through: 0, by: -1) {
+            let prescription = index == 0 ? TrainingPrescription(
+                recommendedLensId: ThinkingLens.evidenceCheck.rawValue,
+                recommendedPromptId: ThinkingLens.evidenceCheck.catalogItem.promptId,
+                recommendationReason: "先校验证据。",
+                confidence: 0.78,
+                policyVersion: LocalTrainingPrescriptionPolicy.policyVersion,
+                alternativeLensIds: [ThinkingLens.opposingView.rawValue],
+                baselineChecks: [.factInterpretationSplit, .evidenceGap, .counterexample],
+                finalLensId: ThinkingLens.evidenceCheck.rawValue,
+                source: .coachRecommended
+            ) : nil
             let draft = DailyEntryDraft(
                 date: Calendar.current.date(byAdding: .day, value: -index, to: Date()) ?? Date(),
                 rawText: "Completed loop \(index)",
                 sessionMode: .standard,
                 hasSelectedSessionMode: true,
                 selectedLens: .evidenceCheck,
+                trainingPrescription: prescription,
                 state: .sessionComplete
             )
+            if index == 0 {
+                targetedPracticeEntryID = draft.id
+            }
+            if index == 1 {
+                possibleSignalEntryID = draft.id
+            }
             try await dailyRepo.saveDraft(draft)
 
             let quest = Quest(
@@ -4351,6 +5790,30 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(contributions.isEmpty)
         XCTAssertTrue(contributions.allSatisfy { !$0.sourceId.isEmpty })
         XCTAssertTrue(contributions.contains { $0.metric == .executionReliability && $0.direction == .negative })
+        let targetedLensContribution = contributions.first { contribution in
+            contribution.title == "完成透镜追问" &&
+                contribution.sourceDailyEntryId == targetedPracticeEntryID
+        }
+        XCTAssertEqual(targetedLensContribution?.practiceRole, .targetedPractice)
+        XCTAssertTrue(
+            targetedLensContribution.map { restoredStore.growthSnapshot.positiveContributionRefs.contains($0.id.uuidString) } ?? false
+        )
+
+        let secondaryVerificationContribution = contributions.first { contribution in
+            contribution.metric == .executionReliability &&
+                contribution.sourceDailyEntryId == targetedPracticeEntryID
+        }
+        XCTAssertEqual(secondaryVerificationContribution?.practiceRole, .secondaryPractice)
+
+        let possibleLensContributions = contributions.filter { contribution in
+            contribution.title == "完成透镜追问" &&
+                contribution.practiceRole == .possibleSignal
+        }
+        XCTAssertTrue(possibleLensContributions.contains { $0.sourceDailyEntryId == possibleSignalEntryID })
+        XCTAssertTrue(possibleLensContributions.allSatisfy { contribution in
+            !restoredStore.growthSnapshot.positiveContributionRefs.contains(contribution.id.uuidString)
+        })
+        XCTAssertEqual(restoredStore.growthSnapshot.reflectionDepth, 3.07, accuracy: 0.001)
     }
 
     func testUpdateContributionFeedback_refreshesMetricContributions() async throws {
@@ -4411,7 +5874,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(growthStore.acceptedContributions(for: .clarity).map(\.id), [contribution.id])
     }
 
-    func testLoadLatestGrowthSnapshot_loadsAcceptedReportReviewContributions() async throws {
+    func testLoadLatestGrowthSnapshot_loadsReviewableReportReviewContributions() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
         let contributionRepo = SQLiteMetricContributionRepository(database: database)
@@ -4430,7 +5893,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             nextTrainingFocus: "Train sharper prioritization."
         )
         try await snapshotRepo.saveSnapshot(snapshot)
-        let acceptedPositive = MetricContribution(
+        let reviewCandidate = MetricContribution(
             snapshotId: snapshot.id,
             metric: .clarity,
             direction: .positive,
@@ -4440,7 +5903,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             sourceType: .quest,
             sourceId: UUID().uuidString,
             sourceDailyEntryId: UUID(),
-            candidateStatus: .accepted
+            candidateStatus: .candidate
         )
         let acceptedNegative = MetricContribution(
             snapshotId: snapshot.id,
@@ -4466,7 +5929,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             sourceDailyEntryId: UUID(),
             candidateStatus: .rejected
         )
-        try await contributionRepo.saveContribution(acceptedPositive)
+        try await contributionRepo.saveContribution(reviewCandidate)
         try await contributionRepo.saveContribution(acceptedNegative)
         try await contributionRepo.saveContribution(rejected)
 
@@ -4478,8 +5941,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         await growthStore.loadLatestGrowthSnapshot()
 
-        XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), [acceptedPositive.id, acceptedNegative.id])
-        XCTAssertEqual(growthStore.acceptedReportReviewContributions(for: .clarity).map(\.id), [acceptedPositive.id])
+        XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), [reviewCandidate.id, acceptedNegative.id])
+        XCTAssertTrue(growthStore.acceptedReportReviewContributions(for: .clarity).isEmpty)
         XCTAssertEqual(growthStore.acceptedReportReviewContributions(for: .valueJudgment).map(\.id), [acceptedNegative.id])
     }
 
@@ -4544,7 +6007,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             sourceType: .quest,
             sourceId: UUID().uuidString,
             sourceDailyEntryId: UUID(),
-            candidateStatus: .accepted
+            candidateStatus: .candidate
         )
         try await contributionRepo.saveContribution(contribution)
 
@@ -4564,7 +6027,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(growthStore.acceptedReportReviewContributions(for: .clarity).isEmpty)
     }
 
-    func testGenerateWeeklyGrowthReport_withEnoughEvidencePersistsAISnapshotAndContributions() async throws {
+    func testGenerateWeeklyGrowthReport_withEnoughEvidencePersistsAIContributionsAsReviewCandidates() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
         let questRepo = SQLiteQuestRepository(database: database)
@@ -4641,7 +6104,85 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(savedContributions.count, 1)
         XCTAssertEqual(savedContributions[0].sourceId, questId.uuidString)
         XCTAssertEqual(savedContributions[0].sourceDailyEntryId, entryId)
-        XCTAssertEqual(savedContributions[0].candidateStatus, .accepted)
+        XCTAssertEqual(savedContributions[0].candidateStatus, .candidate)
+        XCTAssertEqual(savedContributions[0].practiceRole, .possibleSignal)
+        XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), savedContributions.map(\.id))
+    }
+
+    func testGenerateMonthlyGrowthReport_withEnoughEvidencePersistsAIContributionsAsReviewCandidates() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let questRepo = SQLiteQuestRepository(database: database)
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+
+        var firstEntryId: UUID?
+        var firstQuestId: UUID?
+        for index in stride(from: 2, through: 0, by: -1) {
+            let draft = DailyEntryDraft(
+                date: Calendar.current.date(byAdding: .day, value: -index, to: Date()) ?? Date(),
+                rawText: "Completed monthly report loop \(index)",
+                state: .sessionComplete
+            )
+            try await dailyRepo.saveDraft(draft)
+            let quest = Quest(
+                type: .main,
+                title: "Monthly Report Quest \(index)",
+                whyItMatters: "It matters",
+                completionCriteria: "Visible result",
+                expectedResistance: "Interruptions",
+                reflectionQuestion: "What changed?",
+                status: .completed
+            )
+            try await questRepo.saveQuest(quest, sourceDailyEntryId: draft.id)
+            try await verificationRepo.saveVerification(
+                Verification(
+                    questId: quest.id,
+                    questTitle: quest.title,
+                    sourceDailyEntryId: draft.id,
+                    completion: .done,
+                    valueRating: .high,
+                    calibrationNote: "Monthly report verification \(index)"
+                )
+            )
+
+            if firstEntryId == nil {
+                firstEntryId = draft.id
+                firstQuestId = quest.id
+            }
+        }
+
+        let entryId = try XCTUnwrap(firstEntryId)
+        let questId = try XCTUnwrap(firstQuestId)
+        let growthService = GrowthAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: RecordingLLMClient(response: Self.growthReportResponse(entryID: entryId, sourceID: questId.uuidString))
+        )
+        let growthStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            verificationRepository: verificationRepo,
+            metricSnapshotRepository: snapshotRepo,
+            metricContributionRepository: contributionRepo,
+            refreshesAIServiceFromKeychain: false,
+            growthAIService: growthService
+        )
+
+        await growthStore.loadHistoryRecords()
+        await growthStore.generateMonthlyGrowthReport()
+
+        let savedSnapshotCandidate = try await snapshotRepo.latestSnapshot()
+        let savedSnapshot = try XCTUnwrap(savedSnapshotCandidate)
+        XCTAssertEqual(savedSnapshot.period, "monthly")
+        XCTAssertTrue(savedSnapshot.canDisplayScores)
+
+        let savedContributions = try await contributionRepo.contributions(for: savedSnapshot.id)
+        XCTAssertEqual(savedContributions.count, 1)
+        XCTAssertEqual(savedContributions[0].sourceId, questId.uuidString)
+        XCTAssertEqual(savedContributions[0].sourceDailyEntryId, entryId)
+        XCTAssertEqual(savedContributions[0].candidateStatus, .candidate)
+        XCTAssertEqual(savedContributions[0].practiceRole, .possibleSignal)
         XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), savedContributions.map(\.id))
     }
 
@@ -5679,6 +7220,33 @@ final class AppStoreStateMachineTests: XCTestCase {
         }
     }
 
+    private func coachPrescriptionEvidenceCards() -> [ThinkingCard] {
+        [
+            ThinkingCard(
+                type: .fact,
+                title: "Meeting ownership unclear",
+                body: "The meeting ended without a written owner.",
+                priority: .high,
+                isConfirmed: true
+            ),
+            ThinkingCard(
+                type: .risk,
+                title: "Acceptance criteria missing",
+                body: "The next step can be disputed because no checkable criteria were written.",
+                priority: .high,
+                isConfirmed: true
+            )
+        ]
+    }
+
+    private func confirmedCards(_ cards: [ThinkingCard]) -> [ThinkingCard] {
+        cards.map { card in
+            var confirmed = card
+            confirmed.isConfirmed = true
+            return confirmed
+        }
+    }
+
     private func waitForState(
         _ expectedState: DailyLoopState,
         timeout: TimeInterval = 2,
@@ -5978,6 +7546,92 @@ final class AppStoreStateMachineTests: XCTestCase {
               "expected_answer_type": "fact"
             }
           ]
+        }
+        """.utf8
+    )
+
+    private static let questsResponse = Data(
+        """
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "Confirm meeting owner",
+            "why_it_matters": "It reduces ambiguity.",
+            "completion_criteria": "Owner and acceptance criteria are written and acknowledged before implementation starts.",
+            "expected_resistance": "People may assume it is obvious.",
+            "reflection_question": "Did written ownership reduce ambiguity?",
+            "calibration_target": "Written ownership acknowledgement reduces meeting ambiguity",
+            "lens_move": "evidence_threshold",
+            "linked_cards": ["Meeting ownership unclear"]
+          },
+          "side_quests": [],
+          "observation_quest": null
+        }
+        """.utf8
+    )
+
+    private static let opposingViewQuestionsResponse = Data(
+        """
+        {
+          "questions": [
+            {
+              "question": "If missing ownership is not the main risk, what alternative explanation fits the evidence?",
+              "why_this_matters": "It asks for a counterexample before locking onto the default interpretation.",
+              "evidence_gap_type": "missing_counterexample",
+              "answer_use": "test_assumption",
+              "lens_move": "alternative_explanation",
+              "source_card_titles": ["Meeting ownership unclear"],
+              "calibration_target": "Missing ownership is the main risk behind the current rework.",
+              "expected_answer_type": "counterexample"
+            }
+          ]
+        }
+        """.utf8
+    )
+
+    private static let verificationResponse = Data(
+        """
+        {
+          "calibration_note": "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
+          "likely_issue": "none",
+          "recommendation": "Next calibration: test whether adding acceptance criteria further reduces rework."
+        }
+        """.utf8
+    )
+
+    private static let lowQualityQuestionsResponse = Data(
+        """
+        {
+          "questions": [
+            {
+              "question": "What do you think about the situation?",
+              "why_this_matters": "It helps you reflect.",
+              "evidence_gap_type": "",
+              "answer_use": "",
+              "lens_move": "prediction_calibration",
+              "source_card_titles": [],
+              "calibration_target": "the situation",
+              "expected_answer_type": "judgment"
+            }
+          ]
+        }
+        """.utf8
+    )
+
+    private static let lowQualityQuestsResponse = Data(
+        """
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "Polish the meeting notes",
+            "why_it_matters": "It looks more complete.",
+            "completion_criteria": "Polish the notes.",
+            "expected_resistance": "There may be many details.",
+            "reflection_question": "How do you feel?",
+            "calibration_target": "the situation"
+          },
+          "side_quests": [],
+          "observation_quest": null
         }
         """.utf8
     )
@@ -6542,10 +8196,14 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.resetAction, "today.reset-action")
         XCTAssertEqual(TodayAutomationID.cardConfirmAction, "today.card.confirm-action")
         XCTAssertEqual(TodayAutomationID.cardExcludeAction, "today.card.exclude-action")
+        XCTAssertEqual(TodayAutomationID.trainingPrescriptionAcceptAction, "today.training-prescription.accept-action")
+        XCTAssertEqual(TodayAutomationID.trainingPrescriptionSkipAction, "today.training-prescription.skip-action")
         XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
         XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
+        XCTAssertEqual(TodayAutomationID.questTrainingPrinciplePicker, "today.quest.training-principle-picker")
         XCTAssertEqual(TodayAutomationID.lensGenerateAction, "today.lens.generate-action")
         XCTAssertEqual(TodayAutomationID.lensCustomAction, "today.lens.custom-action")
+        XCTAssertEqual(TodayAutomationID.principleFeedbackNoteField, "today.principle.feedback.note-field")
         XCTAssertEqual(TodayAutomationID.principleFeedbackHelpfulAction, "today.principle.feedback.helpful-action")
         XCTAssertEqual(TodayAutomationID.principleFeedbackNotApplicableAction, "today.principle.feedback.not-applicable-action")
         XCTAssertEqual(TodayAutomationID.principleFeedbackMisrecalledAction, "today.principle.feedback.misrecalled-action")
@@ -6565,6 +8223,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.state(.extractPrinciple), "today.state.extract_principle")
         XCTAssertEqual(TodayAutomationID.state(.sessionComplete), "today.state.session_complete")
         XCTAssertEqual(TodayAutomationID.lensAction(ThinkingLens.firstPrinciples.catalogItem), "today.lens.firstPrinciples-action")
+        XCTAssertEqual(TodayAutomationID.lensAction(ThinkingLens.systemThinking.catalogItem), "today.lens.systemThinking-action")
+        XCTAssertEqual(TodayAutomationID.lensAction(ThinkingLens.judgmentCalibration.catalogItem), "today.lens.judgmentCalibration-action")
     }
 
     func testSettingsAutomationIdentifiers_areStableForLensPackManager() {
@@ -6601,6 +8261,21 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionSyncAction, "settings.asset-pack-registry.subscription-sync-action")
         XCTAssertEqual(SettingsAutomationID.assetPackRegistrySubscriptionToggleAction(subscriptionId: "mingsi.registry.default"), "settings.asset-pack-registry.mingsi_registry_default.subscription-toggle-action")
         XCTAssertEqual(SettingsAutomationID.assetPackManifestMessage, "settings.asset-pack-manifest.message")
+    }
+
+    func testGrowthAutomationIdentifiers_areStableForPrinciplePracticeCorrection() {
+        XCTAssertEqual(
+            GrowthAutomationID.disputeLatestPracticeEvidenceAction(evidenceId: "practice.evidence/1"),
+            "growth.principle-practice.practice_evidence_1.dispute-action"
+        )
+        XCTAssertEqual(
+            GrowthAutomationID.disputedPracticeEvidenceAudit(evidenceId: "practice.evidence/1"),
+            "growth.principle-practice.practice_evidence_1.disputed-audit"
+        )
+        XCTAssertEqual(
+            GrowthAutomationID.negativeRecallFeedbackAudit(feedbackId: "recall.feedback/1"),
+            "growth.principle-recall.recall_feedback_1.negative-audit"
+        )
     }
 
     func testRunPromptEvalSuite_persistsRunsAndUpdatesReleaseGate() async throws {
@@ -6688,14 +8363,21 @@ final class AppStoreStateMachineTests: XCTestCase {
             ],
             createdAt: Date(timeIntervalSince1970: 300)
         ))
+        let rollbackTemplate = try XCTUnwrap(
+            provider.template(
+                for: .generateQuestions,
+                mode: .standard,
+                version: template.rollbackTargetVersion ?? ""
+            )
+        )
         try await evalRepo.saveEvalRun(PromptEvalRun(
             promptId: PromptID.generateQuestions.rawValue,
-            promptVersion: "0.9.0",
-            systemPolicyVersion: template.systemPolicyVersion,
-            contextPolicyVersion: template.contextPolicyVersion,
+            promptVersion: rollbackTemplate.version,
+            systemPolicyVersion: rollbackTemplate.systemPolicyVersion,
+            contextPolicyVersion: rollbackTemplate.contextPolicyVersion,
             inputSchemaVersion: 1,
-            outputSchemaVersion: template.outputSchemaVersion,
-            evalSuiteVersion: template.evalSuiteVersion,
+            outputSchemaVersion: rollbackTemplate.outputSchemaVersion,
+            evalSuiteVersion: rollbackTemplate.evalSuiteVersion,
             runnerVersion: PromptEvalRunner.currentRunnerVersion,
             caseResults: [
                 PromptEvalCaseResult(caseId: "questions.previous_pass", name: "Previous pass", status: .passed)
@@ -7542,12 +9224,14 @@ private final class SequencedLLMClient: LLMClient {
     }
 
     private var results: [Result]
+    private(set) var requests: [LLMRequest] = []
 
     init(results: [Result]) {
         self.results = results
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        requests.append(request)
         guard !results.isEmpty else {
             throw LLMClientError.invalidResponse
         }
@@ -7706,6 +9390,53 @@ private final class StreamingRecordingLLMClient: LLMClient, StreamingLLMClient {
             continuation.yield(.completed)
             continuation.finish()
         }
+    }
+}
+
+private final class SuspendedStreamingLLMClient: LLMClient, StreamingLLMClient {
+    private let firstToken: String
+    private let remainingTokens: [String]
+    private let streamState = SuspendedStreamingState()
+
+    init(firstToken: String, remainingTokens: [String]) {
+        self.firstToken = firstToken
+        self.remainingTokens = remainingTokens
+    }
+
+    func complete(_ request: LLMRequest) async throws -> Data {
+        throw LLMClientError.invalidResponse
+    }
+
+    func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                await streamState.store(continuation)
+                continuation.yield(.token(firstToken))
+            }
+        }
+    }
+
+    func releaseRemaining() async {
+        guard let continuation = await streamState.take() else { return }
+        for token in remainingTokens {
+            continuation.yield(.token(token))
+        }
+        continuation.yield(.completed)
+        continuation.finish()
+    }
+}
+
+private actor SuspendedStreamingState {
+    private var continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation?
+
+    func store(_ continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation) {
+        self.continuation = continuation
+    }
+
+    func take() -> AsyncThrowingStream<LLMStreamEvent, Error>.Continuation? {
+        let value = continuation
+        continuation = nil
+        return value
     }
 }
 
@@ -7955,10 +9686,26 @@ private final class InMemoryPrinciplePracticeEvidenceRepository: PrinciplePracti
         evidenceById[evidence.id] = evidence
     }
 
+    func disputeEvidence(_ evidenceId: UUID, note: String) async throws {
+        guard var evidence = evidenceById[evidenceId] else { return }
+        evidence.isDisputed = true
+        evidence.disputeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        evidence.updatedAt = .now
+        evidenceById[evidenceId] = evidence
+    }
+
     func evidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
         Array(evidenceById.values)
-            .filter { $0.principleId == principleId }
+            .filter { $0.principleId == principleId && !$0.isDisputed }
             .sorted { $0.createdAt > $1.createdAt }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func disputedEvidence(for principleId: UUID, limit: Int) async throws -> [PrinciplePracticeEvidence] {
+        Array(evidenceById.values)
+            .filter { $0.principleId == principleId && $0.isDisputed }
+            .sorted { $0.updatedAt > $1.updatedAt }
             .prefix(limit)
             .map { $0 }
     }
@@ -7973,7 +9720,8 @@ private final class InMemoryPrinciplePracticeEvidenceRepository: PrinciplePracti
             $0.principleId == principleId &&
             $0.sourceDailyEntryId == sourceDailyEntryId &&
             $0.questId == questId &&
-            $0.evidenceSource == evidenceSource
+            $0.evidenceSource == evidenceSource &&
+            !$0.isDisputed
         }
     }
 }
@@ -8096,37 +9844,50 @@ extension AppStoreStateMachineTests {
             exceptions: "",
             status: .needsReview
         )
+        let earlierPracticeDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let latestPracticeDate = Date(timeIntervalSince1970: 1_700_200_000)
+
+        let practicedEvidence = PrinciplePracticeEvidence(
+            principleId: practiced.id,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证中实践了验收标准。匹配信号：写验收标准",
+            practiceRole: .targetedPractice,
+            createdAt: latestPracticeDate,
+            updatedAt: latestPracticeDate
+        )
 
         let summaries = PrincipleTrainingSummary.summaries(
             for: [known, practiced, internalized, needsReview],
             practiceEvidence: [
-                PrinciplePracticeEvidence(
-                    principleId: practiced.id,
-                    sourceDailyEntryId: UUID(),
-                    evidenceSource: .verification,
-                    strength: .intentionalPractice,
-                    evidenceSummary: "验证中实践了验收标准。"
-                ),
+                practicedEvidence,
                 PrinciplePracticeEvidence(
                     principleId: internalized.id,
                     sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                     evidenceSource: .verification,
                     strength: .intentionalPractice,
-                    evidenceSummary: "第一次会后同步。"
+                    evidenceSummary: "第一次会后同步。",
+                    createdAt: earlierPracticeDate,
+                    updatedAt: earlierPracticeDate
                 ),
                 PrinciplePracticeEvidence(
                     principleId: internalized.id,
                     sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
                     evidenceSource: .verification,
                     strength: .intentionalPractice,
-                    evidenceSummary: "第二次会后同步。"
+                    evidenceSummary: "第二次会后同步。",
+                    createdAt: earlierPracticeDate.addingTimeInterval(60),
+                    updatedAt: earlierPracticeDate.addingTimeInterval(60)
                 ),
                 PrinciplePracticeEvidence(
                     principleId: internalized.id,
                     sourceDailyEntryId: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                     evidenceSource: .manual,
                     strength: .internalized,
-                    evidenceSummary: "用户明确表示已经自然执行。"
+                    evidenceSummary: "用户明确表示已经自然执行。",
+                    createdAt: latestPracticeDate,
+                    updatedAt: latestPracticeDate
                 )
             ],
             recallFeedback: [
@@ -8147,7 +9908,12 @@ extension AppStoreStateMachineTests {
             .needsReview
         ])
         XCTAssertEqual(summaries[1].practiceEvidenceCount, 1)
+        XCTAssertEqual(summaries[1].latestPracticeEvidenceId, practicedEvidence.id)
+        XCTAssertEqual(summaries[1].latestPracticeEvidenceSummary, "验证中实践了验收标准。匹配信号：写验收标准")
+        XCTAssertEqual(summaries[1].latestPracticeEvidenceRole, .targetedPractice)
         XCTAssertEqual(summaries[2].practiceEvidenceCount, 3)
+        XCTAssertEqual(summaries[2].latestPracticeEvidenceSummary, "用户明确表示已经自然执行。")
+        XCTAssertEqual(summaries[2].latestPracticeEvidenceRole, .possibleSignal)
         XCTAssertEqual(summaries[3].negativeRecallFeedbackCount, 1)
     }
 
@@ -8163,13 +9929,18 @@ extension AppStoreStateMachineTests {
         let principleRepo = InMemoryPrincipleRepository()
         let practiceRepo = InMemoryPrinciplePracticeEvidenceRepository()
         try await principleRepo.savePrinciple(practiced, sourceDailyEntryId: UUID())
-        try await practiceRepo.saveEvidence(PrinciplePracticeEvidence(
+        let evidenceDate = Date(timeIntervalSince1970: 1_700_300_000)
+        let evidence = PrinciplePracticeEvidence(
             principleId: practiced.id,
             sourceDailyEntryId: UUID(),
             evidenceSource: .verification,
             strength: .intentionalPractice,
-            evidenceSummary: "验证中实践了验收标准。"
-        ))
+            evidenceSummary: "验证中实践了验收标准。匹配信号：写验收标准",
+            practiceRole: .secondaryPractice,
+            createdAt: evidenceDate,
+            updatedAt: evidenceDate
+        )
+        try await practiceRepo.saveEvidence(evidence)
         let dailyRepo = InMemoryDailyEntryRepository()
         let store = AppStore(
             dailyEntryRepository: dailyRepo,
@@ -8184,6 +9955,147 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(store.principleTrainingSummaries.map(\.principle.id), [practiced.id])
         XCTAssertEqual(store.principleTrainingSummaries.first?.state, .consciouslyPracticed)
         XCTAssertEqual(store.principleTrainingSummaries.first?.practiceEvidenceCount, 1)
+        XCTAssertEqual(store.principleTrainingSummaries.first?.latestPracticeEvidenceId, evidence.id)
+        XCTAssertEqual(store.principleTrainingSummaries.first?.latestPracticeEvidenceSummary, "验证中实践了验收标准。匹配信号：写验收标准")
+        XCTAssertEqual(store.principleTrainingSummaries.first?.latestPracticeEvidenceRole, .secondaryPractice)
+    }
+
+    func testDisputePrinciplePracticeEvidence_removesAttributionFromTrainingSummary() async throws {
+        let practiced = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "开始前先写清完成证据。",
+            triggerContext: "任务启动",
+            actions: ["写验收标准"],
+            successCriteria: "完成时能直接验证",
+            exceptions: ""
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        let practiceRepo = InMemoryPrinciplePracticeEvidenceRepository()
+        try await principleRepo.savePrinciple(practiced, sourceDailyEntryId: UUID())
+        let evidence = PrinciplePracticeEvidence(
+            principleId: practiced.id,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证中实践了验收标准。匹配信号：写验收标准",
+            createdAt: Date(timeIntervalSince1970: 1_700_300_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_300_000)
+        )
+        try await practiceRepo.saveEvidence(evidence)
+        let store = AppStore(
+            dailyEntryRepository: InMemoryDailyEntryRepository(),
+            principleRepository: principleRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        await store.refreshPrincipleTrainingSummaries()
+        XCTAssertEqual(store.principleTrainingSummaries.first?.state, .consciouslyPracticed)
+
+        let didDispute = await store.disputePrinciplePracticeEvidence(
+            evidence.id,
+            note: "这次只是完成任务，不应算作原则练习。"
+        )
+
+        XCTAssertTrue(didDispute)
+        XCTAssertEqual(store.principleTrainingSummaries.first?.state, .knownButUnused)
+        XCTAssertEqual(store.principleTrainingSummaries.first?.practiceEvidenceCount, 0)
+        XCTAssertNil(store.principleTrainingSummaries.first?.latestPracticeEvidenceId)
+        XCTAssertNil(store.principleTrainingSummaries.first?.latestPracticeEvidenceSummary)
+    }
+
+    func testDisputedPrinciplePracticeEvidence_remainsVisibleAsAuditInTrainingSummary() async throws {
+        let practiced = PrincipleAsset(
+            title: "先写验收标准",
+            summary: "开始前先写清完成证据。",
+            triggerContext: "任务启动",
+            actions: ["写验收标准"],
+            successCriteria: "完成时能直接验证",
+            exceptions: ""
+        )
+        let principleRepo = InMemoryPrincipleRepository()
+        let practiceRepo = InMemoryPrinciplePracticeEvidenceRepository()
+        try await principleRepo.savePrinciple(practiced, sourceDailyEntryId: UUID())
+        let evidence = PrinciplePracticeEvidence(
+            principleId: practiced.id,
+            sourceDailyEntryId: UUID(),
+            evidenceSource: .verification,
+            strength: .intentionalPractice,
+            evidenceSummary: "验证中实践了验收标准。匹配信号：写验收标准",
+            createdAt: Date(timeIntervalSince1970: 1_700_300_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_300_000)
+        )
+        try await practiceRepo.saveEvidence(evidence)
+        let store = AppStore(
+            dailyEntryRepository: InMemoryDailyEntryRepository(),
+            principleRepository: principleRepo,
+            principlePracticeEvidenceRepository: practiceRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        await store.loadPersistedState()
+        let didDispute = await store.disputePrinciplePracticeEvidence(
+            evidence.id,
+            note: "这次只是完成任务，不应算作原则练习。"
+        )
+
+        XCTAssertTrue(didDispute)
+        let summary = try XCTUnwrap(store.principleTrainingSummaries.first)
+        XCTAssertEqual(summary.practiceEvidenceCount, 0)
+        XCTAssertNil(summary.latestPracticeEvidenceId)
+        XCTAssertEqual(summary.latestDisputedPracticeEvidenceId, evidence.id)
+        XCTAssertEqual(summary.latestDisputedPracticeEvidenceSummary, "验证中实践了验收标准。匹配信号：写验收标准")
+        XCTAssertEqual(summary.latestDisputedPracticeEvidenceNote, "这次只是完成任务，不应算作原则练习。")
+    }
+
+    func testPrincipleTrainingSummary_surfacesLatestNegativeRecallFeedbackForReviewAudit() {
+        let needsReview = PrincipleAsset(
+            id: UUID(),
+            title: "所有会议都要拉齐",
+            summary: "看似有用但经常不适用。",
+            triggerContext: "会议",
+            actions: ["拉齐所有人"],
+            successCriteria: "没有遗漏",
+            exceptions: "",
+            status: .needsReview
+        )
+        let earlier = PrincipleRecallFeedback(
+            principleId: needsReview.id,
+            promptId: .generateQuestions,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword-feedback.v2",
+            retrievalReason: "Matched meeting keyword.",
+            feedback: .notApplicable,
+            note: "这次只是信息同步。",
+            createdAt: Date(timeIntervalSince1970: 1_700_100_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_100_000)
+        )
+        let latest = PrincipleRecallFeedback(
+            principleId: needsReview.id,
+            promptId: .generateQuests,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword-feedback.v2",
+            retrievalReason: "Matched cross-team meeting and owner.",
+            retrievalSignal: "meeting ownership",
+            feedback: .misrecalled,
+            note: "模型把例外场景当成规则。",
+            createdAt: Date(timeIntervalSince1970: 1_700_200_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_200_000)
+        )
+
+        let summary = PrincipleTrainingSummary.summary(
+            for: needsReview,
+            practiceEvidence: [],
+            recallFeedback: [earlier, latest]
+        )
+
+        XCTAssertEqual(summary.state, .needsReview)
+        XCTAssertEqual(summary.negativeRecallFeedbackCount, 2)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackId, latest.id)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackAt, latest.createdAt)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackValue, .misrecalled)
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackReason, "Matched cross-team meeting and owner.")
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackSignal, "meeting ownership")
+        XCTAssertEqual(summary.latestNegativeRecallFeedbackNote, "模型把例外场景当成规则。")
     }
 
     func testLoadPersistedState_keepsNeedsReviewPrinciplesVisibleInTrainingSummaries() async throws {
@@ -8322,11 +10234,23 @@ extension AppStoreStateMachineTests {
                        "firstPrinciples should appear in allCases")
     }
 
+    func testThinkingLens_allCases_containsSystemThinking() {
+        XCTAssertTrue(ThinkingLens.allCases.contains(.systemThinking),
+                       "systemThinking should appear in allCases")
+    }
+
+    func testThinkingLens_allCases_containsJudgmentCalibration() {
+        XCTAssertTrue(ThinkingLens.allCases.contains(.judgmentCalibration),
+                       "judgmentCalibration should appear in allCases")
+    }
+
     func testThinkingLens_existingRawValues_stable() {
         XCTAssertEqual(ThinkingLens.evidenceCheck.rawValue, "evidenceCheck")
         XCTAssertEqual(ThinkingLens.opposingView.rawValue, "opposingView")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.rawValue, "leverageAnalysis")
         XCTAssertEqual(ThinkingLens.firstPrinciples.rawValue, "firstPrinciples")
+        XCTAssertEqual(ThinkingLens.systemThinking.rawValue, "systemThinking")
+        XCTAssertEqual(ThinkingLens.judgmentCalibration.rawValue, "judgmentCalibration")
     }
 
     func testBuiltinCatalog_containsOneItem_perLensCase() {
@@ -8367,6 +10291,8 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(ThinkingLens.opposingView.catalogItem.promptId, "opposing_view")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.catalogItem.promptId, "leverage_analysis")
         XCTAssertEqual(ThinkingLens.firstPrinciples.catalogItem.promptId, "first_principles")
+        XCTAssertEqual(ThinkingLens.systemThinking.catalogItem.promptId, "system_thinking")
+        XCTAssertEqual(ThinkingLens.judgmentCalibration.catalogItem.promptId, "judgment_calibration")
     }
 
     func testFirstPrinciples_metadata() {
@@ -8378,11 +10304,40 @@ extension AppStoreStateMachineTests {
         XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
     }
 
+    func testSystemThinking_metadata() {
+        let item = ThinkingLens.systemThinking.catalogItem
+
+        XCTAssertEqual(item.title, "系统思维")
+        XCTAssertEqual(item.promptId, "system_thinking")
+        XCTAssertEqual(item.version, "builtin.v1")
+        XCTAssertTrue(item.promptGuidance.contains("feedback loops"))
+        XCTAssertTrue(item.promptGuidance.contains("delayed effects"))
+        XCTAssertTrue(item.questionStrategy.contains("反馈回路"))
+        XCTAssertTrue(item.questionStrategy.contains("二阶后果"))
+        XCTAssertTrue(item.taskSelectionRule.contains("校准信号"))
+        XCTAssertTrue(item.disableConditions.contains("不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。"))
+        XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
+    }
+
+    func testJudgmentCalibration_metadata() {
+        let item = ThinkingLens.judgmentCalibration.catalogItem
+
+        XCTAssertEqual(item.title, "判断校准")
+        XCTAssertEqual(item.promptId, "judgment_calibration")
+        XCTAssertEqual(item.version, "builtin.v1")
+        XCTAssertTrue(item.promptGuidance.contains("prediction"))
+        XCTAssertTrue(item.promptGuidance.contains("actual evidence"))
+        XCTAssertTrue(item.questionStrategy.contains("原判断"))
+        XCTAssertTrue(item.taskSelectionRule.contains("校准信号"))
+        XCTAssertTrue(item.disableConditions.contains("不要把校准变成事后诸葛，必须先明确原判断或可观察预测。"))
+        XCTAssertFalse(item.symbolName.isEmpty, "symbolName should not be empty")
+    }
+
     func testBuiltinLensCatalog_methodAssetMetadataIsComplete() {
         let methodIndexes = BuiltinLensCatalog.items.map(\.methodIndex)
 
         XCTAssertEqual(Set(methodIndexes).count, ThinkingLens.allCases.count)
-        XCTAssertEqual(methodIndexes.sorted(), [1, 2, 3, 4])
+        XCTAssertEqual(methodIndexes.sorted(), [1, 2, 3, 4, 5, 6])
 
         for item in BuiltinLensCatalog.items {
             XCTAssertFalse(item.purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -8587,20 +10542,82 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(item?.lensId, ThinkingLens.firstPrinciples.rawValue)
     }
 
+    func testBuiltinLensLibrary_recommendsSystemThinkingForFeedbackLoopAndDelayCards() {
+        let cards = [
+            ThinkingCard(type: .problem, title: "修复越多返工越多", body: "每次临时修复都会制造下一轮返工，像反馈回路。", priority: .medium),
+            ThinkingCard(type: .risk, title: "短期压进度会延迟爆发", body: "现在省掉验收，可能两周后在集成阶段放大成本。", priority: .medium),
+            ThinkingCard(type: .decision, title: "继续走临时方案", body: "需要理解二阶后果。", priority: .medium)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .standard)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.systemThinking.rawValue)
+    }
+
+    func testBuiltinLensLibrary_recommendsJudgmentCalibrationForPredictionAndOutcomeCards() {
+        let cards = [
+            ThinkingCard(type: .decision, title: "我原本预测返工会减少", body: "昨天我有 70% 把握认为小范围验收能减少一轮返工。", priority: .medium),
+            ThinkingCard(type: .fact, title: "实际结果相反", body: "实际证据显示返工没有减少，问题来自负责人未确认。", priority: .medium),
+            ThinkingCard(type: .problem, title: "需要更新判断", body: "下次要校准信心和预测依据。", priority: .medium)
+        ]
+
+        let item = BuiltinLensCatalog.library.recommendedItem(for: cards, mode: .standard)
+
+        XCTAssertEqual(item?.lensId, ThinkingLens.judgmentCalibration.rawValue)
+    }
+
     func testFirstPrinciples_rawValue() {
         XCTAssertEqual(ThinkingLens.firstPrinciples.rawValue, "firstPrinciples")
+    }
+
+    func testSystemThinking_rawValue() {
+        XCTAssertEqual(ThinkingLens.systemThinking.rawValue, "systemThinking")
+    }
+
+    func testJudgmentCalibration_rawValue() {
+        XCTAssertEqual(ThinkingLens.judgmentCalibration.rawValue, "judgmentCalibration")
+    }
+
+    func testEvidenceGapType_displayTitles_areStable() {
+        XCTAssertEqual(EvidenceGapType.missingObservation.displayTitle, "缺观察事实")
+        XCTAssertEqual(EvidenceGapType.missingBaseline.displayTitle, "缺基线")
+        XCTAssertEqual(EvidenceGapType.missingCausalLink.displayTitle, "缺因果链")
+        XCTAssertEqual(EvidenceGapType.missingCounterexample.displayTitle, "缺反例")
+        XCTAssertEqual(EvidenceGapType.missingConstraint.displayTitle, "缺约束")
+        XCTAssertEqual(EvidenceGapType.missingCalibrationSignal.displayTitle, "缺校准信号")
+        XCTAssertEqual(EvidenceGapType.none.displayTitle, "非证据缺口")
+    }
+
+    func testPrincipleRetrievalSignalDisplayText_mapsKnownSignalsAndFallsBackDeterministically() {
+        XCTAssertEqual(
+            PrincipleRetrievalSignalDisplay.displayText(for: " meeting ownership "),
+            "命中会议负责人"
+        )
+        XCTAssertEqual(
+            PrincipleRetrievalSignalDisplay.displayText(for: "acceptance contract"),
+            "命中验收约定"
+        )
+        XCTAssertEqual(
+            PrincipleRetrievalSignalDisplay.displayText(for: "custom local signal"),
+            "命中 custom local signal"
+        )
+        XCTAssertNil(PrincipleRetrievalSignalDisplay.displayText(for: " "))
     }
 
     func testExistingLensTitles_unchanged() {
         XCTAssertEqual(ThinkingLens.evidenceCheck.title, "证据校验")
         XCTAssertEqual(ThinkingLens.opposingView.title, "反方视角")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.title, "杠杆分析")
+        XCTAssertEqual(ThinkingLens.systemThinking.title, "系统思维")
+        XCTAssertEqual(ThinkingLens.judgmentCalibration.title, "判断校准")
     }
 
     func testExistingLensSubtitles_unchanged() {
         XCTAssertEqual(ThinkingLens.evidenceCheck.subtitle, "把事实、判断和假设分开，先清理地基。")
         XCTAssertEqual(ThinkingLens.opposingView.subtitle, "主动寻找相反证据，避免只证明自己是对的。")
         XCTAssertEqual(ThinkingLens.leverageAnalysis.subtitle, "找出最能改变结果的一步，把精力放在关键处。")
+        XCTAssertEqual(ThinkingLens.systemThinking.subtitle, "看见反馈回路、延迟影响和二阶后果。")
+        XCTAssertEqual(ThinkingLens.judgmentCalibration.subtitle, "用实际证据更新预测、信心和下一步判断。")
     }
 
     // MARK: - Visual QA Variant Selector
@@ -8889,6 +10906,10 @@ private struct AppStoreRollbackFixturePromptProvider: PromptProvider {
             template.rollbackTargetVersion = "0.9.0"
         }
         return template
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        base.template(for: id, mode: mode, version: version)
     }
 }
 

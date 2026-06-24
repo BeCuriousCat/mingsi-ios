@@ -11,8 +11,15 @@ enum TodayAutomationID {
     static let resetAction = "today.reset-action"
     static let cardConfirmAction = "today.card.confirm-action"
     static let cardExcludeAction = "today.card.exclude-action"
+    static let trainingPrescriptionAcceptAction = "today.training-prescription.accept-action"
+    static let trainingPrescriptionSkipAction = "today.training-prescription.skip-action"
+    static let coachDiagnosisAcceptAction = "today.coach-diagnosis.accept-action"
+    static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
+    static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
     static let questionAnswerField = "today.question.answer-field"
     static let questEditAction = "today.quest.edit-action"
+    static let questTrainingPrinciplePicker = "today.quest.training-principle-picker"
+    static let principleFeedbackNoteField = "today.principle.feedback.note-field"
     static let principleFeedbackHelpfulAction = "today.principle.feedback.helpful-action"
     static let principleFeedbackNotApplicableAction = "today.principle.feedback.not-applicable-action"
     static let principleFeedbackMisrecalledAction = "today.principle.feedback.misrecalled-action"
@@ -377,27 +384,33 @@ struct TodayView: View {
     // Design: Today-core method board; recommendation is the anchor, custom entry is visible
     private var selectLensSection: some View {
         let confirmedCards = store.thinkingCards.filter(\.isConfirmed)
-        let recommendedItem = BuiltinLensCatalog.library.recommendedItem(
-            for: confirmedCards,
-            mode: store.todayDraft.sessionMode
-        )
+        let prescription = store.trainingPrescription
+        let recommendedItem = prescription.flatMap { lensItem(for: $0.recommendedLensId) }
+            ?? BuiltinLensCatalog.library.recommendedItem(
+                for: confirmedCards,
+                mode: store.todayDraft.sessionMode
+            )
         let builtInItems = ThinkingLens.allCases
             .sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }
             .map(\.catalogItem)
 
         return VStack(alignment: .leading, spacing: 14) {
-            stepLabel("思考透镜", subtitle: "先选方法，再回答问题。")
+            stepLabel("训练处方", subtitle: "先由明思判断主训练焦点，再接受、改选或跳过。")
 
             todayLensCoreCard(confirmedCount: confirmedCards.count)
 
-            if let recommendedItem {
-                recommendedLensCard(recommendedItem)
+            if let diagnosis = store.coachDiagnosis {
+                coachDiagnosisCard(diagnosis, turnState: store.coachTurnState)
+            }
+
+            if let prescription, let recommendedItem {
+                trainingPrescriptionCard(prescription, item: recommendedItem)
             }
 
             HStack(spacing: 10) {
                 lensActionCard(
                     icon: "wand.and.stars",
-                    title: "主动生成透镜",
+                    title: "生成替代透镜",
                     body: "基于已确认卡片生成本次专属方法卡。",
                     tint: DS.brick
                 ) {
@@ -408,7 +421,7 @@ struct TodayView: View {
 
                 lensActionCard(
                     icon: "square.and.pencil",
-                    title: "自定义透镜",
+                    title: "手写替代透镜",
                     body: "手写标题、方法线和第一问。",
                     tint: DS.success
                 ) {
@@ -431,7 +444,7 @@ struct TodayView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 10)], spacing: 10) {
                 ForEach(builtInItems, id: \.id) { item in
-                    lensMethodTile(item, isRecommended: item.id == recommendedItem?.id)
+                    lensMethodTile(item, isRecommended: item.id == prescription?.recommendedLensId)
                 }
             }
         }
@@ -448,6 +461,8 @@ struct TodayView: View {
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
                     principles: store.referencedPrinciples,
+                    retrievalReason: store.referencedPrincipleRetrievalReason,
+                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
                     onFeedback: recordReferencedPrincipleFeedback
                 )
             }
@@ -469,6 +484,8 @@ struct TodayView: View {
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
                     principles: store.referencedPrinciples,
+                    retrievalReason: store.referencedPrincipleRetrievalReason,
+                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
                     onFeedback: recordReferencedPrincipleFeedback
                 )
             }
@@ -476,6 +493,11 @@ struct TodayView: View {
             ForEach(store.quests) { quest in
                 QuestCardView(
                     quest: quest,
+                    trainingTarget: store.questTrainingTarget(for: quest.id),
+                    trainingPrinciples: store.activePrinciples,
+                    selectTrainingPrinciple: { principleID in
+                        store.updateQuestTrainingPrinciple(principleID, for: quest.id)
+                    },
                     update: { title, whyItMatters, completionCriteria, expectedResistance, reflectionQuestion in
                         store.updateQuest(
                             quest.id,
@@ -899,6 +921,209 @@ struct TodayView: View {
         return "围绕「\(first.title)」换一个角度看。"
     }
 
+    private func trainingPrescriptionCard(
+        _ prescription: TrainingPrescription,
+        item: LensCatalogItem
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("COACH · \(String(format: "%.0f%%", prescription.confidence * 100))")
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(lensTint(for: item))
+                Spacer()
+                Image(systemName: isLensItemSelected(item) ? "checkmark.circle.fill" : "sparkles")
+                    .foregroundStyle(isLensItemSelected(item) ? lensTint(for: item) : DS.mutedInk.opacity(0.62))
+            }
+
+            Text(item.title)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(DS.ink)
+
+            Text(prescription.recommendationReason)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(item.methodLine)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(lensTint(for: item))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("主练：\(prescription.primaryTrainingDimension.displayTitle)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(lensTint(for: item).opacity(0.10), in: Capsule())
+
+            if !prescription.baselineChecks.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("底盘检查")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                        .textCase(.uppercase)
+                    HStack(spacing: 6) {
+                        ForEach(Array(prescription.baselineChecks.prefix(4)), id: \.self) { check in
+                            Text(baselineCheckTitle(check))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(DS.mutedInk)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.04), in: Capsule())
+                        }
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let overrideAuditText = trainingOverrideAuditText(prescription) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("改选审计")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(lensTint(for: item))
+                        .textCase(.uppercase)
+
+                    Text(overrideAuditText)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(lensTint(for: item).opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(lensTint(for: item).opacity(0.18), lineWidth: 1)
+                )
+            }
+
+            HStack(spacing: 10) {
+                Button(action: { store.acceptTrainingPrescription() }) {
+                    Label("接受推荐", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionAcceptAction)
+
+                Button(action: { store.skipTrainingPrescription() }) {
+                    Label("跳过", systemImage: "forward.end")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionSkipAction)
+            }
+            .padding(.top, 2)
+        }
+        .padding(DS.cardInnerPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(lensTint(for: item))
+                .frame(width: 5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.42) : lensTint(for: item).opacity(0.22), lineWidth: isLensItemSelected(item) ? 1.25 : 1)
+        )
+    }
+
+    private func coachDiagnosisCard(
+        _ diagnosis: CoachDiagnosis,
+        turnState: CoachTurnState?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("教练判断")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(DS.brick)
+                Spacer()
+                Image(systemName: coachDiagnosisIcon(for: diagnosis))
+                    .foregroundStyle(DS.brick)
+            }
+
+            Text("当前阶段：\(diagnosis.phase.displayTitle)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+
+            Text("建议：\(diagnosis.recommendedMove.displayRecommendation)")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let turnState, !turnState.openEvidenceGaps.isEmpty {
+                Text("缺口：\(turnState.openEvidenceGaps.map(\.displayTitle).joined(separator: "、"))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.brick)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(diagnosis.reason)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let turnState {
+                Text("轮次：\(turnState.turnSummary)")
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button(action: { store.acceptCoachDiagnosis() }) {
+                    Label("接受", systemImage: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisAcceptAction)
+
+                Button(action: { store.slowDownCoachDiagnosis() }) {
+                    Label("放慢", systemImage: "pause.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisSlowDownAction)
+
+                Button(action: { store.overrideCoachDiagnosisToProgress() }) {
+                    Label("推进", systemImage: "arrow.right.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisOverrideProgressAction)
+            }
+            .padding(.top, 2)
+        }
+        .padding(DS.cardInnerPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(DS.brick.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private func coachDiagnosisIcon(for diagnosis: CoachDiagnosis) -> String {
+        switch diagnosis.recommendedMove {
+        case .askClarifyingQuestion:
+            return "questionmark.bubble"
+        case .surfaceEvidenceGap:
+            return "text.magnifyingglass"
+        case .slowDownConvergence:
+            return "hourglass"
+        case .recommendTrainingLens:
+            return "sparkles"
+        case .generateQuest:
+            return "arrow.right.circle"
+        }
+    }
+
     private func recommendedLensCard(_ item: LensCatalogItem) -> some View {
         Button(action: { selectLensItem(item) }) {
             VStack(alignment: .leading, spacing: 12) {
@@ -1228,12 +1453,14 @@ struct TodayView: View {
 
     private func recordReferencedPrincipleFeedback(
         principle: PrincipleAsset,
-        feedback: PrincipleRecallFeedbackValue
+        feedback: PrincipleRecallFeedbackValue,
+        note: String
     ) {
         Task {
             await store.recordReferencedPrincipleFeedback(
                 for: principle.id,
-                feedback: feedback
+                feedback: feedback,
+                note: note
             )
         }
     }
@@ -1260,7 +1487,51 @@ struct TodayView: View {
     }
 
     private func isLensItemSelected(_ item: LensCatalogItem) -> Bool {
-        store.todayDraft.selectedLens?.rawValue == item.id || store.todayDraft.selectedCustomLensId == item.id
+        (hasAppliedTrainingPrescription && store.trainingPrescription?.finalLensId == item.id) ||
+            store.todayDraft.selectedLens?.rawValue == item.id ||
+            store.todayDraft.selectedCustomLensId == item.id
+    }
+
+    private var hasAppliedTrainingPrescription: Bool {
+        store.todayDraft.selectedLens != nil || store.todayDraft.selectedCustomLensId != nil
+    }
+
+    private func lensItem(for id: String) -> LensCatalogItem? {
+        if let lens = ThinkingLens(rawValue: id) {
+            return lens.catalogItem
+        }
+        return store.availableLensChoices.first { $0.id == id || $0.lensId == id }
+    }
+
+    private func trainingOverrideAuditText(_ prescription: TrainingPrescription) -> String? {
+        guard prescription.source == .userOverride,
+              prescription.finalLensId != prescription.recommendedLensId
+        else {
+            return nil
+        }
+
+        let finalTitle = lensItem(for: prescription.finalLensId)?.title ?? prescription.finalLensId
+        let recommendedTitle = lensItem(for: prescription.recommendedLensId)?.title ?? prescription.recommendedLensId
+        return "你已改选为「\(finalTitle)」；教练推荐「\(recommendedTitle)」仍保留为审计，后续问题以改选透镜为主，同时继续执行底盘检查。"
+    }
+
+    private func baselineCheckTitle(_ check: BaselineThinkingCheck) -> String {
+        switch check {
+        case .factInterpretationSplit:
+            return "事实/解释"
+        case .evidenceGap:
+            return "证据缺口"
+        case .counterexample:
+            return "反例"
+        case .assumptionTest:
+            return "假设检验"
+        case .testableAction:
+            return "可验证行动"
+        case .feedbackSignal:
+            return "反馈信号"
+        case .judgmentUpdate:
+            return "判断更新"
+        }
     }
 
     private func lensTint(for item: LensCatalogItem) -> Color {
@@ -1313,6 +1584,192 @@ private struct LensGlyph: View {
     }
 }
 
+private struct ThreePetalSpiralLoadingMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            Canvas { context, size in
+                let elapsed = timeline.date.timeIntervalSinceReferenceDate
+                let phase = reduceMotion ? 0.18 : (elapsed.truncatingRemainder(dividingBy: 6.2) / 6.2)
+                let pulse = reduceMotion ? 0.5 : 0.5 + sin((elapsed / 8.2) * .pi * 2 + 0.4) * 0.5
+                let detailScale = 0.68 + pulse * 0.10
+                let sample = ThreePetalSpiralGeometry.sample(detailScale: detailScale, size: size)
+                let headDistance = sample.totalLength * phase
+                let scale = min(size.width, size.height)
+
+                context.stroke(
+                    ThreePetalSpiralGeometry.path(from: sample.points),
+                    with: .color(DS.accent.opacity(0.13)),
+                    style: StrokeStyle(
+                        lineWidth: max(1.0, scale / 32.0),
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+
+                context.stroke(
+                    ThreePetalSpiralGeometry.trailPath(sample: sample, headDistance: headDistance, ratio: 0.34, steps: 80),
+                    with: .color(DS.accent.opacity(0.18)),
+                    style: StrokeStyle(
+                        lineWidth: max(1.15, scale / 28.0),
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+
+                context.stroke(
+                    ThreePetalSpiralGeometry.trailPath(sample: sample, headDistance: headDistance, ratio: 0.22, steps: 64),
+                    with: .color(DS.accent.opacity(0.42)),
+                    style: StrokeStyle(
+                        lineWidth: max(1.35, scale / 24.0),
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+
+                context.stroke(
+                    ThreePetalSpiralGeometry.trailPath(sample: sample, headDistance: headDistance, ratio: 0.10, steps: 36),
+                    with: .color(DS.accent.opacity(0.92)),
+                    style: StrokeStyle(
+                        lineWidth: max(1.6, scale / 21.0),
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+
+                let head = ThreePetalSpiralGeometry.point(at: headDistance, in: sample)
+                let dot = Path(ellipseIn: CGRect(
+                    x: head.x - max(1.2, scale / 26.0),
+                    y: head.y - max(1.2, scale / 26.0),
+                    width: max(2.4, scale / 13.0),
+                    height: max(2.4, scale / 13.0)
+                ))
+                context.fill(dot, with: .color(DS.accent.opacity(0.94)))
+            }
+        }
+    }
+}
+
+private struct ThreePetalSpiralSample {
+    let points: [CGPoint]
+    let lengths: [CGFloat]
+    let totalLength: CGFloat
+}
+
+private enum ThreePetalSpiralGeometry {
+    static func sample(detailScale: Double, size: CGSize, steps: Int = 240) -> ThreePetalSpiralSample {
+        var points: [CGPoint] = []
+        var lengths: [CGFloat] = [0]
+        var totalLength: CGFloat = 0
+
+        points.reserveCapacity(steps + 1)
+        lengths.reserveCapacity(steps + 1)
+
+        for index in 0...steps {
+            let point = point(progress: Double(index) / Double(steps), detailScale: detailScale, size: size)
+            points.append(point)
+            if index > 0 {
+                let previous = points[index - 1]
+                let segmentLength = hypot(point.x - previous.x, point.y - previous.y)
+                totalLength += segmentLength
+                lengths.append(totalLength)
+            }
+        }
+
+        return ThreePetalSpiralSample(points: points, lengths: lengths, totalLength: totalLength)
+    }
+
+    static func path(from points: [CGPoint]) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        return path
+    }
+
+    static func trailPath(
+        sample: ThreePetalSpiralSample,
+        headDistance: CGFloat,
+        ratio: CGFloat,
+        steps: Int
+    ) -> Path {
+        let trailLength = sample.totalLength * ratio
+        let points = (0...steps).map { index -> CGPoint in
+            let local = CGFloat(index) / CGFloat(steps)
+            let easedLocal = local * local * (3 - 2 * local)
+            let distance = headDistance - trailLength + trailLength * easedLocal
+            return point(at: distance, in: sample)
+        }
+        return path(from: points)
+    }
+
+    static func point(at distance: CGFloat, in sample: ThreePetalSpiralSample) -> CGPoint {
+        guard sample.totalLength > 0,
+              let first = sample.points.first
+        else { return .zero }
+
+        let target = normalizedDistance(distance, totalLength: sample.totalLength)
+        if target <= 0 { return first }
+
+        var low = 1
+        var high = sample.lengths.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if sample.lengths[mid] < target {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        let index = low
+        let startLength = sample.lengths[index - 1]
+        let endLength = sample.lengths[index]
+        let span = max(endLength - startLength, 0.0001)
+        let ratio = (target - startLength) / span
+        let start = sample.points[index - 1]
+        let end = sample.points[index]
+
+        return CGPoint(
+            x: start.x + (end.x - start.x) * ratio,
+            y: start.y + (end.y - start.y) * ratio
+        )
+    }
+
+    private static func normalizedDistance(_ distance: CGFloat, totalLength: CGFloat) -> CGFloat {
+        let remainder = distance.truncatingRemainder(dividingBy: totalLength)
+        return remainder >= 0 ? remainder : remainder + totalLength
+    }
+
+    private static func point(progress: Double, detailScale: Double, size: CGSize) -> CGPoint {
+        let t = normalizedProgress(progress) * .pi * 2
+        let majorRadius = 3.0
+        let minorRadius = 1.0
+        let armLength = 2.72 + detailScale * 0.08
+        let baseX = (majorRadius - minorRadius) * cos(t)
+            + armLength * cos(((majorRadius - minorRadius) / minorRadius) * t)
+        let baseY = (majorRadius - minorRadius) * sin(t)
+            - armLength * sin(((majorRadius - minorRadius) / minorRadius) * t)
+        let scale = 2.34 + detailScale * 0.10
+        let viewBoxPoint = CGPoint(
+            x: 50 + baseX * scale,
+            y: 50 + baseY * scale
+        )
+        return CGPoint(
+            x: viewBoxPoint.x / 100 * size.width,
+            y: viewBoxPoint.y / 100 * size.height
+        )
+    }
+
+    private static func normalizedProgress(_ progress: Double) -> Double {
+        let remainder = progress.truncatingRemainder(dividingBy: 1)
+        return remainder >= 0 ? remainder : remainder + 1
+    }
+}
+
 private struct AIGenerationProgressView: View {
     let isUsingAI: Bool
     let cardCount: Int
@@ -1326,8 +1783,9 @@ private struct AIGenerationProgressView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    ProgressView()
-                        .tint(DS.accent)
+                    ThreePetalSpiralLoadingMark()
+                        .frame(width: 42, height: 42)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(isUsingAI ? "正在流式整理" : "使用本地规则生成")
                             .font(.subheadline.weight(.semibold))
@@ -1802,6 +2260,60 @@ private struct QuestionCardView: View {
                 Text("透镜追问")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.accentInk)
+
+                if let evidenceGapType = question.evidenceGapType, evidenceGapType != .none {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(evidenceGapType.displayTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+
+                if let answerUse = question.answerUse {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(answerUse.displayTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+
+                if let lensMove = question.lensMove {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(lensMove.displayTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+            }
+
+            if !question.sourceCardTitles.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "link")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text("来源：\(question.sourceCardTitles.prefix(2).joined(separator: " / "))")
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let calibrationTarget = question.calibrationTarget,
+               !calibrationTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "target")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text("校准：\(calibrationTarget)")
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Text(question.question)
@@ -1832,6 +2344,9 @@ private struct QuestionCardView: View {
 
 private struct QuestCardView: View {
     let quest: Quest
+    let trainingTarget: QuestTrainingTarget?
+    let trainingPrinciples: [PrincipleAsset]
+    let selectTrainingPrinciple: (PrincipleAsset.ID?) -> Void
     let update: (String, String, String, String, String) -> Void
     @State private var isEditing = false
     @State private var draftTitle: String
@@ -1842,9 +2357,16 @@ private struct QuestCardView: View {
 
     init(
         quest: Quest,
+        trainingTarget: QuestTrainingTarget? = nil,
+        trainingPrinciples: [PrincipleAsset] = [],
+        selectTrainingPrinciple: @escaping (PrincipleAsset.ID?) -> Void = { _ in },
         update: @escaping (String, String, String, String, String) -> Void
     ) {
         self.quest = quest
+        self.trainingTarget = trainingTarget
+        self.trainingPrinciples = trainingPrinciples
+            .filter { $0.status == .active }
+        self.selectTrainingPrinciple = selectTrainingPrinciple
         self.update = update
         _draftTitle = State(initialValue: quest.title)
         _draftWhy = State(initialValue: quest.whyItMatters)
@@ -1886,12 +2408,54 @@ private struct QuestCardView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                     BriefRow(title: "完成标准", body: quest.completionCriteria, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    if let calibrationTarget = quest.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !calibrationTarget.isEmpty {
+                        BriefRow(title: "校准目标", body: calibrationTarget, accent: DS.accent)
+                    }
+                    if let trainingTarget {
+                        BriefRow(
+                            title: "训练原则",
+                            body: trainingTarget.principleTitle,
+                            accent: DS.accent
+                        )
+                        Text("命中信号：\(trainingTarget.matchSignal)")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !trainingPrinciples.isEmpty {
+                        questTrainingPrinciplePicker
+                    }
                     BriefRow(title: "预期阻力", body: quest.expectedResistance, accent: DS.caution)
                     BriefRow(title: "回看问题", body: quest.reflectionQuestion, accent: DS.graphite)
                 }
             }
         }
         .questSurface(isMain: quest.type == .main)
+    }
+
+    private var questTrainingPrinciplePicker: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text("校准训练")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+            Picker(
+                "训练原则",
+                selection: Binding<PrincipleAsset.ID?>(
+                    get: { quest.trainingPrincipleId },
+                    set: { selectTrainingPrinciple($0) }
+                )
+            ) {
+                Text("自动判断").tag(Optional<PrincipleAsset.ID>.none)
+                ForEach(trainingPrinciples) { principle in
+                    Text(principle.title).tag(Optional(principle.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .accessibilityIdentifier(TodayAutomationID.questTrainingPrinciplePicker)
+            Spacer(minLength: 0)
+        }
     }
 }
 
@@ -2017,7 +2581,11 @@ private struct EmptyStateCard: View {
 
 private struct ReferencedPrinciplesView: View {
     let principles: [PrincipleAsset]
-    let onFeedback: (PrincipleAsset, PrincipleRecallFeedbackValue) -> Void
+    let retrievalReason: (UUID) -> String?
+    let retrievalSignalText: (UUID) -> String?
+    let onFeedback: (PrincipleAsset, PrincipleRecallFeedbackValue, String) -> Void
+
+    @State private var feedbackNotes: [UUID: String] = [:]
 
     @ViewBuilder
     var body: some View {
@@ -2048,23 +2616,56 @@ private struct ReferencedPrinciplesView: View {
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                             .lineLimit(2)
+                        if let reason = retrievalReason(principle.id) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("召回依据")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(DS.accent)
+                                if let signalText = retrievalSignalText(principle.id) {
+                                    Text("命中信号：\(signalText)")
+                                        .font(.caption)
+                                        .foregroundStyle(DS.mutedInk)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Text(reason)
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.top, 2)
+                        }
+                        TextField(
+                            "可选：这条原则哪里不适用？",
+                            text: Binding(
+                                get: { feedbackNotes[principle.id, default: ""] },
+                                set: { feedbackNotes[principle.id] = $0 }
+                            )
+                        )
+                        .font(.caption)
+                        .textFieldStyle(.roundedBorder)
+                        .submitLabel(.done)
+                        .accessibilityIdentifier(TodayAutomationID.principleFeedbackNoteField)
+
                         HStack(spacing: 8) {
                             Button {
-                                onFeedback(principle, .helpful)
+                                endEditing()
+                                onFeedback(principle, .helpful, feedbackNotes[principle.id, default: ""])
                             } label: {
                                 Label("有帮助", systemImage: "hand.thumbsup")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackHelpfulAction)
 
                             Button {
-                                onFeedback(principle, .notApplicable)
+                                endEditing()
+                                onFeedback(principle, .notApplicable, feedbackNotes[principle.id, default: ""])
                             } label: {
                                 Label("不适用", systemImage: "xmark.circle")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackNotApplicableAction)
 
                             Button {
-                                onFeedback(principle, .misrecalled)
+                                endEditing()
+                                onFeedback(principle, .misrecalled, feedbackNotes[principle.id, default: ""])
                             } label: {
                                 Label("误召回", systemImage: "exclamationmark.bubble")
                             }
@@ -2084,6 +2685,15 @@ private struct ReferencedPrinciplesView: View {
                     .stroke(DS.accent.opacity(0.14), lineWidth: 1)
             )
         }
+    }
+
+    private func endEditing() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }
 

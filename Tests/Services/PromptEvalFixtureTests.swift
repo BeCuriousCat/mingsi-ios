@@ -102,6 +102,7 @@ final class PromptEvalFixtureTests: XCTestCase {
                 "completion_criteria": "会议开始前完成一页清单，包含要确认的决策、负责人、验收标准，并在会后发出确认摘要。",
                 "expected_resistance": "临时事项会诱导你直接开会而不先写清楚目标。",
                 "reflection_question": "这次准备是否让会议少绕了一轮？",
+                "lens_move": "leverage_tradeoff",
                 "linked_cards": ["会前没有明确要确认的决策"]
               },
               "side_quests": [],
@@ -130,7 +131,8 @@ final class PromptEvalFixtureTests: XCTestCase {
                 "trigger_context": "跨角色会议或需要推进协作时。",
                 "actions": ["写出要确认的决策", "标出负责人", "写出验收标准", "会后发送确认摘要"],
                 "success_criteria": "参会者能复述下一步负责人和完成标准。",
-                "exceptions": "低风险同步会可以只写一句目标。"
+                "exceptions": "低风险同步会可以只写一句目标。",
+                "source_card_titles": ["会议目标不清", "接口归属未确认"]
               }
             }
             """
@@ -156,6 +158,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertEqual(principles.count, 1)
         XCTAssertEqual(principles[0].actions.count, 4)
         XCTAssertTrue(principles[0].successCriteria.contains("负责人"))
+        XCTAssertEqual(principles[0].sourceCardTitles, ["会议目标不清", "接口归属未确认"])
         XCTAssertTrue(rejected.isEmpty)
     }
 
@@ -254,11 +257,474 @@ final class PromptEvalFixtureTests: XCTestCase {
         let questionsRun = runs.first { $0.promptId == PromptID.generateQuestions.rawValue }
         XCTAssertEqual(questionsRun?.evalSuiteVersion, provider.template(for: .generateQuestions, mode: .standard).evalSuiteVersion)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.concrete_lens_specific" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.evidence_gap_taxonomy" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.answer_use_not_pseudo_depth" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.lens_move_taxonomy" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.source_card_grounding" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.calibration_target_declared" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.lens_feedback_tunes_moves" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_functional_coach_fields" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_blocks_generic_uncalibratable_output" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_honors_avoid_lens_moves" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_adjusted_lens_move" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_reinforced_lens_move" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_system_thinking_lens_move" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_selected_lens_move" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_training_dimension_alignment" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_primary_training_dimension_focus" } ?? false)
         let questionsCase = try XCTUnwrap(questionsRun?.caseResults.first { $0.caseId == "questions.concrete_lens_specific" })
         XCTAssertTrue(questionsCase.inputSummary.contains("meeting"))
         XCTAssertTrue(questionsCase.expectedBehavior.contains("lens-specific"))
         XCTAssertTrue(questionsCase.actualObservation.contains("passed"))
         XCTAssertTrue(questionsCase.diagnosticReason.contains("fixed-suite"))
+
+        let questsRun = runs.first { $0.promptId == PromptID.generateQuests.rawValue }
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.calibration_signal_task" } ?? false)
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_blocks_busywork_without_calibration" } ?? false)
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_source_grounding" } ?? false)
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_selected_lens_move" } ?? false)
+
+        let verifyRun = runs.first { $0.promptId == PromptID.verifyQuest.rawValue }
+        XCTAssertTrue(verifyRun?.caseResults.contains { $0.caseId == "verify.judgment_update_from_evidence" } ?? false)
+        XCTAssertTrue(verifyRun?.caseResults.contains { $0.caseId == "verify.quality_gate_blocks_weak_calibration_note" } ?? false)
+        XCTAssertTrue(verifyRun?.caseResults.contains { $0.caseId == "verify.quality_gate_blocks_weak_recommendation" } ?? false)
+        let principleRun = runs.first { $0.promptId == PromptID.extractPrinciple.rawValue }
+        XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_source_grounding" } ?? false)
+        XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_actionability" } ?? false)
+    }
+
+    func testPromptCoachingQualityPolicy_flagsGenericQuestionsVagueTargetsAndAvoidedMoves() throws {
+        let avoidedFeedback = [
+            PromptContextPayload.LensFeedbackContext(
+                lensId: ThinkingLens.judgmentCalibration.rawValue,
+                lensTitle: ThinkingLens.judgmentCalibration.title,
+                signal: "avoid",
+                completion: YesterdayCompletion.missed.rawValue,
+                valueRating: YesterdayValueRating.low.rawValue,
+                calibrationNote: "上一次预测校准问题太抽象，未产生可观察信号。",
+                recommendation: "下一次先明确证据缺口。",
+                questionTargets: ["用户的思考"],
+                evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+            )
+        ]
+        let questions = [
+            ReflectionQuestion(
+                question: "你怎么看这个情况？",
+                whyItMatters: "帮助你思考。",
+                evidenceGapType: nil,
+                answerUse: nil,
+                lensMove: .predictionCalibration,
+                sourceCardTitles: [],
+                calibrationTarget: "用户的思考"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            lensFeedback: avoidedFeedback
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .genericQuestion })
+        XCTAssertTrue(issues.contains { $0.reason == .missingEvidenceGapType })
+        XCTAssertTrue(issues.contains { $0.reason == .missingAnswerUse })
+        XCTAssertTrue(issues.contains { $0.reason == .missingSourceGrounding })
+        XCTAssertTrue(issues.contains { $0.reason == .vagueCalibrationTarget })
+        XCTAssertTrue(issues.contains { $0.reason == .repeatedAvoidedLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsUnadjustedLensMoveAfterAdjustFeedback() throws {
+        let adjustFeedback = [
+            PromptContextPayload.LensFeedbackContext(
+                lensId: ThinkingLens.judgmentCalibration.rawValue,
+                lensTitle: ThinkingLens.judgmentCalibration.title,
+                signal: "adjust",
+                completion: YesterdayCompletion.partial.rawValue,
+                valueRating: YesterdayValueRating.medium.rawValue,
+                calibrationNote: "预测校准方向有用，但目标太大，完成后仍不知道验收机制是否真的减少返工。",
+                recommendation: "下一次把 prediction_calibration 缩小到一个可观察信号。",
+                questionTargets: ["验收机制减少返工"],
+                evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+            )
+        ]
+        let questions = [
+            ReflectionQuestion(
+                question: "明天能观察到哪个信号，证明验收机制减少返工？",
+                whyItMatters: "它继续校准同一个判断。",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal,
+                lensMove: .predictionCalibration,
+                sourceCardTitles: ["验收机制不清"],
+                calibrationTarget: "验收机制减少返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            lensFeedback: adjustFeedback
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .unadjustedLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsMissingReinforcedLensMove() throws {
+        let reinforceFeedback = [
+            PromptContextPayload.LensFeedbackContext(
+                lensId: ThinkingLens.judgmentCalibration.rawValue,
+                lensTitle: ThinkingLens.judgmentCalibration.title,
+                signal: "reinforce",
+                completion: YesterdayCompletion.done.rawValue,
+                valueRating: YesterdayValueRating.high.rawValue,
+                calibrationNote: "prediction_calibration 产生了清晰的校准证据。",
+                recommendation: "继续使用预测校准，但换到今天的证据和目标。",
+                questionTargets: ["书面验收减少返工"],
+                evidenceGapTypes: [EvidenceGapType.missingCalibrationSignal.rawValue],
+                lensMoves: [QuestionLensMove.predictionCalibration.rawValue]
+            )
+        ]
+        let questions = [
+            ReflectionQuestion(
+                question: "还有什么替代解释能说明今天的返工？",
+                whyItMatters: "它检查解释是否过早收敛。",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption,
+                lensMove: .alternativeExplanation,
+                sourceCardTitles: ["今天返工来自验收口径"],
+                calibrationTarget: "今天返工主要来自验收口径不清"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            lensFeedback: reinforceFeedback
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingReinforcedLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsMissingSystemThinkingLensMove() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "还有什么替代解释能说明今天的返工？",
+                whyItMatters: "它检查解释是否过早收敛。",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption,
+                lensMove: .alternativeExplanation,
+                sourceCardTitles: ["临时修复带来返工"],
+                calibrationTarget: "返工主要来自解释过早收敛"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            selectedLens: .systemThinking
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingSystemThinkingLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsMissingSelectedLensMove() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "还有什么替代解释能说明今天的返工？",
+                whyItMatters: "它检查解释是否过早收敛。",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption,
+                lensMove: .alternativeExplanation,
+                sourceCardTitles: ["会议返工来自低价值任务"],
+                calibrationTarget: "明天最能减少返工的是最高杠杆动作"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            selectedLens: .leverageAnalysis
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingSelectedLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestionNotAlignedToTrainingDimensions() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "明天应该优先做哪个动作来减少会议返工？",
+                whyItMatters: "它帮助选择下一步动作。",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "优先做高杠杆动作能减少会议返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            primaryTrainingDimension: .evidenceDiscipline,
+            baselineTrainingDimensions: [.counterexampleSeeking]
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestionIgnoringNotReadyCoachTurn() throws {
+        let turn = CoachTurnState(
+            phase: .fillEvidenceGap,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "验收口径不清，需要先补事实和基线。",
+            openEvidenceGaps: [.missingObservation, .missingBaseline],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "Turn 1: ask evidence questions before converging."
+        )
+        let questions = [
+            ReflectionQuestion(
+                question: "明天应该优先做哪个动作来减少会议返工？",
+                whyItMatters: "它帮助选择下一步动作。",
+                evidenceGapType: .none,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "优先做高杠杆动作能减少会议返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            coachTurnState: turn
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingCoachTurnAlignment })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsMissingFunctionalCoachFields() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次会议返工里，哪条是可观察事实？",
+                whyItMatters: "它把事实和解释拆开。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingFunctionalCoachField })
+    }
+
+    func testPromptCoachingQualityPolicy_allowsQuestionAlignedToEvidenceTrainingDimension() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次会议返工里，哪条是可观察事实，哪条只是你对原因的解释？",
+                whyItMatters: "它把事实和解释拆开，先补上判断所需的证据。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            primaryTrainingDimension: .evidenceDiscipline,
+            baselineTrainingDimensions: [.counterexampleSeeking]
+        )
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsFirstQuestionThatSkipsPrimaryTrainingDimension() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "还有哪个反例会推翻验收口径不清是返工主因？",
+                whyItMatters: "它检查当前解释是否过早收敛。",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption,
+                lensMove: .alternativeExplanation,
+                sourceCardTitles: ["验收口径导致返工"],
+                calibrationTarget: "验收口径不清是返工主要原因"
+            ),
+            ReflectionQuestion(
+                question: "明天能观察到哪个信号，证明书面验收减少了一轮返工？",
+                whyItMatters: "它把判断变成可校准的结果。",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal,
+                lensMove: .predictionCalibration,
+                sourceCardTitles: ["验收口径导致返工"],
+                calibrationTarget: "书面验收能减少一轮返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            primaryTrainingDimension: .judgmentCalibration,
+            baselineTrainingDimensions: [.counterexampleSeeking]
+        )
+
+        XCTAssertTrue(
+            issues.map(\.reason.rawValue).contains("missingPrimaryTrainingDimensionFocus")
+        )
+        XCTAssertFalse(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsBusyworkQuestWithoutCalibration() throws {
+        let quests = [
+            Quest(
+                type: .main,
+                title: "整理会议纪要排版",
+                whyItMatters: "看起来更完整。",
+                completionCriteria: "把会议纪要排版好。",
+                expectedResistance: "会觉得还有很多要补。",
+                reflectionQuestion: "今天感觉如何？",
+                calibrationTarget: "这个情况"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuests(quests)
+
+        XCTAssertTrue(issues.contains { $0.reason == .busyworkQuest })
+        XCTAssertTrue(issues.contains { $0.reason == .weakCompletionCriteria })
+        XCTAssertTrue(issues.contains { $0.reason == .vagueCalibrationTarget })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestWithoutSourceGrounding() throws {
+        let quests = [
+            Quest(
+                type: .main,
+                title: "用一次小验收测试返工来源",
+                whyItMatters: "它补上返工判断里的证据缺口。",
+                completionCriteria: "明天下午前完成一次小范围验收，记录是否减少一轮返工，并写下一个可观察的校准信号。",
+                expectedResistance: "你会想先继续推进功能，因为短期看起来更快。",
+                reflectionQuestion: "这次验收有没有减少一轮返工？",
+                calibrationTarget: "小验收能比继续补说明更有效地减少返工",
+                sourceCardTitles: []
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuests(quests)
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingSourceGrounding })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestWithoutSelectedLensAlignment() throws {
+        let quests = [
+            Quest(
+                type: .main,
+                title: "访谈一个反对方来测试解释",
+                whyItMatters: "它可以检查当前解释是否过早收敛。",
+                completionCriteria: "明天完成一次 15 分钟访谈，记录一个反方证据和一个可观察的校准信号。",
+                expectedResistance: "你会想直接推进当前判断，因为找反方反馈比较慢。",
+                reflectionQuestion: "这条反方证据是否推翻了当前解释？",
+                calibrationTarget: "返工主要来自对方没有理解当前解释",
+                sourceCardTitles: ["会议返工来自低价值任务"]
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuests(
+            quests,
+            selectedLens: .leverageAnalysis
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingSelectedLensMove })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsWeakVerificationCalibrationNote() throws {
+        let result = VerifyQuestResult(
+            calibrationNote: "The quest was useful.",
+            likelyIssue: nil,
+            recommendation: "Keep going."
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateVerification(
+            result,
+            targetJudgment: "Written owner acknowledgement reduces ambiguity"
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .weakVerificationCalibrationNote })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsVerificationWithoutCompletionCriteriaEvidence() throws {
+        let result = VerifyQuestResult(
+            calibrationNote: "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied and the thread became quieter. Evidence gained: written acknowledgement was an observable signal. Judgment update: keep written owner confirmation before execution.",
+            likelyIssue: "none",
+            recommendation: "Next calibration: test whether earlier owner confirmation reduces rework."
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateVerification(
+            result,
+            targetJudgment: "Written owner acknowledgement reduces ambiguity"
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .weakVerificationCalibrationNote })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsWeakVerificationRecommendation() throws {
+        let result = VerifyQuestResult(
+            calibrationNote: "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
+            likelyIssue: "none",
+            recommendation: "Keep going."
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateVerification(
+            result,
+            targetJudgment: "Written owner acknowledgement reduces ambiguity"
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .weakVerificationRecommendation })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsMissingExpectedPrinciplePracticeAssessment() throws {
+        let result = VerifyQuestResult(
+            calibrationNote: "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
+            likelyIssue: "none",
+            recommendation: "Next calibration: test whether earlier owner confirmation reduces rework."
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateVerification(
+            result,
+            targetJudgment: "Written owner acknowledgement reduces ambiguity",
+            hasTrainingPrinciple: true
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingExpectedPrinciplePracticeAssessment })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsUngroundedPrinciple() throws {
+        let principle = PrincipleAsset(
+            title: "会议前先定义要确认的决策",
+            summary: "重要会议前先写清要确认什么、谁负责、什么算完成。",
+            triggerContext: "跨角色会议或需要推进协作时。",
+            actions: ["写出要确认的决策", "标出负责人", "写出验收标准"],
+            successCriteria: "参会者能复述下一步负责人和完成标准。",
+            exceptions: "低风险同步会可以只写一句目标。",
+            sourceCardTitles: []
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluatePrinciples([principle])
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingPrincipleSourceGrounding })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsWeakPrincipleActionability() throws {
+        let principle = PrincipleAsset(
+            title: "保持清晰",
+            summary: "清晰沟通很重要。",
+            triggerContext: "工作中需要沟通时。",
+            actions: ["做得更好"],
+            successCriteria: "事情更顺利。",
+            exceptions: "无。",
+            sourceCardTitles: ["会议目标不清"]
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluatePrinciples([principle])
+
+        XCTAssertTrue(issues.contains { $0.reason == .weakPrincipleActionability })
     }
 
     func testPromptEvalReleaseGate_blocksMissingStaleAndFailedRuns() throws {
@@ -363,14 +829,21 @@ final class PromptEvalFixtureTests: XCTestCase {
             ],
             createdAt: Date(timeIntervalSince1970: 300)
         )
+        let rollbackTemplate = try XCTUnwrap(
+            provider.template(
+                for: .generateQuestions,
+                mode: .standard,
+                version: template.rollbackTargetVersion ?? ""
+            )
+        )
         let rollbackPassingRun = PromptEvalRun(
             promptId: PromptID.generateQuestions.rawValue,
-            promptVersion: "0.9.0",
-            systemPolicyVersion: template.systemPolicyVersion,
-            contextPolicyVersion: template.contextPolicyVersion,
+            promptVersion: rollbackTemplate.version,
+            systemPolicyVersion: rollbackTemplate.systemPolicyVersion,
+            contextPolicyVersion: rollbackTemplate.contextPolicyVersion,
             inputSchemaVersion: 1,
-            outputSchemaVersion: template.outputSchemaVersion,
-            evalSuiteVersion: template.evalSuiteVersion,
+            outputSchemaVersion: rollbackTemplate.outputSchemaVersion,
+            evalSuiteVersion: rollbackTemplate.evalSuiteVersion,
             runnerVersion: PromptEvalRunner.currentRunnerVersion,
             caseResults: [
                 PromptEvalCaseResult(
@@ -395,14 +868,14 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertEqual(gate.manualReviewCount, PromptID.allCases.count - 1)
         let candidate = try XCTUnwrap(gate.rollbackCandidates.first)
         XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
-        XCTAssertEqual(candidate.currentVersion, "1.0.0")
-        XCTAssertEqual(candidate.rollbackTargetVersion, "0.9.0")
+        XCTAssertEqual(candidate.currentVersion, "1.7.0")
+        XCTAssertEqual(candidate.rollbackTargetVersion, "1.6.0")
         XCTAssertEqual(candidate.lastPassingRunId, rollbackPassingRun.id)
         XCTAssertEqual(candidate.reason, .failedCases)
         XCTAssertTrue(gate.blockingIssues.contains {
             $0.promptId == PromptID.generateQuestions.rawValue &&
             $0.reason == .failedCases &&
-                $0.rollbackCandidate?.rollbackTargetVersion == "0.9.0"
+                $0.rollbackCandidate?.rollbackTargetVersion == "1.6.0"
         })
     }
 
@@ -738,11 +1211,11 @@ private struct RollbackFixturePromptProvider: PromptProvider {
     private let base = LocalPromptProvider()
 
     func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
-        var template = base.template(for: id, mode: mode)
-        if id == .generateQuestions {
-            template.rollbackTargetVersion = "0.9.0"
-        }
-        return template
+        base.template(for: id, mode: mode)
+    }
+
+    func template(for id: PromptID, mode: SessionMode, version: String) -> PromptTemplate? {
+        base.template(for: id, mode: mode, version: version)
     }
 }
 

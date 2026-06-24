@@ -4,6 +4,8 @@ struct VerifyQuestInput: Hashable {
     var sourceRecordIDs: [String] = []
     var questTitle: String
     var completionCriteria: String
+    var targetJudgment: String? = nil
+    var trainingPrinciple: PromptContextPayload.VerificationTrainingPrincipleContext? = nil
     var completion: String
     var valueRating: String
     var rawText: String
@@ -13,6 +15,7 @@ struct VerifyQuestResult: Hashable {
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
+    var expectedPrinciplePracticeAssessment: String? = nil
 }
 
 struct TodayAIContext: Hashable {
@@ -23,6 +26,10 @@ struct TodayAIContext: Hashable {
     var principles: [PrincipleAsset] = []
     var principleRecallFeedback: [PrincipleRecallFeedback] = []
     var selectedLensItem: LensCatalogItem?
+    var lensFeedback: [PromptContextPayload.LensFeedbackContext] = []
+    var trainingPrescription: TrainingPrescription? = nil
+    var coachDiagnosis: CoachDiagnosis? = nil
+    var coachTurnState: CoachTurnState? = nil
 }
 
 final class TodayAIService {
@@ -99,7 +106,19 @@ final class TodayAIService {
             context: context
         )
         let data = try await llmClient.complete(request)
-        return try parser.parseQuestions(from: data)
+        let questions = try parser.parseQuestions(from: data)
+        let visiblePayload = request.contextPayload
+        try validateCoachingQuality(
+            PromptCoachingQualityPolicy.evaluateQuestions(
+                questions,
+                selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
+                lensFeedback: visiblePayload?.lensFeedback ?? [],
+                primaryTrainingDimension: visiblePayload?.trainingPrescription?.primaryTrainingDimension,
+                baselineTrainingDimensions: visiblePayload?.trainingPrescription?.baselineTrainingDimensions ?? [],
+                coachTurnState: coachTurnState(from: visiblePayload)
+            )
+        )
+        return questions
     }
 
     func generateQuests(for context: TodayAIContext) async throws -> [Quest] {
@@ -108,7 +127,16 @@ final class TodayAIService {
             context: context
         )
         let data = try await llmClient.complete(request)
-        return try parser.parseQuests(from: data)
+        let quests = try parser.parseQuests(from: data)
+        let visiblePayload = request.contextPayload
+        try validateCoachingQuality(
+            PromptCoachingQualityPolicy.evaluateQuests(
+                quests,
+                selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
+                coachTurnState: coachTurnState(from: visiblePayload)
+            )
+        )
+        return quests
     }
 
     func extractPrinciple(for context: TodayAIContext) async throws -> [PrincipleAsset] {
@@ -117,7 +145,9 @@ final class TodayAIService {
             context: context
         )
         let data = try await llmClient.complete(request)
-        return try parser.parsePrinciples(from: data)
+        let principles = try parser.parsePrinciples(from: data)
+        try validateCoachingQuality(PromptCoachingQualityPolicy.evaluatePrinciples(principles))
+        return principles
     }
 
     func verifyQuest(input: VerifyQuestInput, sessionMode: SessionMode) async throws -> VerifyQuestResult {
@@ -128,6 +158,8 @@ final class TodayAIService {
             verification: .init(
                 questTitle: input.questTitle,
                 completionCriteria: input.completionCriteria,
+                targetJudgment: input.targetJudgment,
+                trainingPrinciple: input.trainingPrinciple,
                 completion: input.completion,
                 valueRating: input.valueRating
             )
@@ -141,7 +173,56 @@ final class TodayAIService {
             contextRecordIDs: input.sourceRecordIDs
         )
         let data = try await llmClient.complete(request)
-        return try parser.parseVerification(from: data)
+        let result = try parser.parseVerification(from: data)
+        try validateCoachingQuality(
+            PromptCoachingQualityPolicy.evaluateVerification(
+                result,
+                targetJudgment: input.targetJudgment,
+                hasTrainingPrinciple: input.trainingPrinciple != nil
+            )
+        )
+        return result
+    }
+
+    private func validateCoachingQuality(_ issues: [PromptCoachingQualityIssue]) throws {
+        guard !issues.isEmpty else { return }
+        let reasons = Array(Set(issues.map { $0.reason.rawValue })).sorted()
+        throw TodayAIParsingError.qualityGateFailed(reasons)
+    }
+
+    private func effectiveTrainingLens(for context: TodayAIContext) -> ThinkingLens? {
+        if let finalLensId = context.trainingPrescription?.finalLensId,
+           let prescribedLens = ThinkingLens(rawValue: finalLensId) {
+            return prescribedLens
+        }
+        return context.draft.selectedLens
+    }
+
+    private func effectiveTrainingLens(
+        forPromptPayload payload: PromptContextPayload?,
+        fallback context: TodayAIContext
+    ) -> ThinkingLens? {
+        guard let payload else { return effectiveTrainingLens(for: context) }
+        if let finalLensId = payload.trainingPrescription?.finalLensId,
+           let prescribedLens = ThinkingLens(rawValue: finalLensId) {
+            return prescribedLens
+        }
+        return payload.selectedLens
+    }
+
+    private func coachTurnState(from payload: PromptContextPayload?) -> CoachTurnState? {
+        guard let turn = payload?.coachTurnState else { return nil }
+        return CoachTurnState(
+            phase: turn.phase,
+            readiness: turn.readiness,
+            recommendedMove: turn.recommendedMove,
+            reason: turn.reason,
+            openEvidenceGaps: turn.openEvidenceGaps,
+            baselineChecks: turn.baselineChecks,
+            decisionSource: turn.decisionSource,
+            policyVersion: turn.policyVersion,
+            turnSummary: turn.turnSummary
+        )
     }
 
     private func request(
@@ -190,6 +271,7 @@ struct RetrievedPrinciple: Hashable {
     var principle: PrincipleAsset
     var score: Int
     var retrievalReason: String
+    var retrievalSignal: String
     var policyVersion: String
 }
 
@@ -200,7 +282,7 @@ extension PrincipleRetriever {
 }
 
 struct LocalPrincipleRetriever: PrincipleRetriever {
-    static let policyVersion = "principle-retrieval.local-keyword-feedback.v2"
+    static let policyVersion = "principle-retrieval.local-keyword-feedback.v3"
 
     private let minimumScore = 2
     private let stopWords: Set<String> = [
@@ -219,22 +301,24 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
             .filter { $0.status == .active }
             .map { principle in
                 let baseScore = score(principle: principle, terms: terms)
+                let retrievalSignal = retrievalSignal(for: principle, terms: terms)
                 let penalty = recallFeedbackPenalty(
                     for: principle.id,
+                    retrievalSignal: retrievalSignal,
                     feedback: context.principleRecallFeedback
                 )
-                return (principle, baseScore, max(0, baseScore - penalty), penalty)
+                return (principle, retrievalSignal, baseScore, max(0, baseScore - penalty), penalty)
             }
-            .filter { $0.2 >= minimumScore }
+            .filter { $0.3 >= minimumScore }
             .sorted { lhs, rhs in
-                if lhs.2 == rhs.2 {
+                if lhs.3 == rhs.3 {
                     return lhs.0.title < rhs.0.title
                 }
-                return lhs.2 > rhs.2
+                return lhs.3 > rhs.3
             }
             .prefix(limit)
-            .map { principle, baseScore, adjustedScore, penalty in
-                RetrievedPrinciple(
+            .map { principle, retrievalSignal, baseScore, adjustedScore, penalty in
+                return RetrievedPrinciple(
                     principle: principle,
                     score: adjustedScore,
                     retrievalReason: retrievalReason(
@@ -244,6 +328,7 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
                         adjustedScore: adjustedScore,
                         feedbackPenalty: penalty
                     ),
+                    retrievalSignal: retrievalSignal,
                     policyVersion: Self.policyVersion
                 )
             }
@@ -295,18 +380,30 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
 
     private func recallFeedbackPenalty(
         for principleId: UUID,
+        retrievalSignal: String,
         feedback: [PrincipleRecallFeedback]
     ) -> Int {
-        feedback
+        let normalizedRetrievalSignal = normalizedSignal(retrievalSignal)
+        return feedback
             .filter { $0.principleId == principleId }
             .reduce(0) { partial, event in
                 switch event.feedback {
                 case .helpful:
                     return partial
                 case .notApplicable, .misrecalled:
+                    let eventSignal = normalizedSignal(event.retrievalSignal)
+                    guard eventSignal.isEmpty || eventSignal == normalizedRetrievalSignal else {
+                        return partial
+                    }
                     return partial + 1
                 }
             }
+    }
+
+    private func normalizedSignal(_ signal: String) -> String {
+        signal
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 
     private func retrievalReason(
@@ -334,26 +431,195 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
         }
         return reason
     }
+
+    private func retrievalSignal(for principle: PrincipleAsset, terms: [String]) -> String {
+        let termSet = Set(terms)
+        let candidateFields = [
+            principle.triggerContext,
+            principle.title,
+            principle.actions.joined(separator: " "),
+            principle.successCriteria
+        ]
+
+        for field in candidateFields {
+            let signal = field.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let signalTerms = signal
+                .split { !$0.isLetter && !$0.isNumber }
+                .map(String.init)
+                .filter { $0.count >= 3 && !stopWords.contains($0) }
+            guard !signal.isEmpty, !signalTerms.isEmpty else { continue }
+            if signalTerms.allSatisfy({ termSet.contains($0) }) {
+                return signal
+            }
+        }
+
+        let principleText = [
+            principle.title,
+            principle.summary,
+            principle.triggerContext,
+            principle.actions.joined(separator: " "),
+            principle.successCriteria
+        ].joined(separator: " ").lowercased()
+        let matchedTerms = Array(Set(terms))
+            .sorted()
+            .filter { principleText.contains($0) }
+            .prefix(4)
+        return matchedTerms.isEmpty ? "keyword overlap" : matchedTerms.joined(separator: " ")
+    }
+}
+
+struct CoachContextMemorySelection: Hashable {
+    var retrievedPrinciples: [RetrievedPrinciple] = []
+    var existingPrinciples: [PrincipleAsset] = []
+    var lensFeedback: [PromptContextPayload.LensFeedbackContext] = []
+    var trainingPrescription: TrainingPrescription?
+    var coachDiagnosis: CoachDiagnosis?
+    var coachTurnState: CoachTurnState?
+
+    var relevantPrinciples: [PrincipleAsset] {
+        retrievedPrinciples.map(\.principle)
+    }
+}
+
+struct CoachContextMemoryPolicy {
+    static let policyVersion = "coach-context-memory.local-v1"
+
+    var principleLimit = 3
+    var lensFeedbackLimit = 2
+
+    func selectMemory(
+        promptID: PromptID,
+        context: TodayAIContext,
+        principleRetriever: PrincipleRetriever
+    ) -> CoachContextMemorySelection {
+        guard allowsCoachMemory(promptID) else {
+            return CoachContextMemorySelection()
+        }
+
+        let retrievedPrinciples = allowsPrincipleReferences(promptID)
+            ? principleRetriever.retrievePrinciples(
+                for: context,
+                promptID: promptID,
+                limit: principleLimit
+            )
+            : []
+        let existingPrinciples = promptID == .extractPrinciple ? context.principles : []
+
+        return CoachContextMemorySelection(
+            retrievedPrinciples: retrievedPrinciples,
+            existingPrinciples: existingPrinciples,
+            lensFeedback: lensFeedback(
+                for: promptID,
+                context: context
+            ),
+            trainingPrescription: allowsTrainingPrescription(promptID) ? context.trainingPrescription : nil,
+            coachDiagnosis: allowsCoachTurn(promptID) ? context.coachDiagnosis : nil,
+            coachTurnState: allowsCoachTurn(promptID) ? context.coachTurnState : nil
+        )
+    }
+
+    func lensFeedback(
+        for promptID: PromptID,
+        context: TodayAIContext
+    ) -> [PromptContextPayload.LensFeedbackContext] {
+        guard allowsLensFeedback(promptID) else { return [] }
+        let finalLensId = context.trainingPrescription?.finalLensId
+            ?? context.selectedLensItem?.lensId
+            ?? context.draft.selectedLens?.rawValue
+        guard let finalLensId else { return [] }
+
+        return Array(
+            context.lensFeedback
+                .filter { $0.lensId == finalLensId }
+                .prefix(lensFeedbackLimit)
+        )
+    }
+
+    private func allowsCoachMemory(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests, .extractPrinciple:
+            return true
+        case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
+             .generateProjectInsights, .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
+
+    private func allowsPrincipleReferences(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests:
+            return true
+        case .extractPrinciple, .organizeCards, .recommendLenses, .verifyQuest,
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
+             .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
+
+    private func allowsLensFeedback(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests:
+            return true
+        case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
+             .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
+
+    private func allowsTrainingPrescription(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests, .extractPrinciple:
+            return true
+        case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
+             .generateProjectInsights, .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
+
+    private func allowsCoachTurn(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests:
+            return true
+        case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
+             .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
 }
 
 struct DefaultContextAssembler: ContextAssembler {
     private let principleRetriever: PrincipleRetriever
+    private let memoryPolicy: CoachContextMemoryPolicy
 
-    init(principleRetriever: PrincipleRetriever = LocalPrincipleRetriever()) {
+    init(
+        principleRetriever: PrincipleRetriever = LocalPrincipleRetriever(),
+        memoryPolicy: CoachContextMemoryPolicy = CoachContextMemoryPolicy()
+    ) {
         self.principleRetriever = principleRetriever
+        self.memoryPolicy = memoryPolicy
     }
 
     func assemble(promptID: PromptID, context: TodayAIContext) -> PromptContext {
-        let retrievedPrinciples = principleRetriever.retrievePrinciples(for: context, promptID: promptID, limit: 3)
-        let relevantPrinciples = retrievedPrinciples.map(\.principle)
-        let existingPrinciples = promptID == .extractPrinciple ? context.principles : []
+        let memory = memoryPolicy.selectMemory(
+            promptID: promptID,
+            context: context,
+            principleRetriever: principleRetriever
+        )
+        let relevantPrinciples = memory.relevantPrinciples
         let contextPayload = structuredPayload(
             for: context,
-            retrievedPrinciples: retrievedPrinciples,
-            existingPrinciples: existingPrinciples,
+            memory: memory,
             directives: .init(
                 principleUsageRule: !relevantPrinciples.isEmpty
                     ? "Use accepted principles only as comparison lenses. Do not force today's situation to fit them."
+                    : nil,
+                coachDiagnosisRule: memory.coachDiagnosis != nil
+                    ? "Use coachDiagnosis as a coach plan, not source evidence. If readiness is not_ready, ask clarification or evidence-gap questions before converging. Treat user override as a user choice to proceed, not proof that the coach diagnosis was wrong."
+                    : nil,
+                coachTurnRule: memory.coachTurnState != nil
+                    ? "Use coachTurnState as the stateful coach turn plan. If readiness is not_ready, ask clarification or evidence-gap questions before converging. If readiness is ready, form a verifiable action. Treat user override as permission to proceed, not proof that the coach was wrong."
                     : nil
             )
         )
@@ -366,15 +632,14 @@ struct DefaultContextAssembler: ContextAssembler {
             contextRecordIDs: contextRecordIDs(
                 for: context,
                 relevantPrinciples: relevantPrinciples,
-                existingPrinciples: existingPrinciples
+                existingPrinciples: memory.existingPrinciples
             )
         )
     }
 
     private func structuredPayload(
         for context: TodayAIContext,
-        retrievedPrinciples: [RetrievedPrinciple],
-        existingPrinciples: [PrincipleAsset],
+        memory: CoachContextMemorySelection,
         directives: PromptContextPayload.PromptDirectives
     ) -> PromptContextPayload {
         PromptContextPayload(
@@ -425,7 +690,8 @@ struct DefaultContextAssembler: ContextAssembler {
                 .init(
                     id: question.id.uuidString,
                     question: question.question,
-                    answer: question.answer
+                    answer: question.answer,
+                    calibrationTarget: question.calibrationTarget
                 )
             },
             quests: context.quests.map { quest in
@@ -433,10 +699,11 @@ struct DefaultContextAssembler: ContextAssembler {
                     id: quest.id.uuidString,
                     type: quest.type.rawValue,
                     title: quest.title,
-                    completionCriteria: quest.completionCriteria
+                    completionCriteria: quest.completionCriteria,
+                    calibrationTarget: quest.calibrationTarget
                 )
             },
-            principles: retrievedPrinciples.map { retrieved in
+            principles: memory.retrievedPrinciples.map { retrieved in
                 let principle = retrieved.principle
                 return PromptContextPayload.PrincipleContext(
                     id: principle.id.uuidString,
@@ -447,10 +714,11 @@ struct DefaultContextAssembler: ContextAssembler {
                     exceptions: principle.exceptions,
                     status: principle.status,
                     retrievalReason: retrieved.retrievalReason,
-                    retrievalPolicyVersion: retrieved.policyVersion
+                    retrievalPolicyVersion: retrieved.policyVersion,
+                    retrievalSignal: retrieved.retrievalSignal
                 )
             },
-            existingPrinciples: existingPrinciples.map { principle in
+            existingPrinciples: memory.existingPrinciples.map { principle in
                 .init(
                     id: principle.id.uuidString,
                     title: principle.title,
@@ -461,7 +729,11 @@ struct DefaultContextAssembler: ContextAssembler {
                     status: principle.status
                 )
             },
-            directives: directives
+            directives: directives,
+            lensFeedback: memory.lensFeedback,
+            trainingPrescription: memory.trainingPrescription.map(PromptContextPayload.TrainingPrescriptionContext.init),
+            coachDiagnosis: memory.coachDiagnosis.map(PromptContextPayload.CoachDiagnosisContext.init),
+            coachTurnState: memory.coachTurnState.map(PromptContextPayload.CoachTurnStateContext.init)
         )
     }
 
@@ -493,10 +765,21 @@ struct DefaultContextAssembler: ContextAssembler {
     }
 
     private func selectedLensId(for context: TodayAIContext) -> String? {
-        selectedLensItem(for: context)?.lensId
+        if let finalLensId = context.trainingPrescription?.finalLensId {
+            return finalLensId
+        }
+        return selectedLensItem(for: context)?.lensId
     }
 
     private func selectedLensItem(for context: TodayAIContext) -> LensCatalogItem? {
-        context.selectedLensItem ?? context.draft.selectedLens?.catalogItem
+        if let finalLensId = context.trainingPrescription?.finalLensId {
+            if let runtimeItem = context.selectedLensItem, runtimeItem.lensId == finalLensId {
+                return runtimeItem
+            }
+            if let builtinItem = BuiltinLensCatalog.item(localId: finalLensId) {
+                return builtinItem
+            }
+        }
+        return context.selectedLensItem ?? context.draft.selectedLens?.catalogItem
     }
 }

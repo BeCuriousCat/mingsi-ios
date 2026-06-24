@@ -290,6 +290,169 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(questions[0].whyItMatters, "帮助把今天的判断转成可验证行动。")
     }
 
+    func testParseQuestions_decodesEvidenceGapTypeWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "现在缺少哪个可观察事实，才能判断返工是不是由验收口径造成？",
+              "why_this_matters": "这能把模糊判断转成证据缺口。",
+              "evidence_gap_type": "missing_observation"
+            },
+            {
+              "question": "如果这个解释是错的，哪个反例会先出现？",
+              "why_this_matters": "反例能帮助校准当前判断。",
+              "evidence_gap_type": "missing_counterexample"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let questions = try parser.parseQuestions(from: data)
+
+        XCTAssertEqual(questions.compactMap(\.evidenceGapType), [.missingObservation, .missingCounterexample])
+    }
+
+    func testParseQuestions_decodesAnswerUseWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "如果小范围验收没有减少返工，你会更新哪个判断？",
+              "why_this_matters": "这个问题让答案直接改变后续判断。",
+              "evidence_gap_type": "missing_calibration_signal",
+              "answer_use": "update_judgment"
+            },
+            {
+              "question": "明天先确认负责人还是先补实现，取舍标准是什么？",
+              "why_this_matters": "这个问题让答案直接服务于行动选择。",
+              "evidence_gap_type": "none",
+              "answer_use": "choose_action"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let questions = try parser.parseQuestions(from: data)
+
+        XCTAssertEqual(questions.compactMap(\.answerUse), [.updateJudgment, .chooseAction])
+    }
+
+    func testParseQuestions_decodesLensMoveWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "这个临时修复不断制造返工的反馈回路是什么？",
+              "why_this_matters": "系统思维要先看结构如何持续制造结果。",
+              "evidence_gap_type": "missing_causal_link",
+              "answer_use": "test_assumption",
+              "lens_move": "feedback_loop"
+            },
+            {
+              "question": "原判断是什么，实际证据让它怎么更新？",
+              "why_this_matters": "判断校准需要比较预测和结果。",
+              "evidence_gap_type": "missing_calibration_signal",
+              "answer_use": "update_judgment",
+              "lens_move": "prediction_calibration"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let questions = try parser.parseQuestions(from: data)
+
+        XCTAssertEqual(questions.compactMap(\.lensMove), [.feedbackLoop, .predictionCalibration])
+    }
+
+    func testParseQuestions_decodesSourceCardTitlesWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "会议目标不清这张卡里，哪些是事实，哪些只是解释？",
+              "why_this_matters": "追问必须落回已确认卡片，避免凭空泛化。",
+              "evidence_gap_type": "missing_observation",
+              "answer_use": "collect_evidence",
+              "lens_move": "fact_interpretation_split",
+              "source_card_titles": ["  会议目标不清  ", "", "接口归属未确认"]
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let questions = try parser.parseQuestions(from: data)
+
+        XCTAssertEqual(questions.first?.sourceCardTitles, ["会议目标不清", "接口归属未确认"])
+    }
+
+    func testParseQuestions_decodesCalibrationTargetWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "如果小范围验收没有减少返工，你会更新哪个判断？",
+              "why_this_matters": "这个问题让答案直接校准当前判断。",
+              "evidence_gap_type": "missing_calibration_signal",
+              "answer_use": "update_judgment",
+              "lens_move": "prediction_calibration",
+              "source_card_titles": ["返工来自验收口径"],
+              "calibration_target": "小范围验收能显著减少返工"
+            },
+            {
+              "question": "如果接口归属不是返工主因，哪个反例会先出现？",
+              "why_this_matters": "反例会校准根因判断。",
+              "evidence_gap_type": "missing_counterexample",
+              "answer_use": "test_assumption",
+              "lens_move": "alternative_explanation",
+              "source_card_titles": ["接口归属未确认"],
+              "calibration_target": "接口归属未确认是返工主因"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let questions = try parser.parseQuestions(from: data)
+
+        XCTAssertEqual(
+            questions.compactMap(\.calibrationTarget),
+            ["小范围验收能显著减少返工", "接口归属未确认是返工主因"]
+        )
+    }
+
+    func testParseQuestions_decodesFunctionalCoachFieldsWhenPresent() throws {
+        let json = """
+        {
+          "questions": [
+            {
+              "question": "这次会议返工里，哪条是可观察事实，哪条只是解释？",
+              "why_this_matters": "它把事实和解释拆开。",
+              "why_now": "教练轮次还未准备好收敛，需要先补观察事实。",
+              "expected_update": "答案会更新你对返工原因的判断依据。",
+              "proceed_when": "当你能列出一个可观察事实和一个待验证解释时再推进。",
+              "evidence_gap_type": "missing_observation",
+              "answer_use": "collect_evidence",
+              "lens_move": "fact_interpretation_split",
+              "source_card_titles": ["会议返工"],
+              "calibration_target": "会议返工主要来自验收口径不清"
+            }
+          ]
+        }
+        """
+        let data = Data(json.utf8)
+
+        let question = try XCTUnwrap(parser.parseQuestions(from: data).first)
+
+        XCTAssertEqual(question.whyNow, "教练轮次还未准备好收敛，需要先补观察事实。")
+        XCTAssertEqual(question.expectedUpdate, "答案会更新你对返工原因的判断依据。")
+        XCTAssertEqual(question.proceedWhen, "当你能列出一个可观察事实和一个待验证解释时再推进。")
+    }
+
     func testParseQuestions_emptyQuestionArray_throwsEmptyResult() {
         let json = """
         { "questions": [] }
@@ -314,7 +477,8 @@ final class TodayAIResponseParserTests: XCTestCase {
             "why_it_matters": "Reduces rework risk.",
             "completion_criteria": "Owner and acceptance criteria confirmed.",
             "expected_resistance": "Cross-role discussion needed.",
-            "reflection_question": "Which rework risk is lower?"
+            "reflection_question": "Which rework risk is lower?",
+            "lens_move": "leverage_tradeoff"
           },
           "side_quests": [
             {
@@ -343,6 +507,7 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(quests.count, 3)
         XCTAssertEqual(quests[0].type, .main)
         XCTAssertEqual(quests[0].status, .draft)
+        XCTAssertEqual(quests[0].lensMove, .leverageTradeoff)
         XCTAssertEqual(quests[1].type, .side)
         XCTAssertEqual(quests[2].type, .observation)
     }
@@ -406,6 +571,57 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(quests[0].reflectionQuestion, "完成后，哪个关键判断被验证了？")
     }
 
+    func testParseQuests_decodesCalibrationTargetWhenPresent() throws {
+        let json = """
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "Run a small acceptance check",
+            "why_it_matters": "It turns the answer into evidence.",
+            "completion_criteria": "One stakeholder accepts or rejects the proposed criteria.",
+            "expected_resistance": "The owner may be busy.",
+            "reflection_question": "Did a small check reduce rework risk?",
+            "calibration_target": "Small acceptance checks reduce rework more than adding implementation detail",
+            "lens_move": "prediction_calibration",
+            "linked_cards": ["  Acceptance criteria unclear  ", "", "Stakeholder rework repeated", "Acceptance criteria unclear"]
+          },
+          "side_quests": [
+            {
+              "type": "side",
+              "title": "Write the alternative explanation",
+              "why_it_matters": "It tests whether ownership is the real blocker.",
+              "completion_criteria": "One alternative cause is written.",
+              "expected_resistance": "It may feel slower.",
+              "reflection_question": "Which cause is now less likely?",
+              "calibration_target": "Ownership ambiguity is the main cause of rework",
+              "lens_move": "alternative_explanation",
+              "linked_cards": ["Ownership ambiguity"]
+            }
+          ],
+          "observation_quest": null
+        }
+        """
+        let data = Data(json.utf8)
+
+        let quests = try parser.parseQuests(from: data)
+
+        XCTAssertEqual(
+            quests.map(\.calibrationTarget),
+            [
+                "Small acceptance checks reduce rework more than adding implementation detail",
+                "Ownership ambiguity is the main cause of rework"
+            ]
+        )
+        XCTAssertEqual(
+            quests.map(\.sourceCardTitles),
+            [
+                ["Acceptance criteria unclear", "Stakeholder rework repeated"],
+                ["Ownership ambiguity"]
+            ]
+        )
+        XCTAssertEqual(quests.map(\.lensMove), [.predictionCalibration, .alternativeExplanation])
+    }
+
     // MARK: - parsePrinciples
 
     func testParsePrinciples_validPrinciple_returnsPrinciple() throws {
@@ -417,7 +633,8 @@ final class TodayAIResponseParserTests: XCTestCase {
             "trigger_context": "Cross-functional work.",
             "actions": ["Name the decision.", "Write owner and criteria."],
             "success_criteria": "People know who owns what.",
-            "exceptions": "Low-stakes sync."
+            "exceptions": "Low-stakes sync.",
+            "source_card_titles": ["  Meeting ownership unclear  ", "", "Interface handoff repeated"]
           }
         }
         """
@@ -428,6 +645,7 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(principles.count, 1)
         XCTAssertEqual(principles[0].title, "Clarify before execution")
         XCTAssertEqual(principles[0].actions.count, 2)
+        XCTAssertEqual(principles[0].sourceCardTitles, ["Meeting ownership unclear", "Interface handoff repeated"])
     }
 
     func testParsePrinciples_nullCandidate_returnsEmpty() throws {
@@ -491,7 +709,8 @@ final class TodayAIResponseParserTests: XCTestCase {
         {
           "calibration_note": "The quest was useful but the completion evidence was weak.",
           "likely_issue": "unclear_criteria",
-          "recommendation": "Define one visible artifact before starting tomorrow."
+          "recommendation": "Define one visible artifact before starting tomorrow.",
+          "expected_principle_practice_assessment": "The expected principle was partially practiced because the artifact was defined, but the evidence threshold remained vague."
         }
         """
         let data = Data(json.utf8)
@@ -501,6 +720,10 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(result.calibrationNote, "The quest was useful but the completion evidence was weak.")
         XCTAssertEqual(result.likelyIssue, "unclear_criteria")
         XCTAssertEqual(result.recommendation, "Define one visible artifact before starting tomorrow.")
+        XCTAssertEqual(
+            result.expectedPrinciplePracticeAssessment,
+            "The expected principle was partially practiced because the artifact was defined, but the evidence threshold remained vague."
+        )
     }
 
     func testParseVerification_emptyNote_throwsEmptyResult() {

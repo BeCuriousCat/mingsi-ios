@@ -447,9 +447,31 @@ struct LensLibrary: LensCatalogProviding {
         let actionCount = (counts[.task] ?? 0) + (counts[.decision] ?? 0)
         let validationCount = (counts[.fact] ?? 0) + riskProblemCount
         let dominantCount = counts.values.max() ?? 0
+        let combinedText = consideredCards
+            .map { "\($0.title) \($0.body)" }
+            .joined(separator: " ")
+            .lowercased()
+        let systemThinkingSignals = [
+            "反馈", "回路", "延迟", "滞后", "二阶", "后果", "返工", "放大", "连锁",
+            "feedback", "loop", "delay", "delayed", "second-order", "downstream"
+        ]
+        let systemThinkingSignalCount = systemThinkingSignals.filter { combinedText.contains($0) }.count
+        let judgmentCalibrationSignals = [
+            "预测", "预期", "把握", "信心", "置信", "实际", "结果", "相反", "校准", "更新判断",
+            "prediction", "expected", "confidence", "actual", "outcome", "calibration", "calibrate"
+        ]
+        let judgmentCalibrationSignalCount = judgmentCalibrationSignals.filter { combinedText.contains($0) }.count
 
         if validationCount >= 2 && !highPriorityTypes.isDisjoint(with: [.fact, .risk, .problem]) {
             return item(for: .evidenceCheck)
+        }
+
+        if judgmentCalibrationSignalCount >= 2 {
+            return item(for: .judgmentCalibration)
+        }
+
+        if systemThinkingSignalCount >= 2 {
+            return item(for: .systemThinking)
         }
 
         if mode == .deep && riskProblemCount >= 2 {
@@ -592,6 +614,62 @@ enum BuiltinLensCatalog {
                 "不要在用户只需要快速执行时过度拆解。"
             ]
         ),
+        LensCatalogItem(
+            lensId: "systemThinking",
+            promptId: "system_thinking",
+            version: "builtin.v1",
+            title: "系统思维",
+            subtitle: "看见反馈回路、延迟影响和二阶后果。",
+            shortLabel: "系统",
+            methodLine: "先问：这个结果是由什么回路持续制造的？",
+            promptGuidance: "Map feedback loops, delayed effects, constraints, second-order consequences, and observable calibration signals before choosing the next action.",
+            symbolName: "point.3.connected.trianglepath.dotted",
+            recommendedReason: "当前材料出现返工、延迟影响或连锁后果，适合先看系统结构。",
+            questionSeeds: [
+                "这个结果是由什么回路持续制造的？",
+                "哪个短期动作会在之后放大成本？",
+                "明天能观察到什么信号，证明这个系统判断对或错？"
+            ],
+            accentRole: .accent,
+            methodIndex: 5,
+            purpose: "识别事件背后的反馈回路、延迟影响、约束瓶颈和二阶后果，避免只修表面症状。",
+            questionStrategy: "先画出反馈回路和延迟影响，再追问二阶后果、关键约束和下一次可观察的校准信号。",
+            taskSelectionRule: "优先生成能打断负反馈、验证关键约束或采集校准信号的明日任务。",
+            applicability: "适用于同类问题反复出现、短期动作带来长期代价、返工增加、依赖传导或结果延迟显现的场景。",
+            disableConditions: [
+                "不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。",
+                "不要在用户只需要事实校验时跳过证据缺口。",
+                "不要输出无法在明天或近期观察的抽象判断。"
+            ]
+        ),
+        LensCatalogItem(
+            lensId: "judgmentCalibration",
+            promptId: "judgment_calibration",
+            version: "builtin.v1",
+            title: "判断校准",
+            subtitle: "用实际证据更新预测、信心和下一步判断。",
+            shortLabel: "校准",
+            methodLine: "先问：原判断是什么，实际证据让它怎么更新？",
+            promptGuidance: "Compare the user's original prediction, confidence, actual evidence, evidence gained, and judgment update before choosing the next calibration signal.",
+            symbolName: "scope",
+            recommendedReason: "当前材料出现预测、信心或实际结果偏差，适合校准判断。",
+            questionSeeds: [
+                "原判断是什么，实际证据让它怎么更新？",
+                "你当时有多大把握？现在证据支持几分？",
+                "下一次要观察哪个信号，避免重复误判？"
+            ],
+            accentRole: .principle,
+            methodIndex: 6,
+            purpose: "把原判断、置信度、实际证据和判断更新放在同一张桌面上，训练可校准的判断能力。",
+            questionStrategy: "先还原原判断和信心，再对照实际证据，最后要求用户说清判断如何更新和下一次校准信号。",
+            taskSelectionRule: "优先生成能验证一个预测、采集一个校准信号或降低下一次误判概率的明日任务。",
+            applicability: "适用于用户提到预测、预期、把握、信心、实际结果、判断反转、复盘偏差或需要更新判断的场景。",
+            disableConditions: [
+                "不要把校准变成事后诸葛，必须先明确原判断或可观察预测。",
+                "不要在缺少实际证据时强行评价判断质量。",
+                "不要用分数羞辱用户，重点是下一次如何更可校准。"
+            ]
+        ),
     ]
 
     static var items: [LensCatalogItem] {
@@ -616,6 +694,8 @@ enum ThinkingLens: String, CaseIterable, Identifiable {
     case opposingView
     case leverageAnalysis
     case firstPrinciples
+    case systemThinking
+    case judgmentCalibration
 
     var id: String { rawValue }
 
@@ -626,6 +706,929 @@ enum ThinkingLens: String, CaseIterable, Identifiable {
     var title: String { catalogItem.title }
 
     var subtitle: String { catalogItem.subtitle }
+
+    var primaryTrainingDimension: ThinkingTrainingDimension {
+        switch self {
+        case .evidenceCheck:
+            return .evidenceDiscipline
+        case .opposingView:
+            return .counterexampleSeeking
+        case .leverageAnalysis:
+            return .testableActionDesign
+        case .firstPrinciples:
+            return .assumptionTesting
+        case .systemThinking:
+            return .systemFeedbackAwareness
+        case .judgmentCalibration:
+            return .judgmentCalibration
+        }
+    }
+}
+
+enum TrainingPrescriptionSource: String, Codable, Hashable {
+    case coachRecommended = "coach_recommended"
+    case userOverride = "user_override"
+    case skipped
+}
+
+enum ThinkingTrainingDimension: String, Codable, CaseIterable, Identifiable, Hashable {
+    case factInterpretationSeparation = "fact_interpretation_separation"
+    case evidenceDiscipline = "evidence_discipline"
+    case counterexampleSeeking = "counterexample_seeking"
+    case assumptionTesting = "assumption_testing"
+    case systemFeedbackAwareness = "system_feedback_awareness"
+    case judgmentCalibration = "judgment_calibration"
+    case testableActionDesign = "testable_action_design"
+
+    var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .factInterpretationSeparation:
+            return "事实/解释分离"
+        case .evidenceDiscipline:
+            return "证据意识"
+        case .counterexampleSeeking:
+            return "反例意识"
+        case .assumptionTesting:
+            return "假设检验"
+        case .systemFeedbackAwareness:
+            return "系统反馈"
+        case .judgmentCalibration:
+            return "判断校准"
+        case .testableActionDesign:
+            return "可验证行动"
+        }
+    }
+
+    static func primary(forLensId lensId: String) -> ThinkingTrainingDimension? {
+        ThinkingLens(rawValue: lensId)?.primaryTrainingDimension
+    }
+}
+
+enum BaselineThinkingCheck: String, Codable, CaseIterable, Hashable {
+    case factInterpretationSplit = "fact_interpretation_split"
+    case evidenceGap = "evidence_gap"
+    case counterexample
+    case assumptionTest = "assumption_test"
+    case testableAction = "testable_action"
+    case feedbackSignal = "feedback_signal"
+    case judgmentUpdate = "judgment_update"
+
+    var trainingDimension: ThinkingTrainingDimension {
+        switch self {
+        case .factInterpretationSplit:
+            return .factInterpretationSeparation
+        case .evidenceGap:
+            return .evidenceDiscipline
+        case .counterexample:
+            return .counterexampleSeeking
+        case .assumptionTest:
+            return .assumptionTesting
+        case .testableAction:
+            return .testableActionDesign
+        case .feedbackSignal:
+            return .systemFeedbackAwareness
+        case .judgmentUpdate:
+            return .judgmentCalibration
+        }
+    }
+}
+
+struct TrainingPrescription: Codable, Hashable {
+    var recommendedLensId: String
+    var recommendedPromptId: String
+    var recommendationReason: String
+    var confidence: Double
+    var policyVersion: String
+    var alternativeLensIds: [String]
+    var baselineChecks: [BaselineThinkingCheck]
+    var primaryTrainingDimension: ThinkingTrainingDimension
+    var secondaryTrainingDimensions: [ThinkingTrainingDimension]
+    var baselineTrainingDimensions: [ThinkingTrainingDimension]
+    var userSelectedLensId: String?
+    var finalLensId: String
+    var source: TrainingPrescriptionSource
+    var overrideBoundary: String
+
+    init(
+        recommendedLensId: String,
+        recommendedPromptId: String,
+        recommendationReason: String,
+        confidence: Double,
+        policyVersion: String,
+        alternativeLensIds: [String],
+        baselineChecks: [BaselineThinkingCheck],
+        primaryTrainingDimension: ThinkingTrainingDimension? = nil,
+        secondaryTrainingDimensions: [ThinkingTrainingDimension]? = nil,
+        baselineTrainingDimensions: [ThinkingTrainingDimension]? = nil,
+        userSelectedLensId: String? = nil,
+        finalLensId: String,
+        source: TrainingPrescriptionSource,
+        overrideBoundary: String = ""
+    ) {
+        self.recommendedLensId = recommendedLensId
+        self.recommendedPromptId = recommendedPromptId
+        self.recommendationReason = recommendationReason
+        self.confidence = confidence
+        self.policyVersion = policyVersion
+        self.alternativeLensIds = alternativeLensIds
+        self.baselineChecks = baselineChecks
+        let resolvedPrimary = primaryTrainingDimension ??
+            ThinkingTrainingDimension.primary(forLensId: recommendedLensId) ??
+            .assumptionTesting
+        let resolvedBaseline = baselineTrainingDimensions ??
+            Self.defaultBaselineTrainingDimensions(for: baselineChecks)
+        self.primaryTrainingDimension = resolvedPrimary
+        self.secondaryTrainingDimensions = secondaryTrainingDimensions ??
+            Self.defaultSecondaryTrainingDimensions(
+                baselineTrainingDimensions: resolvedBaseline,
+                primaryTrainingDimension: resolvedPrimary
+            )
+        self.baselineTrainingDimensions = resolvedBaseline
+        self.userSelectedLensId = userSelectedLensId
+        self.finalLensId = finalLensId
+        self.source = source
+        self.overrideBoundary = overrideBoundary
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case recommendedLensId
+        case recommendedPromptId
+        case recommendationReason
+        case confidence
+        case policyVersion
+        case alternativeLensIds
+        case baselineChecks
+        case primaryTrainingDimension
+        case secondaryTrainingDimensions
+        case baselineTrainingDimensions
+        case userSelectedLensId
+        case finalLensId
+        case source
+        case overrideBoundary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let recommendedLensId = try container.decode(String.self, forKey: .recommendedLensId)
+        let recommendedPromptId = try container.decode(String.self, forKey: .recommendedPromptId)
+        let recommendationReason = try container.decode(String.self, forKey: .recommendationReason)
+        let confidence = try container.decode(Double.self, forKey: .confidence)
+        let policyVersion = try container.decode(String.self, forKey: .policyVersion)
+        let alternativeLensIds = try container.decode([String].self, forKey: .alternativeLensIds)
+        let baselineChecks = try container.decode([BaselineThinkingCheck].self, forKey: .baselineChecks)
+        let primaryTrainingDimension = try container.decodeIfPresent(
+            ThinkingTrainingDimension.self,
+            forKey: .primaryTrainingDimension
+        )
+        let baselineTrainingDimensions = try container.decodeIfPresent(
+            [ThinkingTrainingDimension].self,
+            forKey: .baselineTrainingDimensions
+        )
+        let secondaryTrainingDimensions = try container.decodeIfPresent(
+            [ThinkingTrainingDimension].self,
+            forKey: .secondaryTrainingDimensions
+        )
+        let userSelectedLensId = try container.decodeIfPresent(String.self, forKey: .userSelectedLensId)
+        let finalLensId = try container.decode(String.self, forKey: .finalLensId)
+        let source = try container.decode(TrainingPrescriptionSource.self, forKey: .source)
+        let overrideBoundary = try container.decodeIfPresent(String.self, forKey: .overrideBoundary) ?? ""
+
+        self.init(
+            recommendedLensId: recommendedLensId,
+            recommendedPromptId: recommendedPromptId,
+            recommendationReason: recommendationReason,
+            confidence: confidence,
+            policyVersion: policyVersion,
+            alternativeLensIds: alternativeLensIds,
+            baselineChecks: baselineChecks,
+            primaryTrainingDimension: primaryTrainingDimension,
+            secondaryTrainingDimensions: secondaryTrainingDimensions,
+            baselineTrainingDimensions: baselineTrainingDimensions,
+            userSelectedLensId: userSelectedLensId,
+            finalLensId: finalLensId,
+            source: source,
+            overrideBoundary: overrideBoundary
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recommendedLensId, forKey: .recommendedLensId)
+        try container.encode(recommendedPromptId, forKey: .recommendedPromptId)
+        try container.encode(recommendationReason, forKey: .recommendationReason)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(policyVersion, forKey: .policyVersion)
+        try container.encode(alternativeLensIds, forKey: .alternativeLensIds)
+        try container.encode(baselineChecks, forKey: .baselineChecks)
+        try container.encode(primaryTrainingDimension, forKey: .primaryTrainingDimension)
+        try container.encode(secondaryTrainingDimensions, forKey: .secondaryTrainingDimensions)
+        try container.encode(baselineTrainingDimensions, forKey: .baselineTrainingDimensions)
+        try container.encodeIfPresent(userSelectedLensId, forKey: .userSelectedLensId)
+        try container.encode(finalLensId, forKey: .finalLensId)
+        try container.encode(source, forKey: .source)
+        try container.encode(overrideBoundary, forKey: .overrideBoundary)
+    }
+
+    private static func defaultBaselineTrainingDimensions(
+        for checks: [BaselineThinkingCheck]
+    ) -> [ThinkingTrainingDimension] {
+        uniqueTrainingDimensions(checks.map(\.trainingDimension))
+    }
+
+    private static func defaultSecondaryTrainingDimensions(
+        baselineTrainingDimensions: [ThinkingTrainingDimension],
+        primaryTrainingDimension: ThinkingTrainingDimension
+    ) -> [ThinkingTrainingDimension] {
+        baselineTrainingDimensions
+            .filter { $0 != primaryTrainingDimension }
+            .prefix(3)
+            .map { $0 }
+    }
+
+    private static func uniqueTrainingDimensions(
+        _ dimensions: [ThinkingTrainingDimension]
+    ) -> [ThinkingTrainingDimension] {
+        var seen: Set<ThinkingTrainingDimension> = []
+        return dimensions.filter { seen.insert($0).inserted }
+    }
+}
+
+struct LocalTrainingPrescriptionPolicy {
+    static let policyVersion = "training-prescription.local-lens-v1"
+
+    private let library: LensCatalogProviding
+
+    init(library: LensCatalogProviding = BuiltinLensCatalog.library) {
+        self.library = library
+    }
+
+    func prescribe(
+        cards: [ThinkingCard],
+        mode: SessionMode,
+        userSelectedLens: ThinkingLens?
+    ) -> TrainingPrescription {
+        let recommended = library.recommendedItem(for: cards, mode: mode)
+            ?? BuiltinLensCatalog.item(for: .firstPrinciples)
+        let userSelectedLensId = userSelectedLens?.rawValue
+        let finalLensId = userSelectedLensId ?? recommended.lensId
+        let source: TrainingPrescriptionSource = userSelectedLensId == nil ? .coachRecommended : .userOverride
+
+        return TrainingPrescription(
+            recommendedLensId: recommended.lensId,
+            recommendedPromptId: recommended.promptId,
+            recommendationReason: recommended.recommendedReason,
+            confidence: confidence(for: recommended, cards: cards),
+            policyVersion: Self.policyVersion,
+            alternativeLensIds: alternativeLensIds(excluding: recommended.lensId),
+            baselineChecks: Self.defaultBaselineChecks,
+            userSelectedLensId: userSelectedLensId,
+            finalLensId: finalLensId,
+            source: source,
+            overrideBoundary: overrideBoundary(
+                userSelectedLensId: userSelectedLensId,
+                recommendedLensId: recommended.lensId
+            )
+        )
+    }
+
+    private static let defaultBaselineChecks: [BaselineThinkingCheck] = [
+        .factInterpretationSplit,
+        .evidenceGap,
+        .counterexample,
+        .assumptionTest,
+        .testableAction,
+        .feedbackSignal,
+        .judgmentUpdate
+    ]
+
+    private func confidence(for item: LensCatalogItem, cards: [ThinkingCard]) -> Double {
+        let consideredCards = cards.filter { !$0.isExcludedFromModel }
+        guard !consideredCards.isEmpty else { return 0.60 }
+        let highPriorityCount = consideredCards.filter { $0.priority == .high }.count
+        if highPriorityCount >= 2 { return 0.78 }
+        if highPriorityCount == 1 { return 0.70 }
+        return item.lensId == ThinkingLens.firstPrinciples.rawValue ? 0.62 : 0.66
+    }
+
+    private func alternativeLensIds(excluding recommendedLensId: String) -> [String] {
+        library.items
+            .filter { $0.lensId != recommendedLensId }
+            .sorted { $0.methodIndex < $1.methodIndex }
+            .prefix(3)
+            .map(\.lensId)
+    }
+
+    private func overrideBoundary(userSelectedLensId: String?, recommendedLensId: String) -> String {
+        guard let userSelectedLensId, userSelectedLensId != recommendedLensId else { return "" }
+        return "用户改选为 \(userSelectedLensId)，保留教练推荐 \(recommendedLensId) 作为审计；后续问题和任务以最终选择为主，同时保留基础思维检查。"
+    }
+}
+
+enum ThinkingPhase: String, Codable, CaseIterable, Identifiable, Hashable {
+    case exploreProblem = "explore_problem"
+    case clarifyJudgment = "clarify_judgment"
+    case fillEvidenceGap = "fill_evidence_gap"
+    case formAction = "form_action"
+
+    var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .exploreProblem:
+            return "探索问题"
+        case .clarifyJudgment:
+            return "澄清判断"
+        case .fillEvidenceGap:
+            return "补证据"
+        case .formAction:
+            return "形成行动"
+        }
+    }
+}
+
+enum ConvergenceReadiness: String, Codable, Hashable {
+    case notReady = "not_ready"
+    case partiallyReady = "partially_ready"
+    case ready
+}
+
+enum NextCoachMove: String, Codable, Hashable {
+    case askClarifyingQuestion = "ask_clarifying_question"
+    case surfaceEvidenceGap = "surface_evidence_gap"
+    case slowDownConvergence = "slow_down_convergence"
+    case recommendTrainingLens = "recommend_training_lens"
+    case generateQuest = "generate_quest"
+
+    var displayRecommendation: String {
+        switch self {
+        case .askClarifyingQuestion:
+            return "先追问问题定义，别急着收敛。"
+        case .surfaceEvidenceGap:
+            return "先标出判断依据和证据缺口。"
+        case .slowDownConvergence:
+            return "先减缓收敛，补齐关键证据。"
+        case .recommendTrainingLens:
+            return "进入训练透镜，围绕主焦点练习。"
+        case .generateQuest:
+            return "可以继续生成明日任务。"
+        }
+    }
+}
+
+enum CoachDiagnosisSource: String, Codable, Hashable {
+    case coachRecommended = "coach_recommended"
+    case coachAccepted = "coach_accepted"
+    case userSlowDown = "user_slow_down"
+    case userOverrideProgress = "user_override_progress"
+}
+
+struct CoachDiagnosis: Codable, Hashable {
+    var phase: ThinkingPhase
+    var readiness: ConvergenceReadiness
+    var recommendedMove: NextCoachMove
+    var reason: String
+    var source: CoachDiagnosisSource
+    var policyVersion: String
+}
+
+struct CoachTurnState: Codable, Hashable {
+    var phase: ThinkingPhase
+    var readiness: ConvergenceReadiness
+    var recommendedMove: NextCoachMove
+    var reason: String
+    var openEvidenceGaps: [EvidenceGapType]
+    var baselineChecks: [BaselineThinkingCheck]
+    var decisionSource: CoachDiagnosisSource
+    var policyVersion: String
+    var turnSummary: String
+}
+
+struct CoachTurnPolicy {
+    static let policyVersion = "coach-turn.local-v1"
+
+    func makeInitialTurn(
+        cards: [ThinkingCard],
+        diagnosis: CoachDiagnosis? = nil
+    ) -> CoachTurnState {
+        let resolvedDiagnosis = diagnosis ?? CoachEngine().diagnose(cards: cards)
+        return CoachTurnState(
+            phase: resolvedDiagnosis.phase,
+            readiness: resolvedDiagnosis.readiness,
+            recommendedMove: resolvedDiagnosis.recommendedMove,
+            reason: resolvedDiagnosis.reason,
+            openEvidenceGaps: openEvidenceGaps(for: resolvedDiagnosis),
+            baselineChecks: defaultBaselineChecks,
+            decisionSource: resolvedDiagnosis.source,
+            policyVersion: Self.policyVersion,
+            turnSummary: initialSummary(for: resolvedDiagnosis)
+        )
+    }
+
+    func updateAfterAnswers(
+        cards: [ThinkingCard],
+        questions: [ReflectionQuestion],
+        previous: CoachTurnState?
+    ) -> CoachTurnState {
+        let answeredQuestions = questions.filter {
+            !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !answeredQuestions.isEmpty else {
+            return previous ?? makeInitialTurn(cards: cards)
+        }
+
+        if answersCloseEvidenceGap(answeredQuestions) {
+            return CoachTurnState(
+                phase: .formAction,
+                readiness: .ready,
+                recommendedMove: .generateQuest,
+                reason: "用户回答已经补充负责人、验收标准或可观察证据，可以把下一步设计成可验证行动。",
+                openEvidenceGaps: [],
+                baselineChecks: previous?.baselineChecks ?? defaultBaselineChecks,
+                decisionSource: previous?.decisionSource ?? .coachRecommended,
+                policyVersion: Self.policyVersion,
+                turnSummary: "回答补足了关键证据，教练轮次从追问推进到形成可验证行动。"
+            )
+        }
+
+        var unresolved = previous ?? makeInitialTurn(cards: cards)
+        unresolved.readiness = .notReady
+        unresolved.recommendedMove = unresolved.openEvidenceGaps.isEmpty ? .askClarifyingQuestion : .surfaceEvidenceGap
+        unresolved.reason = "用户已有回答，但还没有补足可观察事实、基线或验收标准。"
+        unresolved.turnSummary = "回答仍未关闭主要证据缺口，继续追问而不是直接收敛。"
+        unresolved.policyVersion = Self.policyVersion
+        return unresolved
+    }
+
+    func applyingUserDecision(
+        _ decisionSource: CoachDiagnosisSource,
+        to state: CoachTurnState
+    ) -> CoachTurnState {
+        var updated = state
+        updated.decisionSource = decisionSource
+        updated.policyVersion = Self.policyVersion
+        switch decisionSource {
+        case .coachRecommended, .coachAccepted:
+            updated.turnSummary = "用户接受或沿用教练轮次：\(state.turnSummary)"
+        case .userSlowDown:
+            updated.readiness = .notReady
+            updated.recommendedMove = .slowDownConvergence
+            updated.turnSummary = "用户选择减缓收敛，继续补证据和澄清判断。"
+        case .userOverrideProgress:
+            updated.phase = .formAction
+            updated.readiness = .ready
+            updated.recommendedMove = .generateQuest
+            updated.turnSummary = "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留审计边界。"
+        }
+        return updated
+    }
+
+    private var defaultBaselineChecks: [BaselineThinkingCheck] {
+        [
+            .factInterpretationSplit,
+            .evidenceGap,
+            .counterexample,
+            .assumptionTest,
+            .testableAction,
+            .feedbackSignal,
+            .judgmentUpdate
+        ]
+    }
+
+    private func openEvidenceGaps(for diagnosis: CoachDiagnosis) -> [EvidenceGapType] {
+        switch diagnosis.phase {
+        case .exploreProblem:
+            return [.missingObservation]
+        case .clarifyJudgment:
+            return [.missingObservation, .missingCausalLink]
+        case .fillEvidenceGap:
+            return [.missingObservation, .missingBaseline]
+        case .formAction:
+            return []
+        }
+    }
+
+    private func initialSummary(for diagnosis: CoachDiagnosis) -> String {
+        "教练初始轮次：\(diagnosis.reason)"
+    }
+
+    private func answersCloseEvidenceGap(_ questions: [ReflectionQuestion]) -> Bool {
+        let answerText = questions
+            .map(\.answer)
+            .joined(separator: " ")
+            .lowercased()
+        let evidenceSignals = [
+            "owner", "负责人", "alex",
+            "验收", "标准", "criteria",
+            "evidence", "证据", "事实",
+            "确认", "文档", "客户",
+            "baseline", "基线", "observable", "可观察"
+        ]
+        let matchedSignals = evidenceSignals.filter { answerText.contains($0) }
+        return matchedSignals.count >= 2
+    }
+}
+
+enum CoachConvergenceRisk: String, Codable, Hashable {
+    case low
+    case medium
+    case high
+}
+
+struct CoachDecisionScores: Codable, Hashable {
+    var evidenceReadiness: Int
+    var convergenceRisk: Int
+    var calibrationOpportunity: Int
+    var systemFeedback: Int
+    var actionTestability: Int
+    var historicalLearning: Int
+}
+
+struct CoachLensLearningSignal: Codable, Hashable {
+    var signal: String
+    var lensMove: QuestionLensMove?
+    var calibrationTarget: String?
+    var reason: String
+}
+
+struct CoachLensLearningPolicy {
+    static let reinforceSignal = "reinforce"
+    static let adjustSignal = "adjust"
+    static let avoidSignal = "avoid"
+    static let overrideAuditSignalName = "override_audit"
+
+    func signals(from session: LensSession, verification: Verification) -> [CoachLensLearningSignal] {
+        session.questions.compactMap { question in
+            let answer = question.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !answer.isEmpty else { return nil }
+            guard let lensMove = question.lensMove else { return nil }
+
+            let calibrationTarget = question.calibrationTarget?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let signal = Self.signal(
+                completion: verification.completion,
+                valueRating: verification.valueRating
+            )
+
+            return CoachLensLearningSignal(
+                signal: signal,
+                lensMove: lensMove,
+                calibrationTarget: calibrationTarget?.isEmpty == true ? nil : calibrationTarget,
+                reason: Self.reason(
+                    signal: signal,
+                    completion: verification.completion,
+                    valueRating: verification.valueRating
+                )
+            )
+        }
+    }
+
+    func overrideAuditSignal(
+        recommendedLens: ThinkingLens,
+        finalLens: ThinkingLens,
+        primaryTrainingDimension: ThinkingTrainingDimension,
+        recentOverrideCount: Int
+    ) -> CoachLensLearningSignal? {
+        guard recommendedLens != finalLens else { return nil }
+        let isFrequent = recentOverrideCount >= 2
+        let prefix = isFrequent ? "frequent user override" : "user override"
+        return CoachLensLearningSignal(
+            signal: Self.overrideAuditSignalName,
+            lensMove: nil,
+            calibrationTarget: "\(recommendedLens.rawValue)->\(finalLens.rawValue)",
+            reason: "\(prefix) from \(recommendedLens.rawValue) to \(finalLens.rawValue) while primary dimension is \(primaryTrainingDimension.rawValue); audit the pattern without treating the coach diagnosis as wrong."
+        )
+    }
+
+    static func signal(
+        completion: YesterdayCompletion,
+        valueRating: YesterdayValueRating
+    ) -> String {
+        if completion == .done, valueRating == .high {
+            return reinforceSignal
+        }
+        if completion == .missed || valueRating == .low {
+            return avoidSignal
+        }
+        return adjustSignal
+    }
+
+    private static func reason(
+        signal: String,
+        completion: YesterdayCompletion,
+        valueRating: YesterdayValueRating
+    ) -> String {
+        switch signal {
+        case reinforceSignal:
+            return "done/high verification produced useful evidence; reinforce this lens move when current cards fit."
+        case avoidSignal:
+            return "\(completion.rawValue)/\(valueRating.rawValue) verification did not produce usable evidence; avoid repeating this lens move and target pattern."
+        default:
+            return "\(completion.rawValue)/\(valueRating.rawValue) verification was partially useful; make this lens move smaller and more observable next time."
+        }
+    }
+}
+
+struct CoachDecisionAssessment: Codable, Hashable {
+    var policyVersion: String
+    var phase: ThinkingPhase
+    var readiness: ConvergenceReadiness
+    var recommendedMove: NextCoachMove
+    var primaryTrainingDimension: ThinkingTrainingDimension
+    var openEvidenceGaps: [EvidenceGapType]
+    var convergenceRisk: CoachConvergenceRisk
+    var scores: CoachDecisionScores
+    var reason: String
+    var whyNow: String
+    var expectedUpdate: String
+    var proceedWhen: String
+    var learningSignals: [CoachLensLearningSignal]
+}
+
+struct CoachDecisionPolicyV2 {
+    static let policyVersion = "coach-decision.local-v2"
+
+    func decide(
+        cards: [ThinkingCard],
+        questions: [ReflectionQuestion] = [],
+        learningSignals: [CoachLensLearningSignal] = []
+    ) -> CoachDecisionAssessment {
+        let confirmedCards = cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        let consideredCards = confirmedCards.isEmpty
+            ? cards.filter { !$0.isExcludedFromModel }
+            : confirmedCards
+        let text = consideredCards
+            .map { "\($0.title) \($0.body)" }
+            .joined(separator: " ")
+            .lowercased()
+        let counts = Dictionary(grouping: consideredCards, by: \.type).mapValues(\.count)
+        let hasFact = (counts[.fact] ?? 0) > 0
+        let hasDecision = (counts[.decision] ?? 0) > 0
+        let hasTask = (counts[.task] ?? 0) > 0
+        let hasHighRiskOrProblem = consideredCards.contains { card in
+            (card.type == .risk || card.type == .problem) && card.priority == .high
+        }
+        let evidenceSignalCount = countMatches(
+            in: text,
+            keywords: [
+                "事实", "证据", "确认", "文档", "客户", "数据", "可观察",
+                "fact", "evidence", "confirmed", "observable", "documented"
+            ]
+        )
+        let gapSignalCount = countMatches(
+            in: text,
+            keywords: [
+                "缺", "不足", "不清", "未确认", "推测", "依据不足", "没有验收",
+                "missing", "unclear", "lack", "insufficient", "unconfirmed", "without criteria"
+            ]
+        )
+        let actionSignalCount = countMatches(
+            in: text,
+            keywords: [
+                "负责人", "owner", "alex", "验收", "标准", "criteria", "明天",
+                "tomorrow", "小范围", "文档", "observable", "可观察"
+            ]
+        )
+        let calibrationSignalCount = countMatches(
+            in: text,
+            keywords: [
+                "预测", "预期", "把握", "信心", "置信", "实际", "结果", "相反",
+                "校准", "更新判断", "prediction", "expected", "confidence",
+                "actual", "outcome", "calibration"
+            ]
+        )
+        let systemSignalCount = countMatches(
+            in: text,
+            keywords: [
+                "反馈", "回路", "延迟", "滞后", "二阶", "后果", "返工", "放大", "连锁", "下游",
+                "feedback", "loop", "delay", "delayed", "second-order", "downstream"
+            ]
+        )
+
+        let evidenceReadiness = clampScore(
+            (hasFact ? 35 : 0) +
+                min(evidenceSignalCount * 12, 30) +
+                min(actionSignalCount * 8, 25) +
+                (hasTask ? 10 : 0) -
+                min(gapSignalCount * 12, 35)
+        )
+        let calibrationOpportunity = clampScore(min(calibrationSignalCount * 25, 100))
+        let systemFeedback = clampScore(min(systemSignalCount * 24, 100))
+        let actionTestability = clampScore(
+            (hasTask ? 30 : 0) +
+                (hasDecision ? 15 : 0) +
+                (hasFact ? 20 : 0) +
+                min(actionSignalCount * 12, 35)
+        )
+        let convergenceRiskScore = clampScore(
+            (hasHighRiskOrProblem ? 35 : 0) +
+                (hasDecision ? 20 : 0) +
+                min(gapSignalCount * 16, 35) +
+                (evidenceReadiness < 50 ? 15 : 0) -
+                (actionTestability >= 75 ? 25 : 0)
+        )
+        let risk = convergenceRisk(from: convergenceRiskScore)
+        let historicalLearning = clampScore(learningSignals.isEmpty ? 0 : min(learningSignals.count * 25, 100))
+        let scores = CoachDecisionScores(
+            evidenceReadiness: evidenceReadiness,
+            convergenceRisk: convergenceRiskScore,
+            calibrationOpportunity: calibrationOpportunity,
+            systemFeedback: systemFeedback,
+            actionTestability: actionTestability,
+            historicalLearning: historicalLearning
+        )
+
+        if actionTestability >= 75, evidenceReadiness >= 55, risk != .high {
+            return CoachDecisionAssessment(
+                policyVersion: Self.policyVersion,
+                phase: .formAction,
+                readiness: .ready,
+                recommendedMove: .generateQuest,
+                primaryTrainingDimension: .testableActionDesign,
+                openEvidenceGaps: [],
+                convergenceRisk: .low,
+                scores: scores,
+                reason: "已有任务、事实或判断，并出现负责人、验收标准或可观察结果，可以把下一步设计成校准实验。",
+                whyNow: "当前材料已经足够形成明日可验证行动。",
+                expectedUpdate: "把当前判断转成一个明日能产生证据的行动。",
+                proceedWhen: "明日行动能留下负责人、验收标准和可观察结果。".trimmingCharacters(in: .whitespacesAndNewlines),
+                learningSignals: learningSignals
+            )
+        }
+
+        if risk == .high, evidenceReadiness < 60 {
+            return CoachDecisionAssessment(
+                policyVersion: Self.policyVersion,
+                phase: .fillEvidenceGap,
+                readiness: .notReady,
+                recommendedMove: .slowDownConvergence,
+                primaryTrainingDimension: .evidenceDiscipline,
+                openEvidenceGaps: [.missingObservation, .missingBaseline],
+                convergenceRisk: risk,
+                scores: scores,
+                reason: "当前存在高风险、问题或明确证据缺口，直接行动会过早收敛。",
+                whyNow: "现在的主要风险是过早收敛，先补证据比生成任务更重要。",
+                expectedUpdate: "回答应补足可观察事实、基线或验收口径。",
+                proceedWhen: "能说清至少一个可观察事实和一个验收基线后再推进。",
+                learningSignals: learningSignals
+            )
+        }
+
+        if calibrationOpportunity >= 70 {
+            return CoachDecisionAssessment(
+                policyVersion: Self.policyVersion,
+                phase: .clarifyJudgment,
+                readiness: .notReady,
+                recommendedMove: .surfaceEvidenceGap,
+                primaryTrainingDimension: .judgmentCalibration,
+                openEvidenceGaps: [.missingCalibrationSignal],
+                convergenceRisk: risk,
+                scores: scores,
+                reason: "材料里同时出现预测、信心、实际结果或相反证据，适合校准原判断。",
+                whyNow: "现在最有价值的是比较原预测和实际证据。",
+                expectedUpdate: "回答应更新预测、信心或下一次判断依据。",
+                proceedWhen: "能指出一个实际结果信号和它如何改变预测后再推进。",
+                learningSignals: learningSignals
+            )
+        }
+
+        if systemFeedback >= 70 {
+            return CoachDecisionAssessment(
+                policyVersion: Self.policyVersion,
+                phase: .clarifyJudgment,
+                readiness: .notReady,
+                recommendedMove: .surfaceEvidenceGap,
+                primaryTrainingDimension: .systemFeedbackAwareness,
+                openEvidenceGaps: [.missingCausalLink, .missingCalibrationSignal],
+                convergenceRisk: risk,
+                scores: scores,
+                reason: "材料里出现反馈回路、延迟影响或二阶后果，应该先理解系统结构。",
+                whyNow: "现在需要看清反馈回路，而不是只修当前表面问题。",
+                expectedUpdate: "回答应说明反馈、延迟或二阶后果如何改变行动选择。",
+                proceedWhen: "能说清一个反馈信号及其延迟影响后再推进。",
+                learningSignals: learningSignals
+            )
+        }
+
+        if hasDecision {
+            return CoachDecisionAssessment(
+                policyVersion: Self.policyVersion,
+                phase: .clarifyJudgment,
+                readiness: .notReady,
+                recommendedMove: .surfaceEvidenceGap,
+                primaryTrainingDimension: .factInterpretationSeparation,
+                openEvidenceGaps: [.missingObservation, .missingCausalLink],
+                convergenceRisk: risk,
+                scores: scores,
+                reason: "用户已经有判断倾向，但事实、解释和依据还需要拆开。",
+                whyNow: "当前先澄清判断依据，避免把解释当成事实。",
+                expectedUpdate: "回答应区分事实、解释和待验证假设。",
+                proceedWhen: "能列出事实依据和一个待验证假设后再推进。",
+                learningSignals: learningSignals
+            )
+        }
+
+        return CoachDecisionAssessment(
+            policyVersion: Self.policyVersion,
+            phase: .exploreProblem,
+            readiness: .notReady,
+            recommendedMove: .askClarifyingQuestion,
+            primaryTrainingDimension: .assumptionTesting,
+            openEvidenceGaps: [.missingObservation],
+            convergenceRisk: risk,
+            scores: scores,
+            reason: "当前更像想法或沟通片段，真正要解决的问题还没有定义清楚。",
+            whyNow: "现在需要先定义问题，而不是选择行动。",
+            expectedUpdate: "回答应明确问题边界和需要验证的前提。",
+            proceedWhen: "能说清要解决的问题和一个关键前提后再推进。",
+            learningSignals: learningSignals
+        )
+    }
+
+    private func convergenceRisk(from score: Int) -> CoachConvergenceRisk {
+        if score >= 70 { return .high }
+        if score >= 40 { return .medium }
+        return .low
+    }
+
+    private func countMatches(in text: String, keywords: [String]) -> Int {
+        keywords.filter { text.contains($0.lowercased()) }.count
+    }
+
+    private func clampScore(_ value: Int) -> Int {
+        min(max(value, 0), 100)
+    }
+}
+
+struct CoachEngine {
+    static let policyVersion = "coach-engine.local-v1"
+
+    func diagnose(cards: [ThinkingCard]) -> CoachDiagnosis {
+        let confirmedCards = cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        let consideredCards = confirmedCards.isEmpty
+            ? cards.filter { !$0.isExcludedFromModel }
+            : confirmedCards
+
+        let hasTask = consideredCards.contains { $0.type == .task }
+        let hasDecision = consideredCards.contains { $0.type == .decision }
+        let hasFact = consideredCards.contains { $0.type == .fact }
+        let hasBlockingEvidenceGap = consideredCards.contains { card in
+            guard card.type == .risk || card.type == .problem else { return false }
+            return card.priority == .high || containsEvidenceGapSignal(card)
+        }
+
+        if hasTask && (hasDecision || hasFact) && !hasBlockingEvidenceGap {
+            return CoachDiagnosis(
+                phase: .formAction,
+                readiness: .ready,
+                recommendedMove: .recommendTrainingLens,
+                reason: "已经出现任务、判断或事实，可以进入训练透镜，把行动设计成可验证的下一步。",
+                source: .coachRecommended,
+                policyVersion: Self.policyVersion
+            )
+        }
+
+        if hasBlockingEvidenceGap {
+            return CoachDiagnosis(
+                phase: .fillEvidenceGap,
+                readiness: .notReady,
+                recommendedMove: .slowDownConvergence,
+                reason: "当前材料暴露出风险或问题，但关键证据不足，先补证据再收敛。",
+                source: .coachRecommended,
+                policyVersion: Self.policyVersion
+            )
+        }
+
+        if hasDecision {
+            return CoachDiagnosis(
+                phase: .clarifyJudgment,
+                readiness: .notReady,
+                recommendedMove: .surfaceEvidenceGap,
+                reason: "已经有判断倾向，但事实、解释和依据还需要拆开。",
+                source: .coachRecommended,
+                policyVersion: Self.policyVersion
+            )
+        }
+
+        return CoachDiagnosis(
+            phase: .exploreProblem,
+            readiness: .notReady,
+            recommendedMove: .askClarifyingQuestion,
+            reason: "当前更像想法或沟通片段，真正要解决的问题还没有被定义清楚。",
+            source: .coachRecommended,
+            policyVersion: Self.policyVersion
+        )
+    }
+
+    private func containsEvidenceGapSignal(_ card: ThinkingCard) -> Bool {
+        let text = "\(card.title) \(card.body)".lowercased()
+        let keywords = [
+            "缺", "不足", "不清", "没有", "未确认", "推测", "依据", "证据", "事实",
+            "missing", "unclear", "without", "no ", "lack", "insufficient", "disputed", "criteria"
+        ]
+        return keywords.contains { text.contains($0) }
+    }
 }
 
 enum ThinkingCardType: String, CaseIterable, Identifiable {
@@ -705,22 +1708,207 @@ struct ThinkingCard: Identifiable, Hashable {
     }
 }
 
+enum EvidenceGapType: String, Codable, CaseIterable {
+    case missingObservation = "missing_observation"
+    case missingBaseline = "missing_baseline"
+    case missingCausalLink = "missing_causal_link"
+    case missingCounterexample = "missing_counterexample"
+    case missingConstraint = "missing_constraint"
+    case missingCalibrationSignal = "missing_calibration_signal"
+    case none
+
+    init?(aiRawValue: String) {
+        let normalized = aiRawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        guard !normalized.isEmpty else { return nil }
+        self.init(rawValue: normalized)
+    }
+
+    var displayTitle: String {
+        switch self {
+        case .missingObservation:
+            return "缺观察事实"
+        case .missingBaseline:
+            return "缺基线"
+        case .missingCausalLink:
+            return "缺因果链"
+        case .missingCounterexample:
+            return "缺反例"
+        case .missingConstraint:
+            return "缺约束"
+        case .missingCalibrationSignal:
+            return "缺校准信号"
+        case .none:
+            return "非证据缺口"
+        }
+    }
+}
+
+enum QuestionAnswerUse: String, Codable, CaseIterable {
+    case updateJudgment = "update_judgment"
+    case chooseAction = "choose_action"
+    case testAssumption = "test_assumption"
+    case collectEvidence = "collect_evidence"
+    case watchCalibrationSignal = "watch_calibration_signal"
+
+    init?(aiRawValue: String) {
+        let normalized = aiRawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        guard !normalized.isEmpty else { return nil }
+        self.init(rawValue: normalized)
+    }
+
+    var displayTitle: String {
+        switch self {
+        case .updateJudgment:
+            return "更新判断"
+        case .chooseAction:
+            return "选择行动"
+        case .testAssumption:
+            return "测试假设"
+        case .collectEvidence:
+            return "收集证据"
+        case .watchCalibrationSignal:
+            return "观察校准信号"
+        }
+    }
+}
+
+enum QuestionLensMove: String, Codable, CaseIterable {
+    case factInterpretationSplit = "fact_interpretation_split"
+    case alternativeExplanation = "alternative_explanation"
+    case leverageTradeoff = "leverage_tradeoff"
+    case constraintDecomposition = "constraint_decomposition"
+    case feedbackLoop = "feedback_loop"
+    case delayedEffect = "delayed_effect"
+    case secondOrderConsequence = "second_order_consequence"
+    case predictionCalibration = "prediction_calibration"
+
+    init?(aiRawValue: String) {
+        let normalized = aiRawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+        guard !normalized.isEmpty else { return nil }
+        self.init(rawValue: normalized)
+    }
+
+    var displayTitle: String {
+        switch self {
+        case .factInterpretationSplit:
+            return "分离事实解释"
+        case .alternativeExplanation:
+            return "替代解释"
+        case .leverageTradeoff:
+            return "杠杆取舍"
+        case .constraintDecomposition:
+            return "约束拆解"
+        case .feedbackLoop:
+            return "反馈回路"
+        case .delayedEffect:
+            return "延迟影响"
+        case .secondOrderConsequence:
+            return "二阶后果"
+        case .predictionCalibration:
+            return "预测校准"
+        }
+    }
+}
+
 struct ReflectionQuestion: Identifiable, Hashable, Codable {
     let id: UUID
     var question: String
     var whyItMatters: String
+    var whyNow: String?
+    var expectedUpdate: String?
+    var proceedWhen: String?
+    var evidenceGapType: EvidenceGapType?
+    var answerUse: QuestionAnswerUse?
+    var lensMove: QuestionLensMove?
+    var sourceCardTitles: [String]
+    var calibrationTarget: String?
     var answer: String
 
     init(
         id: UUID = UUID(),
         question: String,
         whyItMatters: String,
+        whyNow: String? = nil,
+        expectedUpdate: String? = nil,
+        proceedWhen: String? = nil,
+        evidenceGapType: EvidenceGapType? = nil,
+        answerUse: QuestionAnswerUse? = nil,
+        lensMove: QuestionLensMove? = nil,
+        sourceCardTitles: [String] = [],
+        calibrationTarget: String? = nil,
         answer: String = ""
     ) {
         self.id = id
         self.question = question
         self.whyItMatters = whyItMatters
+        self.whyNow = whyNow
+        self.expectedUpdate = expectedUpdate
+        self.proceedWhen = proceedWhen
+        self.evidenceGapType = evidenceGapType
+        self.answerUse = answerUse
+        self.lensMove = lensMove
+        self.sourceCardTitles = sourceCardTitles
+        self.calibrationTarget = calibrationTarget
         self.answer = answer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case question
+        case whyItMatters
+        case whyNow
+        case expectedUpdate
+        case proceedWhen
+        case evidenceGapType
+        case answerUse
+        case lensMove
+        case sourceCardTitles
+        case calibrationTarget
+        case answer
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        question = try container.decode(String.self, forKey: .question)
+        whyItMatters = try container.decode(String.self, forKey: .whyItMatters)
+        whyNow = try container.decodeIfPresent(String.self, forKey: .whyNow)
+        expectedUpdate = try container.decodeIfPresent(String.self, forKey: .expectedUpdate)
+        proceedWhen = try container.decodeIfPresent(String.self, forKey: .proceedWhen)
+        evidenceGapType = try container.decodeIfPresent(EvidenceGapType.self, forKey: .evidenceGapType)
+        answerUse = try container.decodeIfPresent(QuestionAnswerUse.self, forKey: .answerUse)
+        lensMove = try container.decodeIfPresent(QuestionLensMove.self, forKey: .lensMove)
+        sourceCardTitles = try container.decodeIfPresent([String].self, forKey: .sourceCardTitles) ?? []
+        calibrationTarget = try container.decodeIfPresent(String.self, forKey: .calibrationTarget)
+        answer = try container.decodeIfPresent(String.self, forKey: .answer) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(question, forKey: .question)
+        try container.encode(whyItMatters, forKey: .whyItMatters)
+        try container.encodeIfPresent(whyNow, forKey: .whyNow)
+        try container.encodeIfPresent(expectedUpdate, forKey: .expectedUpdate)
+        try container.encodeIfPresent(proceedWhen, forKey: .proceedWhen)
+        try container.encodeIfPresent(evidenceGapType, forKey: .evidenceGapType)
+        try container.encodeIfPresent(answerUse, forKey: .answerUse)
+        try container.encodeIfPresent(lensMove, forKey: .lensMove)
+        try container.encode(sourceCardTitles, forKey: .sourceCardTitles)
+        try container.encodeIfPresent(calibrationTarget, forKey: .calibrationTarget)
+        try container.encode(answer, forKey: .answer)
     }
 }
 
@@ -759,6 +1947,10 @@ struct Quest: Identifiable, Hashable {
     var completionCriteria: String
     var expectedResistance: String
     var reflectionQuestion: String
+    var calibrationTarget: String?
+    var lensMove: QuestionLensMove?
+    var sourceCardTitles: [String]
+    var trainingPrincipleId: UUID?
     var status: QuestStatus
 
     init(
@@ -769,6 +1961,10 @@ struct Quest: Identifiable, Hashable {
         completionCriteria: String,
         expectedResistance: String,
         reflectionQuestion: String,
+        calibrationTarget: String? = nil,
+        lensMove: QuestionLensMove? = nil,
+        sourceCardTitles: [String] = [],
+        trainingPrincipleId: UUID? = nil,
         status: QuestStatus = .draft
     ) {
         self.id = id
@@ -778,7 +1974,19 @@ struct Quest: Identifiable, Hashable {
         self.completionCriteria = completionCriteria
         self.expectedResistance = expectedResistance
         self.reflectionQuestion = reflectionQuestion
+        self.calibrationTarget = calibrationTarget
+        self.lensMove = lensMove
+        self.sourceCardTitles = Self.normalizedSourceCardTitles(sourceCardTitles)
+        self.trainingPrincipleId = trainingPrincipleId
         self.status = status
+    }
+
+    private static func normalizedSourceCardTitles(_ titles: [String]) -> [String] {
+        titles.reduce(into: [String]()) { result, title in
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+            result.append(trimmed)
+        }
     }
 }
 
@@ -798,6 +2006,7 @@ struct PrincipleAsset: Identifiable, Hashable {
     var actions: [String]
     var successCriteria: String
     var exceptions: String
+    var sourceCardTitles: [String]
     var status: PrincipleStatus
 
     init(
@@ -808,6 +2017,7 @@ struct PrincipleAsset: Identifiable, Hashable {
         actions: [String],
         successCriteria: String,
         exceptions: String,
+        sourceCardTitles: [String] = [],
         status: PrincipleStatus = .active
     ) {
         self.id = id
@@ -817,8 +2027,24 @@ struct PrincipleAsset: Identifiable, Hashable {
         self.actions = actions
         self.successCriteria = successCriteria
         self.exceptions = exceptions
+        self.sourceCardTitles = Self.normalizedSourceCardTitles(sourceCardTitles)
         self.status = status
     }
+
+    private static func normalizedSourceCardTitles(_ titles: [String]) -> [String] {
+        titles.reduce(into: [String]()) { result, title in
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+            result.append(trimmed)
+        }
+    }
+}
+
+struct QuestTrainingTarget: Identifiable, Hashable {
+    var id: UUID { principleId }
+    let principleId: UUID
+    var principleTitle: String
+    var matchSignal: String
 }
 
 enum PrincipleRecallFeedbackValue: String, CaseIterable, Identifiable, Codable {
@@ -827,6 +2053,17 @@ enum PrincipleRecallFeedbackValue: String, CaseIterable, Identifiable, Codable {
     case misrecalled
 
     var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .helpful:
+            return "有帮助"
+        case .notApplicable:
+            return "不适用"
+        case .misrecalled:
+            return "误召回"
+        }
+    }
 }
 
 struct PrincipleRecallFeedback: Identifiable, Hashable {
@@ -838,6 +2075,7 @@ struct PrincipleRecallFeedback: Identifiable, Hashable {
     var promptId: PromptID
     var retrievalPolicyVersion: String
     var retrievalReason: String
+    var retrievalSignal: String
     var feedback: PrincipleRecallFeedbackValue
     var note: String
     var createdAt: Date
@@ -852,6 +2090,7 @@ struct PrincipleRecallFeedback: Identifiable, Hashable {
         promptId: PromptID,
         retrievalPolicyVersion: String,
         retrievalReason: String,
+        retrievalSignal: String = "",
         feedback: PrincipleRecallFeedbackValue,
         note: String = "",
         createdAt: Date = .now,
@@ -865,10 +2104,27 @@ struct PrincipleRecallFeedback: Identifiable, Hashable {
         self.promptId = promptId
         self.retrievalPolicyVersion = retrievalPolicyVersion
         self.retrievalReason = retrievalReason
+        self.retrievalSignal = retrievalSignal
         self.feedback = feedback
         self.note = note
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+enum PrincipleRetrievalSignalDisplay {
+    static func displayText(for signal: String) -> String? {
+        let normalized = signal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+
+        switch normalized.lowercased() {
+        case "meeting ownership":
+            return "命中会议负责人"
+        case "acceptance contract", "write acceptance contract":
+            return "命中验收约定"
+        default:
+            return "命中 \(normalized)"
+        }
     }
 }
 
@@ -898,6 +2154,11 @@ struct PrinciplePracticeEvidence: Identifiable, Hashable {
     var evidenceSource: PrinciplePracticeEvidenceSource
     var strength: PrinciplePracticeEvidenceStrength
     var evidenceSummary: String
+    var matchSignal: String
+    var attributionPolicyVersion: String
+    var practiceRole: MetricContributionPracticeRole
+    var isDisputed: Bool
+    var disputeNote: String
     var createdAt: Date
     var updatedAt: Date
 
@@ -911,6 +2172,11 @@ struct PrinciplePracticeEvidence: Identifiable, Hashable {
         evidenceSource: PrinciplePracticeEvidenceSource,
         strength: PrinciplePracticeEvidenceStrength,
         evidenceSummary: String,
+        matchSignal: String = "",
+        attributionPolicyVersion: String = "",
+        practiceRole: MetricContributionPracticeRole = .possibleSignal,
+        isDisputed: Bool = false,
+        disputeNote: String = "",
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -923,6 +2189,11 @@ struct PrinciplePracticeEvidence: Identifiable, Hashable {
         self.evidenceSource = evidenceSource
         self.strength = strength
         self.evidenceSummary = evidenceSummary
+        self.matchSignal = matchSignal
+        self.attributionPolicyVersion = attributionPolicyVersion
+        self.practiceRole = practiceRole
+        self.isDisputed = isDisputed
+        self.disputeNote = disputeNote
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -955,18 +2226,33 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
     var internalizedEvidenceCount: Int
     var helpfulRecallFeedbackCount: Int
     var negativeRecallFeedbackCount: Int
+    var latestPracticeEvidenceId: UUID?
     var latestPracticeEvidenceAt: Date?
+    var latestPracticeEvidenceSummary: String?
+    var latestPracticeEvidenceRole: MetricContributionPracticeRole?
+    var latestDisputedPracticeEvidenceId: UUID?
+    var latestDisputedPracticeEvidenceAt: Date?
+    var latestDisputedPracticeEvidenceSummary: String?
+    var latestDisputedPracticeEvidenceNote: String?
+    var latestNegativeRecallFeedbackId: UUID?
+    var latestNegativeRecallFeedbackAt: Date?
+    var latestNegativeRecallFeedbackValue: PrincipleRecallFeedbackValue?
+    var latestNegativeRecallFeedbackReason: String?
+    var latestNegativeRecallFeedbackSignal: String?
+    var latestNegativeRecallFeedbackNote: String?
 
     static func summaries(
         for principles: [PrincipleAsset],
         practiceEvidence: [PrinciplePracticeEvidence],
-        recallFeedback: [PrincipleRecallFeedback]
+        recallFeedback: [PrincipleRecallFeedback],
+        disputedPracticeEvidence: [PrinciplePracticeEvidence] = []
     ) -> [PrincipleTrainingSummary] {
         principles.map { principle in
             summary(
                 for: principle,
                 practiceEvidence: practiceEvidence.filter { $0.principleId == principle.id },
-                recallFeedback: recallFeedback.filter { $0.principleId == principle.id }
+                recallFeedback: recallFeedback.filter { $0.principleId == principle.id },
+                disputedPracticeEvidence: disputedPracticeEvidence.filter { $0.principleId == principle.id }
             )
         }
     }
@@ -974,7 +2260,8 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
     static func summary(
         for principle: PrincipleAsset,
         practiceEvidence: [PrinciplePracticeEvidence],
-        recallFeedback: [PrincipleRecallFeedback]
+        recallFeedback: [PrincipleRecallFeedback],
+        disputedPracticeEvidence: [PrinciplePracticeEvidence] = []
     ) -> PrincipleTrainingSummary {
         let helpfulCount = recallFeedback.filter { $0.feedback == .helpful }.count
         let negativeCount = recallFeedback.filter {
@@ -985,7 +2272,17 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
         }.count
         let internalizedEvidenceCount = practiceEvidence.filter { $0.strength == .internalized }.count
         let distinctPracticeDays = Set(practiceEvidence.map(\.sourceDailyEntryId)).count
-        let latestPracticeAt = practiceEvidence.map(\.createdAt).max()
+        let latestPracticeEvidence = practiceEvidence.max { lhs, rhs in
+            lhs.createdAt < rhs.createdAt
+        }
+        let latestDisputedPracticeEvidence = disputedPracticeEvidence.max { lhs, rhs in
+            lhs.updatedAt < rhs.updatedAt
+        }
+        let latestNegativeRecallFeedback = recallFeedback
+            .filter { $0.feedback == .notApplicable || $0.feedback == .misrecalled }
+            .max { lhs, rhs in
+                lhs.createdAt < rhs.createdAt
+            }
         let state: PrincipleTrainingState
 
         if principle.status == .needsReview || negativeCount >= 2 {
@@ -1006,7 +2303,20 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
             internalizedEvidenceCount: internalizedEvidenceCount,
             helpfulRecallFeedbackCount: helpfulCount,
             negativeRecallFeedbackCount: negativeCount,
-            latestPracticeEvidenceAt: latestPracticeAt
+            latestPracticeEvidenceId: latestPracticeEvidence?.id,
+            latestPracticeEvidenceAt: latestPracticeEvidence?.createdAt,
+            latestPracticeEvidenceSummary: latestPracticeEvidence?.evidenceSummary,
+            latestPracticeEvidenceRole: latestPracticeEvidence?.practiceRole,
+            latestDisputedPracticeEvidenceId: latestDisputedPracticeEvidence?.id,
+            latestDisputedPracticeEvidenceAt: latestDisputedPracticeEvidence?.updatedAt,
+            latestDisputedPracticeEvidenceSummary: latestDisputedPracticeEvidence?.evidenceSummary,
+            latestDisputedPracticeEvidenceNote: latestDisputedPracticeEvidence?.disputeNote,
+            latestNegativeRecallFeedbackId: latestNegativeRecallFeedback?.id,
+            latestNegativeRecallFeedbackAt: latestNegativeRecallFeedback?.createdAt,
+            latestNegativeRecallFeedbackValue: latestNegativeRecallFeedback?.feedback,
+            latestNegativeRecallFeedbackReason: latestNegativeRecallFeedback?.retrievalReason,
+            latestNegativeRecallFeedbackSignal: latestNegativeRecallFeedback?.retrievalSignal,
+            latestNegativeRecallFeedbackNote: latestNegativeRecallFeedback?.note
         )
     }
 }
@@ -1019,6 +2329,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
     var hasSelectedSessionMode: Bool
     var selectedLens: ThinkingLens?
     var selectedCustomLensId: String?
+    var trainingPrescription: TrainingPrescription?
     var customLensItems: [LensCatalogItem]
     var customLensQuestions: [ReflectionQuestion]
     var yesterdayCompletion: YesterdayCompletion?
@@ -1033,6 +2344,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         hasSelectedSessionMode: Bool = false,
         selectedLens: ThinkingLens? = nil,
         selectedCustomLensId: String? = nil,
+        trainingPrescription: TrainingPrescription? = nil,
         customLensItems: [LensCatalogItem] = [],
         customLensQuestions: [ReflectionQuestion] = [],
         yesterdayCompletion: YesterdayCompletion? = nil,
@@ -1046,6 +2358,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         self.hasSelectedSessionMode = hasSelectedSessionMode
         self.selectedLens = selectedLens
         self.selectedCustomLensId = selectedCustomLensId
+        self.trainingPrescription = trainingPrescription
         self.customLensItems = customLensItems
         self.customLensQuestions = customLensQuestions
         self.yesterdayCompletion = yesterdayCompletion
@@ -1510,15 +2823,15 @@ struct PromptAssetQualityGate: Hashable {
         guard let passingRun = evalRuns
             .filter({
                 $0.promptId == summary.promptId &&
-                    $0.promptVersion == rollbackTargetVersion &&
-                    $0.promptSourceKind == summary.promptSourceKind &&
-                    $0.promptPackId == summary.promptPackId &&
+                    $0.promptVersion == rollbackTemplate.version &&
+                    $0.promptSourceKind == rollbackTemplate.sourceKind &&
+                    $0.promptPackId == rollbackTemplate.packId &&
                     $0.promptPackVersion == rollbackTemplate.packVersion &&
-                    $0.systemPolicyVersion == summary.systemPolicyVersion &&
-                    $0.contextPolicyVersion == summary.contextPolicyVersion &&
+                    $0.systemPolicyVersion == rollbackTemplate.systemPolicyVersion &&
+                    $0.contextPolicyVersion == rollbackTemplate.contextPolicyVersion &&
                     $0.inputSchemaVersion == summary.inputSchemaVersion &&
-                    $0.outputSchemaVersion == summary.outputSchemaVersion &&
-                    $0.evalSuiteVersion == summary.evalSuiteVersion &&
+                    $0.outputSchemaVersion == rollbackTemplate.outputSchemaVersion &&
+                    $0.evalSuiteVersion == rollbackTemplate.evalSuiteVersion &&
                     $0.runnerVersion == runnerVersion &&
                     $0.status == .passed
             })
@@ -1794,10 +3107,12 @@ struct PromptEvalReleaseGate: Hashable {
             if isStale(run: run, template: template) {
                 stalePromptIDs.insert(promptId)
                 let candidate = rollbackCandidate(
-                    promptId: promptId,
+                    promptID: promptID,
                     template: template,
                     runs: runs,
                     reason: .staleVersion,
+                    promptProvider: promptProvider,
+                    mode: mode,
                     runnerVersion: runnerVersion
                 )
                 if let candidate {
@@ -1810,10 +3125,12 @@ struct PromptEvalReleaseGate: Hashable {
             if run.status == .failed {
                 failedPromptIDs.insert(promptId)
                 let candidate = rollbackCandidate(
-                    promptId: promptId,
+                    promptID: promptID,
                     template: template,
                     runs: runs,
                     reason: .failedCases,
+                    promptProvider: promptProvider,
+                    mode: mode,
                     runnerVersion: runnerVersion
                 )
                 if let candidate {
@@ -1898,10 +3215,12 @@ struct PromptEvalReleaseGate: Hashable {
     }
 
     private static func rollbackCandidate(
-        promptId: String,
+        promptID: PromptID,
         template: PromptTemplate,
         runs: [PromptEvalRun],
         reason: PromptEvalReleaseGateIssueReason,
+        promptProvider: PromptProvider,
+        mode: SessionMode,
         runnerVersion: String
     ) -> PromptEvalRollbackCandidate? {
         guard let rollbackTargetVersion = template.rollbackTargetVersion,
@@ -1910,15 +3229,20 @@ struct PromptEvalReleaseGate: Hashable {
             return nil
         }
 
+        guard let rollbackTemplate = promptProvider.template(for: promptID, mode: mode, version: rollbackTargetVersion) else {
+            return nil
+        }
+
+        let promptId = promptID.rawValue
         guard let passingRun = runs
             .filter({
                 $0.promptId == promptId &&
-                    $0.promptVersion == rollbackTargetVersion &&
-                    $0.systemPolicyVersion == template.systemPolicyVersion &&
-                    $0.contextPolicyVersion == template.contextPolicyVersion &&
+                    $0.promptVersion == rollbackTemplate.version &&
+                    $0.systemPolicyVersion == rollbackTemplate.systemPolicyVersion &&
+                    $0.contextPolicyVersion == rollbackTemplate.contextPolicyVersion &&
                     $0.inputSchemaVersion == 1 &&
-                    $0.outputSchemaVersion == template.outputSchemaVersion &&
-                    $0.evalSuiteVersion == template.evalSuiteVersion &&
+                    $0.outputSchemaVersion == rollbackTemplate.outputSchemaVersion &&
+                    $0.evalSuiteVersion == rollbackTemplate.evalSuiteVersion &&
                     $0.runnerVersion == runnerVersion &&
                     $0.status == .passed
             })
@@ -2260,6 +3584,22 @@ enum MetricContributionFeedback: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum MetricContributionPracticeRole: String, CaseIterable, Identifiable, Codable {
+    case targetedPractice
+    case secondaryPractice
+    case possibleSignal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .targetedPractice: return "主练"
+        case .secondaryPractice: return "次练"
+        case .possibleSignal: return "可能信号"
+        }
+    }
+}
+
 struct MetricContribution: Identifiable, Hashable {
     let id: UUID
     var snapshotId: UUID
@@ -2273,6 +3613,7 @@ struct MetricContribution: Identifiable, Hashable {
     var sourceDailyEntryId: UUID
     var userFeedback: MetricContributionFeedback
     var candidateStatus: MetricContributionStatus
+    var practiceRole: MetricContributionPracticeRole
     var createdAt: Date
     var updatedAt: Date
 
@@ -2293,6 +3634,7 @@ struct MetricContribution: Identifiable, Hashable {
         sourceDailyEntryId: UUID,
         userFeedback: MetricContributionFeedback = .none,
         candidateStatus: MetricContributionStatus = .candidate,
+        practiceRole: MetricContributionPracticeRole = .possibleSignal,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -2308,6 +3650,7 @@ struct MetricContribution: Identifiable, Hashable {
         self.sourceDailyEntryId = sourceDailyEntryId
         self.userFeedback = userFeedback
         self.candidateStatus = candidateStatus
+        self.practiceRole = practiceRole
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -22,6 +22,7 @@
 		8F5DF34A6C458F808B2FFF5B /* DirectGLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDCC17B00D186631B914C1EB /* DirectGLMClient.swift */; };
 		9603ABF1C321925CCA296501 /* FeatureTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */; };
 		972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */; };
+		98B687F502E41CB6AF470D84 /* PromptSpecificationDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9D2B34F2C54E48AF6234C1 /* PromptSpecificationDocumentTests.swift */; };
 		9D2CCE4DD30860C3C85FED04 /* TodayAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05560A573D382BC7E7992F /* TodayAIService.swift */; };
 		9E61418EA710A150EAC4073F /* DirectGLMClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* LiveGLMAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* LiveGLMAcceptanceTests.swift */; };
@@ -77,6 +78,7 @@
 		56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectGLMClientTests.swift; sourceTree = "<group>"; };
 		5A8A8D72635DF2DA16D79B6E /* XMLStreamingCardAssemblerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLStreamingCardAssemblerTests.swift; sourceTree = "<group>"; };
 		5F8BAEF3B2D103761300F129 /* KeychainAPIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAPIKeyStore.swift; sourceTree = "<group>"; };
+		6F9D2B34F2C54E48AF6234C1 /* PromptSpecificationDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptSpecificationDocumentTests.swift; sourceTree = "<group>"; };
 		743E18DE6B198844B50711E6 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		744D664F5D847C09A2809E68 /* MingSi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MingSi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		789607A3FDEEB9450C3ED105 /* TodayAIResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIResponseParserTests.swift; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 				4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */,
 				2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */,
 				2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */,
+				6F9D2B34F2C54E48AF6234C1 /* PromptSpecificationDocumentTests.swift */,
 				789607A3FDEEB9450C3ED105 /* TodayAIResponseParserTests.swift */,
 				A3BAA6E015127F933E5EB576 /* TodayAIServiceContextTests.swift */,
 				5A8A8D72635DF2DA16D79B6E /* XMLStreamingCardAssemblerTests.swift */,
@@ -410,6 +413,7 @@
 				972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */,
 				4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */,
 				C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */,
+				98B687F502E41CB6AF470D84 /* PromptSpecificationDocumentTests.swift in Sources */,
 				8E31A82ACA9090F9455A9FC5 /* TodayAIResponseParserTests.swift in Sources */,
 				C1B52292286CE211107DC5E9 /* TodayAIServiceContextTests.swift in Sources */,
 				F9FEC69EC35809971C20035E /* XMLStreamingCardAssemblerTests.swift in Sources */,

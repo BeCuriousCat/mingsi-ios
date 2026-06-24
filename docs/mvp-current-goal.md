@@ -1,57 +1,61 @@
 # MingSi MVP Current Goal
 
-Date: 2026-06-04
+Date: 2026-06-23
 
 ## Active Codex Pursuit Goal
 
-MingSi is being hardened toward a personal alpha that is quiet, evidence-backed, and operationally verifiable.
+MingSi is being upgraded from a user-selected thinking-lens toolbox into a stateful coach-led training system. The current product direction is not "pick a lens and ask a prompt"; it is "let the coach maintain the current thinking turn, decide whether the user is ready to converge, and guide the next move."
 
 This repo is also dogfooding a second, separate framework project: Codex-to-Claude Code managed delegation. The framework is a tooling project, not a MingSi feature. It should be generic enough to extract later and must not bake MingSi business semantics into its skill or wrapper contract.
 
 Current Codex goal:
 
-> Build MingSi into a usable personal thinking coach while also making the engineering process itself observable and recoverable: Codex owns product judgment and final verification, Claude Code is used only for bounded slices with measurable progress, and every accepted claim must have build, test, screenshot, log, or repository evidence.
+> Coach Turn State v1: upgrade the `coachDiagnosis` already entering LLM context into a Today-local stateful coach turn. MingSi should maintain a testable state across confirmed cards, follow-up answers, and quest generation: current phase, readiness, recommended move, open evidence gaps, baseline checks, user decision or override, policy version, and a turn summary.
 
-This means the project is not trying to maximize generated code volume. It is trying to maximize accepted, verified product progress per manager token:
+This means the product is not trying to maximize the number of lenses or prompts. It is trying to maximize high-quality thinking calibration:
 
-- Claude Code delegation must be visible through progress checkpoints, task-local hooks, raw logs, and worker status, not inferred from token counters.
-- GLM-backed usage numbers are not treated as proof of work because recent stream logs reported zero usage while the worker had in fact started.
-- GLM coding-plan token capacity is treated as abundant relative to GPT manager tokens: routine Claude Code coding slices should budget generously enough to reach `HANDOFF` instead of stopping early from small budget guards; large slices should set an even higher explicit budget.
-- No worker output is accepted without `HANDOFF`, targeted verification, and Codex rerun evidence.
-- If delegation adds more coordination cost than it saves, Codex implements directly and records why.
-- The reusable delegation framework should push boilerplate into task contracts, templates, wrapper automation, and conclusion-first monitoring so manager tokens are spent on architecture and acceptance rather than process babysitting.
-- User-facing bugs, especially AI failure/audit visibility issues, are fixed only when the behavior is visible, retryable, and auditable.
+- MingSi, not the user, should carry the primary diagnostic burden for deciding what thinking ability to train next.
+- The user's role is to confirm, override, or reject the recommendation, not to self-diagnose from a menu before the coach has spoken.
+- A single loop should keep one primary training focus, but every loop must still check the baseline thinking foundation: fact/interpretation separation, evidence gaps, counterexamples, assumptions, testable action, feedback signal, and judgment update.
+- The coach must be allowed to slow the user down. If the current turn is `not_ready`, the next move should be clarification or evidence collection before action generation.
+- User override means "I choose to proceed anyway"; it does not prove the coach diagnosis was wrong.
+- Growth absorption must distinguish `targetedPractice`, `secondaryPractice`, and `possibleSignal`; LLM observations alone cannot become high-confidence practice evidence.
+- Recommendation rules, confidence, versions, and user overrides must be auditable and testable before they affect prompts or long-term growth summaries.
 
 ## Current Stop Condition
 
-MVP can stop only when the app can run as a coherent personal alpha version that turns one daily reflection into durable thinking assets:
+The next milestone can stop only when MingSi has a coherent Coach Turn State v1:
 
-- Today supports input, Quick / Standard / Deep mode, streaming card organization, card review, lens questions, quests, principle candidates, supplementary input, and retryable AI failure recovery.
-- History works as an evidence archive, not a flat card list. It must expose raw input, cards, lens, questions, quests, verification, principles, project evidence, growth contributions, search, date navigation, and local filters.
-- Projects are evidence-backed long-running topics. No project progress or thinking-change claim can appear without source evidence.
-- Growth is an attribution ledger. No score or growth narrative can appear without enough completed loops and source-linked contributions.
-- Settings supports BYOK GLM configuration, Base URL, model, connection validation, Keychain storage, and AI call audit visibility.
-- AI failures are visible, retryable, and auditable. Local fallback can keep the user moving, but cannot pretend to be a successful model result.
-- Prompt and model boundaries stay behind `PromptProvider`, `LLMClient`, `StreamingLLMClient`, `PromptRun`, and repository abstractions.
-- The app builds on iPhone simulator and targeted MVP regression tests pass.
+- A `CoachTurnState` or equivalent pure domain model records coach phase, readiness, recommended move, open evidence gaps, baseline checks, user decision or override, policy version, and turn summary.
+- `AppStore` creates or refreshes the coach turn after confirmed cards, updates it after follow-up answers, and passes the latest state into `generateQuestions` and `generateQuests`.
+- `PromptContextPayload` / `TodayAIContext` carry the latest coach turn state, while `organizeCards` remains clean and receives no coach state or historical principles.
+- Prompt directives use coach turn state: `not_ready` means clarify or close evidence gaps first; `ready` means form a verifiable action; override is permission to proceed, not proof that the coach was wrong.
+- Prompt quality gates reject obvious outputs that ignore coach phase, readiness, or recommended move.
+- Tests cover insufficient cards -> clarification, evidence gap -> evidence question, answer closes gap -> action readiness, user override -> audit boundary, and `organizeCards` -> no coach state.
+- UI remains minimal: show why MingSi is slowing down or moving forward, without building a general chat agent.
+- Existing boundaries remain intact: `TrainingPrescription`, Growth evidence authority, principle recall boundary, PromptRun audit, and no database migration unless resume-state tests prove it is required.
+- Verification passes focused tests, full `MingSiTests`, and relevant `MingSiUITests` when UI copy changes.
 
 ## Current Stage Priority
 
-The repo is past raw skeleton work. Current priority is MVP hardening:
+The repo is past raw skeleton work and past the first prompt/context assetization slices. Current priority is coach-led training design:
 
-1. Keep process docs aligned before additional coding.
-2. Keep the reusable delegation framework separate from MingSi business semantics and dogfood it on bounded implementation slices.
-3. Stabilize visual and interaction bugs in Today / History / Projects / Growth / Settings.
-4. Keep AI repair, retry, and PromptRun audit paths visible and testable.
-5. Harden evidence-backed Project and Growth views.
-6. Avoid adding non-MVP expansions until the alpha loop is stable.
+1. Keep the Today coach loop stateful before adding a general chat surface.
+2. Implement local, deterministic coach-turn rules before relying on LLM diagnosis.
+3. Keep the user in control through accept/override/slow-down/proceed, but make the coach recommendation the default path.
+4. Preserve structured Prompt/Context asset versioning, eval, rollback, and PromptRun audit.
+5. Keep PrinciplePracticeEvidence writes local and auditable; LLM may explain, not authoritatively confirm evidence.
+6. Defer marketplace, subscription, sync, and broad lens-pack expansion until the coach-led loop is coherent.
 
 ## Current Implementation Bias
 
 - Prefer small, testable slices.
-- Delegate only narrow implementation or read-only audit tasks to Claude Code.
-- Do not delegate product semantics, state-machine ownership, prompt/context strategy, persistence migrations, or final visual taste.
-- Do not merge or polish partial Claude output before its progress file reaches `HANDOFF`.
+- Use TDD for behavior changes and keep prompt/context schema changes versioned.
+- Start with deterministic local recommendation policy so the coach's reasoning is inspectable.
+- Treat manual user lens choice as override feedback that may improve future recommendations.
+- Treat `CoachTurnState` as Today orchestration state first; do not persist it unless resume tests prove durable state is required.
+- Keep baseline thinking checks quiet in the UI and explicit in prompt/context.
+- Do not write secondary or possible growth signals as high-confidence evidence without local policy and user-auditable support.
 
 ## Active Constraints
 
@@ -60,6 +64,9 @@ The repo is past raw skeleton work. Current priority is MVP hardening:
 - No fake data may stand in for missing Project or Growth evidence.
 - Prompt outputs that affect Projects or Growth must carry source ids.
 - History remains the source evidence archive for Project and Growth drilldown.
+- User-selected lenses must not become the only training authority; coach recommendation and final user choice should both be recorded.
+- LLM output must not directly create or confirm `PrinciplePracticeEvidence`, targeted practice, secondary practice, or long-term growth claims.
+- Do not introduce LangChain/LangGraph for this milestone. The state machine should stay local, deterministic, auditable, and testable.
 
 ## Repo Document Authority
 

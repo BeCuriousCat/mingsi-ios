@@ -16,10 +16,12 @@
 -> StreamingCardDraft：临时展示，不入库
 -> 闭合并校验后转换为 ThinkingCard 候选
 -> 用户确认卡片和排除敏感卡片
--> 用户选择透镜
--> generateQuestions：注入已确认卡片、透镜、最多 3 条相关 active 原则
+-> CoachTurnState：生成有状态教练轮次，记录 phase/readiness/recommendedMove/openEvidenceGaps
+-> 教练推荐训练处方，用户接受、放慢、或 override 推进
+-> generateQuestions：注入已确认卡片、透镜、CoachTurnState、最多 3 条相关 active 原则
 -> 用户回答追问
--> generateQuests：注入卡片、回答、透镜、最多 3 条相关 active 原则
+-> CoachTurnState：根据回答刷新 readiness 和 recommendedMove
+-> generateQuests：注入卡片、回答、透镜、CoachTurnState、最多 3 条相关 active 原则
 -> 用户确认明日主线任务
 -> extractPrinciple：注入卡片、回答、任务、已有原则，用于提取或去重经验总结
 -> 次日 verifyQuest：校准任务价值和完成情况
@@ -37,7 +39,7 @@
 
 本 PRD 的关键判断：
 
-- **提问不是聊天能力，而是透镜 + 当天证据 + 用户历史原则的组合。**
+- **提问不是聊天能力，而是有状态教练轮次 + 透镜 + 当天证据 + 用户历史原则的组合。**
 - **透镜不是卡片皮肤，而是决定提问方向和任务取舍标准的结构化策略。**
 - **经验总结不是金句，而是可触发、可行动、可验证、可回链证据的 PrincipleAsset。**
 - **上下文工程不是把资料都塞给模型，而是在不同 Prompt 阶段选择该进入的证据，并记录为什么进入。**
@@ -58,17 +60,18 @@
 -> 规则资产召回策略
 ```
 
-其中最核心的产品资产有 5 类：
+其中最核心的产品资产有 6 类：
 
 | 资产 | 作用 | 是否 MVP 必须 |
 | --- | --- | --- |
 | Prompt Template | 定义每一步 AI 应该做什么、不能做什么、输出什么 schema。 | 是 |
 | Lens Asset | 定义不同思考方式如何影响追问和任务选择。 | 是，先固定 3 个 |
+| Coach Turn State | 定义 Today 当前处于澄清、补证据还是形成行动，以及用户是否 ready。 | 是 |
 | Principle Asset | 用户确认过的经验总结，后续相似场景召回。 | 是 |
-| Context Policy | 定义每个 Prompt 允许看见哪些上下文。 | 是 |
+| Context Policy | 定义每个 Prompt 允许看见哪些上下文，包括 CoachTurnState 只能进入追问和任务生成，不能进入 `organizeCards`。 | 是 |
 | PromptRun / Context Audit | 记录每次 AI 调用了什么、看了哪些 source/context、结果和错误是什么。 | 是 |
 
-这 5 类资产必须版本化、可测试、可迁移。后续即使把 Prompt、透镜包、规则包迁移到服务端，App 也不能失去用户确认、敏感排除、本地证据和审计链路的控制权。
+这 6 类资产必须版本化、可测试、可迁移。后续即使把 Prompt、透镜包、规则包迁移到服务端，App 也不能失去用户确认、敏感排除、本地证据和审计链路的控制权。
 
 ## 1. 文档目的
 
@@ -828,7 +831,13 @@ MVP 状态：
 
 ### 7.3 MVP 透镜策略
 
-MVP 不做“透镜推荐模型”作为强依赖。用户在卡片确认后手动选择透镜，系统随后用该透镜生成追问和任务。
+早期 MVP 不做“透镜推荐模型”作为强依赖，用户在卡片确认后手动选择透镜，系统随后用该透镜生成追问和任务。这个设计适合验证透镜价值，但不应作为最终产品心智：如果用户必须先自选透镜，明思会退化成思维工具箱，而不是教练。
+
+当前下一阶段目标是 Coach Turn State v1：明思根据今日卡片、历史反馈、证据缺口和近期训练表现维护一个有状态教练轮次，用户负责接受、放慢、改选或 override 推进。手动选择透镜应降级为 override 机制；系统需要同时记录 coachRecommendedLens、userSelectedLens 和 coachTurnState，避免把用户自选误当作教练诊断。
+
+单次训练仍然只保留一个主训练焦点，但 prompt/context 必须携带基础思维底盘检查：事实/解释分离、证据缺口、反例、假设、可验证行动、反馈信号、判断更新。复盘阶段再区分 targetedPractice、secondaryPractice 和 possibleSignal。
+
+本阶段不引入 LangChain/LangGraph，不做通用聊天 agent，不扩大订阅、同步、市场或 lens pack。CoachTurnState 应先作为本地、确定性、可审计的 Today 状态机进入 `generateQuestions` / `generateQuests` 上下文，并明确不进入 `organizeCards`。
 
 当前 3 个透镜的 Prompt 行为：
 
@@ -938,8 +947,8 @@ Safety / Privacy Rules
 | Prompt | 当前输入 | 用户选择 | 原则资产 | 项目上下文 | 成长上下文 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `organizeCards` | rawText | sessionMode | 不注入 | 不注入 | 不注入 | 先拆事实，不让历史结论污染材料；使用 XML-like SSE 流式输出临时卡片。 |
-| `generateQuestions` | confirmedCards、priorAnswers | selectedLens、sessionMode | 相关原则 0-3 条 | 后续 | 后续 | 用透镜决定追问方向，用原则提醒旧经验。 |
-| `generateQuests` | confirmedCards、reflectionAnswers | selectedLens、sessionMode | 相关原则 0-3 条 | 后续 | 后续 | 任务必须来自当天材料，原则只能辅助验收。 |
+| `generateQuestions` | confirmedCards、priorAnswers | selectedLens、sessionMode | Coach Context Memory v1 选出的相关原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、当前 CoachTurnState | 后续 | 后续 | 用透镜和当前教练轮次决定追问方向，用少量历史记忆做对照。 |
+| `generateQuests` | confirmedCards、reflectionAnswers | selectedLens、sessionMode | Coach Context Memory v1 选出的相关原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、当前 CoachTurnState | 后续 | 后续 | 任务必须来自当天材料，原则和反馈只能辅助验收与校准。 |
 | `verifyQuest` | yesterdayQuest、completion、valueRating | sessionMode | 后续 | 后续 | 后续 | 校准任务设计，不做人格判断。 |
 | `extractPrinciple` | cards、answers、quest | sessionMode | existingPrinciples | 后续 | 后续 | 生成候选原则，并避免重复沉淀。 |
 | `weeklyCalibration` | 多日闭环证据 | 后续 | practiced principles | 后续 | metric contributions | 证据足够才生成趋势。 |
@@ -951,9 +960,9 @@ Safety / Privacy Rules
 
 | Prompt | 调用入口 | 必须上下文 | 可选上下文 | 明确禁止 | 失败后的产品行为 |
 | --- | --- | --- | --- | --- | --- |
-| `organizeCards` | 今日输入后点击整理 | `rawText`、`sessionMode`、隐私规则 | 语音质量提示 | 原则、项目、成长、长期画像 | XML-like SSE 流式生成临时卡片；失败时保留已闭合卡片或生成本地 fallback，保留重试入口。 |
-| `generateQuestions` | 卡片确认 + 透镜选择后 | 已确认且未排除的卡片、`selectedLens`、`sessionMode` | 相关 active 原则 0-3 条 | 未确认原则、全量历史、Growth 分数 | 本地 fallback 追问，UI 展示失败原因和可重试。 |
-| `generateQuests` | 用户至少回答一个追问后 | 已确认卡片、用户回答、`selectedLens`、`sessionMode` | 相关 active 原则 0-3 条 | 与当天材料无关的历史建议 | 本地 fallback 任务，保留同一步补跑。 |
+| `organizeCards` | 今日输入后点击整理 | `rawText`、`sessionMode`、隐私规则 | 语音质量提示 | 原则、项目、成长、长期画像、trainingPrescription、lensFeedback、coachTurnState | XML-like SSE 流式生成临时卡片；失败时保留已闭合卡片或生成本地 fallback，保留重试入口。 |
+| `generateQuestions` | 卡片确认 + 透镜选择后 | 已确认且未排除的卡片、`selectedLens`、`sessionMode`、当前 CoachTurnState | Coach Context Memory v1 选出的相关 active 原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、trainingPrescription | 未确认原则、全量历史、其他 lens 的反馈、Growth 分数、历史 coach turn 全量记录 | 本地 fallback 追问，UI 展示失败原因和可重试。 |
+| `generateQuests` | 用户至少回答一个追问后 | 已确认卡片、用户回答、`selectedLens`、`sessionMode`、当前 CoachTurnState | Coach Context Memory v1 选出的相关 active 原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、trainingPrescription | 与当天材料无关的历史建议、其他 lens 的反馈、历史 coach turn 全量记录 | 本地 fallback 任务，保留同一步补跑。 |
 | `verifyQuest` | 次日验证昨日任务时 | 原任务、完成标准、完成情况、价值评分 | 用户补充说明 | 人格标签、全量原则库 | 保留用户验证，AI 校准可稍后补跑。 |
 | `extractPrinciple` | 明日任务确认后 | 卡片、回答、任务 | 已有 active/needsReview 原则，用于去重 | Growth 分数、项目洞察 | 如果无稳定经验返回空候选；失败时本地生成弱候选或允许跳过。 |
 | `weeklyCalibration` | 一周足够闭环后 | 多日记录、任务、验证 | 练习过的原则、贡献证据 | 无证据的人格判断 | 不足证据时显示“证据不足”，不强行生成。 |
@@ -965,6 +974,26 @@ Safety / Privacy Rules
 - 防止历史原则把今天的新事实提前解释掉。
 - 防止 Growth / 画像类信息反过来限制用户思考。
 - 让后续服务端检索、embedding、规则包升级时仍能保持同一条产品边界。
+
+### 9.1.1 Coach Context Memory v1
+
+Coach Context Memory v1 决定历史原则、lens feedback、过往教练结果什么时候进入当前教练轮次。它的目标不是让模型“知道更多”，而是让当前轮次得到少量、可解释、不会污染当天判断的参考材料。
+
+当前本地策略版本为 `coach-context-memory.local-v1`：
+
+- `organizeCards` 和 `recommendLenses` 不接收任何 coach memory。它们只处理当天原始材料，不能被历史原则、训练处方、lens feedback 或 coach turn 预设解释。
+- `generateQuestions` 可以接收当前 `TrainingPrescription`、当前 `CoachTurnState`、最多 3 条相关 active 原则，以及最多 2 条与 final lens 相同的 verified `lensFeedback`。
+- `generateQuests` 可以接收当前 `TrainingPrescription`、当前 `CoachTurnState`、最多 3 条相关 active 原则，以及最多 2 条与 final lens 相同的 verified `lensFeedback`。
+- `extractPrinciple` 可以接收 `TrainingPrescription` 和 existingPrinciples 作为去重/合并参考，但不接收 lens feedback 或历史 coach turn。
+- `verifyQuest` 不接收全量原则库、lens feedback 或 coach turn；它只接收昨日任务、完成结果、价值评分，以及本地已选定的 expected training principle 审计字段。
+- 历史 coach outcome 不作为独立长期记忆直接注入 Today prompt。它只有在被沉淀为已确认原则、verified lensFeedback、任务验证或其他可审计资产后，才可能通过对应策略进入上下文。
+
+预算和污染防护：
+
+- 当前事实和用户回答永远优先于历史原则。
+- 历史原则只能作为 comparison lens，不能作为命令。
+- lensFeedback 只使用与 final lens 相同的反馈，避免“上一个训练动作的成败”污染另一个思维动作。
+- 如果模型没有收到某条历史反馈，质量门也不能用那条反馈惩罚输出；prompt context 和质量门必须使用同一个 memory selection。
 
 ### 9.2 三类上下文的区别
 
@@ -1189,6 +1218,7 @@ AI 输出应说明：
 | 用户删除/归档 | archived | 不进入模型上下文。 |
 
 MVP 当前模型只有 `active / needsReview / archived`，但产品语义上必须把“候选”和“已确认 active”分开处理。
+进入 `needsReview` 的原则不能只显示负反馈次数；Growth 必须展示最近一次 `not_applicable` / `misrecalled` 反馈的召回理由和用户备注，让用户知道复审依据是什么。
 
 ### 10.9 多规则沉淀后的调用策略
 
@@ -1264,8 +1294,11 @@ MVP 当前模型只有 `active / needsReview / archived`，但产品语义上必
 
 - 不能因为用户没提到规则，就断言用户不会。
 - 必须结合卡片、回答、任务、验证多次证据。
-- 必须允许用户标记“这条归因不准确”。
-- 被用户否认的归因不能继续强化长期画像。
+- 自动记录的练习证据必须写明本地匹配信号，例如命中的 action 或规则字段，并把 `matchSignal` 与 `attributionPolicyVersion` 结构化保存，便于后续复盘它为什么被归因为 practiced。
+- 训练摘要需要保留最新练习证据摘要，让原则资产列表能展示最近一次实践归因，而不是只展示计数。
+- 必须允许用户在看到最近一次实践归因的 Growth 原则资产行直接标记“这条归因不准确”。
+- 被用户否认的归因必须保留为 disputed practice evidence 以支持审计和导出，并在 Growth 原则资产行继续显示为“已否认归因”；但它不能进入 active practice evidence 查询、训练摘要计数、最近练习摘要或长期画像强化。
+- 如果后续验证再次命中同一原则的同一本地匹配信号，而该信号最近已被用户否认为误归因，系统不得自动生成新的 active practice evidence；判断时优先使用结构化 `matchSignal`，只对旧数据回退解析摘要文本，除非未来引入更强的结构化召回策略，能说明这次证据和上次被否认的信号不同。
 
 这部分是明思区别于普通日记总结工具的核心：它不只保存经验，而是追踪经验是否真的改变了用户行为。
 
@@ -1398,7 +1431,7 @@ MetricContribution:
 - 指标变化必须能跳回历史证据。
 - 正负贡献可以同时存在。
 - 用户可以标记归因不准确。
-- 被用户否认的归因不能继续影响后续长期画像。
+- 被用户否认的归因不能继续影响后续长期画像，但需要留在审计层，供用户和后续框架判断“系统曾经如何误归因”。
 
 ### 11.5 “AI 帮我对照自己资产”的使用点
 
@@ -1451,12 +1484,21 @@ MetricContribution:
 - `generateQuestions` 和 `generateQuests` 使用 `PrincipleRepository.activePrinciples()` 作为历史原则上下文，不只依赖当天原则候选。
 - `LocalPrincipleRetriever` 同时服务模型上下文和 UI 展示，保证“模型看到的原则”和“用户看到的原则”一致。
 - `PromptRun.contextRecordIds` 记录被召回原则 id，后续可用来补充召回理由和用户反馈。
+- Today 引用原则卡会展示每条原则的 `retrievalReason` 作为“召回依据”，用户在点“不适用”或“误召回”前可以先看到本地召回命中的理由。
+- `RetrievedPrinciple`、`PromptContextPayload.PrincipleContext` 和 `PrincipleRecallFeedback` 会同时保存机器可读的 `retrievalSignal`，用于说明这次召回命中的稳定本地信号，例如 `meeting ownership`。
+- Today 的“不适用”或“误召回”会关联同一日、同一 Prompt 的最近 `PromptRun`，把 `promptRunId` 和 `retrievalSignal` 写入 `PrincipleRecallFeedback`，并将该 PromptRun 标记为 `denied`，让 Prompt Asset 用户否认率来自真实召回纠正事件。
+- `LocalPrincipleRetriever.policyVersion` 为 `principle-retrieval.local-keyword-feedback.v3`：负向反馈带有非空 `retrievalSignal` 时，只惩罚同一原则下匹配该 signal 的后续召回；旧反馈行如果没有 signal，保留原则级惩罚作为兼容回退。
+- Today 的引用原则反馈提供可选备注输入，备注随 `PrincipleRecallFeedback.note` 持久化和导出，让后续原则修复能看到用户为什么否认该 signal。
+- Today 的引用原则卡和 Growth 的 needsReview 复审审计会把结构化 `retrievalSignal` 本地化展示为用户可读的“命中信号”，例如 `meeting ownership` 显示为“命中会议负责人”，避免用户只能阅读调试字符串。
+- Growth 原则训练摘要会展示最新负向召回反馈作为“复审依据”，并包含同一条用户可读命中信号，避免 needsReview 状态变成不可解释的后台计数。
+- ReviewQuests 的任务卡会基于现有 active principles 和任务文本做本地匹配，展示“训练原则”和命中的本地 action / criteria 信号，让用户在保存任务前看到这条任务预计训练哪条原则。这个提示只读、不提前写入 `PrinciplePracticeEvidence`，真正的训练证据仍等次日验证后产生。
+- 用户可以在 ReviewQuests 中把某个任务的预期训练原则从“自动判断”手动校准为某条 active principle；这个选择存入 `Quest.trainingPrincipleId`，通过现有 `QuestRow.rawPayloadJson` 持久化，不新增表结构迁移。
+- 次日验证归因时，如果 `trainingPrincipleId` 仍指向 active principle，系统只为该原则写入 verification-backed practice evidence，并把 `matchSignal` 记录为“用户选择”；如果选择已失效或为空，再回退到本地文本匹配。needsReview 原则不能作为手动训练目标。
+- `verifyQuest` Prompt Asset `1.6.0` 会收到同一条 expected training principle 上下文，并要求模型返回单独的 `expected_principle_practice_assessment` 审计字段，用于解释“预期原则是否真的被练到”；它不能直接创建或确认 `PrinciplePracticeEvidence`，证据写入仍由本地 AppStore 归因策略负责。
 
 后续升级：
 
-- UI 展示每条原则的召回原因，例如“命中会议负责人/验收标准”。
-- 用户可点“不适用”或“误召回”，反馈进入 PrincipleRetriever。
-- 任务保存后可显示“这条主线任务正在训练哪条原则”。
+- 可以继续增加更细的选择解释和撤销审计，例如记录“为什么用户把自动目标改成另一条原则”，但不应在任务保存当天提前生成 practice evidence。
 
 ## 12. 反信息茧房设计
 
@@ -1773,7 +1815,7 @@ Prompt 与上下文工程的 MVP 验收标准：
 - `DirectGLMClient` 优先使用结构化 JSON 上下文，保留 legacy `[String: String]` 渲染作为兼容层。
 - `organizeCards` 不注入原则资产；`generateQuestions` / `generateQuests` 注入最多 3 条相关 active 原则。
 - `extractPrinciple` 注入显式 `existingPrinciples` 去重上下文，并把相关原则 ID 记入 `contextRecordIDs`。
-- `verifyQuest` 已用结构化上下文记录任务验证输入。
+- `verifyQuest` 已用结构化上下文记录任务验证输入，并能接收该任务预计训练的 active principle 标题、id 和匹配信号。
 - Project prompt 输出已有严格解析基础：Project link suggestion、Project candidate、Project insight、Project merge candidate 缺少 source id、source refs、before/after 或合法 project id 时会被拒绝或过滤。
 
 P0：
@@ -1844,7 +1886,7 @@ Prompt Asset 包含：
 - 每次 Prompt 修改必须能跑固定 eval。
 - 每个生产 PromptRun 必须记录版本。
 - Parser 不支持的新 schema 不能上线。
-- 失败率、空结果率、用户否认率必须能被统计。
+- 失败率、空结果率、用户否认率必须能被统计；用户否认率不应只靠手工审计更新，真实的原则召回“不适用 / 误召回”反馈也必须回写到关联 PromptRun。
 
 ### 21.2 Lens Asset
 
@@ -1870,7 +1912,9 @@ Principle Retrieval Policy 决定“规则什么时候进入上下文”。
 - 每个 Prompt 的召回上限。
 - active / needsReview / archived 的使用规则。
 - 关键词、embedding、用户反馈的权重。
+- 结构化 `retrievalSignal` 的生成规则。
 - 不适用和误召回反馈的惩罚规则。
+- 空 `retrievalSignal` 的旧数据兼容回退规则。
 
 目标不是多召回，而是少而准：
 

@@ -1,9 +1,10 @@
 import Foundation
 
-enum TodayAIParsingError: Error {
+enum TodayAIParsingError: Error, Equatable {
     case missingResponseContent
     case invalidJSON
     case emptyResult
+    case qualityGateFailed([String])
 }
 
 struct GrowthReportResult: Hashable {
@@ -49,12 +50,28 @@ struct TodayAIResponseParser {
 
             return ReflectionQuestion(
                 question: question,
-                whyItMatters: dto.whyThisMatters.trimmed.ifEmpty("帮助把今天的判断转成可验证行动。")
+                whyItMatters: dto.whyThisMatters.trimmed.ifEmpty("帮助把今天的判断转成可验证行动。"),
+                whyNow: dto.whyNow.trimmed.ifEmpty(nil),
+                expectedUpdate: dto.expectedUpdate.trimmed.ifEmpty(nil),
+                proceedWhen: dto.proceedWhen.trimmed.ifEmpty(nil),
+                evidenceGapType: EvidenceGapType(aiRawValue: dto.evidenceGapType),
+                answerUse: QuestionAnswerUse(aiRawValue: dto.answerUse),
+                lensMove: QuestionLensMove(aiRawValue: dto.lensMove),
+                sourceCardTitles: Self.normalizedTitles(dto.sourceCardTitles),
+                calibrationTarget: dto.calibrationTarget.trimmed.ifEmpty(nil)
             )
         }
 
         guard !questions.isEmpty else { throw TodayAIParsingError.emptyResult }
         return questions
+    }
+
+    fileprivate static func normalizedTitles(_ titles: [String]) -> [String] {
+        titles.reduce(into: [String]()) { result, title in
+            let trimmed = title.trimmed
+            guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
+            result.append(trimmed)
+        }
     }
 
     func parseQuests(from data: Data) throws -> [Quest] {
@@ -88,7 +105,8 @@ struct TodayAIResponseParser {
         return VerifyQuestResult(
             calibrationNote: note,
             likelyIssue: dto.likelyIssue.trimmed.ifEmpty(nil),
-            recommendation: dto.recommendation.trimmed.ifEmpty(nil)
+            recommendation: dto.recommendation.trimmed.ifEmpty(nil),
+            expectedPrinciplePracticeAssessment: dto.expectedPrinciplePracticeAssessment.trimmed.ifEmpty(nil)
         )
     }
 
@@ -287,16 +305,40 @@ private struct QuestionsResponseDTO: Decodable {
 private struct QuestionDTO: Decodable {
     let question: String
     let whyThisMatters: String
+    let whyNow: String
+    let expectedUpdate: String
+    let proceedWhen: String
+    let evidenceGapType: String
+    let answerUse: String
+    let lensMove: String
+    let sourceCardTitles: [String]
+    let calibrationTarget: String
 
     private enum CodingKeys: String, CodingKey {
         case question
         case whyThisMatters
+        case whyNow
+        case expectedUpdate
+        case proceedWhen
+        case evidenceGapType
+        case answerUse
+        case lensMove
+        case sourceCardTitles
+        case calibrationTarget
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         question = try container.decodeIfPresent(String.self, forKey: .question) ?? ""
         whyThisMatters = try container.decodeIfPresent(String.self, forKey: .whyThisMatters) ?? ""
+        whyNow = try container.decodeIfPresent(String.self, forKey: .whyNow) ?? ""
+        expectedUpdate = try container.decodeIfPresent(String.self, forKey: .expectedUpdate) ?? ""
+        proceedWhen = try container.decodeIfPresent(String.self, forKey: .proceedWhen) ?? ""
+        evidenceGapType = try container.decodeIfPresent(String.self, forKey: .evidenceGapType) ?? ""
+        answerUse = try container.decodeIfPresent(String.self, forKey: .answerUse) ?? ""
+        lensMove = try container.decodeIfPresent(String.self, forKey: .lensMove) ?? ""
+        sourceCardTitles = try container.decodeIfPresent([String].self, forKey: .sourceCardTitles) ?? []
+        calibrationTarget = try container.decodeIfPresent(String.self, forKey: .calibrationTarget) ?? ""
     }
 }
 
@@ -326,6 +368,9 @@ private struct QuestDTO: Decodable {
     let completionCriteria: String
     let expectedResistance: String
     let reflectionQuestion: String
+    let calibrationTarget: String
+    let lensMove: String
+    let linkedCards: [String]
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -334,6 +379,9 @@ private struct QuestDTO: Decodable {
         case completionCriteria
         case expectedResistance
         case reflectionQuestion
+        case calibrationTarget
+        case lensMove
+        case linkedCards
     }
 
     init(from decoder: Decoder) throws {
@@ -344,6 +392,9 @@ private struct QuestDTO: Decodable {
         completionCriteria = try container.decodeIfPresent(String.self, forKey: .completionCriteria) ?? ""
         expectedResistance = try container.decodeIfPresent(String.self, forKey: .expectedResistance) ?? ""
         reflectionQuestion = try container.decodeIfPresent(String.self, forKey: .reflectionQuestion) ?? ""
+        calibrationTarget = try container.decodeIfPresent(String.self, forKey: .calibrationTarget) ?? ""
+        lensMove = try container.decodeIfPresent(String.self, forKey: .lensMove) ?? ""
+        linkedCards = try container.decodeIfPresent([String].self, forKey: .linkedCards) ?? []
     }
 
     func domainQuest(defaultType: QuestType) -> Quest? {
@@ -358,6 +409,9 @@ private struct QuestDTO: Decodable {
             completionCriteria: completionCriteria,
             expectedResistance: expectedResistance.trimmed.ifEmpty("容易被临时事务打断。"),
             reflectionQuestion: reflectionQuestion.trimmed.ifEmpty("完成后，哪个关键判断被验证了？"),
+            calibrationTarget: calibrationTarget.trimmed.ifEmpty(nil),
+            lensMove: QuestionLensMove(aiRawValue: lensMove),
+            sourceCardTitles: TodayAIResponseParser.normalizedTitles(linkedCards),
             status: .draft
         )
     }
@@ -371,11 +425,13 @@ private struct VerificationResponseDTO: Decodable {
     let calibrationNote: String
     let likelyIssue: String
     let recommendation: String
+    let expectedPrinciplePracticeAssessment: String
 
     private enum CodingKeys: String, CodingKey {
         case calibrationNote
         case likelyIssue
         case recommendation
+        case expectedPrinciplePracticeAssessment
     }
 
     init(from decoder: Decoder) throws {
@@ -383,6 +439,10 @@ private struct VerificationResponseDTO: Decodable {
         calibrationNote = try container.decodeIfPresent(String.self, forKey: .calibrationNote) ?? ""
         likelyIssue = try container.decodeIfPresent(String.self, forKey: .likelyIssue) ?? ""
         recommendation = try container.decodeIfPresent(String.self, forKey: .recommendation) ?? ""
+        expectedPrinciplePracticeAssessment = try container.decodeIfPresent(
+            String.self,
+            forKey: .expectedPrinciplePracticeAssessment
+        ) ?? ""
     }
 }
 
@@ -880,6 +940,7 @@ private struct PrincipleDTO: Decodable {
     let actions: [String]
     let successCriteria: String
     let exceptions: String
+    let sourceCardTitles: [String]
 
     private enum CodingKeys: String, CodingKey {
         case title
@@ -888,6 +949,7 @@ private struct PrincipleDTO: Decodable {
         case actions
         case successCriteria
         case exceptions
+        case sourceCardTitles
     }
 
     init(from decoder: Decoder) throws {
@@ -898,6 +960,7 @@ private struct PrincipleDTO: Decodable {
         actions = try container.decodeIfPresent([String].self, forKey: .actions) ?? []
         successCriteria = try container.decodeIfPresent(String.self, forKey: .successCriteria) ?? ""
         exceptions = try container.decodeIfPresent(String.self, forKey: .exceptions) ?? ""
+        sourceCardTitles = try container.decodeIfPresent([String].self, forKey: .sourceCardTitles) ?? []
     }
 
     var domainPrinciple: PrincipleAsset? {
@@ -910,7 +973,8 @@ private struct PrincipleDTO: Decodable {
             triggerContext: triggerContext.trimmed.ifEmpty("适用于类似的复盘场景。"),
             actions: cleanActions,
             successCriteria: successCriteria.trimmed.ifEmpty("行动结果可被检查。"),
-            exceptions: exceptions.trimmed.ifEmpty("低风险场景可简化。")
+            exceptions: exceptions.trimmed.ifEmpty("低风险场景可简化。"),
+            sourceCardTitles: TodayAIResponseParser.normalizedTitles(sourceCardTitles)
         )
     }
 }

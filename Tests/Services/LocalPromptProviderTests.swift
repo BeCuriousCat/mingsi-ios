@@ -41,10 +41,128 @@ final class LocalPromptProviderTests: XCTestCase {
 
         XCTAssertTrue(text.contains("lens-specific"))
         XCTAssertTrue(text.contains("Do not ask generic self-help questions"))
-        XCTAssertTrue(text.contains("challenge a hidden assumption"))
+        XCTAssertTrue(text.contains("evidence gap"))
+        XCTAssertTrue(text.contains("disconfirming signal"))
         XCTAssertTrue(text.contains("\"questions\""))
         XCTAssertTrue(text.contains("\"expected_answer_type\""))
         XCTAssertTrue(text.contains("deep 4-5"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresCoachQualityEvidenceGapAndCalibrationQuestions() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("evidence gap"))
+        XCTAssertTrue(text.contains("disconfirming signal"))
+        XCTAssertTrue(text.contains("feedback loop"))
+        XCTAssertTrue(text.contains("second-order consequence"))
+        XCTAssertTrue(text.contains("judgment_calibration"))
+        XCTAssertTrue(text.contains("next calibration signal"))
+        XCTAssertTrue(text.contains("Do not ask questions that only invite opinions"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresStructuredEvidenceGapTaxonomy() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"evidence_gap_type\""))
+        XCTAssertTrue(text.contains("missing_observation"))
+        XCTAssertTrue(text.contains("missing_baseline"))
+        XCTAssertTrue(text.contains("missing_causal_link"))
+        XCTAssertTrue(text.contains("missing_counterexample"))
+        XCTAssertTrue(text.contains("missing_constraint"))
+        XCTAssertTrue(text.contains("missing_calibration_signal"))
+        XCTAssertTrue(text.contains("none"))
+        XCTAssertTrue(text.contains("Do not label every question as an evidence gap"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresAnswerUseAndRejectsPseudoDepth() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"answer_use\""))
+        XCTAssertTrue(text.contains("update_judgment"))
+        XCTAssertTrue(text.contains("choose_action"))
+        XCTAssertTrue(text.contains("test_assumption"))
+        XCTAssertTrue(text.contains("collect_evidence"))
+        XCTAssertTrue(text.contains("watch_calibration_signal"))
+        XCTAssertTrue(text.contains("Do not ask aesthetically smart questions"))
+        XCTAssertTrue(text.contains("If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresLensMoveTaxonomy() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"lens_move\""))
+        XCTAssertTrue(text.contains("fact_interpretation_split"))
+        XCTAssertTrue(text.contains("alternative_explanation"))
+        XCTAssertTrue(text.contains("leverage_tradeoff"))
+        XCTAssertTrue(text.contains("constraint_decomposition"))
+        XCTAssertTrue(text.contains("feedback_loop"))
+        XCTAssertTrue(text.contains("delayed_effect"))
+        XCTAssertTrue(text.contains("second_order_consequence"))
+        XCTAssertTrue(text.contains("prediction_calibration"))
+        XCTAssertTrue(text.contains("Each question must declare the lens-specific reasoning move it trains"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresSourceCardGrounding() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"source_card_titles\""))
+        XCTAssertTrue(text.contains("Every question must cite at least one confirmed card title"))
+        XCTAssertTrue(text.contains("Do not invent source_card_titles"))
+        XCTAssertTrue(text.contains("If a question cannot be tied to a confirmed card, replace it"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresCalibrationTarget() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"calibration_target\""))
+        XCTAssertTrue(text.contains("Every question must name the judgment or assumption it will calibrate"))
+        XCTAssertTrue(text.contains("Do not use vague calibration targets"))
+        XCTAssertTrue(text.contains("If the target cannot be stated, replace the question"))
+    }
+
+    func testGenerateQuestionsTemplate_requiresFunctionalCoachFields() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("\"why_now\""))
+        XCTAssertTrue(text.contains("\"expected_update\""))
+        XCTAssertTrue(text.contains("\"proceed_when\""))
+        XCTAssertTrue(text.contains("why this question is the right next move"))
+        XCTAssertTrue(text.contains("what judgment, action, evidence plan, or calibration signal the answer is expected to change"))
+        XCTAssertTrue(text.contains("what kind of answer is sufficient to move toward action"))
+    }
+
+    func testGenerateQuestionsTemplate_usesLensFeedbackToTuneFutureQuestions() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("lensFeedback"))
+        XCTAssertTrue(text.contains("reinforce"))
+        XCTAssertTrue(text.contains("avoid"))
+        XCTAssertTrue(text.contains("verified outcomes"))
+        XCTAssertTrue(text.contains("lensMoves"))
+        XCTAssertTrue(text.contains("Do not repeat a lens move that produced low-value or uncalibratable work"))
+    }
+
+    func testGenerateQuestionsTemplate_usesCoachLedTrainingPlanDimensions() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("trainingPrescription"))
+        XCTAssertTrue(text.contains("coach plan, not a lens picker"))
+        XCTAssertTrue(text.contains("primaryTrainingDimension"))
+        XCTAssertTrue(text.contains("secondaryTrainingDimensions"))
+        XCTAssertTrue(text.contains("baselineTrainingDimensions"))
+        XCTAssertTrue(text.contains("The first question must train primaryTrainingDimension"))
+        XCTAssertTrue(text.contains("Every question must serve either primaryTrainingDimension or one baselineTrainingDimension"))
+        XCTAssertTrue(text.contains("Use selectedLens/finalTrainingLens to choose lens_move"))
+        XCTAssertTrue(text.contains("Do not treat a user override as proof that the coach diagnosis was wrong"))
     }
 
     func testGenerateQuestsTemplate_requiresOneMainQuestAndVerifiableCriteria() {
@@ -59,6 +177,56 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("rather than inventing a task"))
     }
 
+    func testGenerateQuestsTemplate_designsCalibrationTasksInsteadOfGenericTodos() {
+        let template = provider.template(for: .generateQuests, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("calibration instrument"))
+        XCTAssertTrue(text.contains("evidence gap"))
+        XCTAssertTrue(text.contains("observable calibration signal"))
+        XCTAssertTrue(text.contains("\"calibration_target\""))
+        XCTAssertTrue(text.contains("\"lens_move\""))
+        XCTAssertTrue(text.contains("Use reflectionAnswers calibrationTarget"))
+        XCTAssertTrue(text.contains("Do not invent vague calibration targets"))
+        XCTAssertTrue(text.contains("rejected_low_value_tasks"))
+        XCTAssertTrue(text.contains("system_thinking"))
+        XCTAssertTrue(text.contains("judgment_calibration"))
+    }
+
+    func testGenerateQuestsTemplate_usesLensFeedbackToAvoidLowValueQuestDesigns() {
+        let template = provider.template(for: .generateQuests, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("lensFeedback"))
+        XCTAssertTrue(text.contains("verified lens outcomes"))
+        XCTAssertTrue(text.contains("lensMoves"))
+        XCTAssertTrue(text.contains("avoid repeating quest patterns"))
+        XCTAssertTrue(text.contains("Reinforce lensMoves that produced high-value calibration evidence"))
+        XCTAssertTrue(text.contains("make the same lensMoves smaller, more observable"))
+    }
+
+    func testVerifyQuestTemplate_requiresPredictionEvidenceAndJudgmentUpdate() {
+        let template = provider.template(for: .verifyQuest, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("original prediction"))
+        XCTAssertTrue(text.contains("actual evidence"))
+        XCTAssertTrue(text.contains("judgment update"))
+        XCTAssertTrue(text.contains("evidence gained"))
+        XCTAssertTrue(text.contains("observable evidence"))
+        XCTAssertTrue(text.contains("completion criteria"))
+        XCTAssertTrue(text.contains("acceptance criteria"))
+        XCTAssertTrue(text.contains("next calibration"))
+        XCTAssertTrue(text.contains("observable signal to watch"))
+        XCTAssertTrue(text.contains("do not return generic encouragement"))
+        XCTAssertTrue(text.contains("targetJudgment"))
+        XCTAssertTrue(text.contains("Compare targetJudgment with actual evidence"))
+        XCTAssertTrue(text.contains("trainingPrinciple"))
+        XCTAssertTrue(text.contains("expected principle was actually practiced"))
+        XCTAssertTrue(text.contains("\"expected_principle_practice_assessment\""))
+        XCTAssertTrue(text.contains("Do not use expected_principle_practice_assessment as practice evidence"))
+    }
+
     func testExtractPrincipleTemplate_rejectsSituationalLessonsAndRequiresBehaviorRule() {
         let template = provider.template(for: .extractPrinciple, mode: .standard)
         let text = template.userText
@@ -68,6 +236,12 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("behavior rule"))
         XCTAssertTrue(text.contains("\"principle_candidate\""))
         XCTAssertTrue(text.contains("\"source_card_titles\""))
+        XCTAssertTrue(text.contains("exact titles from confirmedCards"))
+        XCTAssertTrue(text.contains("Do not invent source_card_titles"))
+        XCTAssertTrue(text.contains("return principle_candidate: null"))
+        XCTAssertTrue(text.contains("at least two concrete actions"))
+        XCTAssertTrue(text.contains("observable evidence"))
+        XCTAssertTrue(text.contains("Do not return vague slogans"))
     }
 
     func testEveryPromptID_everySessionMode_returnsNonEmptyTemplate() {
@@ -97,28 +271,236 @@ final class LocalPromptProviderTests: XCTestCase {
     func testGenerateQuestionsCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.0.0")
-        XCTAssertEqual(current.rollbackTargetVersion, "0.9.0")
+        XCTAssertEqual(current.version, "1.7.0")
+        XCTAssertEqual(current.outputSchemaVersion, 6)
+        XCTAssertEqual(current.rollbackTargetVersion, "1.6.0")
     }
 
     func testGenerateQuestionsRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.6.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.6.0")
+        XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
+        XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
+        XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
+        XCTAssertEqual(historical?.outputSchemaVersion, 6)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.5.0")
+        XCTAssertNotEqual(historical?.userText, current.userText)
+        XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"answer_use\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"lens_move\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"source_card_titles\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"calibration_target\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("primaryTrainingDimension") ?? true)
+    }
+
+    func testGenerateQuestionsV150HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.5.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.5.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 5)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.4.0")
+        XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"answer_use\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"lens_move\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"source_card_titles\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"calibration_target\"") ?? true)
+    }
+
+    func testGenerateQuestionsV140HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.4.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.4.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 4)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.3.0")
+        XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"answer_use\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"lens_move\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"source_card_titles\"") ?? true)
+    }
+
+    func testGenerateQuestionsV130HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.3.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.3.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 3)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.2.0")
+        XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"answer_use\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"lens_move\"") ?? true)
+        XCTAssertFalse(historical?.userText.contains("\"source_card_titles\"") ?? true)
+    }
+
+    func testGenerateQuestionsV120HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.2.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.2.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 2)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.1.0")
+        XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"answer_use\"") ?? true)
+        XCTAssertFalse(historical?.userText.contains("\"lens_move\"") ?? true)
+    }
+
+    func testGenerateQuestionsV110HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.1.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.1.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 1)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.0.0")
+        XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"evidence_gap_type\"") ?? true)
+    }
+
+    func testGenerateQuestionsV100HistoricalPromptAsset_stillResolvesForRollbackHistory() {
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.0.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.0.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 1)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "0.9.0")
+        XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
+    }
+
+    func testGenerateQuestionsV090HistoricalPromptAsset_stillResolvesForRollbackHistory() {
         let historical = provider.template(for: .generateQuestions, mode: .standard, version: "0.9.0")
 
         XCTAssertNotNil(historical)
         XCTAssertEqual(historical?.version, "0.9.0")
+        XCTAssertNil(historical?.rollbackTargetVersion)
+        XCTAssertTrue(historical?.userText.contains("Generate concrete reflection questions") ?? false)
+    }
+
+    func testGenerateQuestsCurrentTemplate_declaresLocalRollbackTarget() {
+        let current = provider.template(for: .generateQuests, mode: .standard)
+
+        XCTAssertEqual(current.version, "1.3.0")
+        XCTAssertEqual(current.outputSchemaVersion, 3)
+        XCTAssertEqual(current.rollbackTargetVersion, "1.2.0")
+    }
+
+    func testGenerateQuestsRollbackTarget_resolvesHistoricalPromptAsset() {
+        let current = provider.template(for: .generateQuests, mode: .standard)
+        let historical = provider.template(for: .generateQuests, mode: .standard, version: "1.2.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.2.0")
+        XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
+        XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
+        XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
+        XCTAssertEqual(historical?.outputSchemaVersion, 2)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.1.0")
+        XCTAssertNotEqual(historical?.userText, current.userText)
+        XCTAssertTrue(historical?.userText.contains("Generate tomorrow's quests") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"calibration_target\"") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"lens_move\"") ?? true)
+
+        let prior = provider.template(for: .generateQuests, mode: .standard, version: "1.1.0")
+        XCTAssertEqual(prior?.version, "1.1.0")
+        XCTAssertEqual(prior?.rollbackTargetVersion, "1.0.0")
+        XCTAssertFalse(prior?.userText.contains("\"calibration_target\"") ?? true)
+    }
+
+    func testVerifyQuestCurrentTemplate_declaresLocalRollbackTarget() {
+        let current = provider.template(for: .verifyQuest, mode: .standard)
+
+        XCTAssertEqual(current.version, "1.6.0")
+        XCTAssertEqual(current.outputSchemaVersion, 2)
+        XCTAssertEqual(current.rollbackTargetVersion, "1.5.0")
+    }
+
+    func testVerifyQuestRollbackTarget_resolvesHistoricalPromptAsset() {
+        let current = provider.template(for: .verifyQuest, mode: .standard)
+        let historical = provider.template(for: .verifyQuest, mode: .standard, version: "1.5.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.5.0")
+        XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
+        XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
+        XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
+        XCTAssertEqual(historical?.outputSchemaVersion, 1)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.4.0")
+        XCTAssertNotEqual(historical?.userText, current.userText)
+        XCTAssertTrue(historical?.userText.contains("trainingPrinciple") ?? false)
+        XCTAssertFalse(historical?.userText.contains("\"expected_principle_practice_assessment\"") ?? true)
+
+        let prior140 = provider.template(for: .verifyQuest, mode: .standard, version: "1.4.0")
+        XCTAssertEqual(prior140?.version, "1.4.0")
+        XCTAssertEqual(prior140?.rollbackTargetVersion, "1.3.0")
+        XCTAssertFalse(prior140?.userText.contains("trainingPrinciple") ?? true)
+        XCTAssertFalse(prior140?.userText.contains("generic encouragement") ?? true)
+
+        let prior130 = provider.template(for: .verifyQuest, mode: .standard, version: "1.3.0")
+        XCTAssertEqual(prior130?.version, "1.3.0")
+        XCTAssertEqual(prior130?.rollbackTargetVersion, "1.2.0")
+        XCTAssertTrue(historical?.userText.contains("Review yesterday's quest") ?? false)
+        XCTAssertTrue(historical?.userText.contains("targetJudgment") ?? false)
+        XCTAssertTrue(historical?.userText.contains("observable evidence") ?? false)
+        XCTAssertTrue(historical?.userText.contains("acceptance criteria evidence") ?? false)
+        XCTAssertTrue(historical?.userText.contains("generic encouragement") ?? false)
+
+        let prior120 = provider.template(for: .verifyQuest, mode: .standard, version: "1.2.0")
+        XCTAssertEqual(prior120?.version, "1.2.0")
+        XCTAssertEqual(prior120?.rollbackTargetVersion, "1.1.0")
+        XCTAssertTrue(prior120?.userText.contains("targetJudgment") ?? false)
+        XCTAssertFalse(prior120?.userText.contains("observable evidence") ?? true)
+
+        let prior110 = provider.template(for: .verifyQuest, mode: .standard, version: "1.1.0")
+        XCTAssertEqual(prior110?.version, "1.1.0")
+        XCTAssertEqual(prior110?.rollbackTargetVersion, "1.0.0")
+        XCTAssertFalse(prior110?.userText.contains("targetJudgment") ?? true)
+
+        let prior100 = provider.template(for: .verifyQuest, mode: .standard, version: "1.0.0")
+        XCTAssertEqual(prior100?.version, "1.0.0")
+        XCTAssertNil(prior100?.rollbackTargetVersion)
+    }
+
+    func testExtractPrincipleCurrentTemplate_declaresLocalRollbackTarget() {
+        let current = provider.template(for: .extractPrinciple, mode: .standard)
+
+        XCTAssertEqual(current.version, "1.2.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.1.0")
+        XCTAssertTrue(current.userText.contains("exact titles from confirmedCards"))
+        XCTAssertTrue(current.userText.contains("Do not invent source_card_titles"))
+        XCTAssertTrue(current.userText.contains("at least two concrete actions"))
+    }
+
+    func testExtractPrincipleRollbackTarget_resolvesHistoricalPromptAsset() {
+        let current = provider.template(for: .extractPrinciple, mode: .standard)
+        let historical = provider.template(for: .extractPrinciple, mode: .standard, version: "1.1.0")
+
+        XCTAssertNotNil(historical)
+        XCTAssertEqual(historical?.version, "1.1.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, current.outputSchemaVersion)
-        XCTAssertNil(historical?.rollbackTargetVersion)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.0.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
-        XCTAssertTrue(historical?.userText.contains("Generate concrete reflection questions") ?? false)
+        XCTAssertTrue(historical?.userText.contains("\"source_card_titles\"") ?? false)
+        XCTAssertTrue(historical?.userText.contains("exact titles from confirmedCards") ?? false)
+        XCTAssertFalse(historical?.userText.contains("at least two concrete actions") ?? true)
+
+        let prior100 = provider.template(for: .extractPrinciple, mode: .standard, version: "1.0.0")
+        XCTAssertEqual(prior100?.version, "1.0.0")
+        XCTAssertNil(prior100?.rollbackTargetVersion)
+        XCTAssertFalse(prior100?.userText.contains("exact titles from confirmedCards") ?? true)
     }
 
     func testTemplateVersionLookup_returnsNilForUnknownHistoricalAsset() {
         XCTAssertNil(provider.template(for: .generateQuestions, mode: .standard, version: "0.8.0"))
         XCTAssertNil(provider.template(for: .generateQuests, mode: .standard, version: "0.9.0"))
+        XCTAssertNil(provider.template(for: .verifyQuest, mode: .standard, version: "0.9.0"))
+        XCTAssertNil(provider.template(for: .extractPrinciple, mode: .standard, version: "0.9.0"))
     }
 
     func testModeGuidance_changesBySessionMode() {
