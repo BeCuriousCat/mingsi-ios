@@ -1474,6 +1474,15 @@ final class AppStore: ObservableObject {
         questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    var coachAnswerFeedbackPreview: CoachTurnState? {
+        guard todayDraft.state == .answerQuestions, hasAnsweredReflectionQuestion else { return nil }
+        return CoachTurnPolicy().updateAfterAnswers(
+            cards: confirmedCardsForAI,
+            questions: questions,
+            previous: coachTurnState
+        )
+    }
+
     var mainQuest: Quest? {
         quests.first { $0.type == .main }
     }

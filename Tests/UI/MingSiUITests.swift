@@ -127,6 +127,20 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
     }
 
+    func testTodayAnswerQuestionsShowsCoachGapPreviewAfterTyping() throws {
+        let app = seededTodayApp(stage: "answer_questions")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        typeFirstQuestionAnswer("先让 Alex 写清验收标准。", in: app)
+
+        XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
+        let gapPreview = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "观察事实")
+        ).firstMatch
+        XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsCanNavigateBackToThinkingCardsWhileAnswerFieldIsActive() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()

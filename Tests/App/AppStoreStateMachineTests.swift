@@ -1455,6 +1455,40 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
 
+    func testAnswerQuestions_previewCoachGapFeedbackWhileTyping() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        store.updateQuestionAnswer(
+            questionID: question.id,
+            answer: "先让 Alex 写清验收标准。"
+        )
+
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
+        XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
+    }
+
     func testSelectLens_recordsUserOverrideSeparatelyFromCoachRecommendation() async throws {
         let client = RecordingLLMClient(response: Self.opposingViewQuestionsResponse)
         store = AppStore(

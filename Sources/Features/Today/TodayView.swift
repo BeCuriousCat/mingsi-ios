@@ -466,7 +466,9 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("回答问题", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
 
-            if let teachingPlan = store.coachTurnState.map({
+            if let preview = store.coachAnswerFeedbackPreview {
+                answerFeedbackPreviewView(preview)
+            } else if let teachingPlan = store.coachTurnState.map({
                 CoachTeachingPolicy().makePlan(
                     turn: $0,
                     prescription: store.trainingPrescription
@@ -488,6 +490,30 @@ struct TodayView: View {
                 QuestionCardView(question: question, answer: bindingForQuestion(questionID: question.id, fallbackIndex: index))
             }
         }
+    }
+
+    private func answerFeedbackPreviewView(_ turn: CoachTurnState) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: turn.readiness == .ready ? "当前回答" : "当前仍缺",
+                body: turn.readiness == .ready ? "已补上本轮关键缺口，可以转成明天可验证的行动。" : answerFeedbackGapLine(for: turn),
+                accent: turn.readiness == .ready ? DS.success : DS.brick
+            )
+            teachingRouteView(
+                CoachTeachingPolicy().makePlan(
+                    turn: turn,
+                    prescription: store.trainingPrescription
+                )
+            )
+        }
+    }
+
+    private func answerFeedbackGapLine(for turn: CoachTurnState) -> String {
+        let gaps = turn.openEvidenceGaps
+            .filter { $0 != .none }
+            .map(\.displayTitle)
+        let gapLine = gaps.isEmpty ? "本轮训练缺口还没有关闭" : gaps.joined(separator: "、")
+        return "\(gapLine)。\(turn.reason)"
     }
 
     // MARK: - Review Quests
