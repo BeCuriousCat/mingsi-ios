@@ -68,15 +68,12 @@ final class MingSiUITests: XCTestCase {
         scrollToElement(overrideAction, in: app)
         overrideAction.tap()
 
-        XCTAssertTrue(app.staticTexts["改选审计"].waitForExistence(timeout: 4))
-        let finalLensAudit = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "改选为「反方视角」")
-        ).firstMatch
-        XCTAssertTrue(finalLensAudit.waitForExistence(timeout: 4))
-        let coachAudit = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "教练推荐「证据校验」仍保留为审计")
-        ).firstMatch
-        XCTAssertTrue(coachAudit.waitForExistence(timeout: 4))
+        let overrideAudit = app.descendants(matching: .any)["today.training-prescription.decision-override-audit"]
+        scrollToElement(overrideAudit, in: app)
+        XCTAssertTrue(overrideAudit.waitForExistence(timeout: 4))
+        XCTAssertTrue(overrideAudit.label.contains("改选为「反方视角」"))
+        XCTAssertTrue(overrideAudit.label.contains("教练推荐「证据校验」"))
+        XCTAssertTrue(overrideAudit.label.contains("仍保留为审计"))
     }
 
     func testTodayReviewCardsSeedExposesActionAndCardControls() throws {
@@ -330,7 +327,10 @@ final class MingSiUITests: XCTestCase {
 
     private func seededTodayApp(stage: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = "今天用 UI Test 验证 Today 自动化入口。"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = """
+        事实：会议结束后没有明确负责人。
+        风险：验收标准缺失会导致明天返工。
+        """
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = stage
         app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
@@ -356,13 +356,24 @@ final class MingSiUITests: XCTestCase {
         let scrollView = scrollViews.firstMatch
         XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
 
-        var remainingScrolls = 8
-        while !element.exists && remainingScrolls > 0 {
-            scrollView.swipeUp()
+        var remainingScrolls = 10
+        while (!element.exists || !isElementInTappableScrollArea(element, app: app)) && remainingScrolls > 0 {
+            if element.exists, element.frame.midY < app.frame.height * 0.24 {
+                scrollView.swipeDown()
+            } else {
+                scrollView.swipeUp()
+            }
             remainingScrolls -= 1
         }
 
         XCTAssertTrue(element.waitForExistence(timeout: 4))
+        XCTAssertTrue(isElementInTappableScrollArea(element, app: app))
+    }
+
+    private func isElementInTappableScrollArea(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        guard element.exists, !element.frame.isEmpty else { return false }
+        return element.frame.minY >= app.frame.minY + 44 &&
+            element.frame.midY <= app.frame.height * 0.68
     }
 
     private func typeFirstQuestionAnswer(_ text: String, in app: XCUIApplication) {

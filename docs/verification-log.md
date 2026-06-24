@@ -6441,3 +6441,40 @@ Result:
 Residual risk:
 
 - This slice does not introduce a general chat UI, LangChain/LangGraph, remote prompt or lens marketplace behavior, subscription/sync behavior, Growth score redesign, or broad UI redesign.
+
+## 2026-06-25: Coach Teaching UX Alpha Override Audit Verification
+
+Scope:
+
+- Verify that the coach teaching UX alpha keeps the coach recommendation visible as an audit boundary when the user overrides the recommended thinking lens.
+- Stabilize the Today UI test fixture so the training prescription scenario uses structured fact/risk input and taps elements outside the fixed bottom action bar.
+
+Changed areas:
+
+- `Sources/Features/Today/TodayView.swift`
+- `Tests/App/AppStoreStateMachineTests.swift`
+- `Tests/UI/MingSiUITests.swift`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testSelectLens_selectThinkingLensRecordsUserOverrideForAlternativeBuiltinLens
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests/MingSiUITests/testTodayTrainingPrescriptionOverrideShowsCoachAuditBoundary
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiUITests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/AppStoreStateMachineTests/testTodayAutomationIdentifiers_areStableForRenderedWalkthroughControls
+git diff --check
+```
+
+Result:
+
+- Focused user-override state machine test passed with 1 test and 0 failures.
+- Focused Today override audit UI test passed with 1 test and 0 failures after first proving the missing decision-point audit anchor.
+- Full `MingSiUITests` passed with 22 tests and 0 failures.
+- Full `MingSiTests` passed with 742 tests, 1 skipped, and 0 failures.
+- Stable Today automation ID focused test passed with 1 test and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This slice improves the coach override boundary and UI automation reliability. It does not introduce a broader agentic chat engine, remote marketplace/sync behavior, or production onboarding/open-source packaging.

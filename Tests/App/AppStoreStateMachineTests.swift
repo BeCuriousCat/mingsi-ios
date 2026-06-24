@@ -1400,6 +1400,23 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(contextPrescription.source, .userOverride)
     }
 
+    func testSelectLens_selectThinkingLensRecordsUserOverrideForAlternativeBuiltinLens() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.selectThinkingLens(.opposingView)
+
+        let prescription = try XCTUnwrap(store.trainingPrescription)
+        XCTAssertEqual(prescription.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
+        XCTAssertEqual(prescription.userSelectedLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(prescription.finalLensId, ThinkingLens.opposingView.rawValue)
+        XCTAssertEqual(prescription.source, .userOverride)
+        XCTAssertTrue(prescription.overrideBoundary.contains(ThinkingLens.evidenceCheck.rawValue))
+        XCTAssertTrue(prescription.overrideBoundary.contains(ThinkingLens.opposingView.rawValue))
+    }
+
     func testSelectLens_skipTrainingPrescriptionKeepsCoachFocusAndRecordsSkip() async throws {
         try await advanceTo(.reviewCards)
         store.thinkingCards = coachPrescriptionEvidenceCards()
@@ -8298,6 +8315,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.cardExcludeAction, "today.card.exclude-action")
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionAcceptAction, "today.training-prescription.accept-action")
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionSkipAction, "today.training-prescription.skip-action")
+        XCTAssertEqual(TodayAutomationID.trainingPrescriptionOverrideAudit, "today.training-prescription.override-audit")
+        XCTAssertEqual(TodayAutomationID.trainingPrescriptionDecisionOverrideAudit, "today.training-prescription.decision-override-audit")
         XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
         XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
         XCTAssertEqual(TodayAutomationID.questTrainingPrinciplePicker, "today.quest.training-principle-picker")

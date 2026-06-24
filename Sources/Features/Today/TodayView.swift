@@ -13,6 +13,8 @@ enum TodayAutomationID {
     static let cardExcludeAction = "today.card.exclude-action"
     static let trainingPrescriptionAcceptAction = "today.training-prescription.accept-action"
     static let trainingPrescriptionSkipAction = "today.training-prescription.skip-action"
+    static let trainingPrescriptionOverrideAudit = "today.training-prescription.override-audit"
+    static let trainingPrescriptionDecisionOverrideAudit = "today.training-prescription.decision-override-audit"
     static let coachDiagnosisAcceptAction = "today.coach-diagnosis.accept-action"
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
@@ -999,6 +1001,8 @@ struct TodayView: View {
                         .foregroundStyle(DS.mutedInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionOverrideAudit)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(lensTint(for: item).opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1317,44 +1321,86 @@ struct TodayView: View {
     }
 
     private func lensMethodTile(_ item: LensCatalogItem, isRecommended: Bool) -> some View {
-        Button(action: { selectLensItem(item) }) {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack {
-                    Text(String(format: "%02d", item.methodIndex))
-                        .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(lensTint(for: item))
-                    Spacer()
-                    if isRecommended {
-                        Text("推荐")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(DS.accentInk)
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: { selectLensItem(item) }) {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack {
+                        Text(String(format: "%02d", item.methodIndex))
+                            .font(.caption.monospacedDigit().weight(.bold))
+                            .foregroundStyle(lensTint(for: item))
+                        Spacer()
+                        if isRecommended {
+                            Text("推荐")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(DS.accentInk)
+                        }
                     }
+
+                    Text(item.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(DS.ink)
+                        .lineLimit(1)
+
+                    Text(item.questionSeeds.first ?? item.methodLine)
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(TodayAutomationID.lensAction(item))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(item.title)
+            .accessibilityValue(lensMethodTileAccessibilityValue(item))
+            .padding(12)
+            .background(isLensItemSelected(item) ? lensTint(for: item).opacity(0.07) : Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                    .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.34) : Color.primary.opacity(0.06), lineWidth: 1)
+            )
 
-                Text(item.title)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(DS.ink)
-                    .lineLimit(1)
-
-                Text(item.questionSeeds.first ?? item.methodLine)
+            if let overrideAuditText = lensDecisionOverrideAuditText(for: item) {
+                Text(overrideAuditText)
                     .font(.caption2)
                     .foregroundStyle(DS.mutedInk)
-                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-
-                Spacer(minLength: 0)
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(lensTint(for: item).opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(lensTint(for: item).opacity(0.18), lineWidth: 1)
+                    )
+                    .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionDecisionOverrideAudit)
+                    .accessibilityLabel("改选审计：\(overrideAuditText)")
             }
-            .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(TodayAutomationID.lensAction(item))
-        .padding(12)
-        .background(isLensItemSelected(item) ? lensTint(for: item).opacity(0.07) : Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.34) : Color.primary.opacity(0.06), lineWidth: 1)
-        )
+    }
+
+    private func lensMethodTileAccessibilityValue(_ item: LensCatalogItem) -> String {
+        var parts = [item.questionSeeds.first ?? item.methodLine]
+        if isLensItemSelected(item),
+           let prescription = store.trainingPrescription,
+           item.id == prescription.finalLensId,
+           let overrideAuditText = trainingOverrideAuditText(prescription) {
+            parts.append(overrideAuditText)
+        }
+        return parts.joined(separator: "，")
+    }
+
+    private func lensDecisionOverrideAuditText(for item: LensCatalogItem) -> String? {
+        guard isLensItemSelected(item),
+              let prescription = store.trainingPrescription,
+              item.id == prescription.finalLensId
+        else {
+            return nil
+        }
+        return trainingOverrideAuditText(prescription)
     }
 
     private var customLensSheet: some View {
