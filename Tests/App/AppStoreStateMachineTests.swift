@@ -8357,7 +8357,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.thinkingCards.allSatisfy(\.isConfirmed))
     }
 
-    func testVisualQATodayStageSeed_answerQuestionsSeedsLensQuestions() {
+    func testVisualQATodayStageSeed_answerQuestionsSeedsLensQuestions() throws {
         let store = AppStore(refreshesAIServiceFromKeychain: false)
 
         store.applyVisualQATodaySeed(
@@ -8373,6 +8373,14 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.thinkingCards.allSatisfy(\.isConfirmed))
         XCTAssertFalse(store.questions.isEmpty)
         XCTAssertFalse(store.hasAnsweredReflectionQuestion)
+        XCTAssertNotNil(store.coachTurnState)
+        XCTAssertNotNil(store.trainingPrescription)
+        let turn = try XCTUnwrap(store.coachTurnState)
+        let teachingPlan = CoachTeachingPolicy().makePlan(
+            turn: turn,
+            prescription: store.trainingPrescription
+        )
+        XCTAssertTrue(teachingPlan.repairQuestion.contains("刚才的回答"))
     }
 
     func testVisualQATodayStageSeed_reviewQuestsSeedsAnsweredQuestionsAndQuests() {

@@ -115,6 +115,12 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
+        let repairPrompt = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "刚才的回答")
+        ).firstMatch
+        XCTAssertTrue(repairPrompt.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))

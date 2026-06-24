@@ -730,6 +730,7 @@ final class AppStore: ObservableObject {
 
     private func seedVisualQAQuestions(from input: String, answered: Bool) {
         seedVisualQAFallbackCards(from: input, confirmed: true)
+        prepareTrainingPrescriptionForCurrentCards()
         todayDraft.selectedLens = .firstPrinciples
         generateLocalQuestions(from: input)
         guard answered else { return }

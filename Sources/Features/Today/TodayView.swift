@@ -466,6 +466,15 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("回答问题", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
 
+            if let teachingPlan = store.coachTurnState.map({
+                CoachTeachingPolicy().makePlan(
+                    turn: $0,
+                    prescription: store.trainingPrescription
+                )
+            }) {
+                teachingRouteView(teachingPlan)
+            }
+
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
                     principles: store.referencedPrinciples,
