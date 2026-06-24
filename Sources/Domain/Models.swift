@@ -1138,25 +1138,43 @@ struct CoachTurnPolicy {
             return previous ?? makeInitialTurn(cards: cards)
         }
 
-        if answersCloseEvidenceGap(answeredQuestions) {
+        let base = previous ?? makeInitialTurn(cards: cards)
+        if base.decisionSource == .userOverrideProgress {
+            var overrideTurn = base
+            overrideTurn.phase = .formAction
+            overrideTurn.readiness = .ready
+            overrideTurn.recommendedMove = .generateQuest
+            overrideTurn.reason = "用户选择 override 推进；回答会进入行动生成，但未关闭缺口继续作为审计边界。"
+            overrideTurn.turnSummary = "用户 override 后继续推进；未关闭缺口仍保留，明天用行动证据校准。"
+            overrideTurn.policyVersion = Self.policyVersion
+            return overrideTurn
+        }
+
+        let unresolvedGaps = unresolvedEvidenceGaps(
+            from: base.openEvidenceGaps,
+            questions: answeredQuestions
+        )
+
+        if unresolvedGaps.isEmpty {
             return CoachTurnState(
                 phase: .formAction,
                 readiness: .ready,
                 recommendedMove: .generateQuest,
-                reason: "用户回答已经补充负责人、验收标准或可观察证据，可以把下一步设计成可验证行动。",
+                reason: "用户回答已经补足本轮缺口，可以把下一步设计成可验证行动。",
                 openEvidenceGaps: [],
-                baselineChecks: previous?.baselineChecks ?? defaultBaselineChecks,
-                decisionSource: previous?.decisionSource ?? .coachRecommended,
+                baselineChecks: base.baselineChecks,
+                decisionSource: base.decisionSource,
                 policyVersion: Self.policyVersion,
-                turnSummary: "回答补足了关键证据，教练轮次从追问推进到形成可验证行动。"
+                turnSummary: "回答补足了本轮训练缺口，教练轮次从追问推进到形成可验证行动。"
             )
         }
 
-        var unresolved = previous ?? makeInitialTurn(cards: cards)
+        var unresolved = base
         unresolved.readiness = .notReady
-        unresolved.recommendedMove = unresolved.openEvidenceGaps.isEmpty ? .askClarifyingQuestion : .surfaceEvidenceGap
-        unresolved.reason = "用户已有回答，但还没有补足可观察事实、基线或验收标准。"
-        unresolved.turnSummary = "回答仍未关闭主要证据缺口，继续追问而不是直接收敛。"
+        unresolved.openEvidenceGaps = unresolvedGaps
+        unresolved.recommendedMove = unresolvedGaps.isEmpty ? .askClarifyingQuestion : .surfaceEvidenceGap
+        unresolved.reason = unresolvedReason(for: unresolvedGaps)
+        unresolved.turnSummary = "回答仍未关闭\(unresolvedGaps.map(\.displayTitle).joined(separator: "、"))，继续追问而不是直接收敛。"
         unresolved.policyVersion = Self.policyVersion
         return unresolved
     }
@@ -1213,20 +1231,86 @@ struct CoachTurnPolicy {
         "教练初始轮次：\(diagnosis.reason)"
     }
 
-    private func answersCloseEvidenceGap(_ questions: [ReflectionQuestion]) -> Bool {
+    private func unresolvedEvidenceGaps(
+        from gaps: [EvidenceGapType],
+        questions: [ReflectionQuestion]
+    ) -> [EvidenceGapType] {
+        let activeGaps = gaps.filter { $0 != .none }
+        guard !activeGaps.isEmpty else { return [] }
+        return activeGaps.filter { !answersClose($0, questions: questions) }
+    }
+
+    private func answersClose(
+        _ gap: EvidenceGapType,
+        questions: [ReflectionQuestion]
+    ) -> Bool {
         let answerText = questions
             .map(\.answer)
             .joined(separator: " ")
             .lowercased()
-        let evidenceSignals = [
-            "owner", "负责人", "alex",
-            "验收", "标准", "criteria",
-            "evidence", "证据", "事实",
-            "确认", "文档", "客户",
-            "baseline", "基线", "observable", "可观察"
-        ]
-        let matchedSignals = evidenceSignals.filter { answerText.contains($0) }
-        return matchedSignals.count >= 2
+
+        switch gap {
+        case .missingObservation:
+            return containsAny(answerText, [
+                "事实", "证据", "观察", "看到", "记录", "确认", "客户", "数据", "可观察",
+                "fact", "evidence", "observed", "observable", "documented", "confirmed"
+            ])
+        case .missingBaseline:
+            return containsAny(answerText, [
+                "验收", "标准", "基线", "完成标准", "可检查", "文档",
+                "criteria", "baseline", "acceptance", "checkable"
+            ])
+        case .missingCausalLink:
+            return containsAny(answerText, [
+                "因为", "导致", "因果", "反馈", "回路", "延迟", "下游", "二阶", "影响",
+                "cause", "because", "feedback", "loop", "delay", "downstream", "second-order"
+            ])
+        case .missingCounterexample:
+            return containsAny(answerText, [
+                "反例", "相反", "不同解释", "替代解释", "否则", "不成立",
+                "counterexample", "opposite", "alternative", "disconfirm"
+            ])
+        case .missingConstraint:
+            return containsAny(answerText, [
+                "约束", "限制", "边界", "成本", "资源", "时间窗口",
+                "constraint", "limit", "boundary", "cost", "resource"
+            ])
+        case .missingCalibrationSignal:
+            let hasOutcomeSignal = containsAny(answerText, [
+                "实际", "结果", "信号", "观察", "返工", "次数", "下降", "上升", "完成后",
+                "actual", "outcome", "result", "signal", "observe", "metric"
+            ])
+            let hasJudgmentUpdate = containsAny(answerText, [
+                "更新", "改变判断", "判断", "预测", "预期", "信心", "校准",
+                "update", "judgment", "prediction", "confidence", "calibrate"
+            ])
+            return hasOutcomeSignal && hasJudgmentUpdate
+        case .none:
+            return true
+        }
+    }
+
+    private func containsAny(_ text: String, _ keywords: [String]) -> Bool {
+        keywords.contains { text.contains($0.lowercased()) }
+    }
+
+    private func unresolvedReason(for gaps: [EvidenceGapType]) -> String {
+        if gaps.contains(.missingCalibrationSignal) {
+            return "用户已有回答，但还没有说明实际结果信号这个校准信号会如何改变判断。"
+        }
+        if gaps.contains(.missingCausalLink) {
+            return "用户已有回答，但还没有说清因果链、反馈或延迟影响。"
+        }
+        if gaps.contains(.missingObservation) || gaps.contains(.missingBaseline) {
+            return "用户已有回答，但还没有补足可观察事实、基线或验收标准。"
+        }
+        if gaps.contains(.missingCounterexample) {
+            return "用户已有回答，但还没有给出能挑战当前解释的反例。"
+        }
+        if gaps.contains(.missingConstraint) {
+            return "用户已有回答，但还没有说清关键约束或边界。"
+        }
+        return "用户已有回答，但本轮训练缺口还没有关闭。"
     }
 }
 

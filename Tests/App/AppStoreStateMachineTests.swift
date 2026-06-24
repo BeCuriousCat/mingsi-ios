@@ -1044,6 +1044,52 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(plan.auditNote?.contains("不是缺口已经消失") ?? false)
     }
 
+    func testCoachTurnPolicy_keepsCalibrationGapOpenUntilAnswerNamesOutcomeSignal() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "材料里同时出现预测和实际结果，适合校准原判断。",
+            openEvidenceGaps: [.missingCalibrationSignal],
+            baselineChecks: [.judgmentUpdate],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先定义校准信号。"
+        )
+        let weakAnswer = ReflectionQuestion(
+            question: "明天用什么信号校准这个判断？",
+            whyItMatters: "它防止任务完成但判断没有更新。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            answer: "让负责人写清验收标准。"
+        )
+
+        let unresolved = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [weakAnswer],
+            previous: previous
+        )
+
+        XCTAssertEqual(unresolved.readiness, .notReady)
+        XCTAssertEqual(unresolved.recommendedMove, .surfaceEvidenceGap)
+        XCTAssertEqual(unresolved.openEvidenceGaps, [.missingCalibrationSignal])
+        XCTAssertTrue(unresolved.reason.contains("校准信号"))
+
+        var calibratedAnswer = weakAnswer
+        calibratedAnswer.answer = "明天观察实际返工次数是否下降；如果没有下降，就更新原来认为验收能减少返工的判断。"
+
+        let resolved = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [calibratedAnswer],
+            previous: previous
+        )
+
+        XCTAssertEqual(resolved.readiness, .ready)
+        XCTAssertEqual(resolved.recommendedMove, .generateQuest)
+        XCTAssertTrue(resolved.openEvidenceGaps.isEmpty)
+    }
+
     func testCoachLensLearningPolicy_reinforcesHighValueCompletedLensMove() {
         let question = ReflectionQuestion(
             question: "明天能观察到什么信号，证明书面验收减少返工？",
@@ -5015,6 +5061,45 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertNotNil(fallbackQuestion.lensMove)
         XCTAssertFalse(fallbackQuestion.sourceCardTitles.isEmpty)
         XCTAssertFalse((fallbackQuestion.calibrationTarget ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    func testQuestionQualityGateFailure_fallbackStartsFromCoachTeachingPlan() async throws {
+        let llmClient = SequencedLLMClient(results: [
+            .success(Self.cardsResponse(title: "Meeting ownership unclear")),
+            .success(Self.lowQualityQuestionsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.capture)
+        store.selectTodayMode(.standard)
+        store.updateTodayCapture("Today the meeting owner was still unclear after the discussion.")
+        store.submitTodayStep()
+        try await waitForGeneratedCards()
+        store.submitTodayStep()
+        try await waitForState(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+
+        try await waitForState(.answerQuestions)
+
+        let fallbackQuestion = try XCTUnwrap(store.questions.first)
+        XCTAssertEqual(fallbackQuestion.evidenceGapType, .missingObservation)
+        XCTAssertEqual(fallbackQuestion.answerUse, .collectEvidence)
+        XCTAssertEqual(fallbackQuestion.lensMove, .factInterpretationSplit)
+        XCTAssertTrue(fallbackQuestion.question.contains("可观察事实"))
+        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.whyNow).contains("本轮漏想点"))
+        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.expectedUpdate).contains("补上"))
+        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.proceedWhen).contains("可观察事实"))
+        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.calibrationTarget).contains("可观察事实"))
     }
 
     func testQuestQualityGateFailure_usesFallbackAndRetryMessage() async throws {

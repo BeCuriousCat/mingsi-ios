@@ -5699,6 +5699,9 @@ final class AppStore: ObservableObject {
         let secondaryLensMove: QuestionLensMove = primaryLensMove == .predictionCalibration
             ? .factInterpretationSplit
             : .predictionCalibration
+        let teachingPlan = coachTurnState.map {
+            CoachTeachingPolicy().makePlan(turn: $0, prescription: trainingPrescription)
+        }
         let modeQuestion: String
         switch todayDraft.sessionMode {
         case .quick:
@@ -5742,32 +5745,121 @@ final class AppStore: ObservableObject {
             return
         }
 
-        questions = [
-            ReflectionQuestion(
-                question: modeQuestion,
-                whyItMatters: "让任务从泛泛而谈变成可验证行动。",
-                whyNow: "当前教练轮次需要把泛泛判断收束成一个明天可观察的信号。",
-                expectedUpdate: "答案会更新明天最值得验证的关键判断。",
-                proceedWhen: "当你能说清一个明日行动和一个可观察结果时推进。",
-                evidenceGapType: .missingCalibrationSignal,
-                answerUse: .watchCalibrationSignal,
-                lensMove: primaryLensMove,
-                sourceCardTitles: groundedSourceTitles,
-                calibrationTarget: "\(sourceSummary) 中明天最值得验证的关键判断"
-            ),
-            ReflectionQuestion(
-                question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
-                whyItMatters: focus,
-                whyNow: "当前需要检查所选透镜是否补上了原始输入里的证据或解释缺口。",
-                expectedUpdate: "答案会更新本轮是否应该沿用这个透镜继续追问。",
-                proceedWhen: "当答案说明透镜如何改变下一步行动判断时推进。",
-                evidenceGapType: .missingCounterexample,
-                answerUse: .updateJudgment,
-                lensMove: secondaryLensMove,
-                sourceCardTitles: groundedSourceTitles,
-                calibrationTarget: "\(sourceSummary) 中当前透镜是否能改变下一步行动判断"
-            )
-        ]
+        if let teachingPlan {
+            let teachingGap = primaryTeachingGap(from: coachTurnState)
+            questions = [
+                ReflectionQuestion(
+                    question: localTeachingQuestion(for: teachingPlan, gap: teachingGap),
+                    whyItMatters: "这是明思本轮训练焦点：\(teachingPlan.whyNotAnswer)",
+                    whyNow: "本轮漏想点：\(teachingPlan.missingMoveTitle)",
+                    expectedUpdate: "答案会补上\(teachingPlan.trainingTargetTitle)，并决定是否满足推进标准。",
+                    proceedWhen: teachingPlan.proceedStandard,
+                    evidenceGapType: teachingGap,
+                    answerUse: localAnswerUse(for: teachingGap),
+                    lensMove: localLensMove(for: teachingGap, fallback: primaryLensMove),
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "\(sourceSummary) 中\(teachingPlan.proceedStandard)"
+                ),
+                ReflectionQuestion(
+                    question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
+                    whyItMatters: focus,
+                    whyNow: "第一题补上漏想点后，再检查所选透镜是否真的改变判断。",
+                    expectedUpdate: "答案会更新本轮是否应该沿用这个透镜继续追问。",
+                    proceedWhen: "当答案说明透镜如何改变下一步行动判断时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .updateJudgment,
+                    lensMove: secondaryLensMove,
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "\(sourceSummary) 中当前透镜是否能改变下一步行动判断"
+                )
+            ]
+        } else {
+            questions = [
+                ReflectionQuestion(
+                    question: modeQuestion,
+                    whyItMatters: "让任务从泛泛而谈变成可验证行动。",
+                    whyNow: "当前教练轮次需要把泛泛判断收束成一个明天可观察的信号。",
+                    expectedUpdate: "答案会更新明天最值得验证的关键判断。",
+                    proceedWhen: "当你能说清一个明日行动和一个可观察结果时推进。",
+                    evidenceGapType: .missingCalibrationSignal,
+                    answerUse: .watchCalibrationSignal,
+                    lensMove: primaryLensMove,
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "\(sourceSummary) 中明天最值得验证的关键判断"
+                ),
+                ReflectionQuestion(
+                    question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
+                    whyItMatters: focus,
+                    whyNow: "当前需要检查所选透镜是否补上了原始输入里的证据或解释缺口。",
+                    expectedUpdate: "答案会更新本轮是否应该沿用这个透镜继续追问。",
+                    proceedWhen: "当答案说明透镜如何改变下一步行动判断时推进。",
+                    evidenceGapType: .missingCounterexample,
+                    answerUse: .updateJudgment,
+                    lensMove: secondaryLensMove,
+                    sourceCardTitles: groundedSourceTitles,
+                    calibrationTarget: "\(sourceSummary) 中当前透镜是否能改变下一步行动判断"
+                )
+            ]
+        }
+    }
+
+    private func primaryTeachingGap(from turnState: CoachTurnState?) -> EvidenceGapType {
+        turnState?.openEvidenceGaps.first { $0 != .none } ?? .missingCalibrationSignal
+    }
+
+    private func localTeachingQuestion(
+        for plan: CoachTeachingPlan,
+        gap: EvidenceGapType
+    ) -> String {
+        switch gap {
+        case .missingObservation:
+            return "先补上一个可观察事实：\(plan.proceedStandard)"
+        case .missingBaseline:
+            return "先写清验收基线：\(plan.proceedStandard)"
+        case .missingCausalLink:
+            return "这件事的因果链、反馈或延迟影响是什么？"
+        case .missingCounterexample:
+            return "有什么反例会推翻你现在的解释？"
+        case .missingConstraint:
+            return "哪个关键约束正在决定这件事的边界？"
+        case .missingCalibrationSignal:
+            return "明天用什么实际结果信号校准这个判断？"
+        case .none:
+            return "先说清本轮判断如何满足推进标准：\(plan.proceedStandard)"
+        }
+    }
+
+    private func localAnswerUse(for gap: EvidenceGapType) -> QuestionAnswerUse {
+        switch gap {
+        case .missingObservation, .missingBaseline:
+            return .collectEvidence
+        case .missingCausalLink, .missingCounterexample, .missingConstraint:
+            return .testAssumption
+        case .missingCalibrationSignal:
+            return .watchCalibrationSignal
+        case .none:
+            return .updateJudgment
+        }
+    }
+
+    private func localLensMove(
+        for gap: EvidenceGapType,
+        fallback: QuestionLensMove
+    ) -> QuestionLensMove {
+        switch gap {
+        case .missingObservation, .missingBaseline:
+            return .factInterpretationSplit
+        case .missingCausalLink:
+            return .feedbackLoop
+        case .missingCounterexample:
+            return .alternativeExplanation
+        case .missingConstraint:
+            return .constraintDecomposition
+        case .missingCalibrationSignal:
+            return .predictionCalibration
+        case .none:
+            return fallback
+        }
     }
 
     private func localLensMove(for lens: ThinkingLens?) -> QuestionLensMove {
