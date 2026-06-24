@@ -5715,6 +5715,9 @@ final class AppStore: ObservableObject {
                 ReflectionQuestion(
                     question: customLens.questionSeeds.first ?? customLens.methodLine,
                     whyItMatters: customLens.methodLine,
+                    whyNow: "当前选择了本次专属透镜，需要先确认它如何改变判断。",
+                    expectedUpdate: "答案会更新这个透镜是否适合继续主导本轮追问。",
+                    proceedWhen: "当你能说明透镜改变了哪个判断或行动边界时推进。",
                     evidenceGapType: .missingCalibrationSignal,
                     answerUse: .updateJudgment,
                     lensMove: primaryLensMove,
@@ -5724,6 +5727,9 @@ final class AppStore: ObservableObject {
                 ReflectionQuestion(
                     question: "\(customLens.title) 会如何改写你对这件事的判断？",
                     whyItMatters: focus,
+                    whyNow: "当前需要检查替代视角是否真的补上了原来的盲点。",
+                    expectedUpdate: "答案会更新下一步是否沿用这个专属透镜。",
+                    proceedWhen: "当答案给出一个更清晰、可观察的判断变化时推进。",
                     evidenceGapType: .missingCounterexample,
                     answerUse: .testAssumption,
                     lensMove: secondaryLensMove,
@@ -5740,6 +5746,9 @@ final class AppStore: ObservableObject {
             ReflectionQuestion(
                 question: modeQuestion,
                 whyItMatters: "让任务从泛泛而谈变成可验证行动。",
+                whyNow: "当前教练轮次需要把泛泛判断收束成一个明天可观察的信号。",
+                expectedUpdate: "答案会更新明天最值得验证的关键判断。",
+                proceedWhen: "当你能说清一个明日行动和一个可观察结果时推进。",
                 evidenceGapType: .missingCalibrationSignal,
                 answerUse: .watchCalibrationSignal,
                 lensMove: primaryLensMove,
@@ -5749,6 +5758,9 @@ final class AppStore: ObservableObject {
             ReflectionQuestion(
                 question: "\(lensItem?.title ?? "当前透镜") 会如何改写你对这件事的判断？",
                 whyItMatters: focus,
+                whyNow: "当前需要检查所选透镜是否补上了原始输入里的证据或解释缺口。",
+                expectedUpdate: "答案会更新本轮是否应该沿用这个透镜继续追问。",
+                proceedWhen: "当答案说明透镜如何改变下一步行动判断时推进。",
                 evidenceGapType: .missingCounterexample,
                 answerUse: .updateJudgment,
                 lensMove: secondaryLensMove,

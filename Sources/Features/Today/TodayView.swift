@@ -2381,6 +2381,32 @@ private struct QuestionCardView: View {
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if hasTeachingCue {
+                VStack(alignment: .leading, spacing: 7) {
+                    if let lensMove = question.lensMove {
+                        BriefRow(title: "训练动作", body: lensMove.displayTitle, accent: DS.accent)
+                    }
+                    if let gapTitle = teachingGapTitle {
+                        BriefRow(title: "补的缺口", body: gapTitle, accent: DS.brick)
+                    }
+                    if let whyNow = trimmed(question.whyNow) {
+                        BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
+                    }
+                    if let expectedUpdate = trimmed(question.expectedUpdate) {
+                        BriefRow(title: "答案会改变", body: expectedUpdate, accent: DS.accent)
+                    }
+                    if let proceedWhen = trimmed(question.proceedWhen) {
+                        BriefRow(title: "推进标准", body: proceedWhen, accent: DS.success)
+                    }
+                }
+                .padding(10)
+                .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                )
+            }
+
             TextField("写下你的判断，不需要完整答案", text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
@@ -2393,6 +2419,27 @@ private struct QuestionCardView: View {
                 .accessibilityIdentifier(TodayAutomationID.questionAnswerField)
         }
         .questionSurface()
+    }
+
+    private var hasTeachingCue: Bool {
+        question.lensMove != nil ||
+            teachingGapTitle != nil ||
+            trimmed(question.whyNow) != nil ||
+            trimmed(question.expectedUpdate) != nil ||
+            trimmed(question.proceedWhen) != nil
+    }
+
+    private var teachingGapTitle: String? {
+        guard let evidenceGapType = question.evidenceGapType else { return nil }
+        if evidenceGapType == .none {
+            return "取舍或框架问题"
+        }
+        return evidenceGapType.displayTitle
+    }
+
+    private func trimmed(_ value: String?) -> String? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
     }
 }
 

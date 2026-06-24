@@ -113,6 +113,17 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(primaryAction.isEnabled)
     }
 
+    func testTodayAnswerQuestionsShowsQuestionTeachingCue() throws {
+        let app = seededTodayApp(stage: "answer_questions")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsCanNavigateBackToThinkingCardsWhileAnswerFieldIsActive() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
