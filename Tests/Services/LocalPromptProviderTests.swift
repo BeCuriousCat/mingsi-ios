@@ -165,6 +165,18 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("Do not treat a user override as proof that the coach diagnosis was wrong"))
     }
 
+    func testGenerateQuestionsTemplate_usesCoachTeachingPlanAsTrainingFrame() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("coachTeachingPlan"))
+        XCTAssertTrue(text.contains("missing thinking move"))
+        XCTAssertTrue(text.contains("whyNotAnswer"))
+        XCTAssertTrue(text.contains("proceedStandard"))
+        XCTAssertTrue(text.contains("not an AI answer"))
+        XCTAssertTrue(text.contains("Use coachTeachingPlan before wording questions"))
+    }
+
     func testGenerateQuestsTemplate_requiresOneMainQuestAndVerifiableCriteria() {
         let template = provider.template(for: .generateQuests, mode: .standard)
         let text = template.userText
@@ -203,6 +215,16 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("avoid repeating quest patterns"))
         XCTAssertTrue(text.contains("Reinforce lensMoves that produced high-value calibration evidence"))
         XCTAssertTrue(text.contains("make the same lensMoves smaller, more observable"))
+    }
+
+    func testGenerateQuestsTemplate_preservesCoachTeachingProceedStandard() {
+        let template = provider.template(for: .generateQuests, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("coachTeachingPlan"))
+        XCTAssertTrue(text.contains("proceedStandard"))
+        XCTAssertTrue(text.contains("auditNote"))
+        XCTAssertTrue(text.contains("Do not erase unresolved teaching gaps"))
     }
 
     func testVerifyQuestTemplate_requiresPredictionEvidenceAndJudgmentUpdate() {

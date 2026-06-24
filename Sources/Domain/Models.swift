@@ -1426,7 +1426,9 @@ struct CoachTeachingPolicy {
     }
 
     private func whyNotAnswer(for turn: CoachTurnState) -> String {
-        if turn.recommendedMove == .slowDownConvergence {
+        if turn.recommendedMove == .slowDownConvergence ||
+            turn.openEvidenceGaps.contains(.missingObservation) ||
+            turn.openEvidenceGaps.contains(.missingBaseline) {
             return "现在直接行动会把未经验证的解释当成事实。"
         }
         if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {

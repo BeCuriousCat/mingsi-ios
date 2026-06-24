@@ -74,6 +74,22 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(contextPRD.contains("不引入 LangChain/LangGraph"))
     }
 
+    func testPromptSpecDocumentsCoachTeachingPlanForMissingThinkingMove() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Coach Teaching Plan"))
+        XCTAssertTrue(spec.contains("coachTeachingPlan"))
+        XCTAssertTrue(spec.contains("coachTeachingRule"))
+        XCTAssertTrue(spec.contains("missingMoveTitle"))
+        XCTAssertTrue(spec.contains("trainingTargetTitle"))
+        XCTAssertTrue(spec.contains("whyNotAnswer"))
+        XCTAssertTrue(spec.contains("proceedStandard"))
+        XCTAssertTrue(spec.contains("routeSteps"))
+        XCTAssertTrue(spec.contains("missing thinking move"))
+        XCTAssertTrue(spec.contains("not an AI answer"))
+        XCTAssertTrue(spec.contains("organizeCards must not receive `coachTeachingPlan`"))
+    }
+
     func testPromptContextPRDDocumentsCoachContextMemoryV1() throws {
         let contextPRD = try readRepositoryFile("docs/prompt-context-engineering-prd.md")
 

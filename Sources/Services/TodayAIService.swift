@@ -475,6 +475,7 @@ struct CoachContextMemorySelection: Hashable {
     var trainingPrescription: TrainingPrescription?
     var coachDiagnosis: CoachDiagnosis?
     var coachTurnState: CoachTurnState?
+    var coachTeachingPlan: CoachTeachingPlan?
 
     var relevantPrinciples: [PrincipleAsset] {
         retrievedPrinciples.map(\.principle)
@@ -514,7 +515,25 @@ struct CoachContextMemoryPolicy {
             ),
             trainingPrescription: allowsTrainingPrescription(promptID) ? context.trainingPrescription : nil,
             coachDiagnosis: allowsCoachTurn(promptID) ? context.coachDiagnosis : nil,
-            coachTurnState: allowsCoachTurn(promptID) ? context.coachTurnState : nil
+            coachTurnState: allowsCoachTurn(promptID) ? context.coachTurnState : nil,
+            coachTeachingPlan: coachTeachingPlan(
+                for: promptID,
+                context: context
+            )
+        )
+    }
+
+    private func coachTeachingPlan(
+        for promptID: PromptID,
+        context: TodayAIContext
+    ) -> CoachTeachingPlan? {
+        guard allowsCoachTurn(promptID),
+              let turn = context.coachTurnState else {
+            return nil
+        }
+        return CoachTeachingPolicy().makePlan(
+            turn: turn,
+            prescription: context.trainingPrescription
         )
     }
 
@@ -613,13 +632,16 @@ struct DefaultContextAssembler: ContextAssembler {
             memory: memory,
             directives: .init(
                 principleUsageRule: !relevantPrinciples.isEmpty
-                    ? "Use accepted principles only as comparison lenses. Do not force today's situation to fit them."
+                    ? "Use accepted principles as experience replay: ask whether today's case should reproduce, adapt, or reject the prior behavior. Do not force today's situation to fit them."
                     : nil,
                 coachDiagnosisRule: memory.coachDiagnosis != nil
                     ? "Use coachDiagnosis as a coach plan, not source evidence. If readiness is not_ready, ask clarification or evidence-gap questions before converging. Treat user override as a user choice to proceed, not proof that the coach diagnosis was wrong."
                     : nil,
                 coachTurnRule: memory.coachTurnState != nil
                     ? "Use coachTurnState as the stateful coach turn plan. If readiness is not_ready, ask clarification or evidence-gap questions before converging. If readiness is ready, form a verifiable action. Treat user override as permission to proceed, not proof that the coach was wrong."
+                    : nil,
+                coachTeachingRule: memory.coachTeachingPlan != nil
+                    ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, and only proceed when the proceed standard is satisfied."
                     : nil
             )
         )
@@ -733,7 +755,8 @@ struct DefaultContextAssembler: ContextAssembler {
             lensFeedback: memory.lensFeedback,
             trainingPrescription: memory.trainingPrescription.map(PromptContextPayload.TrainingPrescriptionContext.init),
             coachDiagnosis: memory.coachDiagnosis.map(PromptContextPayload.CoachDiagnosisContext.init),
-            coachTurnState: memory.coachTurnState.map(PromptContextPayload.CoachTurnStateContext.init)
+            coachTurnState: memory.coachTurnState.map(PromptContextPayload.CoachTurnStateContext.init),
+            coachTeachingPlan: memory.coachTeachingPlan.map(PromptContextPayload.CoachTeachingPlanContext.init)
         )
     }
 

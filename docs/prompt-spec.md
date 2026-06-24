@@ -210,6 +210,45 @@ Rules:
 - `baselineChecks` are quiet guardrails; they should prevent premature convergence without turning the loop into a broad questionnaire.
 - `turnSummary` is an audit summary for the current coach turn, not source evidence.
 
+### Coach Teaching Plan
+
+Coach Teaching Plan turns the current coach turn into a teaching frame. It tells
+the model what the user has not thought through yet, why MingSi is training that
+move instead of giving an AI answer, and what is enough to proceed. Prompt
+context may carry:
+
+```json
+{
+  "coachTeachingPlan": {
+    "policyVersion": "coach-teaching.local-v1",
+    "missingMoveTitle": "the missing thinking move the user has not handled yet",
+    "trainingTargetTitle": "localized primary training target",
+    "whyNotAnswer": "why this is not an AI answer or direct advice moment",
+    "proceedStandard": "what answer or evidence is sufficient to continue",
+    "routeSteps": ["first teaching step", "second teaching step", "third teaching step"],
+    "auditNote": "optional override or boundary note"
+  }
+}
+```
+
+The prompt directive key is `coachTeachingRule`.
+
+Rules:
+
+- `generateQuestions` must use `coachTeachingPlan` before wording questions:
+  start from the missing thinking move, train the named target, and keep
+  `whyNotAnswer` visible in `why_this_matters` or `why_now`.
+- `generateQuests` may use `coachTeachingPlan` to preserve the proceed standard
+  when forming an action after the coach turn is ready or explicitly overridden.
+- organizeCards must not receive `coachTeachingPlan`; it only cleans current raw
+  input into reviewable cards.
+- `coachTeachingPlan` is not source evidence. It is the coach's operational
+  teaching frame for the current turn.
+- `routeSteps` are training route cues, not a command to add extra workflow
+  steps or a broad questionnaire.
+- A user override may proceed, but `auditNote` and `proceedStandard` must keep
+  the unresolved gap visible.
+
 ### Quest
 
 ```json

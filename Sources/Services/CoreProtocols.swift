@@ -370,6 +370,46 @@ struct PromptContextPayload: Codable, Hashable {
         }
     }
 
+    struct CoachTeachingPlanContext: Codable, Hashable {
+        var policyVersion: String
+        var missingMoveTitle: String
+        var trainingTargetTitle: String
+        var whyNotAnswer: String
+        var proceedStandard: String
+        var routeSteps: [String]
+        var auditNote: String?
+
+        init(
+            policyVersion: String,
+            missingMoveTitle: String,
+            trainingTargetTitle: String,
+            whyNotAnswer: String,
+            proceedStandard: String,
+            routeSteps: [String],
+            auditNote: String? = nil
+        ) {
+            self.policyVersion = policyVersion
+            self.missingMoveTitle = missingMoveTitle
+            self.trainingTargetTitle = trainingTargetTitle
+            self.whyNotAnswer = whyNotAnswer
+            self.proceedStandard = proceedStandard
+            self.routeSteps = routeSteps
+            self.auditNote = auditNote
+        }
+
+        init(_ plan: CoachTeachingPlan) {
+            self.init(
+                policyVersion: plan.policyVersion,
+                missingMoveTitle: plan.missingMoveTitle,
+                trainingTargetTitle: plan.trainingTargetTitle,
+                whyNotAnswer: plan.whyNotAnswer,
+                proceedStandard: plan.proceedStandard,
+                routeSteps: plan.routeSteps,
+                auditNote: plan.auditNote
+            )
+        }
+    }
+
     struct Card: Codable, Hashable {
         var id: String
         var type: String
@@ -442,6 +482,7 @@ struct PromptContextPayload: Codable, Hashable {
         var principleUsageRule: String?
         var coachDiagnosisRule: String?
         var coachTurnRule: String?
+        var coachTeachingRule: String?
     }
 
     struct VerificationContext: Codable, Hashable {
@@ -572,6 +613,7 @@ struct PromptContextPayload: Codable, Hashable {
     var trainingPrescription: TrainingPrescriptionContext?
     var coachDiagnosis: CoachDiagnosisContext?
     var coachTurnState: CoachTurnStateContext?
+    var coachTeachingPlan: CoachTeachingPlanContext?
     var cards: [Card]
     var answers: [Answer]
     var quests: [QuestContext]
@@ -624,13 +666,15 @@ struct PromptContextPayload: Codable, Hashable {
         project: ProjectContext? = nil,
         trainingPrescription: TrainingPrescriptionContext? = nil,
         coachDiagnosis: CoachDiagnosisContext? = nil,
-        coachTurnState: CoachTurnStateContext? = nil
+        coachTurnState: CoachTurnStateContext? = nil,
+        coachTeachingPlan: CoachTeachingPlanContext? = nil
     ) {
         self.currentInput = currentInput
         self.userChoice = userChoice
         self.trainingPrescription = trainingPrescription
         self.coachDiagnosis = coachDiagnosis
         self.coachTurnState = coachTurnState
+        self.coachTeachingPlan = coachTeachingPlan
         self.cards = cards
         self.answers = answers
         self.quests = quests
@@ -661,6 +705,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachTurnRule = directives.coachTurnRule {
             copy.directives.coachTurnRule = coachTurnRule
+        }
+        if let coachTeachingRule = directives.coachTeachingRule {
+            copy.directives.coachTeachingRule = coachTeachingRule
         }
         return copy
     }
@@ -727,6 +774,18 @@ struct PromptContextPayload: Codable, Hashable {
             values["coachTurnPolicyVersion"] = coachTurnState.policyVersion
             values["coachTurnSummary"] = coachTurnState.turnSummary
         }
+        if let coachTeachingPlan {
+            values["coachTeachingPolicyVersion"] = coachTeachingPlan.policyVersion
+            values["coachTeachingMissingMove"] = coachTeachingPlan.missingMoveTitle
+            values["coachTeachingTrainingTarget"] = coachTeachingPlan.trainingTargetTitle
+            values["coachTeachingWhyNotAnswer"] = coachTeachingPlan.whyNotAnswer
+            values["coachTeachingProceedStandard"] = coachTeachingPlan.proceedStandard
+            values["coachTeachingRouteSteps"] = coachTeachingPlan.routeSteps.joined(separator: " -> ")
+            if let auditNote = coachTeachingPlan.auditNote,
+               !auditNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                values["coachTeachingAuditNote"] = auditNote
+            }
+        }
         if let rawText = currentInput.rawText {
             values["rawText"] = rawText
         }
@@ -780,6 +839,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachTurnRule = directives.coachTurnRule {
             values["coachTurnRule"] = coachTurnRule
+        }
+        if let coachTeachingRule = directives.coachTeachingRule {
+            values["coachTeachingRule"] = coachTeachingRule
         }
         if let streamProtocol = directives.streamProtocol {
             values["streamProtocol"] = streamProtocol
@@ -4134,6 +4196,14 @@ final class LocalPromptProvider: PromptProvider {
             - Use selectedLens/finalTrainingLens to choose lens_move, but use training dimensions to decide what skill the question trains.
             - Do not treat a user override as proof that the coach diagnosis was wrong; keep override boundaries explicit in why_this_matters.
 
+            Teaching frame:
+            - Use coachTeachingPlan before wording questions.
+            - Start from missingMoveTitle as the missing thinking move.
+            - Use trainingTargetTitle to keep this as training, not an AI answer.
+            - Keep whyNotAnswer visible in why_this_matters or why_now.
+            - Use proceedStandard to define proceed_when.
+            - routeSteps are teaching route cues, not permission to add extra workflow steps.
+
             Required coaching coverage:
             - At least one question must name an evidence gap or missing observation.
             - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
@@ -4167,7 +4237,7 @@ final class LocalPromptProvider: PromptProvider {
             \(modeGuidance)
 
             Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
-            Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, priorAnswers, lensFeedback, and sessionMode.
+            Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.
             Return JSON:
             {
               "questions": [
@@ -4207,6 +4277,9 @@ final class LocalPromptProvider: PromptProvider {
             Reinforce lensMoves that produced high-value calibration evidence.
             When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
             When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
+            Use coachTeachingPlan.proceedStandard to preserve the evidence or answer standard that made action safe.
+            If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
+            Do not erase unresolved teaching gaps just because a quest can be generated.
 
             Lens-specific quest rules:
             - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
@@ -4217,7 +4290,7 @@ final class LocalPromptProvider: PromptProvider {
             - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
             \(modeGuidance)
 
-            Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, and sessionMode.
+            Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, coachTeachingPlan, and sessionMode.
             Return JSON:
             {
               "main_quest": {

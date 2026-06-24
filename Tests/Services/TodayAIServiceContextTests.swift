@@ -819,6 +819,99 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(payload.legacyKeyValues["finalTrainingLens"], ThinkingLens.opposingView.rawValue)
     }
 
+    func testStructuredContext_includesCoachTeachingPlanForMissingThinkingMove() async throws {
+        let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        let prescription = TrainingPrescription(
+            recommendedLensId: ThinkingLens.evidenceCheck.rawValue,
+            recommendedPromptId: ThinkingLens.evidenceCheck.catalogItem.promptId,
+            recommendationReason: "当前材料暴露证据缺口，先练证据意识。",
+            confidence: 0.78,
+            policyVersion: LocalTrainingPrescriptionPolicy.policyVersion,
+            alternativeLensIds: [ThinkingLens.opposingView.rawValue],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap, .testableAction],
+            primaryTrainingDimension: .evidenceDiscipline,
+            finalLensId: ThinkingLens.evidenceCheck.rawValue,
+            source: .coachRecommended
+        )
+        let turn = CoachTurnState(
+            phase: .fillEvidenceGap,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "验收口径不清，需要先补观察事实和基线。",
+            openEvidenceGaps: [.missingObservation, .missingBaseline],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "Turn 1: slow down and ask for evidence before action."
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "验收口径不清，缺少事实支撑。",
+                    selectedLens: .evidenceCheck
+                ),
+                trainingPrescription: prescription,
+                coachTurnState: turn
+            )
+        )
+
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        let plan = try XCTUnwrap(payload.coachTeachingPlan)
+        XCTAssertEqual(plan.policyVersion, CoachTeachingPolicy.policyVersion)
+        XCTAssertTrue(plan.missingMoveTitle.contains("可观察证据"))
+        XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
+        XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
+        XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
+        XCTAssertEqual(payload.legacyKeyValues["coachTeachingMissingMove"], plan.missingMoveTitle)
+        XCTAssertEqual(payload.legacyKeyValues["coachTeachingTrainingTarget"], ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTeachingRule"]).contains("missing thinking move"))
+        XCTAssertTrue(try XCTUnwrap(payload.directives.coachTeachingRule).contains("missing thinking move"))
+    }
+
+    func testStructuredContext_reframesRecalledPrinciplesAsExperienceReplay() async throws {
+        let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        let card = ThinkingCard(
+            type: .problem,
+            title: "Meeting ownership unclear",
+            body: "The meeting ended without owner and acceptance criteria.",
+            isConfirmed: true
+        )
+        let principle = PrincipleAsset(
+            title: "Clarify meeting ownership",
+            summary: "Before discussion ends, write owner and acceptance criteria.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner", "Write acceptance criteria"],
+            successCriteria: "Everyone knows who owns the next action.",
+            exceptions: "Low-stakes sync"
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "The meeting did not clarify ownership.",
+                    selectedLens: .evidenceCheck
+                ),
+                confirmedCards: [card],
+                principles: [principle]
+            )
+        )
+
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertTrue(try XCTUnwrap(payload.directives.principleUsageRule).contains("experience replay"))
+        XCTAssertTrue(try XCTUnwrap(payload.directives.principleUsageRule).contains("Do not force"))
+        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["principleUsageRule"]).contains("experience replay"))
+    }
+
     func testStructuredContext_includesCoachDiagnosisAsPlanNotEvidence() async throws {
         let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
         let service = TodayAIService(

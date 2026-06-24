@@ -6478,3 +6478,45 @@ Result:
 Residual risk:
 
 - This slice improves the coach override boundary and UI automation reliability. It does not introduce a broader agentic chat engine, remote marketplace/sync behavior, or production onboarding/open-source packaging.
+
+## 2026-06-25: Coach Engine Beta Teaching Plan Context Verification
+
+Scope:
+
+- Verify that the coach's teaching diagnosis is carried into prompt context as a structured `coachTeachingPlan`.
+- Reframe recalled active principles as experience replay in prompt directives.
+- Keep local prompt templates aligned with the new teaching frame so MingSi trains the missing thinking move instead of returning a generic AI answer.
+
+Changed areas:
+
+- `Sources/Domain/Models.swift`
+- `Sources/Services/CoreProtocols.swift`
+- `Sources/Services/TodayAIService.swift`
+- `Tests/Services/LocalPromptProviderTests.swift`
+- `Tests/Services/PromptSpecificationDocumentTests.swift`
+- `Tests/Services/TodayAIServiceContextTests.swift`
+- `docs/prompt-spec.md`
+
+Commands run:
+
+```bash
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests/testStructuredContext_includesCoachTeachingPlanForMissingThinkingMove -only-testing:MingSiTests/TodayAIServiceContextTests/testStructuredContext_reframesRecalledPrinciplesAsExperienceReplay
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/PromptSpecificationDocumentTests/testPromptSpecDocumentsCoachTeachingPlanForMissingThinkingMove
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/LocalPromptProviderTests/testGenerateQuestionsTemplate_usesCoachTeachingPlanAsTrainingFrame -only-testing:MingSiTests/LocalPromptProviderTests/testGenerateQuestsTemplate_preservesCoachTeachingProceedStandard
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests/TodayAIServiceContextTests -only-testing:MingSiTests/LocalPromptProviderTests -only-testing:MingSiTests/PromptSpecificationDocumentTests
+xcodebuild test -scheme MingSi -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MingSiTests
+git diff --check
+```
+
+Result:
+
+- New context tests first failed because `PromptContextPayload` did not have `coachTeachingPlan` or `coachTeachingRule`, then passed after the structured context was added.
+- New prompt specification test first failed because `docs/prompt-spec.md` did not document `coachTeachingPlan`, then passed after the spec was updated.
+- New local prompt template tests first failed because `generateQuestions` and `generateQuests` did not mention `coachTeachingPlan`, then passed after prompt text was updated.
+- Related context/prompt/spec tests passed with 108 tests and 0 failures.
+- Full `MingSiTests` passed with 747 tests, 1 skipped, and 0 failures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- This slice upgrades prompt/context coaching behavior only. It does not add new UI surfaces, a general chat engine, remote prompt distribution, sync, subscription, marketplace, or open-source packaging.
