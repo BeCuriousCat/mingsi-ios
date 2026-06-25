@@ -78,6 +78,7 @@ Use these documents as the current source of truth:
 - `docs/technical-architecture.md`
 - `docs/data-architecture.md`
 - `docs/ux-flow.md`
+- `docs/coach-observation-model.md`
 - `docs/prompt-spec.md`
 - `docs/prompt-context-engineering-prd.md`
 - `docs/mvp-stage-progress.md`
