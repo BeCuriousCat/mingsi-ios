@@ -1441,6 +1441,9 @@ enum PromptCoachingQualityPolicy {
             var issues: [PromptCoachingQualityIssue] = []
             let subject = quest.title
 
+            if isAppeasingWithoutCorrection(quest) {
+                issues.append(issue(.appeasingWithoutCorrection, subject: subject))
+            }
             if isBusyworkQuest(quest) {
                 issues.append(issue(.busyworkQuest, subject: subject))
             }
@@ -1507,6 +1510,9 @@ enum PromptCoachingQualityPolicy {
     static func evaluatePrinciples(_ principles: [PrincipleAsset]) -> [PromptCoachingQualityIssue] {
         principles.flatMap { principle in
             var issues: [PromptCoachingQualityIssue] = []
+            if isAppeasingWithoutCorrection(principle) {
+                issues.append(issue(.appeasingWithoutCorrection, subject: principle.title))
+            }
             if principle.sourceCardTitles.isEmpty {
                 issues.append(issue(.missingPrincipleSourceGrounding, subject: principle.title))
             }
@@ -1559,8 +1565,39 @@ enum PromptCoachingQualityPolicy {
             question.calibrationTarget ?? ""
         ]
         .joined(separator: " ")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
+        return isAppeasingWithoutCorrectionText(combined)
+    }
+
+    private static func isAppeasingWithoutCorrection(_ quest: Quest) -> Bool {
+        let combined = [
+            quest.title,
+            quest.whyItMatters,
+            quest.completionCriteria,
+            quest.expectedResistance,
+            quest.reflectionQuestion,
+            quest.calibrationTarget ?? ""
+        ]
+        .joined(separator: " ")
+        return isAppeasingWithoutCorrectionText(combined)
+    }
+
+    private static func isAppeasingWithoutCorrection(_ principle: PrincipleAsset) -> Bool {
+        let combined = [
+            principle.title,
+            principle.summary,
+            principle.triggerContext,
+            principle.actions.joined(separator: " "),
+            principle.successCriteria,
+            principle.exceptions
+        ]
+        .joined(separator: " ")
+        return isAppeasingWithoutCorrectionText(combined)
+    }
+
+    private static func isAppeasingWithoutCorrectionText(_ text: String) -> Bool {
+        let combined = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
 
         guard !combined.isEmpty else { return false }
 
@@ -1573,6 +1610,8 @@ enum PromptCoachingQualityPolicy {
             "觉得有信心",
             "继续按这个方向",
             "继续按当前判断",
+            "认可自己的判断",
+            "当前判断已经够好",
             "validate your thinking",
             "you are already right",
             "feel more confident",
@@ -2502,6 +2541,29 @@ private struct PromptEvalCase {
         },
         PromptEvalCase(
             promptId: .generateQuests,
+            caseId: "quests.quality_gate_blocks_appeasing_output",
+            name: "Quest quality gate blocks appeasing output",
+            inputSummary: "A generated quest validates the user's current judgment and increases confidence without naming a repair move.",
+            expectedBehavior: "Flag quests that let the user proceed by reassurance instead of testing a judgment, evidence gap, or skipped tradeoff."
+        ) { _ in
+            let quests = [
+                Quest(
+                    type: .main,
+                    title: "继续按当前方案推进",
+                    whyItMatters: "你已经想得很充分了，这会让你更有信心。",
+                    completionCriteria: "明天完成推进并确认自己更有信心。",
+                    expectedResistance: "可能担心还没准备好，但你的判断已经够好了。",
+                    reflectionQuestion: "你是否更认可自己当前的方向？",
+                    calibrationTarget: "继续按当前判断推进",
+                    lensMove: .leverageTradeoff,
+                    sourceCardTitles: ["会议返工来自验收口径不清"]
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuests(quests).map(\.reason))
+            try expect(reasons.contains(.appeasingWithoutCorrection), "Expected appeasing quest issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuests,
             caseId: "quests.quality_gate_requires_source_grounding",
             name: "Quest quality gate requires source grounding",
             inputSummary: "A generated main quest that has a calibration signal but no linked card titles.",
@@ -2697,6 +2759,27 @@ private struct PromptEvalCase {
             ]
             let reasons = Set(PromptCoachingQualityPolicy.evaluatePrinciples(principles).map(\.reason))
             try expect(reasons == [.weakPrincipleActionability], "Expected weak principle actionability issue.")
+        },
+        PromptEvalCase(
+            promptId: .extractPrinciple,
+            caseId: "principle.quality_gate_blocks_appeasing_output",
+            name: "Principle quality gate blocks appeasing output",
+            inputSummary: "A principle candidate turns confidence and reassurance into a reusable rule without evidence or boundary.",
+            expectedBehavior: "Flag principles that preserve comfort instead of naming missing evidence, exception, trigger boundary, or action standard."
+        ) { _ in
+            let principles = [
+                PrincipleAsset(
+                    title: "相信自己当前判断",
+                    summary: "你的想法很有价值，后续可以继续按当前判断推进。",
+                    triggerContext: "当你觉得方向已经明确时。",
+                    actions: ["认可自己的判断", "继续推进当前方案"],
+                    successCriteria: "自己觉得更有信心。",
+                    exceptions: "无。",
+                    sourceCardTitles: ["会议返工来自验收口径不清"]
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluatePrinciples(principles).map(\.reason))
+            try expect(reasons.contains(.appeasingWithoutCorrection), "Expected appeasing principle issue.")
         },
         PromptEvalCase(
             promptId: .suggestProjectLinks,
@@ -3291,16 +3374,16 @@ final class LocalPromptProvider: PromptProvider {
             rollbackTargetVersion = "1.7.0"
             outputSchemaVersion = 6
         case .generateQuests:
-            promptVersion = "1.3.0"
-            rollbackTargetVersion = "1.2.0"
+            promptVersion = "1.4.0"
+            rollbackTargetVersion = "1.3.0"
             outputSchemaVersion = 3
         case .verifyQuest:
             promptVersion = "1.6.0"
             rollbackTargetVersion = "1.5.0"
             outputSchemaVersion = 2
         case .extractPrinciple:
-            promptVersion = "1.2.0"
-            rollbackTargetVersion = "1.1.0"
+            promptVersion = "1.3.0"
+            rollbackTargetVersion = "1.2.0"
             outputSchemaVersion = 1
         default:
             promptVersion = "1.0.0"
@@ -3433,6 +3516,18 @@ final class LocalPromptProvider: PromptProvider {
                 userText: Self.generateQuestionsV090UserText(for: mode),
                 outputSchemaVersion: 1
             )
+        case (.generateQuests, "1.3.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.2.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestsV130UserText(for: mode),
+                outputSchemaVersion: 3
+            )
         case (.generateQuests, "1.2.0"):
             return PromptTemplate(
                 id: id,
@@ -3539,6 +3634,18 @@ final class LocalPromptProvider: PromptProvider {
                 rollbackTargetVersion: nil,
                 systemText: current.systemText,
                 userText: Self.verifyQuestV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.extractPrinciple, "1.2.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.1.0",
+                systemText: current.systemText,
+                userText: Self.extractPrincipleV120UserText(for: mode),
                 outputSchemaVersion: 1
             )
         case (.extractPrinciple, "1.1.0"):
@@ -4148,6 +4255,61 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func generateQuestsV130UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate tomorrow's quests from confirmed cards and user answers.
+        Create exactly one main quest unless information is insufficient.
+        Create at most two side quests and at most one observation quest.
+        The main quest should target the highest-value action, not the easiest task.
+        Treat the main quest as a calibration instrument, not a generic todo.
+        Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+        The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+        Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
+        Every quest must name the selected lens reasoning move it trains in lens_move.
+        Use reflectionAnswers calibrationTarget when it exists; otherwise derive a concrete target from confirmedCards and the user's answer.
+        Do not invent vague calibration targets like "improve thinking" or "understand the situation".
+        Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
+        If information is insufficient, ask for clarification rather than inventing a task.
+        Use lensFeedback as verified lens outcomes from previous days.
+        Reinforce lensMoves that produced high-value calibration evidence.
+        When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
+        When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
+        Use coachTeachingPlan.proceedStandard to preserve the evidence or answer standard that made action safe.
+        Use coachTeachingPlan.experienceReplayPrompt when a quest should reuse, adapt, or reject past experience.
+        If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
+        Do not erase unresolved teaching gaps just because a quest can be generated.
+
+        Lens-specific quest rules:
+        - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
+        - When selectedLens is evidence_check, choose an action that gathers missing evidence or separates fact from interpretation.
+        - When selectedLens is opposing_view, choose an action that can test the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, choose the smallest action likely to change the result, not the easiest visible work.
+        - When selectedLens is first_principles, choose an action that validates a hard constraint or strips away an inherited assumption.
+        - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, coachTeachingPlan, and sessionMode.
+        Return JSON:
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "string",
+            "why_it_matters": "string",
+            "completion_criteria": "string",
+            "expected_resistance": "string",
+            "reflection_question": "string",
+            "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this quest will calibrate",
+            "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+            "linked_cards": ["string"]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": ["string"]
+        }
+        """
+    }
+
     private static func verifyQuestV110UserText(for mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         return """
@@ -4345,6 +4507,40 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func extractPrincipleV120UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        From the confirmed cards, answers, and selected quest, identify at most one reusable principle.
+        Do not create a principle if the lesson is too situational.
+        The principle must be concrete enough to apply later.
+        Frame it as a behavior rule, not a slogan.
+        The principle must include at least two concrete actions the user can do next time.
+        The success_criteria must name observable evidence, a visible artifact, owner confirmation, acceptance criteria, or another verifiable signal.
+        Do not return vague slogans such as "keep clear", "be better", or "improve efficiency".
+        The principle must cite source_card_titles using exact titles from confirmedCards.
+        Do not invent source_card_titles. If no confirmed card supports the rule, return principle_candidate: null.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedQuest, and sessionMode.
+        Return JSON:
+        {
+          "principle_candidate": {
+            "title": "string",
+            "summary": "string",
+            "trigger_context": "string",
+            "actions": ["string"],
+            "success_criteria": "string",
+            "exceptions": "string",
+            "source_card_titles": ["string"]
+          }
+        }
+        If no reusable rule is justified, return:
+        {
+          "principle_candidate": null
+        }
+        """
+    }
+
     private static func userText(for id: PromptID, mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         switch id {
@@ -4507,6 +4703,11 @@ final class LocalPromptProvider: PromptProvider {
             Create at most two side quests and at most one observation quest.
             The main quest should target the highest-value action, not the easiest task.
             Treat the main quest as a calibration instrument, not a generic todo.
+            You are not a satisfaction-maximizing assistant.
+            Do not turn a weak judgment into a quest just to let the user proceed.
+            If the user's answers still contain weak evidence, skipped tradeoffs, premature conclusions, vague goals, avoided responsibility, or harmful patterns, name the unresolved evidence gap, skipped tradeoff, premature conclusion, or avoided responsibility before designing the quest.
+            Critique the action design or thinking move, not the person.
+            Do not diagnose personality, intelligence, motivation, or hidden intent.
             Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
             The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
             Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
@@ -4565,6 +4766,11 @@ final class LocalPromptProvider: PromptProvider {
             The principle must include at least two concrete actions the user can do next time.
             The success_criteria must name observable evidence, a visible artifact, owner confirmation, acceptance criteria, or another verifiable signal.
             Do not return vague slogans such as "keep clear", "be better", or "improve efficiency".
+            You are not a satisfaction-maximizing assistant.
+            Do not turn an unverified story or comforting lesson into a principle.
+            If the lesson lacks evidence, exceptions, trigger boundaries, or a concrete action standard, name the missing evidence, exception, trigger boundary, or action standard by returning principle_candidate: null instead of inventing a rule.
+            Critique the reusable rule, not the person.
+            Do not diagnose personality, intelligence, motivation, or hidden intent.
             The principle must cite source_card_titles using exact titles from confirmedCards.
             Do not invent source_card_titles. If no confirmed card supports the rule, return principle_candidate: null.
             \(modeGuidance)

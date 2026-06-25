@@ -31,6 +31,9 @@ final class MingSiUITests: XCTestCase {
 
         tapPrimaryAction(in: app, expectingState: "select_lens")
 
+        XCTAssertTrue(app.staticTexts["明思观察了你的材料"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["诊断主要缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["推荐训练处方"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前阶段：补证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["建议：先减缓收敛，补齐关键证据。"].waitForExistence(timeout: 4))

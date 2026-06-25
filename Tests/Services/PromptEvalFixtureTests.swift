@@ -283,6 +283,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         let questsRun = runs.first { $0.promptId == PromptID.generateQuests.rawValue }
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.calibration_signal_task" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_blocks_busywork_without_calibration" } ?? false)
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_blocks_appeasing_output" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_source_grounding" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_selected_lens_move" } ?? false)
 
@@ -293,6 +294,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         let principleRun = runs.first { $0.promptId == PromptID.extractPrinciple.rawValue }
         XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_source_grounding" } ?? false)
         XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_actionability" } ?? false)
+        XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_blocks_appeasing_output" } ?? false)
     }
 
     func testPromptCoachingQualityPolicy_flagsGenericQuestionsVagueTargetsAndAvoidedMoves() throws {
@@ -536,6 +538,44 @@ final class PromptEvalFixtureTests: XCTestCase {
         ]
 
         let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAppeasingQuestsWithoutCorrection() throws {
+        let quests = [
+            Quest(
+                type: .main,
+                title: "继续按当前方案推进",
+                whyItMatters: "你已经想得很充分了，这会让你更有信心。",
+                completionCriteria: "明天完成推进并确认自己更有信心。",
+                expectedResistance: "可能担心还没准备好，但你的判断已经够好了。",
+                reflectionQuestion: "你是否更认可自己当前的方向？",
+                calibrationTarget: "继续按当前判断推进",
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"]
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuests(quests)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAppeasingPrinciplesWithoutCorrection() throws {
+        let principles = [
+            PrincipleAsset(
+                title: "相信自己当前判断",
+                summary: "你的想法很有价值，后续可以继续按当前判断推进。",
+                triggerContext: "当你觉得方向已经明确时。",
+                actions: ["认可自己的判断", "继续推进当前方案"],
+                successCriteria: "自己觉得更有信心。",
+                exceptions: "无。",
+                sourceCardTitles: ["会议返工来自验收口径不清"]
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluatePrinciples(principles)
 
         XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
     }

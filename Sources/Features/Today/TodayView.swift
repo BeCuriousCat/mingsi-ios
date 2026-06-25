@@ -1005,7 +1005,7 @@ struct TodayView: View {
     private func todayLensCoreCard(confirmedCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Today Core Card")
+                Text("Coach Observation")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
                     .textCase(.uppercase)
@@ -1020,10 +1020,16 @@ struct TodayView: View {
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("透镜会决定下一组追问的角度。推荐可以直接选，也可以生成或手写一个本次专属方法卡。")
+            Text("明思不是让你先挑一个滤镜，而是先看你讲述里哪些材料已经说清、哪些关键思考还跳过。")
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 7) {
+                BriefRow(title: "明思观察了你的材料", body: "先从已确认卡片里看事实、判断、目标、约束和行动是否齐全。", accent: DS.accent)
+                BriefRow(title: "诊断主要缺口", body: "只抓一个当前最该补的漏想点，避免把训练变成泛泛提问。", accent: DS.brick)
+                BriefRow(title: "推荐训练处方", body: "透镜只是训练方式；主线是补上没想清的部分，并保留你的改选权。", accent: DS.success)
+            }
         }
         .padding(DS.cardInnerPadding)
         .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
@@ -1035,9 +1041,9 @@ struct TodayView: View {
 
     private var lensCoreTitle: String {
         guard let first = store.thinkingCards.first(where: \.isConfirmed) else {
-            return "先选择看问题的方法。"
+            return "先看你这次讲述漏掉了什么。"
         }
-        return "围绕「\(first.title)」换一个角度看。"
+        return "围绕「\(first.title)」训练没想清的部分。"
     }
 
     private func trainingPrescriptionCard(

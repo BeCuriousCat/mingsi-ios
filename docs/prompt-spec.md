@@ -179,15 +179,28 @@ Rules:
 
 ### Non-Appeasing Coach Stance
 
-`generateQuestions` must tell the LLM that MingSi is not a
-satisfaction-maximizing assistant. The prompt must forbid flattering,
-reassuring, or agreeing only to validate the user.
+`generateQuestions`, `generateQuests`, and `extractPrinciple` must tell the LLM
+that MingSi is not a satisfaction-maximizing assistant. The prompts must forbid
+flattering, reassuring, or agreeing only to validate the user.
 
 When the user's input contains a weak claim, missing evidence, premature
 conclusion, vague goal, avoided responsibility, harmful pattern, or unchecked
-experience reuse, the question should name the thinking move clearly. The
-critique must target the thinking move, not the person. The prompt must not
+experience reuse, the prompt should name the weak thinking move, task-design
+gap, or reusable-rule gap clearly. The critique must target the thinking move,
+action design, or principle candidate, not the person. The prompt must not
 diagnose personality, intelligence, motivation, or hidden intent.
+
+Stage-specific boundaries:
+
+- `generateQuestions` should ask the user to repair the missing thinking move
+  instead of validating confidence.
+- `generateQuests` must not turn a weak judgment into a quest just to let the
+  user proceed. If action is still useful, the quest must test the unresolved
+  evidence gap, skipped tradeoff, premature conclusion, or avoided
+  responsibility.
+- `extractPrinciple` must not turn an unverified story or comforting lesson into
+  a principle. If the lesson lacks evidence, exceptions, trigger boundaries, or
+  a concrete action standard, return `principle_candidate: null`.
 
 Every correction should state:
 
@@ -317,7 +330,7 @@ Question output can be flagged with:
 - `missingTrainingDimensionAlignment`: question does not serve the primary training dimension or any baseline training dimension.
 - `missingPrimaryTrainingDimensionFocus`: first question does not serve the primary training dimension, so the coach-led main focus is being diluted by baseline checks.
 - `missingCoachTurnAlignment`: question ignores the current coach turn phase, readiness, or recommended move. For example, a `not_ready` turn that recommends evidence gathering should not accept a generic action-choice question.
-- `appeasingWithoutCorrection`: question flatters, reassures, validates, or increases confidence without naming a missing thinking move, evidence gap, risk, or repair action.
+- `appeasingWithoutCorrection`: question, quest, or principle flatters, reassures, validates, or increases confidence without naming a missing thinking move, evidence gap, risk, repair action, action-design gap, or reusable-rule gap.
 - `repeatedAvoidedLensMove`: question repeats a `lensMove` that recent verified `lensFeedback` marked as `avoid`.
 - `unadjustedLensMove`: question repeats a `lensMove` and calibration target that recent verified `lensFeedback` marked as `adjust`, instead of making the move smaller or more observable.
 - `missingReinforcedLensMove`: question batch ignores a `lensMove` that recent verified `lensFeedback` marked as `reinforce`.
@@ -334,6 +347,7 @@ Selected built-in lens move mapping:
 
 Quest output can be flagged with:
 
+- `appeasingWithoutCorrection`: quest validates the user's current judgment or confidence without naming the unresolved evidence gap, skipped tradeoff, premature conclusion, avoided responsibility, or repair action.
 - `busyworkQuest`: quest looks productive but does not reduce uncertainty, test a judgment, or create a calibration signal.
 - `weakCompletionCriteria`: quest completion criteria are too short or not observable enough.
 - `vagueCalibrationTarget`: quest calibration target is too abstract to verify tomorrow.
@@ -350,6 +364,7 @@ Verification output can be flagged with:
 
 Principle output can be flagged with:
 
+- `appeasingWithoutCorrection`: principle turns reassurance, confidence, or an unverified lesson into a reusable rule without naming missing evidence, exceptions, trigger boundary, or action standard.
 - `missingPrincipleSourceGrounding`: principle candidate cites no confirmed source card, so the reusable rule cannot be traced back to today's evidence.
 - `weakPrincipleActionability`: principle candidate is grounded but still too slogan-like, lacks at least two concrete next-time actions, or has no observable success criteria.
 

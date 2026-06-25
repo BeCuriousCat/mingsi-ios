@@ -55,9 +55,15 @@ final class PromptSpecificationDocumentTests: XCTestCase {
 
         XCTAssertTrue(spec.contains("Non-Appeasing Coach Stance"))
         XCTAssertTrue(spec.contains("satisfaction-maximizing assistant"))
-        XCTAssertTrue(spec.contains("forbid flattering"))
+        XCTAssertTrue(spec.contains("must forbid"))
+        XCTAssertTrue(spec.contains("flattering, reassuring, or agreeing"))
+        XCTAssertTrue(spec.contains("generateQuests"))
+        XCTAssertTrue(spec.contains("extractPrinciple"))
         XCTAssertTrue(spec.contains("weak claim, missing evidence, premature"))
-        XCTAssertTrue(spec.contains("critique must target the thinking move, not the person"))
+        XCTAssertTrue(spec.contains("critique must target the thinking move"))
+        XCTAssertTrue(spec.contains("action design, or principle candidate, not the person"))
+        XCTAssertTrue(spec.contains("must not turn a weak judgment into a quest"))
+        XCTAssertTrue(spec.contains("must not turn an unverified story or comforting lesson into"))
         XCTAssertTrue(spec.contains("personality, intelligence, motivation, or hidden intent"))
         XCTAssertTrue(spec.contains("appeasingWithoutCorrection"))
     }
