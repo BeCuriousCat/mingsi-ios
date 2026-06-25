@@ -22,6 +22,7 @@ The project has moved from concept and skeleton into MVP hardening. The main pro
 
 ## Recently Fixed
 
+- Hardened the coach question prompt against appeasement. `generateQuestions` now declares that MingSi is not a satisfaction-maximizing assistant, must not flatter or agree just to validate the user, and should critique weak thinking moves rather than the person. The prompt asset moved to `1.8.0` with `1.7.0` preserved as rollback history. `PromptCoachingQualityPolicy` now flags `appeasingWithoutCorrection`, and focused tests cover the prompt stance, fixed eval suite, runtime quality gate, document spec, and prompt asset rollback path.
 - History advanced filter chips no longer resize based on selected text, reducing horizontal filter row bounce.
 - History advanced filter selection disables implicit animation to avoid top clipping during menu selection.
 - Added a regression test for stable History filter chip metrics.

@@ -50,6 +50,18 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("Do not rely on the deterministic quality gate as the first place where training-dimension alignment happens"))
     }
 
+    func testPromptSpecDocumentsNonAppeasingCoachStance() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Non-Appeasing Coach Stance"))
+        XCTAssertTrue(spec.contains("satisfaction-maximizing assistant"))
+        XCTAssertTrue(spec.contains("forbid flattering"))
+        XCTAssertTrue(spec.contains("weak claim, missing evidence, premature"))
+        XCTAssertTrue(spec.contains("critique must target the thinking move, not the person"))
+        XCTAssertTrue(spec.contains("personality, intelligence, motivation, or hidden intent"))
+        XCTAssertTrue(spec.contains("appeasingWithoutCorrection"))
+    }
+
     func testPromptSpecDocumentsCoachTurnStateForStatefulCoachLoop() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
         let contextPRD = try readRepositoryFile("docs/prompt-context-engineering-prd.md")

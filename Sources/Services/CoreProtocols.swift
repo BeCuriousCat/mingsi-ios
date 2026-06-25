@@ -1300,6 +1300,7 @@ enum PromptCoachingQualityIssueReason: String, Codable, CaseIterable, Identifiab
     case missingPrimaryTrainingDimensionFocus
     case missingCoachTurnAlignment
     case missingFunctionalCoachField
+    case appeasingWithoutCorrection
     case repeatedAvoidedLensMove
     case unadjustedLensMove
     case missingReinforcedLensMove
@@ -1364,6 +1365,9 @@ enum PromptCoachingQualityPolicy {
             }
             if !hasFunctionalCoachFields(question) {
                 issues.append(issue(.missingFunctionalCoachField, subject: subject))
+            }
+            if isAppeasingWithoutCorrection(question) {
+                issues.append(issue(.appeasingWithoutCorrection, subject: subject))
             }
             if question.evidenceGapType == nil {
                 issues.append(issue(.missingEvidenceGapType, subject: subject))
@@ -1543,6 +1547,68 @@ enum PromptCoachingQualityPolicy {
             "how do you feel"
         ]
         return genericPatterns.contains { normalized.contains($0) }
+    }
+
+    private static func isAppeasingWithoutCorrection(_ question: ReflectionQuestion) -> Bool {
+        let combined = [
+            question.question,
+            question.whyItMatters,
+            question.whyNow ?? "",
+            question.expectedUpdate ?? "",
+            question.proceedWhen ?? "",
+            question.calibrationTarget ?? ""
+        ]
+        .joined(separator: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+
+        guard !combined.isEmpty else { return false }
+
+        let appeasingPatterns = [
+            "你已经想得很充分",
+            "你已经做得很好",
+            "你的想法很有价值",
+            "认可你",
+            "更有信心",
+            "觉得有信心",
+            "继续按这个方向",
+            "继续按当前判断",
+            "validate your thinking",
+            "you are already right",
+            "feel more confident",
+            "keep going"
+        ]
+        let correctionPatterns = [
+            "缺",
+            "不足",
+            "不清",
+            "风险",
+            "事实",
+            "证据",
+            "反例",
+            "相反",
+            "校准",
+            "观察",
+            "假设",
+            "解释",
+            "过早",
+            "不要急",
+            "先补",
+            "missing",
+            "gap",
+            "risk",
+            "fact",
+            "evidence",
+            "counterexample",
+            "calibration",
+            "assumption",
+            "premature",
+            "observable"
+        ]
+
+        let hasAppeasingPattern = appeasingPatterns.contains { combined.contains($0) }
+        guard hasAppeasingPattern else { return false }
+        return !correctionPatterns.contains { combined.contains($0) }
     }
 
     private static func isVagueCalibrationTarget(_ target: String?) -> Bool {
@@ -2042,6 +2108,19 @@ private struct PromptEvalCase {
         },
         PromptEvalCase(
             promptId: .generateQuestions,
+            caseId: "questions.prompt_declares_non_appeasing_coach_stance",
+            name: "Questions prompt declares non-appeasing coach stance",
+            inputSummary: "A user wants to proceed while skipping facts, goals, or counterexamples.",
+            expectedBehavior: "The prompt should tell the LLM to respect the user without flattering, reassuring, or agreeing around weak thinking moves."
+        ) { _ in
+            let text = LocalPromptProvider().template(for: .generateQuestions, mode: .standard).userText
+            try expect(text.contains("not a satisfaction-maximizing assistant"), "Expected non-satisfaction stance.")
+            try expect(text.contains("Do not flatter, reassure, or agree"), "Expected anti-flattery rule.")
+            try expect(text.contains("Critique the thinking move, not the person"), "Expected person-safe critique rule.")
+            try expect(text.contains("weak claim, missing evidence, premature conclusion"), "Expected weak-thinking taxonomy.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
             caseId: "questions.quality_gate_requires_functional_coach_fields",
             name: "Question quality gate requires functional coach fields",
             inputSummary: "A grounded question that lacks why-now, expected-update, and proceed-when coach fields.",
@@ -2060,6 +2139,30 @@ private struct PromptEvalCase {
             ]
             let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions).map(\.reason))
             try expect(reasons.contains(.missingFunctionalCoachField), "Expected missing functional coach field issue.")
+        },
+        PromptEvalCase(
+            promptId: .generateQuestions,
+            caseId: "questions.quality_gate_blocks_appeasing_output",
+            name: "Question quality gate blocks appeasing output",
+            inputSummary: "A structurally complete question praises and validates the user's existing judgment without naming any missing thinking move.",
+            expectedBehavior: "Flag outputs that only reassure or increase confidence instead of correcting a weak thinking move."
+        ) { _ in
+            let questions = [
+                ReflectionQuestion(
+                    question: "你已经想得很充分了，可以继续按这个方向推进吗？",
+                    whyItMatters: "你的想法很有价值，这个问题帮助你更有信心地行动。",
+                    whyNow: "当前最重要的是认可你已经做出的判断。",
+                    expectedUpdate: "答案会让你更确定自己原来的方向。",
+                    proceedWhen: "当你觉得有信心时就可以推进。",
+                    evidenceGapType: EvidenceGapType.none,
+                    answerUse: .chooseAction,
+                    lensMove: .leverageTradeoff,
+                    sourceCardTitles: ["会议返工来自验收口径不清"],
+                    calibrationTarget: "继续按当前判断推进"
+                )
+            ]
+            let reasons = Set(PromptCoachingQualityPolicy.evaluateQuestions(questions).map(\.reason))
+            try expect(reasons.contains(.appeasingWithoutCorrection), "Expected appeasing output issue.")
         },
         PromptEvalCase(
             promptId: .generateQuestions,
@@ -3184,8 +3287,8 @@ final class LocalPromptProvider: PromptProvider {
         let outputSchemaVersion: Int
         switch id {
         case .generateQuestions:
-            promptVersion = "1.7.0"
-            rollbackTargetVersion = "1.6.0"
+            promptVersion = "1.8.0"
+            rollbackTargetVersion = "1.7.0"
             outputSchemaVersion = 6
         case .generateQuests:
             promptVersion = "1.3.0"
@@ -3222,6 +3325,18 @@ final class LocalPromptProvider: PromptProvider {
         current: PromptTemplate
     ) -> PromptTemplate? {
         switch (id, version) {
+        case (.generateQuestions, "1.7.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.6.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV170UserText(for: mode),
+                outputSchemaVersion: 6
+            )
         case (.generateQuestions, "1.6.0"):
             return PromptTemplate(
                 id: id,
@@ -3733,6 +3848,88 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func generateQuestionsV170UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+        Coach-led training plan:
+        - Use trainingPrescription as the coach plan, not a lens picker.
+        - Read primaryTrainingDimension, secondaryTrainingDimensions, and baselineTrainingDimensions before writing questions.
+        - The first question must train primaryTrainingDimension unless the confirmed cards make that unsafe or impossible.
+        - Every question must serve either primaryTrainingDimension or one baselineTrainingDimension; use secondaryTrainingDimensions as optional follow-up, not as a second main focus.
+        - Use selectedLens/finalTrainingLens to choose lens_move, but use training dimensions to decide what skill the question trains.
+        - Do not treat a user override as proof that the coach diagnosis was wrong; keep override boundaries explicit in why_this_matters.
+
+        Teaching frame:
+        - Use coachTeachingPlan before wording questions.
+        - Start from missingMoveTitle as the missing thinking move.
+        - Use trainingTargetTitle to keep this as training, not an AI answer.
+        - Keep whyNotAnswer visible in why_this_matters or why_now.
+        - Use proceedStandard to define proceed_when.
+        - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
+        - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
+        - routeSteps are teaching route cues, not permission to add extra workflow steps.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - Every question must include why_now: why this question is the right next move in the current coach turn.
+        - Every question must include expected_update: what judgment, action, evidence plan, or calibration signal the answer is expected to change.
+        - Every question must include proceed_when: what kind of answer is sufficient to move toward action.
+        - Each question must declare the lens-specific reasoning move it trains with lens_move.
+        - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+        - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+        - Every question must cite at least one confirmed card title in source_card_titles.
+        - Do not invent source_card_titles; use exact titles from confirmedCards.
+        - If a question cannot be tied to a confirmed card, replace it with a grounded question.
+        - Every question must name the judgment or assumption it will calibrate in calibration_target.
+        - Do not use vague calibration targets like "the user's thinking" or "the situation"; name a concrete belief, prediction, causal explanation, or tradeoff.
+        - If the target cannot be stated, replace the question with one whose calibration target is explicit.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        - When lensFeedback is present, use verified outcomes and lensMoves to tune the next questions: reinforce lensMoves marked reinforce, make lensMoves marked adjust more concrete, and avoid lensMoves marked avoid.
+        - Do not repeat a lens move that produced low-value or uncalibratable work; replace it with a question that names a clearer evidence gap and calibration target.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "why_now": "why this question is the right next move in the current coach turn",
+              "expected_update": "what judgment, action, evidence plan, or calibration signal the answer is expected to change",
+              "proceed_when": "what kind of answer is sufficient to move toward action",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+              "source_card_titles": ["exact confirmed card title"],
+              "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this question will calibrate",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
     private static func generateQuestionsV100UserText(for mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         return """
@@ -4224,6 +4421,12 @@ final class LocalPromptProvider: PromptProvider {
             Do not ask generic self-help questions.
             Do not ask questions that only invite opinions, venting, or vague self-description.
             Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+            You are not a satisfaction-maximizing assistant.
+            Do not flatter, reassure, or agree just to make the user feel validated.
+            If the user's input contains a weak claim, missing evidence, premature conclusion, vague goal, avoided responsibility, or harmful pattern, name it clearly.
+            Critique the thinking move, not the person.
+            Do not diagnose personality, intelligence, motivation, or hidden intent.
+            Every correction must say what was observed, why it is weak or risky, what ability it trains, and what to repair next.
 
             Coach-led training plan:
             - Use trainingPrescription as the coach plan, not a lens picker.

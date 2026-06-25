@@ -177,6 +177,25 @@ Rules:
 - Baseline dimensions are checks, not permission to generate a broad questionnaire. Keep one main coaching focus per loop.
 - Do not treat a user's override lens as proof that the coach diagnosis was wrong. Keep `primaryTrainingDimension` tied to the coach recommendation and use `finalTrainingLens` for the generated lens move.
 
+### Non-Appeasing Coach Stance
+
+`generateQuestions` must tell the LLM that MingSi is not a
+satisfaction-maximizing assistant. The prompt must forbid flattering,
+reassuring, or agreeing only to validate the user.
+
+When the user's input contains a weak claim, missing evidence, premature
+conclusion, vague goal, avoided responsibility, harmful pattern, or unchecked
+experience reuse, the question should name the thinking move clearly. The
+critique must target the thinking move, not the person. The prompt must not
+diagnose personality, intelligence, motivation, or hidden intent.
+
+Every correction should state:
+
+- what was observed;
+- why it is weak or risky;
+- what ability it trains;
+- what to repair next.
+
 ### Coach Turn State
 
 Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. Prompt context may carry:
@@ -298,6 +317,7 @@ Question output can be flagged with:
 - `missingTrainingDimensionAlignment`: question does not serve the primary training dimension or any baseline training dimension.
 - `missingPrimaryTrainingDimensionFocus`: first question does not serve the primary training dimension, so the coach-led main focus is being diluted by baseline checks.
 - `missingCoachTurnAlignment`: question ignores the current coach turn phase, readiness, or recommended move. For example, a `not_ready` turn that recommends evidence gathering should not accept a generic action-choice question.
+- `appeasingWithoutCorrection`: question flatters, reassures, validates, or increases confidence without naming a missing thinking move, evidence gap, risk, or repair action.
 - `repeatedAvoidedLensMove`: question repeats a `lensMove` that recent verified `lensFeedback` marked as `avoid`.
 - `unadjustedLensMove`: question repeats a `lensMove` and calibration target that recent verified `lensFeedback` marked as `adjust`, instead of making the move smaller or more observable.
 - `missingReinforcedLensMove`: question batch ignores a `lensMove` that recent verified `lensFeedback` marked as `reinforce`.

@@ -179,6 +179,18 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("Use coachTeachingPlan before wording questions"))
     }
 
+    func testGenerateQuestionsTemplate_declaresNonAppeasingCoachStance() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("not a satisfaction-maximizing assistant"))
+        XCTAssertTrue(text.contains("Do not flatter, reassure, or agree"))
+        XCTAssertTrue(text.contains("weak claim, missing evidence, premature conclusion"))
+        XCTAssertTrue(text.contains("Critique the thinking move, not the person"))
+        XCTAssertTrue(text.contains("Do not diagnose personality, intelligence, motivation, or hidden intent"))
+        XCTAssertTrue(text.contains("Every correction must say what was observed"))
+    }
+
     func testGenerateQuestsTemplate_requiresOneMainQuestAndVerifiableCriteria() {
         let template = provider.template(for: .generateQuests, mode: .standard)
         let text = template.userText
@@ -295,22 +307,22 @@ final class LocalPromptProviderTests: XCTestCase {
     func testGenerateQuestionsCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.7.0")
+        XCTAssertEqual(current.version, "1.8.0")
         XCTAssertEqual(current.outputSchemaVersion, 6)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.6.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.7.0")
     }
 
     func testGenerateQuestionsRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
-        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.6.0")
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.7.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.6.0")
+        XCTAssertEqual(historical?.version, "1.7.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, 6)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.5.0")
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.6.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
         XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
@@ -318,7 +330,9 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(historical?.userText.contains("\"lens_move\"") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"source_card_titles\"") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"calibration_target\"") ?? false)
-        XCTAssertFalse(historical?.userText.contains("primaryTrainingDimension") ?? true)
+        XCTAssertTrue(historical?.userText.contains("primaryTrainingDimension") ?? false)
+        XCTAssertTrue(historical?.userText.contains("coachTeachingPlan") ?? false)
+        XCTAssertFalse(historical?.userText.contains("not a satisfaction-maximizing assistant") ?? true)
     }
 
     func testGenerateQuestionsV150HistoricalPromptAsset_stillResolvesForRollbackHistory() {

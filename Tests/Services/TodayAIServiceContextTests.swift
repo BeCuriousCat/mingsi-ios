@@ -1356,6 +1356,35 @@ final class TodayAIServiceContextTests: XCTestCase {
         }
     }
 
+    func testGenerateQuestions_rejectsAppeasingOutputWithoutCorrection() async throws {
+        let client = CapturingLLMClient(response: Self.appeasingQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        do {
+            _ = try await service.generateQuestions(
+                for: TodayAIContext(
+                    draft: DailyEntryDraft(
+                        rawText: "会议返工来自验收口径不清，但我想先继续推进。",
+                        selectedLens: .leverageAnalysis
+                    ),
+                    confirmedCards: [
+                        ThinkingCard(
+                            type: .task,
+                            title: "会议返工来自验收口径不清",
+                            body: "我想先继续推进，但没有补事实、目标或反例。"
+                        )
+                    ]
+                )
+            )
+            XCTFail("Expected appeasing output without correction to be rejected.")
+        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
+            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.appeasingWithoutCorrection.rawValue))
+        }
+    }
+
     func testGenerateQuestions_rejectsSystemThinkingOutputWithoutSystemMove() async throws {
         let client = CapturingLLMClient(response: Self.nonSystemThinkingQuestionsResponse)
         let service = TodayAIService(
@@ -2481,6 +2510,28 @@ final class TodayAIServiceContextTests: XCTestCase {
               "lens_move": "prediction_calibration",
               "source_card_titles": [],
               "calibration_target": "the situation",
+              "expected_answer_type": "judgment"
+            }
+          ]
+        }
+        """.utf8
+    )
+
+    private static let appeasingQuestionsResponse = Data(
+        """
+        {
+          "questions": [
+            {
+              "question": "你已经想得很充分了，可以继续按这个方向推进吗？",
+              "why_this_matters": "你的想法很有价值，这个问题帮助你更有信心地行动。",
+              "why_now": "当前最重要的是认可你已经做出的判断。",
+              "expected_update": "答案会让你更确定自己原来的方向。",
+              "proceed_when": "当你觉得有信心时就可以推进。",
+              "evidence_gap_type": "none",
+              "answer_use": "choose_action",
+              "lens_move": "leverage_tradeoff",
+              "source_card_titles": ["会议返工来自验收口径不清"],
+              "calibration_target": "继续按当前判断推进",
               "expected_answer_type": "judgment"
             }
           ]
