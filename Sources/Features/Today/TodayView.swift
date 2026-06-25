@@ -264,6 +264,8 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 14) {
             stepLabel("今天发生了什么？", subtitle: "先收集原始材料，不急着写成文章。")
 
+            reviewScaffoldView
+
             CaptureTextView(text: Binding(
                 get: { store.todayDraft.rawText },
                 set: { store.updateTodayCapture($0) }
@@ -315,6 +317,80 @@ struct TodayView: View {
 
             starterPills
         }
+    }
+
+    private var reviewScaffoldView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("基础能力训练")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                Text("不是让 AI 替你总结，而是训练你把复杂事情说清、想清、安排清。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 6) {
+                trainingPill("沟通力")
+                trainingPill("思考力")
+                trainingPill("执行力")
+                Spacer(minLength: 0)
+            }
+
+            Text("讲清楚一件事")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+
+            BriefRow(title: "发生了什么", body: "先把背景、触发点、关键人物或对象讲清楚。", accent: DS.accent)
+            BriefRow(title: "我怎么做", body: "写出你的动作、选择、沟通或没有做的事。", accent: DS.brick)
+            BriefRow(title: "我怎么想", body: "说明当时基于哪些事实、假设、目标或取舍做判断。", accent: DS.caution)
+            BriefRow(title: "问题类型", body: "先判断这是对象理解、目标不清、证据不足、协作断点、执行约束，还是反馈缺失。", accent: DS.graphite)
+            BriefRow(title: "复盘问题", body: "最后写一个想追问自己的问题，让后续分析知道该从哪里切入。", accent: DS.success)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("训练要点")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                HStack(spacing: 6) {
+                    trainingSkillTag("描述力")
+                    trainingSkillTag("观察力")
+                    trainingSkillTag("分析力")
+                }
+                HStack(spacing: 6) {
+                    trainingSkillTag("判断力")
+                    trainingSkillTag("执行力")
+                    trainingSkillTag("校准力")
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+
+    private func trainingPill(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(DS.accent)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(DS.accent.opacity(0.10), in: Capsule())
+    }
+
+    private func trainingSkillTag(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(DS.mutedInk)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04), in: Capsule())
     }
 
     // MARK: - Organizing
@@ -2512,6 +2588,10 @@ private struct QuestionCardView: View {
                 )
             }
 
+            if hasTeachingCue {
+                answerDrillView
+            }
+
             TextField("写下你的判断，不需要完整答案", text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
@@ -2532,6 +2612,41 @@ private struct QuestionCardView: View {
             trimmed(question.whyNow) != nil ||
             trimmed(question.expectedUpdate) != nil ||
             trimmed(question.proceedWhen) != nil
+    }
+
+    private var answerDrillView: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("作答训练")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+                .textCase(.uppercase)
+            BriefRow(
+                title: "不是 AI 答案",
+                body: "这一段训练你自己补上没想到的部分，明思只负责指出该补哪里。",
+                accent: DS.accent
+            )
+            BriefRow(
+                title: "补盲区",
+                body: "先回答\(teachingGapTitle ?? "当前判断缺口")，不要急着给结论。",
+                accent: DS.brick
+            )
+            BriefRow(
+                title: "复现经验",
+                body: "把召回经验判成复现、调整或否定，避免机械套用历史做法。",
+                accent: DS.graphite
+            )
+            BriefRow(
+                title: "安排执行",
+                body: "写出\(question.answerUse?.displayTitle ?? "答案会改变什么")，再留一个明天能验证的结果信号。",
+                accent: DS.success
+            )
+        }
+        .padding(10)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
     }
 
     private var teachingGapTitle: String? {

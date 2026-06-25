@@ -99,6 +99,28 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.buttons["today.primary-action"].waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureShowsReviewScaffold() throws {
+        let app = seededTodayApp(stage: "capture")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["基础能力训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["讲清楚一件事"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["沟通力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["思考力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["执行力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["发生了什么"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我怎么做"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我怎么想"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["问题类型"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复盘问题"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["描述力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["观察力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["分析力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["判断力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["校准力"].waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsSeedCanTypeThroughAccessibilityIdentifier() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
@@ -129,6 +151,11 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["复现：照用哪条做法？"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["调整：哪些条件不同？"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["作答训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["不是 AI 答案"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["补盲区"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复现经验"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["安排执行"].waitForExistence(timeout: 4))
     }
 
     func testTodayAnswerQuestionsShowsCoachGapPreviewAfterTyping() throws {
