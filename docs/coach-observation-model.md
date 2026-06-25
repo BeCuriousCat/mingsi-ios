@@ -261,11 +261,15 @@ Rules:
 
 This model should be implemented before broad prompt expansion:
 
-1. Add a pure domain model for observation gaps and coach observation feedback.
-2. Add deterministic local heuristics for obvious gaps after confirmed cards.
-3. Add prompt context fields only after the observation model is stable.
-4. Update `generateQuestions` prompt to use coach observation before writing questions.
-5. Render the observation frame in Today before the question input.
-6. Add quality gates that reject questions missing an observation/gap/training/ask link.
+1. Done: add a pure domain model for observation materials, gaps, core abilities, and coach observation feedback.
+2. Done: add deterministic local heuristics for obvious gaps after confirmed cards:
+   - action without goal -> goal gap -> judgment training;
+   - judgment without fact -> observation gap -> observation training;
+   - experience reuse without fit check -> experience gap -> calibration training plus counterexample check.
+3. Done: enforce one primary gap per turn so coach feedback remains training, not a broad questionnaire.
+4. Next: add prompt context fields only after the observation model is stable.
+5. Next: update `generateQuestions` prompt to use coach observation before writing questions.
+6. Next: render the observation frame in Today before the question input.
+7. Next: add quality gates that reject questions missing an observation/gap/training/ask link.
 
 Do not implement this as a generic chat agent. Keep it Today-local, auditable, and testable.

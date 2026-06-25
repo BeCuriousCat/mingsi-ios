@@ -944,6 +944,61 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(decision.proceedWhen.contains("明日"))
     }
 
+    func testCoachObservationPolicy_identifiesActionWithoutGoalAsGoalGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "明天先拉会推进", body: "我打算先找几个人开会，把事情往前推。"),
+            ThinkingCard(type: .communication, title: "讨论有点混乱", body: "大家说了很多，但不知道到底服务于谁。")
+        ]))
+
+        XCTAssertEqual(observation.policyVersion, CoachObservationPolicy.policyVersion)
+        XCTAssertEqual(observation.primaryGap, .goal)
+        XCTAssertEqual(observation.trainingAbility, .judgment)
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.goal))
+        XCTAssertTrue(observation.feedback.observed.contains("动作"))
+        XCTAssertTrue(observation.feedback.ask.contains("谁"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("成功标准"))
+    }
+
+    func testCoachObservationPolicy_identifiesJudgmentWithoutFactAsObservationGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "我觉得方案不可行", body: "这件事大概率会失败。"),
+            ThinkingCard(type: .idea, title: "可能是沟通问题", body: "只是感觉，没有看到明确事实。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .observation)
+        XCTAssertEqual(observation.trainingAbility, .observation)
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.missingMaterials.contains(.fact))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("结论"))
+        XCTAssertTrue(observation.feedback.training.contains("观察力"))
+        XCTAssertTrue(observation.feedback.ask.contains("事实"))
+    }
+
+    func testCoachObservationPolicy_identifiesExperienceMentionWithoutFitCheck() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),
+            ThinkingCard(type: .idea, title: "可能要复用经验", body: "还没判断这次条件是不是一样。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .experience)
+        XCTAssertEqual(observation.trainingAbility, .calibration)
+        XCTAssertTrue(observation.secondaryGaps.contains(.counterexample))
+        XCTAssertTrue(observation.feedback.ask.contains("复现、调整，还是否定"))
+        XCTAssertTrue(observation.experienceReplayPrompt.contains("条件"))
+    }
+
+    func testCoachObservationPolicy_keepsOnePrimaryGapPerTurn() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "先照以前方式推进", body: "我打算先拉会处理，沿用以前有效的做法。"),
+            ThinkingCard(type: .decision, title: "这次应该也有效", body: "我觉得可以先推进，但还没说清目标，也没判断这次条件是否一样。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .experience)
+        XCTAssertFalse(observation.secondaryGaps.contains(observation.primaryGap))
+        XCTAssertEqual(observation.feedback.ask.filter { $0 == "？" }.count, 1)
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
