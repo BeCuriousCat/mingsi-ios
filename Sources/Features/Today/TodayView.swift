@@ -1089,6 +1089,7 @@ struct TodayView: View {
             BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
             BriefRow(title: "教练追问", body: plan.repairQuestion, accent: DS.brick)
             BriefRow(title: "过往经验复现", body: plan.experienceReplayPrompt, accent: DS.graphite)
+            experienceReplayDecisionView()
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("训练路线")
@@ -1124,6 +1125,27 @@ struct TodayView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
+    }
+
+    private func experienceReplayDecisionView() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("经验判断")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+                .textCase(.uppercase)
+            Text("复现：照用哪条做法？")
+                .font(.caption)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("调整：哪些条件不同？")
+                .font(.caption)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("否定：这条经验为什么不适用？")
+                .font(.caption)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func coachDiagnosisCard(

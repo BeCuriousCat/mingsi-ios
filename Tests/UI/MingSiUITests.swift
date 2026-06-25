@@ -125,6 +125,10 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["经验判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复现：照用哪条做法？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["调整：哪些条件不同？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用？"].waitForExistence(timeout: 4))
     }
 
     func testTodayAnswerQuestionsShowsCoachGapPreviewAfterTyping() throws {
