@@ -6,6 +6,7 @@ enum TodayAutomationID {
     static let primaryActionHint = "today.primary-action-hint"
     static let previousAction = "today.previous-action"
     static let supplementCaptureAction = "today.supplement-capture-action"
+    static let returnToReviewForJudgmentAction = "today.return-to-review-for-judgment-action"
     static let retryCurrentStepAction = "today.retry-current-step-action"
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
@@ -55,6 +56,13 @@ enum TodayAutomationID {
     }
 }
 
+private struct LoopBoundaryCopy {
+    let title: String
+    let body: String
+    let icon: String
+    let tint: Color
+}
+
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
     @State private var isCaptureFocused = false
@@ -75,6 +83,7 @@ struct TodayView: View {
                                 proxy.scrollTo(TodayScrollAnchor.top, anchor: .top)
                             }
                         }
+                        loopBoundaryHint
 
                         switch store.todayDraft.state {
                         case .verifyYesterday:
@@ -119,6 +128,59 @@ struct TodayView: View {
         }
         .onChange(of: store.todayDraft.state) { _, _ in
             presentVisualQACustomLensSheetIfNeeded()
+        }
+    }
+
+    private var loopBoundaryHint: some View {
+        let boundary = currentLoopBoundary
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: boundary.icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(boundary.tint)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(boundary.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(boundary.tint)
+                Text(boundary.body)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(boundary.tint.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(boundary.tint.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var currentLoopBoundary: LoopBoundaryCopy {
+        switch store.todayDraft.state {
+        case .verifyYesterday:
+            return LoopBoundaryCopy(
+                title: "闭环二：结果校准",
+                body: "只回看昨天的明天实验：做没做、有没有价值、判断如何更新；完成后才进入今天内容。",
+                icon: "scope",
+                tint: DS.caution
+            )
+        case .reviewQuests, .extractPrinciple, .sessionComplete:
+            return LoopBoundaryCopy(
+                title: "闭环二：明天实验与结果校准",
+                body: "把今日复盘后的一个判断变成明天实验；明天回来只校准结果，不继续写今天复盘。",
+                icon: "flag.checkered",
+                tint: DS.success
+            )
+        case .capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions:
+            return LoopBoundaryCopy(
+                title: "闭环一：今天内容与今日复盘",
+                body: "先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。",
+                icon: "person.text.rectangle",
+                tint: DS.brick
+            )
         }
     }
 
@@ -171,9 +233,55 @@ struct TodayView: View {
     }
 
     private func loopProgress(scrollToTop: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            loopProgressGroup(
+                title: "今日理解闭环",
+                route: "今天内容 → 今日复盘",
+                states: [.capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions],
+                tint: DS.brick,
+                scrollToTop: scrollToTop
+            )
+
+            loopProgressGroup(
+                title: "行动验证闭环",
+                route: "明日实验 → 结果校准",
+                states: [.reviewQuests, .extractPrinciple, .sessionComplete, .verifyYesterday],
+                tint: DS.success,
+                scrollToTop: scrollToTop
+            )
+
+            Text(progressCaption)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+        }
+        .padding(.top, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: scrollToTop)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("今日流程进度")
+        .accessibilityHint("点按返回今日顶部")
+    }
+
+    private func loopProgressGroup(
+        title: String,
+        route: String,
+        states: [DailyLoopState],
+        tint: Color,
+        scrollToTop: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(route)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                Spacer(minLength: 0)
+            }
+
             HStack(spacing: 6) {
-                ForEach(DailyLoopState.allCases) { state in
+                ForEach(states) { state in
                     Button {
                         if store.canNavigateTodayLoop(to: state) {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -186,25 +294,15 @@ struct TodayView: View {
                     } label: {
                         Capsule()
                             .fill(progressColor(for: state))
-                            .frame(height: 8)
-                            .opacity(store.canNavigateTodayLoop(to: state) || state == store.todayDraft.state ? 1 : 0.55)
+                            .frame(height: 7)
+                            .opacity(store.canNavigateTodayLoop(to: state) || state == store.todayDraft.state ? 1 : 0.5)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("回到\(state.title)")
                     .accessibilityHint(store.canNavigateTodayLoop(to: state) ? "点按回到该步骤编辑" : "该步骤暂不可返回")
                 }
             }
-
-            Text(progressCaption)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
         }
-        .padding(.top, 2)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: scrollToTop)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("今日流程进度")
-        .accessibilityHint("点按返回今日顶部")
     }
 
     // MARK: - Verify Yesterday
@@ -213,11 +311,23 @@ struct TodayView: View {
     // Design: Warm, reflective - not a form, a moment of honesty
     private var verifyYesterdaySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("先回看昨天", subtitle: "用一个真实结果校准昨天的判断。")
+            phaseBoundaryCard(
+                title: "结果校准",
+                body: "先验证昨天的明日实验，再开始收集今天的新材料。",
+                icon: "scope",
+                tint: DS.caution
+            )
+            BriefRow(
+                title: "本页只校准昨天结果",
+                body: "只检查做没做、有没有实际价值、昨天判断要不要更新；新的今日内容在下一段填写。",
+                accent: DS.caution
+            )
+
+            stepLabel("验证昨日实验", subtitle: "用一个真实结果校准昨天的判断。")
 
             if let quest = store.mainQuest ?? store.quests.first {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("昨日主线任务")
+                    Text("昨日主线实验")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(quest.title)
@@ -253,6 +363,20 @@ struct TodayView: View {
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("昨天判断怎么更新？")
+                    .font(.subheadline.weight(.medium))
+                HStack(spacing: 10) {
+                    ForEach(YesterdayJudgmentUpdate.allCases) { update in
+                        choiceChip(
+                            title: update.title,
+                            isSelected: store.todayDraft.yesterdayJudgmentUpdate == update,
+                            action: { store.selectYesterdayJudgmentUpdate(update) }
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -262,7 +386,19 @@ struct TodayView: View {
     // Design: Generous text area, inviting, feels like opening a notebook
     private var captureSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("今天发生了什么？", subtitle: "先收集原始材料，不急着写成文章。")
+            phaseBoundaryCard(
+                title: "今天内容",
+                body: "这里只收集今天内容：事实、动作、感受和想法；先不复盘，也不写明天。",
+                icon: "text.bubble",
+                tint: DS.accent
+            )
+            BriefRow(
+                title: "本页只写今天内容",
+                body: "把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。",
+                accent: DS.accent
+            )
+
+            stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
 
             reviewScaffoldView
 
@@ -540,7 +676,22 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("回答问题", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
+            phaseBoundaryCard(
+                title: "今日复盘",
+                body: "明思观察你怎么讲述、判断和跳步，再指出当前最该补的思考材料。",
+                icon: "person.text.rectangle",
+                tint: DS.brick
+            )
+            BriefRow(
+                title: "本页只复盘今天",
+                body: "这里只修补今天材料里的讲述、证据和判断缺口；明天行动会在明日实验里设计。",
+                accent: DS.brick
+            )
+
+            stepLabel("教练追问", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
+            answerObservationFrame(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
 
             if let preview = store.coachAnswerFeedbackPreview {
                 answerFeedbackPreviewView(preview)
@@ -568,19 +719,80 @@ struct TodayView: View {
         }
     }
 
-    private func answerFeedbackPreviewView(_ turn: CoachTurnState) -> some View {
+    private func answerObservationFrame(_ observation: CoachObservation) -> some View {
         VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: "能力训练诊断",
+                body: "本轮主练：\(observation.trainingAbility.displayTitle)。\(observation.trainingAbility.coachingMeaning)",
+                accent: DS.accent
+            )
+            BriefRow(
+                title: "材料分离训练",
+                body: "事实、感受、解释、判断、行动",
+                accent: DS.caution
+            )
+            materialInventoryRows(for: observation)
+            BriefRow(title: "我观察到", body: observation.feedback.observed, accent: DS.accent)
+            BriefRow(title: "当前主要缺口", body: observation.feedback.diagnosis, accent: DS.brick)
+            BriefRow(title: "本轮训练", body: observation.feedback.training, accent: DS.caution)
+            BriefRow(title: "请你补充", body: observation.feedback.ask, accent: DS.accent)
+            BriefRow(title: "推进标准", body: observation.feedback.proceedWhen, accent: DS.success)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func materialInventoryRows(for observation: CoachObservation) -> some View {
+        BriefRow(
+            title: "已说清",
+            body: materialLine(for: observation.providedMaterials, fallback: "还没有足够材料"),
+            accent: DS.success
+        )
+        BriefRow(
+            title: "先补",
+            body: materialLine(for: observation.missingMaterials, fallback: "暂无明确缺口"),
+            accent: DS.brick
+        )
+    }
+
+    private func materialLine(
+        for materials: [CoachObservationMaterial],
+        fallback: String
+    ) -> String {
+        let titles = materials
+            .map(\.displayTitle)
+            .filter { !$0.isEmpty }
+        return titles.isEmpty ? fallback : titles.joined(separator: "、")
+    }
+
+    private func answerFeedbackPreviewView(_ turn: CoachTurnState) -> some View {
+        let teachingPlan = CoachTeachingPolicy().makePlan(
+            turn: turn,
+            prescription: store.trainingPrescription
+        )
+        return VStack(alignment: .leading, spacing: 9) {
             BriefRow(
                 title: turn.readiness == .ready ? "当前回答" : "当前仍缺",
                 body: turn.readiness == .ready ? "已补上本轮关键缺口，可以转成明天可验证的行动。" : answerFeedbackGapLine(for: turn),
                 accent: turn.readiness == .ready ? DS.success : DS.brick
             )
-            teachingRouteView(
-                CoachTeachingPolicy().makePlan(
-                    turn: turn,
-                    prescription: store.trainingPrescription
-                )
+            BriefRow(
+                title: "能力修补",
+                body: "本轮正在练\(teachingPlan.trainingTargetTitle)。下一句先按推进标准补：\(teachingPlan.proceedStandard)",
+                accent: DS.caution
             )
+            BriefRow(
+                title: "判断句训练",
+                body: "把下一句写成：我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。",
+                accent: DS.success
+            )
+            teachingRouteView(teachingPlan)
         }
     }
 
@@ -592,13 +804,65 @@ struct TodayView: View {
         return "\(gapLine)。\(turn.reason)"
     }
 
+    private func phaseBoundaryCard(title: String, body: String, icon: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 22, height: 22)
+                .background(tint.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                    .textCase(.uppercase)
+                Text(body)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(tint.opacity(0.14), lineWidth: 1)
+        )
+    }
+
     // MARK: - Review Quests
 
     // Purpose: Review tomorrow's action plan
     // Design: Quest cards feel actionable, main quest is visually prominent
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("明日任务", subtitle: "主线任务必须有明确完成标准。")
+            phaseBoundaryCard(
+                title: "明日实验",
+                body: "今日复盘已结束；下面把今天的判断转成明天可验证的行动，不是继续写总结。",
+                icon: "flag.checkered",
+                tint: DS.success
+            )
+            BriefRow(
+                title: "明天怎么回看",
+                body: "明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。",
+                accent: DS.caution
+            )
+            BriefRow(
+                title: "本页只设计明天实验",
+                body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
+                accent: DS.success
+            )
+            BriefRow(
+                title: "今日复盘交接点",
+                body: "今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。",
+                accent: DS.accent
+            )
+
+            reviewQuestJudgmentAnchor
+
+            stepLabel("设计明日实验", subtitle: "主线行动必须验证今天的一个判断，并有明确完成标准。")
 
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
@@ -630,6 +894,53 @@ struct TodayView: View {
                 )
             }
         }
+    }
+
+    private var reviewQuestJudgmentAnchor: some View {
+        let target = mainQuestCalibrationTarget
+        return VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: "今天待验证判断",
+                body: target ?? "还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。",
+                accent: target == nil ? DS.caution : DS.accent
+            )
+            BriefRow(
+                title: "下面的实验只验证这个判断",
+                body: "明日实验不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
+                accent: DS.success
+            )
+            if target == nil {
+                Button {
+                    store.navigateTodayLoop(to: .answerQuestions)
+                } label: {
+                    Label("回到今日复盘补判断", systemImage: "arrow.uturn.backward")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.caution)
+                .accessibilityIdentifier(TodayAutomationID.returnToReviewForJudgmentAction)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke((target == nil ? DS.caution : DS.accent).opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var mainQuestCalibrationTarget: String? {
+        let mainTarget = store.mainQuest?.calibrationTarget?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let mainTarget, !mainTarget.isEmpty {
+            return mainTarget
+        }
+
+        return store.quests
+            .compactMap { $0.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     // MARK: - Extract Principle
@@ -670,7 +981,7 @@ struct TodayView: View {
             stepLabel("今日完成", subtitle: "今天的输入已经转成明天可验证的动作。")
 
             if let mainQuest = store.quests.first(where: { $0.type == .main }) {
-                completionCard(icon: "flag.checkered", title: "明日主线任务", body: mainQuest.title)
+                completionCard(icon: "flag.checkered", title: "明日主线实验", body: mainQuest.title)
             }
 
             if let principle = store.principles.first {
@@ -839,16 +1150,16 @@ struct TodayView: View {
         }
 
         switch store.todayDraft.state {
-        case .verifyYesterday: return "保存验证"
+        case .verifyYesterday: return "保存校准结果"
         case .capture:
             let mode = store.todayDraft.hasSelectedSessionMode ? store.todayDraft.sessionMode.title : "选择模式"
             return "\(mode) 整理成卡片"
         case .organizing: return "查看卡片"
         case .reviewCards: return "确认卡片"
         case .selectMode: return "确认模式"
-        case .selectLens: return "回答问题"
-        case .answerQuestions: return "生成任务"
-        case .reviewQuests: return "保存任务"
+        case .selectLens: return "进入今日复盘"
+        case .answerQuestions: return "设计明日实验"
+        case .reviewQuests: return "保存明日实验"
         case .extractPrinciple: return "保存原则"
         case .sessionComplete: return "开始新一天"
         }
@@ -876,16 +1187,16 @@ struct TodayView: View {
 
     private var progressCaption: String {
         switch store.todayDraft.state {
-        case .verifyYesterday: return "1/10 校准昨天"
-        case .capture: return "2/10 收集输入并选择训练深度"
-        case .organizing: return "3/10 按训练深度整理卡片"
-        case .reviewCards: return "4/10 确认事实和问题"
-        case .selectMode: return "5/10 确认训练深度"
-        case .selectLens: return "6/10 选择思考透镜"
-        case .answerQuestions: return "7/10 自己回答关键问题"
-        case .reviewQuests: return "8/10 形成明日任务"
-        case .extractPrinciple: return "9/10 沉淀行动准则"
-        case .sessionComplete: return "10/10 今日闭环完成"
+        case .verifyYesterday: return "当前：结果校准。只验证昨天实验，不补写今天复盘。"
+        case .capture: return "当前：今天内容。先讲清发生了什么、怎么做、怎么想。"
+        case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
+        case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
+        case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
+        case .selectLens: return "当前：训练处方。由明思判断本轮主训练焦点。"
+        case .answerQuestions: return "当前：今日复盘。只修补理解、证据、判断和经验缺口。"
+        case .reviewQuests: return "当前：明日实验。把今天一个判断变成明天可验证动作。"
+        case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
+        case .sessionComplete: return "当前：今日闭环完成。明天回来先做结果校准。"
         }
     }
 
@@ -2270,6 +2581,45 @@ private extension SensitivityLevel {
         case .normal: return "普通"
         case .possiblySensitive: return "可能敏感"
         case .sensitive: return "敏感"
+        }
+    }
+}
+
+private extension CoachObservationMaterial {
+    var displayTitle: String {
+        switch self {
+        case .background:
+            return "背景"
+        case .object:
+            return "对象"
+        case .trigger:
+            return "触发点"
+        case .action:
+            return "行动"
+        case .result:
+            return "结果"
+        case .feeling:
+            return "感受"
+        case .fact:
+            return "事实"
+        case .interpretation:
+            return "解释"
+        case .judgment:
+            return "判断"
+        case .assumption:
+            return "假设"
+        case .constraint:
+            return "约束"
+        case .goal:
+            return "目标"
+        case .standard:
+            return "标准"
+        case .openQuestion:
+            return "问题"
+        case .experience:
+            return "经验"
+        case .calibrationSignal:
+            return "校准信号"
         }
     }
 }

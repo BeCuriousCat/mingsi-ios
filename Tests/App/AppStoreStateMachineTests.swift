@@ -173,8 +173,20 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [activeMainQuest()]
         store.selectYesterdayCompletion(.partial)
         store.selectYesterdayValueRating(.medium)
+        store.selectYesterdayJudgmentUpdate(.adjusted)
         store.submitTodayStep()
         try await waitForState(.capture)
+    }
+
+    func testVerifyYesterday_withQuestRequiresJudgmentUpdate() {
+        store.quests = [activeMainQuest()]
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertTrue(store.todayLoopMessage.contains("请选择昨天判断要确认、调整还是推翻"))
     }
 
     func testVerifyYesterday_sendsQuestTrainingTargetToVerificationPrompt() async throws {
@@ -218,6 +230,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
         store.selectYesterdayCompletion(.done)
         store.selectYesterdayValueRating(.high)
+        store.selectYesterdayJudgmentUpdate(.confirmed)
 
         store.submitTodayStep()
         try await waitForState(.capture)
@@ -227,6 +240,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(trainingPrinciple.principleId, selected.id.uuidString)
         XCTAssertEqual(trainingPrinciple.principleTitle, "先写验收标准")
         XCTAssertEqual(trainingPrinciple.matchSignal, "用户选择")
+        XCTAssertEqual(request.contextPayload?.verification?.judgmentUpdate, YesterdayJudgmentUpdate.confirmed.rawValue)
     }
 
     func testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory() async throws {
@@ -988,6 +1002,66 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.experienceReplayPrompt.contains("条件"))
     }
 
+    func testCoachObservationPolicy_identifiesThinStoryAsNarrativeGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "感觉方案推进不下去，我有点焦虑。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .narrative)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.missingMaterials.contains(.background))
+        XCTAssertTrue(observation.missingMaterials.contains(.trigger))
+        XCTAssertTrue(observation.missingMaterials.contains(.result))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("别人可以复盘"))
+        XCTAssertTrue(observation.feedback.observed.contains("感受"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("讲述 gap"))
+        XCTAssertTrue(observation.feedback.ask.contains("前因后果"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("背景、触发点、行动和结果"))
+    }
+
+    func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .narrative)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.background))
+        XCTAssertTrue(observation.missingMaterials.contains(.object))
+        XCTAssertTrue(observation.missingMaterials.contains(.trigger))
+        XCTAssertTrue(observation.missingMaterials.contains(.result))
+        XCTAssertTrue(observation.feedback.training.contains("描述力"))
+        XCTAssertTrue(observation.feedback.ask.contains("什么背景下"))
+    }
+
+    func testCoachObservationPolicy_separatesFactFeelingInterpretationJudgmentAndAction() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "会议记录",
+                body: "事实是会议结束后没有明确负责人。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的反应",
+                body: "我感到焦虑，猜测大家可能都不想负责，所以判断这个方案会返工。"
+            ),
+            ThinkingCard(
+                type: .task,
+                title: "明天动作",
+                body: "我打算明天先让 Alex 写清负责人和验收标准。"
+            )
+        ]))
+
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.feeling))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.feedback.ask.contains("事实、感受、解释、判断"))
+    }
+
     func testCoachObservationPolicy_keepsOnePrimaryGapPerTurn() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "先照以前方式推进", body: "我打算先拉会处理，沿用以前有效的做法。"),
@@ -1540,6 +1614,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
         XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
@@ -2752,7 +2828,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.8.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.9.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
@@ -2818,7 +2894,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.8.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.9.0")
     }
 
     func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
@@ -2947,7 +3023,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.8.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.9.0")
     }
 
     func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
@@ -3002,7 +3078,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.8.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.9.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
@@ -4209,7 +4285,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         }
         let request = try XCTUnwrap(reminder.scheduledRequests.first)
         XCTAssertEqual(reminder.permissionRequestCount, 1)
-        XCTAssertEqual(request.title, "明日主线任务")
+        XCTAssertEqual(request.title, "明日主线实验")
         XCTAssertEqual(request.body, "Confirm meeting owner")
         XCTAssertTrue(store.reminderStatusMessage.contains("提醒已安排"))
     }
@@ -5373,6 +5449,19 @@ final class AppStoreStateMachineTests: XCTestCase {
                 reflectionQuestion: "目标是否被写下来？"
             )
         ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("待验证判断") == true)
+
+        store.quests = [
+            Quest(
+                type: .main,
+                title: "明确会议目标",
+                whyItMatters: "减少会后返工。",
+                completionCriteria: "会前写出目标。",
+                expectedResistance: "大家默认直接开会。",
+                reflectionQuestion: "目标是否被写下来？",
+                calibrationTarget: "会前写出目标能减少会后返工"
+            )
+        ]
         XCTAssertNil(store.todayPrimaryActionBlocker)
     }
 
@@ -5408,7 +5497,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.todayDraft.state, .capture)
         XCTAssertEqual(store.thinkingCards, generatedCards)
-        XCTAssertTrue(store.todayLoopMessage.contains("已回到今日输入"))
+        XCTAssertTrue(store.todayLoopMessage.contains("已回到今天内容"))
     }
 
     func testSupplementCaptureAfterGeneratedCards_appendsTextAndReturnsToCaptureForRegeneration() async throws {
@@ -8396,6 +8485,22 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.loadsPersistedStateOnLaunch)
     }
 
+    func testVisualQATodayStageSeed_verifyYesterdayKeepsResultCalibrationState() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天先保持验证昨日入口。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "verify_yesterday"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(store.todayDraft.rawText, "今天先保持验证昨日入口。")
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
     func testVisualQATodayStageSeed_selectLensSeedsConfirmedFallbackCards() {
         let store = AppStore(refreshesAIServiceFromKeychain: false)
 
@@ -8539,6 +8644,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.primaryActionHint, "today.primary-action-hint")
         XCTAssertEqual(TodayAutomationID.previousAction, "today.previous-action")
         XCTAssertEqual(TodayAutomationID.supplementCaptureAction, "today.supplement-capture-action")
+        XCTAssertEqual(TodayAutomationID.returnToReviewForJudgmentAction, "today.return-to-review-for-judgment-action")
         XCTAssertEqual(TodayAutomationID.retryCurrentStepAction, "today.retry-current-step-action")
         XCTAssertEqual(TodayAutomationID.skipPrincipleAction, "today.skip-principle-action")
         XCTAssertEqual(TodayAutomationID.resetAction, "today.reset-action")

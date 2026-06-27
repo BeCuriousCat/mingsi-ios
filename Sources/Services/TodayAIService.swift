@@ -8,6 +8,7 @@ struct VerifyQuestInput: Hashable {
     var trainingPrinciple: PromptContextPayload.VerificationTrainingPrincipleContext? = nil
     var completion: String
     var valueRating: String
+    var judgmentUpdate: String
     var rawText: String
 }
 
@@ -161,12 +162,13 @@ final class TodayAIService {
                 targetJudgment: input.targetJudgment,
                 trainingPrinciple: input.trainingPrinciple,
                 completion: input.completion,
-                valueRating: input.valueRating
+                valueRating: input.valueRating,
+                judgmentUpdate: input.judgmentUpdate
             )
         )
         let request = LLMRequest(
             prompt: template,
-            inputSummary: "quest=\(input.questTitle); completion=\(input.completion); rating=\(input.valueRating)",
+            inputSummary: "quest=\(input.questTitle); completion=\(input.completion); rating=\(input.valueRating); judgmentUpdate=\(input.judgmentUpdate)",
             contextPayload: contextPayload,
             sourceRecordIDs: input.sourceRecordIDs,
             contextVersion: 1,

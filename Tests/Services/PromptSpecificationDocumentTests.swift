@@ -57,6 +57,10 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("satisfaction-maximizing assistant"))
         XCTAssertTrue(spec.contains("must forbid"))
         XCTAssertTrue(spec.contains("flattering, reassuring, or agreeing"))
+        XCTAssertTrue(spec.contains("Empathy is not agreement"))
+        XCTAssertTrue(spec.contains("pressure, ambiguity, or"))
+        XCTAssertTrue(spec.contains("context only when"))
+        XCTAssertTrue(spec.contains("It must not turn pressure"))
         XCTAssertTrue(spec.contains("generateQuests"))
         XCTAssertTrue(spec.contains("extractPrinciple"))
         XCTAssertTrue(spec.contains("weak claim, missing evidence, premature"))
@@ -108,6 +112,18 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("missing thinking move"))
         XCTAssertTrue(spec.contains("not an AI answer"))
         XCTAssertTrue(spec.contains("organizeCards must not receive `coachTeachingPlan`"))
+    }
+
+    func testPromptSpecDocumentsXYZJudgmentSentenceTraining() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Judgment Sentence Training"))
+        XCTAssertTrue(spec.contains("我现在相信 X"))
+        XCTAssertTrue(spec.contains("明天用 Y"))
+        XCTAssertTrue(spec.contains("如果出现 Z"))
+        XCTAssertTrue(spec.contains("generateQuestions"))
+        XCTAssertTrue(spec.contains("generateQuests"))
+        XCTAssertTrue(spec.contains("calibration_target must be X"))
     }
 
     func testPromptContextPRDDocumentsCoachContextMemoryV1() throws {

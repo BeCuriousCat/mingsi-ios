@@ -1077,7 +1077,7 @@ final class TodayAIServiceContextTests: XCTestCase {
           "promptGuidance": "Decompose the situation into non-negotiable facts.",
           "purpose": "拆掉默认前提。",
           "questionStrategy": "先识别硬事实。",
-          "taskSelectionRule": "优先生成能验证核心前提的明日任务。",
+          "taskSelectionRule": "优先设计能验证核心前提的明日实验。",
           "applicability": "适用于前提混杂的场景。",
           "disableConditions": ["不要用抽象原则替代当天具体证据。"],
           "uiMetadata": {
@@ -1380,6 +1380,35 @@ final class TodayAIServiceContextTests: XCTestCase {
                 )
             )
             XCTFail("Expected appeasing output without correction to be rejected.")
+        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
+            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.appeasingWithoutCorrection.rawValue))
+        }
+    }
+
+    func testGenerateQuestions_rejectsAcknowledgedGapThatStillLetsUserProceed() async throws {
+        let client = CapturingLLMClient(response: Self.acknowledgedGapProceedQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        do {
+            _ = try await service.generateQuestions(
+                for: TodayAIContext(
+                    draft: DailyEntryDraft(
+                        rawText: "我知道证据不足，但今天压力很大，想先继续推进当前方案。",
+                        selectedLens: .leverageAnalysis
+                    ),
+                    confirmedCards: [
+                        ThinkingCard(
+                            type: .problem,
+                            title: "证据不足但想推进",
+                            body: "当前判断缺少事实支撑，但用户想先按原方案行动。"
+                        )
+                    ]
+                )
+            )
+            XCTFail("Expected acknowledged evidence gap that still lets the user proceed to be rejected.")
         } catch TodayAIParsingError.qualityGateFailed(let reasons) {
             XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.appeasingWithoutCorrection.rawValue))
         }
@@ -1977,6 +2006,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                 completionCriteria: "Owner acknowledged in writing.",
                 completion: "done",
                 valueRating: "high",
+                judgmentUpdate: "confirmed",
                 rawText: "It reduced ambiguity."
             ),
             sessionMode: .standard
@@ -2003,6 +2033,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                 targetJudgment: "Written owner acknowledgement reduces ambiguity",
                 completion: "done",
                 valueRating: "high",
+                judgmentUpdate: "confirmed",
                 rawText: "It reduced ambiguity."
             ),
             sessionMode: .deep
@@ -2013,11 +2044,13 @@ final class TodayAIServiceContextTests: XCTestCase {
         let legacy = payload.legacyKeyValues
         XCTAssertEqual(payload.verification?.questTitle, "Confirm owner")
         XCTAssertEqual(payload.verification?.targetJudgment, "Written owner acknowledgement reduces ambiguity")
+        XCTAssertEqual(payload.verification?.judgmentUpdate, "confirmed")
         XCTAssertEqual(legacy["questTitle"], "Confirm owner")
         XCTAssertEqual(legacy["completionCriteria"], "Owner acknowledged in writing.")
         XCTAssertEqual(legacy["targetJudgment"], "Written owner acknowledgement reduces ambiguity")
         XCTAssertEqual(legacy["completion"], "done")
         XCTAssertEqual(legacy["valueRating"], "high")
+        XCTAssertEqual(legacy["judgmentUpdate"], "confirmed")
         XCTAssertEqual(legacy["sessionMode"], SessionMode.deep.rawValue)
     }
 
@@ -2042,6 +2075,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                 ),
                 completion: "done",
                 valueRating: "high",
+                judgmentUpdate: "confirmed",
                 rawText: "The criteria reduced rework."
             ),
             sessionMode: .standard
@@ -2076,6 +2110,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                     targetJudgment: "Written owner acknowledgement reduces ambiguity",
                     completion: "done",
                     valueRating: "high",
+                    judgmentUpdate: "confirmed",
                     rawText: "It reduced ambiguity."
                 ),
                 sessionMode: .standard
@@ -2102,6 +2137,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                     targetJudgment: "Written owner acknowledgement reduces ambiguity",
                     completion: "done",
                     valueRating: "high",
+                    judgmentUpdate: "confirmed",
                     rawText: "The owner replied and ambiguity dropped."
                 ),
                 sessionMode: .standard
@@ -2128,6 +2164,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                     targetJudgment: "Written owner acknowledgement reduces ambiguity",
                     completion: "done",
                     valueRating: "high",
+                    judgmentUpdate: "confirmed",
                     rawText: "The owner replied and ambiguity dropped."
                 ),
                 sessionMode: .standard
@@ -2159,6 +2196,7 @@ final class TodayAIServiceContextTests: XCTestCase {
                     ),
                     completion: "done",
                     valueRating: "high",
+                    judgmentUpdate: "confirmed",
                     rawText: "The owner replied and ambiguity dropped."
                 ),
                 sessionMode: .standard
@@ -2532,6 +2570,28 @@ final class TodayAIServiceContextTests: XCTestCase {
               "lens_move": "leverage_tradeoff",
               "source_card_titles": ["会议返工来自验收口径不清"],
               "calibration_target": "继续按当前判断推进",
+              "expected_answer_type": "judgment"
+            }
+          ]
+        }
+        """.utf8
+    )
+
+    private static let acknowledgedGapProceedQuestionsResponse = Data(
+        """
+        {
+          "questions": [
+            {
+              "question": "虽然现在证据不足，但你压力很大，是否先继续推进当前方案？",
+              "why_this_matters": "这能帮助你在压力下保持行动。",
+              "why_now": "当前可以先继续推进，后面再慢慢补证据。",
+              "expected_update": "答案会让你选择继续当前方案还是稍后补证据。",
+              "proceed_when": "当你决定先推进时就可以进入行动。",
+              "evidence_gap_type": "missing_observation",
+              "answer_use": "choose_action",
+              "lens_move": "leverage_tradeoff",
+              "source_card_titles": ["证据不足但想推进"],
+              "calibration_target": "先推进当前方案是否能缓解压力",
               "expected_answer_type": "judgment"
             }
           ]

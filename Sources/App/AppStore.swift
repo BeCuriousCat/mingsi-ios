@@ -155,7 +155,7 @@ final class AppStore: ObservableObject {
     @Published var promptEvalReleaseGate: PromptEvalReleaseGate = .blocked(promptProvider: LocalPromptProvider())
     @Published var promptEvalMessage: String = ""
     @Published private(set) var pendingAIRepairCount: Int = 0
-    @Published private(set) var reminderStatusMessage: String = "明日 09:00 本地提醒将在保存主线任务后请求授权。"
+    @Published private(set) var reminderStatusMessage: String = "明日 09:00 本地提醒将在保存主线实验后请求授权。"
     @Published var projectCandidates: [ProjectCandidate] = []
     @Published var projectLinkCandidates: [ProjectLinkCandidate] = []
     @Published var isGeneratingProjectSuggestions: Bool = false
@@ -598,6 +598,7 @@ final class AppStore: ObservableObject {
     }
 
     enum VisualQATodayStage: String {
+        case verifyYesterday = "verify_yesterday"
         case capture
         case reviewCards = "review_cards"
         case reviewCardsConfirmed = "review_cards_confirmed"
@@ -609,6 +610,8 @@ final class AppStore: ObservableObject {
 
         var label: String {
             switch self {
+            case .verifyYesterday:
+                return DailyLoopState.verifyYesterday.title
             case .capture:
                 return DailyLoopState.capture.title
             case .reviewCards, .reviewCardsConfirmed:
@@ -647,6 +650,13 @@ final class AppStore: ObservableObject {
             environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_CUSTOM_LENS_SHEET"] != nil
     }
 
+    static func shouldSeedMissingVisualQACalibrationTarget(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_TODAY_MISSING_CALIBRATION_TARGET"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MISSING_CALIBRATION_TARGET"] != nil
+    }
+
     func applyVisualQATodaySeed(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -663,11 +673,18 @@ final class AppStore: ObservableObject {
             Self.resolveVisualQATodayStage(environment: environment),
             input: seedInput
         )
+        if Self.shouldSeedMissingVisualQACalibrationTarget(environment: environment) {
+            clearVisualQAMainQuestCalibrationTarget()
+        }
         loadsPersistedStateOnLaunch = false
     }
 
     private func applyVisualQATodayStageSeed(_ stage: VisualQATodayStage, input: String) {
         switch stage {
+        case .verifyYesterday:
+            todayDraft.state = .verifyYesterday
+            return
+
         case .capture:
             todayDraft.state = .capture
             return
@@ -715,6 +732,12 @@ final class AppStore: ObservableObject {
         }
 
         markVisualQATodayStageFallback(stage)
+    }
+
+    private func clearVisualQAMainQuestCalibrationTarget() {
+        for index in quests.indices {
+            quests[index].calibrationTarget = nil
+        }
     }
 
     private func seedVisualQAFallbackCards(from input: String, confirmed: Bool) {
@@ -1454,7 +1477,7 @@ final class AppStore: ObservableObject {
             summary: "证据正在积累。完成 3 次完整复盘后，再生成可解释的成长趋势。",
             status: .insufficientEvidence,
             completeLoopCount: 0,
-            nextTrainingFocus: "先稳定完成输入、卡片确认、明日任务和次日验证。"
+            nextTrainingFocus: "先稳定完成输入、卡片确认、明日实验和次日结果校准。"
         )
     }
 
@@ -1515,16 +1538,28 @@ final class AppStore: ObservableObject {
             }
             return trainingPrescription == nil ? "等待教练生成思考透镜训练处方。" : "先接受教练推荐的思考透镜、改选训练焦点或跳过。"
         case .answerQuestions:
-            if hasAnsweredReflectionQuestion {
-                return nil
+            guard hasAnsweredReflectionQuestion else {
+                return "至少回答一个问题后再设计明日实验。"
             }
-            return "至少回答一个问题后再生成任务。"
+            if let feedback = coachAnswerFeedbackPreview, feedback.readiness != .ready {
+                let gaps = feedback.openEvidenceGaps
+                    .filter { $0 != .none }
+                    .map(\.displayTitle)
+                let gapLine = gaps.isEmpty ? "本轮训练缺口" : gaps.joined(separator: "、")
+                return "先补齐缺口：\(gapLine)。\(feedback.reason)"
+            }
+            return nil
         case .reviewQuests:
             guard let mainQuest else {
-                return "先保留一个主线任务。"
+                return "先保留一个主线实验。"
             }
             if mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "给主线任务补上可验证的完成标准。"
+                return "给主线实验补上可验证的完成标准。"
+            }
+            let calibrationTarget = mainQuest.calibrationTarget?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if calibrationTarget.isEmpty {
+                return "先补上今天待验证判断，再保存明日实验。"
             }
             return nil
         }
@@ -1652,7 +1687,7 @@ final class AppStore: ObservableObject {
         if draft.selectedLens != nil || draft.selectedCustomLensId != nil { return true }
         if draft.trainingPrescription != nil { return true }
         if !draft.customLensItems.isEmpty || !draft.customLensQuestions.isEmpty { return true }
-        if draft.yesterdayCompletion != nil || draft.yesterdayValueRating != nil { return true }
+        if draft.yesterdayCompletion != nil || draft.yesterdayValueRating != nil || draft.yesterdayJudgmentUpdate != nil { return true }
         return draft.state != .verifyYesterday && draft.state != .capture
     }
 
@@ -3089,10 +3124,10 @@ final class AppStore: ObservableObject {
                 executionReliability: 3.0,
                 calibration: 3.0,
                 reflectionDepth: 3.0,
-                summary: "已有 \(completedRecords.count) 次闭环，但缺少次日验证，暂不生成成长趋势。",
+                summary: "已有 \(completedRecords.count) 次闭环，但缺少结果校准，暂不生成成长趋势。",
                 status: .insufficientEvidence,
                 completeLoopCount: completedRecords.count,
-                nextTrainingFocus: "优先补齐次日验证，让成长判断有结果证据。"
+                nextTrainingFocus: "优先补齐结果校准，让成长判断有结果证据。"
             )
             return
         }
@@ -3159,7 +3194,7 @@ final class AppStore: ObservableObject {
             negativeContributionRefs: negativeRefs,
             status: .confirmedTrend,
             completeLoopCount: completedRecords.count,
-            nextTrainingFocus: "继续把明日任务写成可验证结果，并在第二天做价值校准。"
+            nextTrainingFocus: "继续把明日实验写成可验证结果，并在第二天做价值校准。"
         )
 
         do {
@@ -3189,8 +3224,8 @@ final class AppStore: ObservableObject {
                         metric: .clarity,
                         direction: .positive,
                         delta: 0.08,
-                        title: "任务完成标准更具体",
-                        reason: "主线任务包含可验证的完成标准。",
+                        title: "实验完成标准更具体",
+                        reason: "明日实验包含可验证的完成标准。",
                         sourceType: .quest,
                         sourceId: mainQuest.id.uuidString,
                         sourceDailyEntryId: record.draft.id,
@@ -3209,8 +3244,8 @@ final class AppStore: ObservableObject {
                             metric: .executionReliability,
                             direction: .positive,
                             delta: 0.14,
-                            title: "主线任务完成",
-                            reason: "次日验证显示主线任务已完成。",
+                            title: "主线实验完成",
+                            reason: "结果校准显示主线实验已完成。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3225,8 +3260,8 @@ final class AppStore: ObservableObject {
                             metric: .executionReliability,
                             direction: .positive,
                             delta: 0.05,
-                            title: "主线任务部分完成",
-                            reason: "次日验证显示任务有推进但未完全闭合。",
+                            title: "主线实验部分完成",
+                            reason: "结果校准显示实验有推进但未完全闭合。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3241,8 +3276,8 @@ final class AppStore: ObservableObject {
                             metric: .executionReliability,
                             direction: .negative,
                             delta: 0.12,
-                            title: "主线任务未完成",
-                            reason: "次日验证显示任务没有完成，需要校准任务大小或阻力判断。",
+                            title: "主线实验未完成",
+                            reason: "结果校准显示实验没有完成，需要校准实验大小或阻力判断。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3260,8 +3295,8 @@ final class AppStore: ObservableObject {
                             metric: .valueJudgment,
                             direction: .positive,
                             delta: 0.14,
-                            title: "完成了高价值任务",
-                            reason: "次日验证显示任务实际价值高。",
+                            title: "完成了高价值实验",
+                            reason: "结果校准显示实验实际价值高。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3276,8 +3311,8 @@ final class AppStore: ObservableObject {
                             metric: .valueJudgment,
                             direction: .positive,
                             delta: 0.05,
-                            title: "任务价值中等",
-                            reason: "任务产生了一定价值，但仍有校准空间。",
+                            title: "实验价值中等",
+                            reason: "实验产生了一定价值，但仍有校准空间。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3292,8 +3327,8 @@ final class AppStore: ObservableObject {
                             metric: .valueJudgment,
                             direction: .negative,
                             delta: 0.12,
-                            title: "任务完成但价值偏低",
-                            reason: "次日验证显示任务实际价值低，需要重新判断优先级。",
+                            title: "实验完成但价值偏低",
+                            reason: "结果校准显示实验实际价值低，需要重新判断优先级。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3308,8 +3343,8 @@ final class AppStore: ObservableObject {
                             metric: .calibration,
                             direction: .negative,
                             delta: 0.06,
-                            title: "任务价值仍不确定",
-                            reason: "次日验证无法判断实际价值，需要更清晰的结果证据。",
+                            title: "实验价值仍不确定",
+                            reason: "结果校准无法判断实际价值，需要更清晰的结果证据。",
                             sourceType: .verification,
                             sourceId: verification.id.uuidString,
                             sourceDailyEntryId: record.draft.id,
@@ -3468,7 +3503,7 @@ final class AppStore: ObservableObject {
 
     func createProjectFromCurrentFocus() async {
         guard let mainQuest else {
-            todayLoopMessage = "请先生成一条明日主线任务，再创建长期议题。"
+            todayLoopMessage = "请先设计一条明日主线实验，再创建长期议题。"
             return
         }
         await createProjectFromQuest(mainQuest, dailyEntryId: todayDraft.id)
@@ -3646,10 +3681,10 @@ final class AppStore: ObservableObject {
             }
         case .reviewQuests:
             guard hasAnsweredReflectionQuestion else {
-                todayLoopMessage = "至少回答一个问题后再重试生成任务。"
+                todayLoopMessage = "至少回答一个问题后再重试设计明日实验。"
                 return
             }
-            todayLoopMessage = "正在重试 AI 任务。"
+            todayLoopMessage = "正在重试 AI 明日实验。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
             Task {
@@ -3733,7 +3768,7 @@ final class AppStore: ObservableObject {
     func navigateTodayLoopToPreviousUserStep() {
         switch todayDraft.state {
         case .reviewCards:
-            moveTodayLoop(to: .capture, message: "已回到今日输入，已生成的卡片会保留到你重新整理。")
+            moveTodayLoop(to: .capture, message: "已回到今天内容，已生成的卡片会保留到你重新整理。")
         case .selectLens:
             navigateTodayLoop(to: .reviewCards)
         case .answerQuestions:
@@ -3759,6 +3794,12 @@ final class AppStore: ObservableObject {
 
     func selectYesterdayValueRating(_ rating: YesterdayValueRating) {
         todayDraft.yesterdayValueRating = rating
+        clearTodayLoopMessage()
+        persistDraft()
+    }
+
+    func selectYesterdayJudgmentUpdate(_ update: YesterdayJudgmentUpdate) {
+        todayDraft.yesterdayJudgmentUpdate = update
         clearTodayLoopMessage()
         persistDraft()
     }
@@ -4383,7 +4424,7 @@ final class AppStore: ObservableObject {
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         pendingAIRepairPrompts = []
-        reminderStatusMessage = "明日 09:00 本地提醒将在保存主线任务后请求授权。"
+        reminderStatusMessage = "明日 09:00 本地提醒将在保存主线实验后请求授权。"
 
         Task {
             await initializeFromLastActiveQuest()
@@ -4397,16 +4438,21 @@ final class AppStore: ObservableObject {
             return
         }
         guard todayDraft.yesterdayCompletion != nil else {
-            todayLoopMessage = "请选择昨天主线任务的完成情况。"
+            todayLoopMessage = "请选择昨天主线实验的完成情况。"
             return
         }
         guard todayDraft.yesterdayValueRating != nil else {
             todayLoopMessage = "请选择昨天任务的价值判断。"
             return
         }
+        guard todayDraft.yesterdayJudgmentUpdate != nil else {
+            todayLoopMessage = "请选择昨天判断要确认、调整还是推翻。"
+            return
+        }
 
         let completion = todayDraft.yesterdayCompletion!
         let rating = todayDraft.yesterdayValueRating!
+        let judgmentUpdate = todayDraft.yesterdayJudgmentUpdate!
         let draftID = todayDraft.id
 
         todayLoopMessage = "正在保存昨日验证。"
@@ -4415,6 +4461,7 @@ final class AppStore: ObservableObject {
                 quest: quest,
                 completion: completion,
                 rating: rating,
+                judgmentUpdate: judgmentUpdate,
                 draftID: draftID
             )
             moveTodayLoop(to: .capture)
@@ -4425,9 +4472,10 @@ final class AppStore: ObservableObject {
         quest: Quest,
         completion: YesterdayCompletion,
         rating: YesterdayValueRating,
+        judgmentUpdate: YesterdayJudgmentUpdate,
         draftID: UUID
     ) async {
-        var calibrationNote = "本地校准：用户自评完成度 \(completion.title)，价值 \(rating.title)。"
+        var calibrationNote = "本地校准：用户自评完成度 \(completion.title)，价值 \(rating.title)，判断更新 \(judgmentUpdate.title)。"
         var likelyIssue: String?
         var recommendation: String?
 
@@ -4444,6 +4492,7 @@ final class AppStore: ObservableObject {
                         ),
                         completion: completion.rawValue,
                         valueRating: rating.rawValue,
+                        judgmentUpdate: judgmentUpdate.rawValue,
                         rawText: todayDraft.rawText
                     ),
                     sessionMode: todayDraft.sessionMode
@@ -4452,7 +4501,7 @@ final class AppStore: ObservableObject {
                 likelyIssue = result.likelyIssue
                 recommendation = result.recommendation
             } catch {
-                calibrationNote = "本地校准（AI 校准失败）：用户自评完成度 \(completion.title)，价值 \(rating.title)。"
+                calibrationNote = "本地校准（AI 校准失败）：用户自评完成度 \(completion.title)，价值 \(rating.title)，判断更新 \(judgmentUpdate.title)。"
             }
         }
 
@@ -4799,7 +4848,7 @@ final class AppStore: ObservableObject {
 
     private func generateQuestsFromAnswers() {
         guard hasAnsweredReflectionQuestion else {
-            todayLoopMessage = "至少回答一个问题，才能生成明日任务。"
+            todayLoopMessage = "至少回答一个问题，才能设计明日实验。"
             return
         }
         refreshCoachTurnStateAfterAnswers()
@@ -4808,7 +4857,7 @@ final class AppStore: ObservableObject {
             return
         }
         let draftID = todayDraft.id
-        todayLoopMessage = "正在生成明日任务。"
+        todayLoopMessage = "正在设计明日实验。"
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         guard todayAIService != nil else {
@@ -4825,7 +4874,7 @@ final class AppStore: ObservableObject {
 
     private func saveReviewedQuests() {
         guard let mainQuest, !mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            todayLoopMessage = "请保留一个带完成标准的主线任务。"
+            todayLoopMessage = "请保留一个带完成标准的主线实验。"
             return
         }
         quests = quests.map { quest in
@@ -5275,7 +5324,7 @@ final class AppStore: ObservableObject {
         scheduledReminderIDs.insert(reminderID)
         let request = ReminderRequest(
             id: reminderID,
-            title: "明日主线任务",
+            title: "明日主线实验",
             body: quest.title,
             fireDate: tomorrowReminderDate()
         )
@@ -5292,12 +5341,12 @@ final class AppStore: ObservableObject {
                 todayLoopMessage = "明日 09:00 提醒已安排，正在沉淀原则候选。"
             } catch ReminderError.permissionDenied {
                 scheduledReminderIDs.remove(reminderID)
-                reminderStatusMessage = "通知权限未开启，明日任务已保存但不会提醒。"
-                todayLoopMessage = "任务已保存。通知权限未开启，明日不会提醒。"
+                reminderStatusMessage = "通知权限未开启，明日实验已保存但不会提醒。"
+                todayLoopMessage = "明日实验已保存。通知权限未开启，明日不会提醒。"
             } catch {
                 scheduledReminderIDs.remove(reminderID)
-                reminderStatusMessage = "本地提醒安排失败，明日任务已保存。"
-                todayLoopMessage = "任务已保存，但本地提醒安排失败。"
+                reminderStatusMessage = "本地提醒安排失败，明日实验已保存。"
+                todayLoopMessage = "明日实验已保存，但本地提醒安排失败。"
             }
 
             updateSettingsMessage()
@@ -5484,7 +5533,7 @@ final class AppStore: ObservableObject {
         allowsFallback: Bool = true
     ) async {
         guard todayDraft.id == draftID else { return }
-        beginAIActivity("正在生成明日任务。")
+        beginAIActivity("正在设计明日实验。")
         defer { endAIActivity() }
 
         if let todayAIService {
@@ -6002,7 +6051,7 @@ final class AppStore: ObservableObject {
         guard let questRepository else { return }
         let quests = quests
         let draftID = todayDraft.id
-        enqueuePersistence(errorMessage: "保存明日任务失败。") {
+        enqueuePersistence(errorMessage: "保存明日实验失败。") {
             try await questRepository.saveQuests(quests, sourceDailyEntryId: draftID)
         }
     }

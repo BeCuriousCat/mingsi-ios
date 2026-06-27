@@ -183,6 +183,12 @@ Rules:
 that MingSi is not a satisfaction-maximizing assistant. The prompts must forbid
 flattering, reassuring, or agreeing only to validate the user.
 
+Empathy is not agreement. The coach may acknowledge pressure, ambiguity, or
+context only when that acknowledgement helps the user face the real thinking
+gap, action-design gap, or reusable-rule gap. It must not turn pressure,
+difficulty, or feeling understood into evidence that the user's current
+judgment is sound.
+
 When the user's input contains a weak claim, missing evidence, premature
 conclusion, vague goal, avoided responsibility, harmful pattern, or unchecked
 experience reuse, the prompt should name the weak thinking move, task-design
@@ -287,6 +293,34 @@ Rules:
 - A user override may proceed, but `auditNote` and `proceedStandard` must keep
   the unresolved gap visible.
 
+### Judgment Sentence Training
+
+MingSi separates two loops:
+
+- 今日理解闭环: today content and 今日复盘 clarify what happened, what the user
+  did, what the user believes, what evidence is missing, and which judgment is
+  now testable.
+- 行动验证闭环: 明日实验 turns one reviewed judgment into a small action; result
+  calibration later compares the action, evidence, value, and judgment update.
+
+`generateQuestions` must train the user toward this judgment sentence without
+answering for them:
+
+```text
+我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
+```
+
+For `generateQuestions`, `calibration_target must be X`: the belief,
+prediction, causal explanation, or tradeoff being tested. `expected_update` and
+`proceed_when` should help the user make X, Y, and Z concrete enough to move
+from 今日复盘 into 明日实验.
+
+`generateQuests` must reuse the same sentence instead of starting a new review.
+When reflection answers include `calibrationTarget`, use it as X;
+`main_quest.calibration_target must be X`. The quest's completion criteria
+should preserve Y as the observable signal or artifact, and the reflection
+question should preserve Z as the condition that would update the judgment.
+
 ### Quest
 
 ```json
@@ -330,7 +364,7 @@ Question output can be flagged with:
 - `missingTrainingDimensionAlignment`: question does not serve the primary training dimension or any baseline training dimension.
 - `missingPrimaryTrainingDimensionFocus`: first question does not serve the primary training dimension, so the coach-led main focus is being diluted by baseline checks.
 - `missingCoachTurnAlignment`: question ignores the current coach turn phase, readiness, or recommended move. For example, a `not_ready` turn that recommends evidence gathering should not accept a generic action-choice question.
-- `appeasingWithoutCorrection`: question, quest, or principle flatters, reassures, validates, or increases confidence without naming a missing thinking move, evidence gap, risk, repair action, action-design gap, or reusable-rule gap.
+- `appeasingWithoutCorrection`: question, quest, or principle flatters, reassures, validates, increases confidence without naming a missing thinking move, evidence gap, risk, repair action, action-design gap, or reusable-rule gap, or acknowledges an unresolved gap while still letting the user proceed without repair.
 - `repeatedAvoidedLensMove`: question repeats a `lensMove` that recent verified `lensFeedback` marked as `avoid`.
 - `unadjustedLensMove`: question repeats a `lensMove` and calibration target that recent verified `lensFeedback` marked as `adjust`, instead of making the move smaller or more observable.
 - `missingReinforcedLensMove`: question batch ignores a `lensMove` that recent verified `lensFeedback` marked as `reinforce`.
@@ -703,7 +737,9 @@ Instruction:
 ```text
 Review yesterday's quest, completion status, and actual value.
 Verify Quest input includes targetJudgment when yesterday's quest had a calibration target.
+Verify Quest input includes judgmentUpdate (`confirmed | adjusted | rejected`) from the user's result calibration choice.
 Compare targetJudgment with actual evidence when targetJudgment is present.
+Use judgmentUpdate as the user's current stance, then check whether the evidence supports that stance.
 Name the observable evidence or signal that proves what actually happened.
 Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
 Identify whether the task was well-chosen, too vague, too large, blocked, avoided, or lower-value than expected.

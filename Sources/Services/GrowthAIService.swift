@@ -102,7 +102,7 @@ struct GrowthAIService {
             summary: "完成 \(completeLoopCount) 次完整复盘，需要至少 3 次才能生成可解释的成长趋势。",
             status: .insufficientEvidence,
             completeLoopCount: completeLoopCount,
-            nextTrainingFocus: "先稳定完成输入、卡片确认、明日任务和次日验证。"
+            nextTrainingFocus: "先稳定完成输入、卡片确认、明日实验和次日结果校准。"
         )
         return GrowthReportResult(snapshot: snapshot, contributions: [])
     }

@@ -106,6 +106,22 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(latest?.rawText, "Today entry")
     }
 
+    func testDailyEntryDraft_persistsYesterdayJudgmentUpdate() async throws {
+        let repo = SQLiteDailyEntryRepository(database: database)
+        let draft = DailyEntryDraft(
+            rawText: "Calibration draft",
+            yesterdayCompletion: .done,
+            yesterdayValueRating: .high,
+            yesterdayJudgmentUpdate: .adjusted,
+            state: .verifyYesterday
+        )
+
+        try await repo.saveDraft(draft)
+
+        let latest = try await repo.latestDraft()
+        XCTAssertEqual(latest?.yesterdayJudgmentUpdate, .adjusted)
+    }
+
     func testLatestDraft_noDrafts_returnsNil() async throws {
         let repo = SQLiteDailyEntryRepository(database: database)
         let result = try await repo.latestDraft()
@@ -4418,6 +4434,14 @@ final class PersistenceCoreTests: XCTestCase {
             XCTAssertTrue(columnNames.contains("custom_lens_questions_json"))
             XCTAssertTrue(columnNames.contains("yesterday_completion"))
             XCTAssertTrue(columnNames.contains("yesterday_value_rating"))
+        }
+    }
+
+    func testMigration_v30_addsYesterdayJudgmentUpdate() throws {
+        try dbQueue.read { db in
+            let columns = try db.columns(in: "daily_entries")
+            let columnNames = Set(columns.map(\.name))
+            XCTAssertTrue(columnNames.contains("yesterday_judgment_update"))
         }
     }
 

@@ -126,6 +126,11 @@ Every coach intervention should follow this shape:
 MingSi is a coach, not a satisfaction engine. It should respect the user while
 refusing to validate weak thinking just to make the user feel good.
 
+Empathy is not agreement. The coach may acknowledge that the situation is hard,
+ambiguous, or pressuring, but only as a bridge into the real repair move. It
+must not use the user's pressure, difficulty, or need to feel understood as a
+reason to endorse an unsupported judgment or let the user skip evidence.
+
 The coach should name the thinking move that needs repair when the user's input
 contains:
 
@@ -153,6 +158,7 @@ Bad correction shape:
 
 ```text
 你已经想得很充分了，继续按这个方向推进会让你更有信心。
+我理解你压力很大，所以现在这样也合理。
 ```
 
 The second version is warm but unhelpful: it validates confidence without
@@ -183,6 +189,73 @@ Examples:
 
 ## Product Placement
 
+The Today loop should keep four user-visible boundaries distinct:
+
+- `结果校准`: verify yesterday's experiment before starting new material.
+- `今天内容`: collect today's facts, actions, thoughts, and raw context. This is not the review conclusion.
+- `今日复盘`: MingSi observes how the user described and judged the material, then names the missing thinking material and training ability.
+- `明日实验`: turn today's reviewed judgment into a verifiable action for tomorrow. This is not a generic todo list.
+
+This boundary is part of the coach contract. If the UI or prompt makes Capture
+feel like the whole review, or makes Review Quests feel like ordinary task
+generation, the product drifts back toward "AI answer" instead of training.
+
+For product design, treat Today as two connected loops:
+
+- Today understanding loop: `今天内容 -> 今日复盘`. This loop trains the user to
+  describe the event, separate evidence from judgment, expose skipped thinking
+  material, and replay relevant past experience.
+- Tomorrow validation loop: `明日实验 -> 结果校准`. This loop trains the user to
+  turn one reviewed judgment into a small observable experiment, then use the
+  next day's result to calibrate whether the judgment was useful.
+
+The user-visible loop names should make the boundary explicit:
+
+- `闭环一：今天内容与今日复盘`.
+- `闭环二：明天实验与结果校准`.
+- `闭环二：结果校准`.
+
+The top progress indicator should also be grouped, not shown as one undifferentiated
+`1/10` journal pipeline:
+
+- `今日理解闭环`: `今天内容 -> 今日复盘`.
+- `行动验证闭环`: `明日实验 -> 结果校准`.
+
+The boundary rule is:
+
+```text
+复盘解决理解问题；实验解决验证问题。
+```
+
+The two loops should not collapse into a single journal flow:
+
+```text
+今天内容只收集材料。
+今日复盘只修补理解、证据、判断和经验复现缺口。
+明日实验只设计一个能验证今日判断的小实验。
+结果校准只回看昨天实验的完成、价值和判断更新。
+```
+
+`明日实验` must not become an extra place to continue writing today's review.
+`结果校准` must not become a new review of today's material. It only checks
+completion, actual value, and whether yesterday's judgment should be updated.
+The visible calibration questions are: did it get done, did it create real
+value, and should yesterday's judgment be confirmed, adjusted, or rejected?
+The third question is a structured user choice, not only explanatory copy. It
+must be stored as the user's current calibration stance and passed into Verify
+Quest context as `judgmentUpdate` so the coach can compare stance with evidence.
+
+Each visible stage should state what this page is allowed to do:
+
+- Capture: `本页只写今天内容`.
+- Answer Questions: `本页只复盘今天`.
+- Review Quests: `本页只设计明天实验`.
+- Verify Yesterday: `本页只校准昨天结果`.
+
+This is not instructional decoration. It prevents the user from mixing raw
+material, review, experiment design, and result calibration into one long
+journal entry.
+
 ### Capture
 
 Capture should help the user describe without turning the screen into a form. It should show the scaffold for "讲清楚一件事", but the coach's real observation happens after the user provides material.
@@ -192,6 +265,16 @@ Capture should avoid saying "you are bad at X" before observation exists. It can
 ```text
 先把材料说出来。明思会观察你说清了什么、跳过了什么，再决定本轮训练点。
 ```
+
+When the user names an action but the event cannot be replayed by another
+person, MingSi should train description before goal design. For example, "I
+pushed the proposal a bit and still feel stuck" should not immediately become a
+goal question. It is missing background, object, trigger, and result, so the
+coach should first ask the user to make the event replayable.
+
+If the user explicitly says the issue is "not knowing who this serves" or "the
+goal is unclear", the primary gap remains goal design. That signal means the
+user has already exposed the target of training.
 
 ### Organize Cards
 
@@ -225,8 +308,17 @@ not:
 
 ### Answer Questions
 
+Answer Questions is the visible `今日复盘` stage. It should make the user feel
+that MingSi is observing their thinking process, not simply asking for more
+text.
+
 Question cards should show the observation frame:
 
+- ability diagnosis: which basic capability is being trained this turn;
+- material separation training: make `fact`, `feeling`, `interpretation`,
+  `judgment`, and `action` visible as distinct materials;
+- material inventory: what the user has already made clear and what must be
+  supplied next;
 - observed: what MingSi saw in the user's input or answer;
 - gap: what is missing;
 - training: what ability this question trains;
@@ -235,7 +327,36 @@ Question cards should show the observation frame:
 
 The answer box should not imply the user needs a polished essay. It should ask for the missing thinking material.
 
+After the user answers, the feedback frame should train a judgment sentence,
+not merely say whether the answer is good enough. The minimum shape is:
+
+```text
+我现在相信 X；
+明天用 Y 观察它是否成立；
+如果出现 Z，我就更新判断。
+```
+
+This keeps the handoff to Review Quests grounded in a testable judgment rather
+than a generic tomorrow task.
+
 ### Review Quests
+
+Review Quests is the visible `明日实验` stage. It should not read as "AI made
+some tasks." A quest exists to test a judgment from today's review.
+
+Before showing the quest card list, Review Quests should show a page-level
+anchor:
+
+```text
+今天待验证判断：X
+下面的实验只验证这个判断。
+```
+
+`X` should come from the main quest's `calibrationTarget` when available. This
+turns the quest from a generic task into a calibration instrument. If no
+calibration target exists, the page should warn that the review has not yet
+produced a verifiable judgment and the primary action should be blocked instead
+of pretending the task is ready.
 
 Quests should only appear after the coach has either:
 
