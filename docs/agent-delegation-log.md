@@ -2,6 +2,32 @@
 
 This file records subtask delegation to Claude Code or other coding agents. Codex remains responsible for the final architecture, implementation, review, and verification.
 
+## 2026-06-29: Current Goal Document Realignment
+
+Reason:
+
+- `docs/mvp-current-goal.md` still named Coach Turn State v1 as the active stop condition, while `docs/coach-turn-state-v1-audit.md` and `docs/mvp-stage-progress.md` recorded Coach Turn State v1 as completed and moved the product into Post-MVP Alpha follow-up.
+- The repository's process-document rule says target conflicts must be fixed before implementation.
+
+Delegation state:
+
+- Claude Code was not delegated.
+- This was a small manager-owned process-document correction with no product-source implementation, no prompt/context behavior change, and no need for a worker handoff.
+
+Resource state:
+
+- `scripts/claude_delegate.sh health next-coach-turn-state` reported `codex_direct_zombies=0`, `codex_tree_zombies=0`, `total_zombies=2`, and no active worker.
+
+Outcome:
+
+- `docs/mvp-current-goal.md` now reflects Post-MVP Alpha hardening as the active goal.
+- Coach Turn State v1 remains documented as completed in `docs/coach-turn-state-v1-audit.md`.
+- The next implementation/audit slice should be chosen from `docs/mvp-stage-progress.md` Post-MVP recommendations.
+
+Delegation assessment:
+
+- No generalizable worker lesson beyond the existing rule: document-goal conflicts are manager-owned and should be resolved before dispatching implementation work.
+
 ## 2026-06-07: Production Project And Growth Evidence Chain Proof - Subtask 068
 
 Reason:

@@ -1,60 +1,59 @@
 # MingSi MVP Current Goal
 
-Date: 2026-06-23
+Date: 2026-06-29
 
 ## Active Codex Pursuit Goal
 
-MingSi is being upgraded from a user-selected thinking-lens toolbox into a stateful coach-led training system. The current product direction is not "pick a lens and ask a prompt"; it is "let the coach maintain the current thinking turn, decide whether the user is ready to converge, and guide the next move."
+MingSi MVP acceptance is complete. The current product work is Post-MVP Alpha hardening: keep the accepted personal-alpha loop runnable, preserve the coach-led training direction, and close external or operational gaps without reopening the MVP stop condition.
 
-This repo is also dogfooding a second, separate framework project: Codex-to-Claude Code managed delegation. The framework is a tooling project, not a MingSi feature. It should be generic enough to extract later and must not bake MingSi business semantics into its skill or wrapper contract.
+This repo is also dogfooding a second, separate framework project: Codex-to-Claude Code managed delegation. The framework is a tooling project, not a MingSi feature. It should remain generic enough to extract later and must not bake MingSi business semantics into its skill or wrapper contract.
 
 Current Codex goal:
 
-> Coach Turn State v1: upgrade the `coachDiagnosis` already entering LLM context into a Today-local stateful coach turn. MingSi should maintain a testable state across confirmed cards, follow-up answers, and quest generation: current phase, readiness, recommended move, open evidence gaps, baseline checks, user decision or override, policy version, and a turn summary.
+> Keep MingSi alpha-ready while improving the coach-led loop and its operating reliability: use Claude Code for bounded implementation or audit slices when resource health allows, keep Codex in manager/reviewer/final-verifier mode, and keep every accepted claim backed by tests, screenshots, logs, PromptRun audit, or repository evidence.
 
-This means the product is not trying to maximize the number of lenses or prompts. It is trying to maximize high-quality thinking calibration:
-
-- MingSi, not the user, should carry the primary diagnostic burden for deciding what thinking ability to train next.
-- The user's role is to confirm, override, or reject the recommendation, not to self-diagnose from a menu before the coach has spoken.
-- A single loop should keep one primary training focus, but every loop must still check the baseline thinking foundation: fact/interpretation separation, evidence gaps, counterexamples, assumptions, testable action, feedback signal, and judgment update.
-- The coach must be allowed to slow the user down. If the current turn is `not_ready`, the next move should be clarification or evidence collection before action generation.
-- User override means "I choose to proceed anyway"; it does not prove the coach diagnosis was wrong.
-- Growth absorption must distinguish `targetedPractice`, `secondaryPractice`, and `possibleSignal`; LLM observations alone cannot become high-confidence practice evidence.
-- Recommendation rules, confidence, versions, and user overrides must be auditable and testable before they affect prompts or long-term growth summaries.
+Coach Turn State v1 is no longer the active stop condition. It has a completion audit in `docs/coach-turn-state-v1-audit.md`, and `docs/mvp-stage-progress.md` records the product as being in Post-MVP follow-up. Future coach work should build on that stateful turn instead of reimplementing it.
 
 ## Current Stop Condition
 
-The next milestone can stop only when MingSi has a coherent Coach Turn State v1:
+The MVP stop condition is already accepted. The active Post-MVP Alpha gate is narrower:
 
-- A `CoachTurnState` or equivalent pure domain model records coach phase, readiness, recommended move, open evidence gaps, baseline checks, user decision or override, policy version, and turn summary.
-- `AppStore` creates or refreshes the coach turn after confirmed cards, updates it after follow-up answers, and passes the latest state into `generateQuestions` and `generateQuests`.
-- `PromptContextPayload` / `TodayAIContext` carry the latest coach turn state, while `organizeCards` remains clean and receives no coach state or historical principles.
-- Prompt directives use coach turn state: `not_ready` means clarify or close evidence gaps first; `ready` means form a verifiable action; override is permission to proceed, not proof that the coach was wrong.
-- Prompt quality gates reject obvious outputs that ignore coach phase, readiness, or recommended move.
-- Tests cover insufficient cards -> clarification, evidence gap -> evidence question, answer closes gap -> action readiness, user override -> audit boundary, and `organizeCards` -> no coach state.
-- UI remains minimal: show why MingSi is slowing down or moving forward, without building a general chat agent.
-- Existing boundaries remain intact: `TrainingPrescription`, Growth evidence authority, principle recall boundary, PromptRun audit, and no database migration unless resume-state tests prove it is required.
-- Verification passes focused tests, full `MingSiTests`, and relevant `MingSiUITests` when UI copy changes.
+- Local app prerequisites pass through `scripts/check_alpha_prerequisites.sh`.
+- Rendered UI automation can be repeated through `scripts/run_ui_automation.sh` when a UI change or user-facing flow needs proof.
+- The full Alpha acceptance runner remains `scripts/run_alpha_acceptance.sh --summary-json <path>`.
+- The only known external Alpha prerequisite is a real BYOK GLM network call with a user-provided key and an approved external network-call window.
+- Product changes must preserve the accepted MVP loop: Today completion, History evidence archive, Project/Growth evidence chains, Settings BYOK/audit visibility, PromptProvider / LLMClient boundaries, AI failure visibility, and local-first persistence.
+
+Do not claim full external Alpha acceptance until the live BYOK GLM path has been run with a real key and recorded evidence. A missing key is a documented external blocker, not a reason to reopen accepted local MVP work.
 
 ## Current Stage Priority
 
-The repo is past raw skeleton work and past the first prompt/context assetization slices. Current priority is coach-led training design:
+1. Keep the accepted alpha loop stable and runnable.
+2. Prefer bounded, testable Post-MVP slices from `docs/mvp-stage-progress.md`.
+3. Use Claude Code aggressively for suitable local implementation or read-only audit tasks when `scripts/claude_delegate.sh health` is healthy.
+4. Keep framework/delegation reliability separate from MingSi business semantics, but dogfood it on safe slices.
+5. Preserve structured Prompt/Context asset versioning, eval, rollback, and PromptRun audit.
+6. Keep coach-led training evidence local, deterministic, auditable, and testable; LLM may explain but must not authoritatively create long-term practice evidence.
 
-1. Keep the Today coach loop stateful before adding a general chat surface.
-2. Implement local, deterministic coach-turn rules before relying on LLM diagnosis.
-3. Keep the user in control through accept/override/slow-down/proceed, but make the coach recommendation the default path.
-4. Preserve structured Prompt/Context asset versioning, eval, rollback, and PromptRun audit.
-5. Keep PrinciplePracticeEvidence writes local and auditable; LLM may explain, not authoritatively confirm evidence.
-6. Defer marketplace, subscription, sync, and broad lens-pack expansion until the coach-led loop is coherent.
+## Recommended Next Slices
+
+Choose based on the user's newest report or highest current risk:
+
+- **Live GLM Alpha acceptance**: if a real BYOK key and network window are available, run `scripts/check_alpha_prerequisites.sh`, then `scripts/run_live_glm_acceptance.sh`, or the full `scripts/run_alpha_acceptance.sh --summary-json /tmp/mingsi-alpha-acceptance.json`.
+- **UI automation follow-up**: use `scripts/run_ui_automation.sh` and extend `MingSiUITests` only when new rendered Today, Settings, History repair, or Growth/Project action surfaces need proof.
+- **Prompt / Context assetization follow-up**: preserve typed `PromptContextPayload` and `PromptProvider` boundaries while improving publisher onboarding, external key distribution, remote prompt registry rollout, install/distribution UX, or registry refresh behavior.
+- **Lens Asset follow-up**: build on the pack-aware local registry, trust metadata, Settings import/manage surface, and runtime enabled-pack catalog without adding prompt- or UI-specific branches to Today state.
+- **Principle retrieval / PromptRun audit follow-up**: improve recall feedback policy, structured localized recall signals, and not-applicable/misrecalled weighting instead of adding another hand-maintained denial counter.
+- **Delegation framework follow-up**: if the user redirects to framework work, improve worker launch reliability, conclusion-first monitoring, worktree setup, process cleanup, and experience capture without tying the framework to MingSi.
 
 ## Current Implementation Bias
 
-- Prefer small, testable slices.
-- Use TDD for behavior changes and keep prompt/context schema changes versioned.
-- Start with deterministic local recommendation policy so the coach's reasoning is inspectable.
-- Treat manual user lens choice as override feedback that may improve future recommendations.
-- Treat `CoachTurnState` as Today orchestration state first; do not persist it unless resume tests prove durable state is required.
-- Keep baseline thinking checks quiet in the UI and explicit in prompt/context.
+- Prefer small, testable slices with clear allowed files.
+- Delegate implementation/audit slices to Claude Code when the task has a narrow write set, known verification, and no mid-task product judgment.
+- Do not delegate prompt strategy, migrations, cross-tab product semantics, broad refactors, or final visual taste.
+- If docs conflict, fix docs first.
+- If no real BYOK GLM key is available, stop at the documented missing-key gate and do not fake live success.
+- Keep new service/test call sites on typed `PromptContextPayload`; do not reintroduce stored request dictionaries or arbitrary prompt payload maps.
 - Do not write secondary or possible growth signals as high-confidence evidence without local policy and user-auditable support.
 
 ## Active Constraints
@@ -64,9 +63,10 @@ The repo is past raw skeleton work and past the first prompt/context assetizatio
 - No fake data may stand in for missing Project or Growth evidence.
 - Prompt outputs that affect Projects or Growth must carry source ids.
 - History remains the source evidence archive for Project and Growth drilldown.
-- User-selected lenses must not become the only training authority; coach recommendation and final user choice should both be recorded.
+- User-selected lenses must not become the only training authority; coach recommendation and final user choice should both be recorded where relevant.
 - LLM output must not directly create or confirm `PrinciplePracticeEvidence`, targeted practice, secondary practice, or long-term growth claims.
-- Do not introduce LangChain/LangGraph for this milestone. The state machine should stay local, deterministic, auditable, and testable.
+- Do not introduce LangChain/LangGraph for the local coach loop.
+- Do not add subscription, sync, marketplace, or distribution behavior unless the current Post-MVP slice explicitly calls for it.
 
 ## Repo Document Authority
 
@@ -84,3 +84,4 @@ Use these documents as the current source of truth:
 - `docs/verification-log.md`
 - `docs/architecture-decisions.md`
 - `docs/agent-delegation-log.md`
+- `docs/coach-turn-state-v1-audit.md`

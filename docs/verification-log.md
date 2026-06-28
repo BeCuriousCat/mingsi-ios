@@ -2,6 +2,37 @@
 
 This file records verification evidence for MVP slices. Each entry should include date, scope, commands, result, and residual risk.
 
+## 2026-06-29: Current Goal Document Realignment
+
+Scope:
+
+- Resolve the process-document conflict where `docs/mvp-current-goal.md` still named Coach Turn State v1 as the active stop condition after `docs/coach-turn-state-v1-audit.md` and `docs/mvp-stage-progress.md` recorded that milestone as completed.
+- Keep product source, tests, persistence, prompt assets, LLM clients, and UI unchanged.
+
+Changed areas:
+
+- `docs/mvp-current-goal.md`
+
+Commands run:
+
+```bash
+git status --short
+scripts/claude_delegate.sh health next-coach-turn-state
+rg -n "Current Stop Condition|Post-MVP Recommended Next Slice|Coach Turn State v1|MVP acceptance is complete|remaining|Residual|NEEDS|TODO|blocked" docs/coach-turn-state-v1-audit.md docs/mvp-current-goal.md docs/mvp-stage-progress.md docs/verification-log.md
+git diff --check
+```
+
+Result:
+
+- Confirmed delegation health was clear: `codex_direct_zombies=0`, `codex_tree_zombies=0`, and no active worker.
+- Confirmed the document conflict: Coach Turn State v1 audit says the milestone passed, while the old current-goal file still treated it as the stop condition.
+- Rewrote `docs/mvp-current-goal.md` to make Post-MVP Alpha hardening the active goal, with live BYOK GLM acceptance as the only known external Alpha prerequisite.
+
+Residual risk:
+
+- This is a document consistency fix only. It does not run the full Alpha acceptance command or a real live GLM network call.
+- If a user provides a real BYOK key and approves an external call window, live GLM acceptance remains the next proof gate.
+
 ## 2026-06-23: Coach Turn State v1 Milestone Specification
 
 Scope:
