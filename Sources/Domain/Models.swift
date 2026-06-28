@@ -1591,7 +1591,7 @@ extension CoachObservationMaterial {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v5"
+    static let policyVersion = "coach-observation.local-v6"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1682,6 +1682,10 @@ struct CoachObservationPolicy {
             materials.append(.goal)
         }
 
+        if hasProvidedStandard(text) {
+            materials.append(.standard)
+        }
+
         if containsAny(text, ["以前", "之前", "过往", "经验", "复用", "沿用", "照着做", "上次", "previous", "experience"]) {
             materials.append(.experience)
         }
@@ -1722,6 +1726,12 @@ struct CoachObservationPolicy {
         if providedMaterials.contains(.judgment),
            !providedMaterials.contains(.fact) {
             missing.append(.fact)
+        }
+
+        if providedMaterials.contains(.judgment),
+           providedMaterials.contains(.fact),
+           !providedMaterials.contains(.standard) {
+            missing.append(.standard)
         }
 
         if providedMaterials.contains(.experience),
@@ -1789,6 +1799,11 @@ struct CoachObservationPolicy {
             return .goal
         }
 
+        if providedMaterials.contains(.judgment),
+           missingMaterials.contains(.standard) {
+            return .judgment
+        }
+
         if missingMaterials.contains(.calibrationSignal) {
             return .calibration
         }
@@ -1825,6 +1840,11 @@ struct CoachObservationPolicy {
         if providedMaterials.contains(.action),
            missingMaterials.contains(.goal) {
             gaps.append(.goal)
+        }
+
+        if providedMaterials.contains(.judgment),
+           missingMaterials.contains(.standard) {
+            gaps.append(.judgment)
         }
 
         if missingMaterials.contains(.constraint) {
@@ -1971,22 +1991,21 @@ struct CoachObservationPolicy {
                 ask: "请补一句：什么事实出现时，会推翻或削弱你现在的解释？",
                 proceedWhen: "当你能说清推翻信号或替代解释时，再进入目标或行动判断。"
             )
-        case .judgment, .narrative:
-            if gap == .narrative {
-                return CoachObservationFeedback(
-                    observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
-                    diagnosis: "当前主要缺口是讲述 gap：别人还不能复盘发生了什么。",
-                    training: "本轮先练\(ability.trainingTitle)，把一件事讲清楚，再进入分析或行动。",
-                    ask: "请补充前因后果：什么背景下，谁做了什么，触发点是什么，后来发生了什么？",
-                    proceedWhen: "当你能说清背景、触发点、行动和结果时，再进入下一步。"
-                )
-            }
+        case .judgment:
             return CoachObservationFeedback(
-                observed: "你已经提供了一部分材料，但还有关键思考材料没有展开。",
-                diagnosis: "当前主要缺口是 \(gap.rawValue) gap。",
-                training: "本轮先练\(ability.trainingTitle)，先补缺口再要答案。",
-                ask: "请补充一条能关闭这个缺口的具体材料。",
-                proceedWhen: "当这条材料能被别人复盘时，再进入下一步。"
+                observed: "你已经有事实和判断，但还没有说清用什么标准做取舍。",
+                diagnosis: "当前主要缺口是判断标准 gap：事实已经出现，但重要性、优先级或成功标准还不清楚。",
+                training: "本轮先练\(ability.trainingTitle)，让判断从感觉变成可解释的取舍。",
+                ask: "请补一句：你的判断标准是什么，为什么这件事比其他问题更重要？",
+                proceedWhen: "当你能说清判断标准、重要性和取舍依据时，再进入行动。"
+            )
+        case .narrative:
+            return CoachObservationFeedback(
+                observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
+                diagnosis: "当前主要缺口是讲述 gap：别人还不能复盘发生了什么。",
+                training: "本轮先练\(ability.trainingTitle)，把一件事讲清楚，再进入分析或行动。",
+                ask: "请补充前因后果：什么背景下，谁做了什么，触发点是什么，后来发生了什么？",
+                proceedWhen: "当你能说清背景、触发点、行动和结果时，再进入下一步。"
             )
         }
     }
@@ -2155,6 +2174,13 @@ struct CoachObservationPolicy {
         return containsAny(text, [
             "目标是", "为了", "成功标准是", "解决", "服务于", "达成", "验收标准是",
             "goal is", "success criteria"
+        ])
+    }
+
+    private func hasProvidedStandard(_ text: String) -> Bool {
+        containsAny(text, [
+            "判断标准", "标准是", "成功标准是", "验收标准是", "取舍标准", "依据是",
+            "优先级依据", "衡量", "判定标准", "重要性在于", "criteria", "criterion"
         ])
     }
 
