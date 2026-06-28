@@ -1427,7 +1427,7 @@ struct CoachObservation: Codable, Hashable {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v3"
+    static let policyVersion = "coach-observation.local-v4"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1612,6 +1612,10 @@ struct CoachObservationPolicy {
             return .constraint
         }
 
+        if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
+            return .causal
+        }
+
         if providedMaterials.contains(.action),
            missingMaterials.contains(.goal) {
             return .goal
@@ -1657,6 +1661,10 @@ struct CoachObservationPolicy {
 
         if missingMaterials.contains(.constraint) {
             gaps.append(.constraint)
+        }
+
+        if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
+            gaps.append(.causal)
         }
 
         return unique(gaps.filter { $0 != primaryGap })
@@ -1773,7 +1781,17 @@ struct CoachObservationPolicy {
                 ask: "请补一句：现在最大的限制是什么，来自时间、资源、权限、信息、关系还是系统边界？",
                 proceedWhen: "当你能说清关键边界和它如何限制行动时，再进入目标或行动判断。"
             )
-        case .causal, .counterexample, .judgment, .narrative:
+        case .causal:
+            return CoachObservationFeedback(
+                observed: "你已经给出一个因果解释，但还没有说明 A 到 B 中间发生了什么。",
+                diagnosis: "当前主要缺口是因果 gap：解释链条还没有被拆开，容易把相关性当成原因。",
+                training: "本轮先练\(ability.displayTitle)，把因果链条拆到别人可以检查。",
+                ask: needsMaterialSeparation
+                    ? "请先把事实、感受、解释、判断分开，再补一句：A 到 B 中间发生了什么？"
+                    : "请补一句：A 到 B 中间发生了什么，哪个环节最关键？",
+                proceedWhen: "当你能说清中间链条和关键环节时，再进入目标或行动判断。"
+            )
+        case .counterexample, .judgment, .narrative:
             if gap == .narrative {
                 return CoachObservationFeedback(
                     observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
@@ -1866,6 +1884,19 @@ struct CoachObservationPolicy {
         return providedNarrativeCoreCount >= 3
     }
 
+    private func shouldTrainCausalAnalysis(
+        providedMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard providedMaterials.contains(.fact),
+              providedMaterials.contains(.interpretation),
+              suggestsCausalShortcut(text),
+              !hasCausalMechanism(text)
+        else { return false }
+
+        return providedMaterials.contains(.result) || providedMaterials.contains(.judgment)
+    }
+
     private func hasProvidedBackground(_ text: String) -> Bool {
         containsAny(text, [
             "背景", "当时", "会议", "评审", "沟通中", "讨论中", "项目里", "需求评审",
@@ -1938,6 +1969,20 @@ struct CoachObservationPolicy {
         containsAny(text, [
             "卡住", "推进不下去", "推不动", "受阻", "阻塞", "暂停", "停滞",
             "没有进展", "难推进", "blocked", "stalled", "stuck"
+        ])
+    }
+
+    private func suggestsCausalShortcut(_ text: String) -> Bool {
+        containsAny(text, [
+            "因为", "由于", "所以", "导致", "造成", "归因", "是因为",
+            "therefore", "because", "caused", "led to"
+        ])
+    }
+
+    private func hasCausalMechanism(_ text: String) -> Bool {
+        containsAny(text, [
+            "中间", "链条", "机制", "路径", "环节", "反馈", "回路", "延迟",
+            "先", "再", "进而", "影响路径", "mechanism", "chain", "path"
         ])
     }
 

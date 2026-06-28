@@ -1060,6 +1060,31 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("边界"))
     }
 
+    func testCoachObservationPolicy_identifiesUntracedCausalExplanationAsAnalysisGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "会议结果",
+                body: "事实是会议结束后没有明确负责人，后来接口方案返工。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的解释",
+                body: "我认为返工是因为大家都不想负责，所以方案没有通过。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .causal)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("因果链"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("因果"))
+        XCTAssertTrue(observation.feedback.ask.contains("中间"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("链条"))
+    }
+
     func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
