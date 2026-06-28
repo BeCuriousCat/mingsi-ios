@@ -693,8 +693,8 @@ struct TodayView: View {
                 CoachObservationPolicy().observe(cards: store.thinkingCards)
             )
 
-            if let preview = store.coachAnswerFeedbackPreview {
-                answerFeedbackPreviewView(preview)
+            if let feedback = store.coachAnswerTrainingFeedback {
+                answerFeedbackPreviewView(feedback)
             } else if let teachingPlan = store.coachTurnState.map({
                 CoachTeachingPolicy().makePlan(
                     turn: $0,
@@ -771,37 +771,37 @@ struct TodayView: View {
         return titles.isEmpty ? fallback : titles.joined(separator: "、")
     }
 
-    private func answerFeedbackPreviewView(_ turn: CoachTurnState) -> some View {
-        let teachingPlan = CoachTeachingPolicy().makePlan(
-            turn: turn,
-            prescription: store.trainingPrescription
-        )
-        return VStack(alignment: .leading, spacing: 9) {
+    private func answerFeedbackPreviewView(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: turn.readiness == .ready ? "当前回答" : "当前仍缺",
-                body: turn.readiness == .ready ? "已补上本轮关键缺口，可以转成明天可验证的行动。" : answerFeedbackGapLine(for: turn),
-                accent: turn.readiness == .ready ? DS.success : DS.brick
+                title: "你刚补上",
+                body: feedback.repairedLine,
+                accent: DS.success
+            )
+            BriefRow(
+                title: "当前仍缺",
+                body: feedback.missingLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.brick
+            )
+            BriefRow(
+                title: "能否进入明日验证",
+                body: feedback.proceedLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.caution
             )
             BriefRow(
                 title: "能力修补",
-                body: "本轮正在练\(teachingPlan.trainingTargetTitle)。下一句先按推进标准补：\(teachingPlan.proceedStandard)",
+                body: feedback.trainingTargetLine,
                 accent: DS.caution
             )
+            BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
+            BriefRow(title: "过往经验复现", body: feedback.experienceReplayPrompt, accent: DS.graphite)
             BriefRow(
                 title: "判断句训练",
-                body: "把下一句写成：我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。",
+                body: feedback.judgmentSentencePrompt,
                 accent: DS.success
             )
-            teachingRouteView(teachingPlan)
+            teachingRouteView(feedback.teachingPlan)
         }
-    }
-
-    private func answerFeedbackGapLine(for turn: CoachTurnState) -> String {
-        let gaps = turn.openEvidenceGaps
-            .filter { $0 != .none }
-            .map(\.displayTitle)
-        let gapLine = gaps.isEmpty ? "本轮训练缺口还没有关闭" : gaps.joined(separator: "、")
-        return "\(gapLine)。\(turn.reason)"
     }
 
     private func phaseBoundaryCard(title: String, body: String, icon: String, tint: Color) -> some View {

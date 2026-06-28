@@ -1245,6 +1245,93 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"])
     }
 
+    func testCoachAnswerFeedbackPolicySeparatesRepairedAndMissingTrainingMaterials() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "用户已经有判断倾向，但事实、解释和依据还需要拆开。",
+            openEvidenceGaps: [.missingObservation, .missingCausalLink],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先拆事实和解释。"
+        )
+        let question = ReflectionQuestion(
+            question: "哪一句是可观察事实，哪一句是解释？",
+            whyItMatters: "它防止把解释当事实。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "事实是客户代表在评审里提出三处流程问题；我的解释是这些问题让验收标准变模糊。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: confirmedCards([
+                ThinkingCard(type: .decision, title: "延期原因", body: "我认为延期是流程问题影响验收。")
+            ]),
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertEqual(feedback.readiness, .notReady)
+        XCTAssertFalse(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
+        XCTAssertTrue(feedback.repairedLine.contains("补上"))
+        XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
+        XCTAssertTrue(feedback.proceedLine.contains("不能进入明日验证"))
+        XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
+    }
+
+    func testCoachAnswerFeedbackPolicyAllowsValidationWhenAnswerClosesGaps() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "材料里同时出现预测和实际结果，适合校准原判断。",
+            openEvidenceGaps: [.missingCalibrationSignal],
+            baselineChecks: [.judgmentUpdate],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先定义校准信号。"
+        )
+        let question = ReflectionQuestion(
+            question: "明天用什么信号校准这个判断？",
+            whyItMatters: "它防止任务完成但判断没有更新。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            answer: "明天观察返工次数是否下降；如果没有下降，就更新原来认为验收能减少返工的判断。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertEqual(feedback.readiness, .ready)
+        XCTAssertTrue(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.repairedLine.contains("缺校准信号"))
+        XCTAssertTrue(feedback.missingLine.contains("关键缺口已关闭"))
+        XCTAssertTrue(feedback.proceedLine.contains("可以进入明日验证"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("明天"))
+    }
+
     func testCoachTeachingPolicy_overrideRouteKeepsAuditBoundary() {
         let turn = CoachTurnState(
             phase: .formAction,

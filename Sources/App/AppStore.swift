@@ -1519,6 +1519,16 @@ final class AppStore: ObservableObject {
         )
     }
 
+    var coachAnswerTrainingFeedback: CoachAnswerTrainingFeedback? {
+        guard let preview = coachAnswerFeedbackPreview else { return nil }
+        return CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: preview,
+            previous: coachTurnState,
+            questions: questions,
+            prescription: trainingPrescription
+        )
+    }
+
     var mainQuest: Quest? {
         quests.first { $0.type == .main }
     }
@@ -4092,15 +4102,13 @@ final class AppStore: ObservableObject {
     }
 
     private func coachAnswerTrainingFeedbackMessage(for turn: CoachTurnState) -> String {
-        let gapTitles = turn.openEvidenceGaps
-            .filter { $0 != .none }
-            .map(\.displayTitle)
-        let gapLine = gapTitles.isEmpty ? "本轮训练缺口还没有关闭" : gapTitles.joined(separator: "、")
-        let plan = CoachTeachingPolicy().makePlan(
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
             turn: turn,
+            previous: coachTurnState,
+            questions: questions,
             prescription: trainingPrescription
         )
-        return "本轮训练还差：\(gapLine)。\(plan.proceedStandard) 教练追问：\(plan.repairQuestion) 过往经验：\(plan.experienceReplayPrompt)"
+        return "\(feedback.repairedLine) \(feedback.missingLine) \(feedback.proceedLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayPrompt)"
     }
 
     private func makeCoachTrainingPrescription() -> TrainingPrescription {

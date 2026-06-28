@@ -339,6 +339,22 @@ not merely say whether the answer is good enough. The minimum shape is:
 This keeps the handoff to Review Quests grounded in a testable judgment rather
 than a generic tomorrow task.
 
+The answer feedback frame must also separate the coach's assessment into
+explicit parts:
+
+```text
+你刚补上：A。
+当前仍缺：B。
+能否进入明日验证：可以 / 不能；原因是 C。
+下一句修补：D。
+过往经验复现：E。
+```
+
+This prevents the coach from collapsing into a single approval or rejection
+sentence. The user should be able to see which thinking material improved,
+which gap remains open, and what exact repair move would make the answer ready
+for tomorrow validation.
+
 ### Review Quests
 
 Review Quests is the visible `明日验证` stage. It should not read as "AI made

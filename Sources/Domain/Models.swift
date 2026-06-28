@@ -1121,6 +1121,19 @@ struct CoachTurnState: Codable, Hashable {
     var turnSummary: String
 }
 
+struct CoachAnswerTrainingFeedback: Codable, Hashable {
+    var readiness: ConvergenceReadiness
+    var canProceedToValidation: Bool
+    var repairedLine: String
+    var missingLine: String
+    var proceedLine: String
+    var trainingTargetLine: String
+    var nextRepairQuestion: String
+    var experienceReplayPrompt: String
+    var judgmentSentencePrompt: String
+    var teachingPlan: CoachTeachingPlan
+}
+
 struct CoachTurnPolicy {
     static let policyVersion = "coach-turn.local-v1"
 
@@ -1327,6 +1340,74 @@ struct CoachTurnPolicy {
             return "用户已有回答，但还没有说清关键约束或边界。"
         }
         return "用户已有回答，但本轮训练缺口还没有关闭。"
+    }
+}
+
+struct CoachAnswerFeedbackPolicy {
+    static let judgmentSentencePrompt = "把下一句写成：我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。"
+
+    func makeFeedback(
+        turn: CoachTurnState,
+        previous: CoachTurnState?,
+        questions: [ReflectionQuestion],
+        prescription: TrainingPrescription?
+    ) -> CoachAnswerTrainingFeedback {
+        let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
+        let remainingGaps = activeGaps(from: turn.openEvidenceGaps)
+        let previousGaps = activeGaps(from: previous?.openEvidenceGaps ?? [])
+        let repairedGaps = previousGaps.filter { !remainingGaps.contains($0) }
+        let canProceed = turn.readiness == .ready && remainingGaps.isEmpty
+
+        return CoachAnswerTrainingFeedback(
+            readiness: turn.readiness,
+            canProceedToValidation: canProceed,
+            repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
+            missingLine: missingLine(remainingGaps: remainingGaps),
+            proceedLine: proceedLine(canProceed: canProceed, plan: plan),
+            trainingTargetLine: "本轮正在练\(plan.trainingTargetTitle)。",
+            nextRepairQuestion: plan.repairQuestion,
+            experienceReplayPrompt: plan.experienceReplayPrompt,
+            judgmentSentencePrompt: Self.judgmentSentencePrompt,
+            teachingPlan: plan
+        )
+    }
+
+    private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
+        gaps.filter { $0 != .none }
+    }
+
+    private func repairedLine(
+        repairedGaps: [EvidenceGapType],
+        questions: [ReflectionQuestion]
+    ) -> String {
+        let answeredCount = questions.filter {
+            !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
+        guard !repairedGaps.isEmpty else {
+            return answeredCount > 0
+                ? "你已经回答，但还没有补上本轮关键缺口。"
+                : "还没有新的回答材料。"
+        }
+        return "你补上了\(gapLine(for: repairedGaps))。"
+    }
+
+    private func missingLine(remainingGaps: [EvidenceGapType]) -> String {
+        remainingGaps.isEmpty
+            ? "关键缺口已关闭。"
+            : "还缺\(gapLine(for: remainingGaps))。"
+    }
+
+    private func proceedLine(
+        canProceed: Bool,
+        plan: CoachTeachingPlan
+    ) -> String {
+        canProceed
+            ? "可以进入明日验证：\(plan.proceedStandard)"
+            : "现在不能进入明日验证：\(plan.proceedStandard)"
+    }
+
+    private func gapLine(for gaps: [EvidenceGapType]) -> String {
+        gaps.map(\.displayTitle).joined(separator: "、")
     }
 }
 
