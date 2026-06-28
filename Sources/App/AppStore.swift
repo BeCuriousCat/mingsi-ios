@@ -3739,7 +3739,7 @@ final class AppStore: ObservableObject {
                 todayLoopMessage = "请输入内容后再重试整理。"
                 return
             }
-            todayLoopMessage = "正在重试 AI 整理。"
+            todayLoopMessage = "正在重试整理卡片训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
             Task {
@@ -3750,7 +3750,7 @@ final class AppStore: ObservableObject {
                 todayLoopMessage = "请选择透镜后再重试追问。"
                 return
             }
-            todayLoopMessage = "正在重试 AI 追问。"
+            todayLoopMessage = "正在重试教练追问训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
             Task {
@@ -3761,21 +3761,21 @@ final class AppStore: ObservableObject {
                 todayLoopMessage = "至少回答一个问题后再重试设计明日验证。"
                 return
             }
-            todayLoopMessage = "正在重试 AI 明日验证。"
+            todayLoopMessage = "正在重试明日验证训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
             Task {
                 await generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
             }
         case .extractPrinciple:
-            todayLoopMessage = "正在重试 AI 原则沉淀。"
+            todayLoopMessage = "正在重试原则沉淀训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
             Task {
                 await generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
             }
         default:
-            todayLoopMessage = "当前步骤没有可重试的 AI 调用。"
+            todayLoopMessage = "当前步骤没有可重试的训练生成。"
         }
     }
 
@@ -3789,7 +3789,7 @@ final class AppStore: ObservableObject {
         let currentState = todayDraft.state
         let promptsToRepair = pendingAIRepairPrompts
         let canRepairCards = canRunBackgroundCardRepair
-        todayLoopMessage = "正在后台重试 AI 补全。"
+        todayLoopMessage = "正在后台补齐未完成训练。"
         Task {
             if promptsToRepair.contains(.organizeCards),
                canRepairCards,

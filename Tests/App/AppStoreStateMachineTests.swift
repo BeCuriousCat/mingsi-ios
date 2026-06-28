@@ -5547,17 +5547,103 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.retryCurrentAIStep()
 
         try await waitUntil(
-            store.todayLoopMessage.contains("重试失败"),
+            store.todayLoopMessage.contains("重试未完成"),
             timeout: 2,
             file: #filePath,
             line: #line,
-            failureMessage: "Expected retry failure message"
+            failureMessage: "Expected retry training failure message"
         ) {
-            store.todayLoopMessage.contains("重试失败")
+            store.todayLoopMessage.contains("重试未完成")
         }
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertEqual(store.thinkingCards.first?.title, fallbackTitle)
         XCTAssertTrue(store.canRetryCurrentAI)
+    }
+
+    func testAIRetryInProgressMessage_usesTrainingLanguage() async throws {
+        let llmClient = SuspendingLLMClient(response: Self.cardsResponse(title: "Repaired card"))
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.todayDraft.state = .organizing
+        store.todayDraft.rawText = "Today I need to retry card organization."
+        store.canRetryCurrentAI = true
+
+        store.retryCurrentAIStep()
+
+        try await waitUntil(
+            llmClient.completeCallCount == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected retry to start one model request"
+        ) {
+            llmClient.completeCallCount == 1
+        }
+        XCTAssertTrue(store.todayLoopMessage.contains("正在重试整理卡片训练"))
+        XCTAssertFalse(store.todayLoopMessage.contains("正在重试 AI"))
+
+        llmClient.release()
+    }
+
+    func testPendingAIRepairInProgressMessage_usesTrainingLanguage() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let client = SuspendingLLMClient(response: Self.cardsResponse(title: "Background repaired card"))
+        let draft = DailyEntryDraft(
+            rawText: "Today I need background repair.",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .organizing
+        )
+        try await dailyRepo.saveDraft(draft)
+        try await promptRunRepo.savePromptRun(
+            PromptRun(
+                promptId: PromptID.organizeCards.rawValue,
+                promptVersion: "1.0.0",
+                inputSchemaVersion: 1,
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                sourceRecordIds: [draft.id.uuidString],
+                requestSummary: "organize failure",
+                error: "HTTP 500"
+            )
+        )
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            promptRunRepository: promptRunRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPersistedState()
+
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        store.retryPendingAIRepairs()
+
+        try await waitUntil(
+            client.completeCallCount == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected background repair to start one model request"
+        ) {
+            client.completeCallCount == 1
+        }
+        XCTAssertTrue(store.todayLoopMessage.contains("正在后台补齐未完成训练"))
+        XCTAssertFalse(store.todayLoopMessage.contains("正在后台重试 AI"))
+
+        client.release()
     }
 
     func testQuestionQualityGateFailure_usesStructuredFallbackAndRetryMessage() async throws {

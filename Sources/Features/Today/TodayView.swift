@@ -220,7 +220,7 @@ struct TodayView: View {
                         Button {
                             store.retryCurrentAIStep()
                         } label: {
-                            Label("重试 AI", systemImage: "arrow.clockwise")
+                            Label("重试当前步骤", systemImage: "arrow.clockwise")
                         }
                         .font(.footnote.weight(.semibold))
                         .buttonStyle(.bordered)
