@@ -1029,6 +1029,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
     }
 
+    func testCoachObservation_experienceReplayTrainingLineUsesReproduceAdaptReject() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),
+            ThinkingCard(type: .idea, title: "可能要复用经验", body: "还没判断这次条件是不是一样。")
+        ]))
+
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("复现：条件相同，可以照用哪条做法"))
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("调整：条件不同，哪部分要改"))
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("否定：这条经验为什么不适用"))
+    }
+
     func testCoachObservationPolicy_identifiesMissingAffectedObjectAsDescriptionGap() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(

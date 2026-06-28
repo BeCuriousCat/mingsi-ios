@@ -184,14 +184,18 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "刚才的回答")
         ).firstMatch
         XCTAssertTrue(repairPrompt.waitForExistence(timeout: 4))
+        let experienceReproduceTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
+        ).firstMatch
+        XCTAssertTrue(experienceReproduceTraining.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["经验判断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["复现：照用哪条做法？"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["调整：哪些条件不同？"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复现：条件相同，可以照用哪条做法"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["调整：条件不同，哪部分要改"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["作答训练"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["不是 AI 答案"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["补盲区"].waitForExistence(timeout: 4))

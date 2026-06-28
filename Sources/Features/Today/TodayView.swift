@@ -1531,18 +1531,12 @@ struct TodayView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(DS.mutedInk)
                 .textCase(.uppercase)
-            Text("复现：照用哪条做法？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("调整：哪些条件不同？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("否定：这条经验为什么不适用？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            ForEach(ExperienceReplayTraining.decisionLines, id: \.self) { line in
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

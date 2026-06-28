@@ -377,6 +377,16 @@ explicit parts:
 过往经验复现：E。
 ```
 
+Experience replay should also show the stable decision drill instead of only a
+generic reminder:
+
+```text
+经验判断：复现：条件相同，可以照用哪条做法；调整：条件不同，哪部分要改；否定：这条经验为什么不适用。
+```
+
+This makes prior experience a training object. The user should classify the old
+experience before applying it.
+
 This prevents the coach from collapsing into a single approval or rejection
 sentence. The user should be able to see which thinking material improved,
 which gap remains open, and what exact repair move would make the answer ready

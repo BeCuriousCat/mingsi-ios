@@ -1509,6 +1509,10 @@ struct CoachObservation: Codable, Hashable {
     var narrativeTrainingLine: String {
         "讲清楚一件事：已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；先补：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
     }
+
+    var experienceReplayTrainingLine: String {
+        ExperienceReplayTraining.line
+    }
 }
 
 extension CoachObservationMaterial {
@@ -2302,6 +2306,18 @@ struct CoachTeachingPlan: Codable, Hashable {
     var experienceReplayPrompt: String
     var routeSteps: [String]
     var auditNote: String?
+
+    var experienceReplayTrainingLine: String {
+        ExperienceReplayTraining.line
+    }
+}
+
+enum ExperienceReplayTraining {
+    static let reproduceLine = "复现：条件相同，可以照用哪条做法"
+    static let adaptLine = "调整：条件不同，哪部分要改"
+    static let rejectLine = "否定：这条经验为什么不适用"
+    static let decisionLines = [reproduceLine, adaptLine, rejectLine]
+    static let line = "经验判断：\(reproduceLine)；\(adaptLine)；\(rejectLine)。"
 }
 
 struct CoachTeachingPolicy {
