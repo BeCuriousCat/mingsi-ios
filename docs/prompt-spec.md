@@ -350,7 +350,7 @@ MingSi separates two loops:
 - 今日理解闭环: today content and 今日复盘 clarify what happened, what the user
   did, what the user believes, what evidence is missing, and which judgment is
   now testable.
-- 行动验证闭环: 明日实验 turns one reviewed judgment into a small action; result
+- 行动验证闭环: 明日验证 turns one reviewed judgment into a validation action; result
   calibration later compares the action, evidence, value, and judgment update.
 
 `generateQuestions` must train the user toward this judgment sentence without
@@ -363,7 +363,7 @@ answering for them:
 For `generateQuestions`, `calibration_target must be X`: the belief,
 prediction, causal explanation, or tradeoff being tested. `expected_update` and
 `proceed_when` should help the user make X, Y, and Z concrete enough to move
-from 今日复盘 into 明日实验.
+from 今日复盘 into 明日验证.
 
 `generateQuests` must reuse the same sentence instead of starting a new review.
 When reflection answers include `calibrationTarget`, use it as X;

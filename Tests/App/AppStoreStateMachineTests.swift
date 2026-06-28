@@ -1116,12 +1116,12 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(plan.experienceReplayPrompt.contains("复现"))
     }
 
-    func testCoachTeachingPolicy_readyRouteFormsTomorrowExperiment() {
+    func testCoachTeachingPolicy_readyRouteFormsTomorrowValidation() {
         let turn = CoachTurnState(
             phase: .formAction,
             readiness: .ready,
             recommendedMove: .generateQuest,
-            reason: "已有任务、事实或判断，可以把下一步设计成校准实验。",
+            reason: "已有任务、事实或判断，可以把下一步设计成验证行动。",
             openEvidenceGaps: [],
             baselineChecks: [.testableAction, .judgmentUpdate],
             decisionSource: .coachAccepted,
@@ -1131,7 +1131,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let prescription = TrainingPrescription(
             recommendedLensId: ThinkingLens.judgmentCalibration.rawValue,
             recommendedPromptId: ThinkingLens.judgmentCalibration.catalogItem.promptId,
-            recommendationReason: "当前可以把判断转成校准实验。",
+            recommendationReason: "当前可以把判断转成验证行动。",
             confidence: 0.76,
             policyVersion: "test",
             alternativeLensIds: [],
@@ -1149,9 +1149,9 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertTrue(plan.missingMoveTitle.contains("明天能留下证据"))
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.testableActionDesign.displayTitle)
-        XCTAssertTrue(plan.whyNotAnswer.contains("足够形成小实验"))
+        XCTAssertTrue(plan.whyNotAnswer.contains("足够形成验证行动"))
         XCTAssertTrue(plan.proceedStandard.contains("明日行动"))
-        XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"])
+        XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"])
     }
 
     func testCoachTeachingPolicy_overrideRouteKeepsAuditBoundary() {
@@ -2828,7 +2828,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.10.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
@@ -2894,7 +2894,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.10.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
@@ -3023,7 +3023,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.10.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
@@ -3078,7 +3078,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.10.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
@@ -4318,7 +4318,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         }
         let request = try XCTUnwrap(reminder.scheduledRequests.first)
         XCTAssertEqual(reminder.permissionRequestCount, 1)
-        XCTAssertEqual(request.title, "明日主线实验")
+        XCTAssertEqual(request.title, "明日验证行动")
         XCTAssertEqual(request.body, "Confirm meeting owner")
         XCTAssertTrue(store.reminderStatusMessage.contains("提醒已安排"))
     }
@@ -7656,7 +7656,12 @@ final class AppStoreStateMachineTests: XCTestCase {
         case .reviewQuests:
             try await advanceTo(.answerQuestions)
             store.questions = [
-                ReflectionQuestion(question: "Q?", whyItMatters: "M", answer: "事实是今天已经确认关键证据。")
+                ReflectionQuestion(
+                    question: "Q?",
+                    whyItMatters: "M",
+                    calibrationTarget: "验收标准明确会减少返工",
+                    answer: "事实是今天已经确认关键证据。"
+                )
             ]
             store.submitTodayStep()
             try await waitForState(.reviewQuests)

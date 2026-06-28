@@ -109,7 +109,7 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
         case .selectMode: return "选择模式"
         case .selectLens: return "选择透镜"
         case .answerQuestions: return "今日复盘"
-        case .reviewQuests: return "明日实验"
+        case .reviewQuests: return "明日验证"
         case .extractPrinciple: return "原则沉淀"
         case .sessionComplete: return "今日完成"
         }
@@ -538,7 +538,7 @@ enum BuiltinLensCatalog {
             methodIndex: 1,
             purpose: "把事实、判断、假设和待验证缺口拆开，避免在证据不足时推进决策。",
             questionStrategy: "先要求用户区分已知事实和解释性判断，再找出最需要补证据的一处。",
-            taskSelectionRule: "优先设计能补齐关键证据、确认验收口径或降低事实不确定性的明日实验。",
+            taskSelectionRule: "优先设计能补齐关键证据、确认验收口径或降低事实不确定性的明日验证行动。",
             applicability: "适用于事实、风险、问题或高优先级卡片较多，且当前判断依赖未验证依据的场景。",
             disableConditions: [
                 "不要用于用户已经明确选择其他透镜的请求。",
@@ -566,7 +566,7 @@ enum BuiltinLensCatalog {
             methodIndex: 2,
             purpose: "主动寻找反证、替代解释和被忽略的利益相关方，降低只证明自己正确的风险。",
             questionStrategy: "先让用户描述相反证据会是什么，再追问谁会不同意以及最强反方理由。",
-            taskSelectionRule: "优先设计能验证关键反方假设、暴露盲点或让不同角色参与校准的明日实验。",
+            taskSelectionRule: "优先设计能验证关键反方假设、暴露盲点或让不同角色参与校准的明日验证行动。",
             applicability: "适用于问题和风险偏多、用户判断较强、或 Deep 模式下需要挑战默认解释的场景。",
             disableConditions: [
                 "不要为了反对而反对，必须回到当天确认卡片。",
@@ -594,12 +594,12 @@ enum BuiltinLensCatalog {
             methodIndex: 3,
             purpose: "识别最小但最能改变结果的动作、约束或决策，避免把容易完成误判为高价值。",
             questionStrategy: "先比较不同动作的结果影响，再排除低杠杆忙碌，最后收敛一个关键约束。",
-            taskSelectionRule: "优先设计能改变关键结果、解除瓶颈或让后续动作变简单的明日主线实验。",
+            taskSelectionRule: "优先设计能改变关键结果、解除瓶颈或让后续动作变简单的明日验证行动。",
             applicability: "适用于任务、决策或行动卡片较多，且用户需要从多个动作中选择下一步的场景。",
             disableConditions: [
                 "不要在事实和验收口径明显不清时跳过证据校验。",
                 "不要把轻松完成当作高杠杆。",
-                "不要生成多个并列主线实验。"
+                "不要生成多个并列验证行动。"
             ]
         ),
         LensCatalogItem(
@@ -622,7 +622,7 @@ enum BuiltinLensCatalog {
             methodIndex: 4,
             purpose: "拆掉默认前提，保留不可再拆的事实、约束和目标，再从这些基本条件重建下一步。",
             questionStrategy: "先识别硬事实和不可变约束，再分离沿用假设，最后从零重建一个最小行动。",
-            taskSelectionRule: "优先设计能验证核心前提、澄清必要条件或重建行动路径的明日实验。",
+            taskSelectionRule: "优先设计能验证核心前提、澄清必要条件或重建行动路径的明日验证行动。",
             applicability: "适用于卡片类型没有明显主导、前提混杂、或用户需要重新定义问题的场景。",
             disableConditions: [
                 "不要用抽象原则替代当天具体证据。",
@@ -650,7 +650,7 @@ enum BuiltinLensCatalog {
             methodIndex: 5,
             purpose: "识别事件背后的反馈回路、延迟影响、约束瓶颈和二阶后果，避免只修表面症状。",
             questionStrategy: "先画出反馈回路和延迟影响，再追问二阶后果、关键约束和下一次可观察的校准信号。",
-            taskSelectionRule: "优先设计能打断负反馈、验证关键约束或采集校准信号的明日实验。",
+            taskSelectionRule: "优先设计能打断负反馈、验证关键约束或采集校准信号的明日验证行动。",
             applicability: "适用于同类问题反复出现、短期动作带来长期代价、返工增加、依赖传导或结果延迟显现的场景。",
             disableConditions: [
                 "不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。",
@@ -678,7 +678,7 @@ enum BuiltinLensCatalog {
             methodIndex: 6,
             purpose: "把原判断、置信度、实际证据和判断更新放在同一张桌面上，训练可校准的判断能力。",
             questionStrategy: "先还原原判断和信心，再对照实际证据，最后要求用户说清判断如何更新和下一次校准信号。",
-            taskSelectionRule: "优先设计能验证一个预测、采集一个校准信号或降低下一次误判概率的明日实验。",
+            taskSelectionRule: "优先设计能验证一个预测、采集一个校准信号或降低下一次误判概率的明日验证行动。",
             applicability: "适用于用户提到预测、预期、把握、信心、实际结果、判断反转、复盘偏差或需要更新判断的场景。",
             disableConditions: [
                 "不要把校准变成事后诸葛，必须先明确原判断或可观察预测。",
@@ -1088,7 +1088,7 @@ enum NextCoachMove: String, Codable, Hashable {
         case .recommendTrainingLens:
             return "进入训练透镜，围绕主焦点练习。"
         case .generateQuest:
-            return "可以继续设计明日实验。"
+            return "可以继续设计明日验证。"
         }
     }
 }
@@ -1715,7 +1715,7 @@ struct CoachObservationPolicy {
                 diagnosis: "当前主要缺口是执行 gap：下一步、负责人或验收标准还不够清楚。",
                 training: "本轮先练\(ability.displayTitle)，把思考落成可执行安排。",
                 ask: "明天最小的一步是什么，完成后留下什么证据？",
-                proceedWhen: "当行动能被明天验证时，可以设计明日实验。"
+                proceedWhen: "当行动能被明天验证时，可以设计明日验证。"
             )
         case .calibration:
             return CoachObservationFeedback(
@@ -2032,11 +2032,11 @@ struct CoachTeachingPolicy {
                 policyVersion: Self.policyVersion,
                 missingMoveTitle: "现在不是继续分析，而是把判断转成明天能留下证据的行动。",
                 trainingTargetTitle: (prescription?.primaryTrainingDimension ?? .testableActionDesign).displayTitle,
-                whyNotAnswer: "当前证据已经足够形成小实验，继续追问的收益低于行动校准。",
+                whyNotAnswer: "当前证据已经足够形成验证行动，继续追问的收益低于行动校准。",
                 proceedStandard: "明日行动能留下负责人、验收标准和可观察结果。",
                 repairQuestion: "明天这个行动会留下什么结果证据，让你回看今天的判断是否成立？",
-                experienceReplayPrompt: "回想过往一次小实验有效的经验：这次应该复现哪条做法，哪些条件不同？",
-                routeSteps: ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"],
+                experienceReplayPrompt: "回想过往一次验证行动有效的经验：这次应该复现哪条做法，哪些条件不同？",
+                routeSteps: ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"],
                 auditNote: nil
             )
         }
@@ -2264,7 +2264,7 @@ struct CoachDecisionPolicyV2 {
                 openEvidenceGaps: [],
                 convergenceRisk: .low,
                 scores: scores,
-                reason: "已有任务、事实或判断，并出现负责人、验收标准或可观察结果，可以把下一步设计成校准实验。",
+                reason: "已有任务、事实或判断，并出现负责人、验收标准或可观察结果，可以把下一步设计成验证行动。",
                 whyNow: "当前材料已经足够形成明日可验证行动。",
                 expectedUpdate: "把当前判断转成一个明日能产生证据的行动。",
                 proceedWhen: "明日行动能留下负责人、验收标准和可观察结果。".trimmingCharacters(in: .whitespacesAndNewlines),
@@ -2283,7 +2283,7 @@ struct CoachDecisionPolicyV2 {
                 convergenceRisk: risk,
                 scores: scores,
                 reason: "当前存在高风险、问题或明确证据缺口，直接行动会过早收敛。",
-                whyNow: "现在的主要风险是过早收敛，先补证据比设计明日实验更重要。",
+                whyNow: "现在的主要风险是过早收敛，先补证据比设计明日验证更重要。",
                 expectedUpdate: "回答应补足可观察事实、基线或验收口径。",
                 proceedWhen: "能说清至少一个可观察事实和一个验收基线后再推进。",
                 learningSignals: learningSignals
@@ -5346,7 +5346,7 @@ struct ProjectEvidenceDigest: Hashable {
         case .thinkingCard:
             return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
         case .quest:
-            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日实验"
+            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
         case .verification:
             return record.verification?.calibrationNote ?? "结果校准"
         case .principle:

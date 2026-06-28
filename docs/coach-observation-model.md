@@ -191,10 +191,10 @@ Examples:
 
 The Today loop should keep four user-visible boundaries distinct:
 
-- `结果校准`: verify yesterday's experiment before starting new material.
+- `结果校准`: verify yesterday's validation action before starting new material.
 - `今天内容`: collect today's facts, actions, thoughts, and raw context. This is not the review conclusion.
 - `今日复盘`: MingSi observes how the user described and judged the material, then names the missing thinking material and training ability.
-- `明日实验`: turn today's reviewed judgment into a verifiable action for tomorrow. This is not a generic todo list.
+- `明日验证`: turn today's reviewed judgment into a verifiable action for tomorrow. This is not a generic todo list.
 
 This boundary is part of the coach contract. If the UI or prompt makes Capture
 feel like the whole review, or makes Review Quests feel like ordinary task
@@ -205,26 +205,26 @@ For product design, treat Today as two connected loops:
 - Today understanding loop: `今天内容 -> 今日复盘`. This loop trains the user to
   describe the event, separate evidence from judgment, expose skipped thinking
   material, and replay relevant past experience.
-- Tomorrow validation loop: `明日实验 -> 结果校准`. This loop trains the user to
-  turn one reviewed judgment into a small observable experiment, then use the
+- Tomorrow validation loop: `明日验证 -> 结果校准`. This loop trains the user to
+  turn one reviewed judgment into a small observable validation action, then use the
   next day's result to calibrate whether the judgment was useful.
 
 The user-visible loop names should make the boundary explicit:
 
 - `闭环一：今天内容与今日复盘`.
-- `闭环二：明天实验与结果校准`.
+- `闭环二：明日验证与结果校准`.
 - `闭环二：结果校准`.
 
 The top progress indicator should also be grouped, not shown as one undifferentiated
 `1/10` journal pipeline:
 
 - `今日理解闭环`: `今天内容 -> 今日复盘`.
-- `行动验证闭环`: `明日实验 -> 结果校准`.
+- `行动验证闭环`: `明日验证 -> 结果校准`.
 
 The boundary rule is:
 
 ```text
-复盘解决理解问题；实验解决验证问题。
+复盘解决理解问题；验证解决校准问题。
 ```
 
 The two loops should not collapse into a single journal flow:
@@ -232,11 +232,11 @@ The two loops should not collapse into a single journal flow:
 ```text
 今天内容只收集材料。
 今日复盘只修补理解、证据、判断和经验复现缺口。
-明日实验只设计一个能验证今日判断的小实验。
-结果校准只回看昨天实验的完成、价值和判断更新。
+明日验证只设计一个能验证今日判断的验证行动。
+结果校准只回看昨天验证行动的完成、价值和判断更新。
 ```
 
-`明日实验` must not become an extra place to continue writing today's review.
+`明日验证` must not become an extra place to continue writing today's review.
 `结果校准` must not become a new review of today's material. It only checks
 completion, actual value, and whether yesterday's judgment should be updated.
 The visible calibration questions are: did it get done, did it create real
@@ -249,11 +249,11 @@ Each visible stage should state what this page is allowed to do:
 
 - Capture: `本页只写今天内容`.
 - Answer Questions: `本页只复盘今天`.
-- Review Quests: `本页只设计明天实验`.
+- Review Quests: `本页只设计明天的验证行动`.
 - Verify Yesterday: `本页只校准昨天结果`.
 
 This is not instructional decoration. It prevents the user from mixing raw
-material, review, experiment design, and result calibration into one long
+material, review, validation action design, and result calibration into one long
 journal entry.
 
 ### Capture
@@ -341,7 +341,7 @@ than a generic tomorrow task.
 
 ### Review Quests
 
-Review Quests is the visible `明日实验` stage. It should not read as "AI made
+Review Quests is the visible `明日验证` stage. It should not read as "AI made
 some tasks." A quest exists to test a judgment from today's review.
 
 Before showing the quest card list, Review Quests should show a page-level

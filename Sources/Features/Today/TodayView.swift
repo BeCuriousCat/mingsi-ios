@@ -163,14 +163,14 @@ struct TodayView: View {
         case .verifyYesterday:
             return LoopBoundaryCopy(
                 title: "闭环二：结果校准",
-                body: "只回看昨天的明天实验：做没做、有没有价值、判断如何更新；完成后才进入今天内容。",
+                body: "只回看昨天设计的验证行动：做没做、有没有价值、判断如何更新；完成后才进入今天内容。",
                 icon: "scope",
                 tint: DS.caution
             )
         case .reviewQuests, .extractPrinciple, .sessionComplete:
             return LoopBoundaryCopy(
-                title: "闭环二：明天实验与结果校准",
-                body: "把今日复盘后的一个判断变成明天实验；明天回来只校准结果，不继续写今天复盘。",
+                title: "闭环二：明日验证与结果校准",
+                body: "把今日复盘后的一个判断变成明天的验证行动；明天回来只校准结果，不继续写今天复盘。",
                 icon: "flag.checkered",
                 tint: DS.success
             )
@@ -244,7 +244,7 @@ struct TodayView: View {
 
             loopProgressGroup(
                 title: "行动验证闭环",
-                route: "明日实验 → 结果校准",
+                route: "明日验证 → 结果校准",
                 states: [.reviewQuests, .extractPrinciple, .sessionComplete, .verifyYesterday],
                 tint: DS.success,
                 scrollToTop: scrollToTop
@@ -313,7 +313,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 14) {
             phaseBoundaryCard(
                 title: "结果校准",
-                body: "先验证昨天的明日实验，再开始收集今天的新材料。",
+                body: "先校准昨天的明日验证，再开始收集今天的新材料。",
                 icon: "scope",
                 tint: DS.caution
             )
@@ -327,7 +327,7 @@ struct TodayView: View {
 
             if let quest = store.mainQuest ?? store.quests.first {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("昨日主线实验")
+                    Text("昨日验证行动")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(quest.title)
@@ -684,7 +684,7 @@ struct TodayView: View {
             )
             BriefRow(
                 title: "本页只复盘今天",
-                body: "这里只修补今天材料里的讲述、证据和判断缺口；明天行动会在明日实验里设计。",
+                body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
                 accent: DS.brick
             )
 
@@ -839,7 +839,7 @@ struct TodayView: View {
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             phaseBoundaryCard(
-                title: "明日实验",
+                title: "明日验证",
                 body: "今日复盘已结束；下面把今天的判断转成明天可验证的行动，不是继续写总结。",
                 icon: "flag.checkered",
                 tint: DS.success
@@ -850,7 +850,7 @@ struct TodayView: View {
                 accent: DS.caution
             )
             BriefRow(
-                title: "本页只设计明天实验",
+                title: "本页只设计明天的验证行动",
                 body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
                 accent: DS.success
             )
@@ -862,7 +862,7 @@ struct TodayView: View {
 
             reviewQuestJudgmentAnchor
 
-            stepLabel("设计明日实验", subtitle: "主线行动必须验证今天的一个判断，并有明确完成标准。")
+            stepLabel("设计明日验证", subtitle: "验证行动必须验证今天的一个判断，并有明确完成标准。")
 
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
@@ -905,8 +905,8 @@ struct TodayView: View {
                 accent: target == nil ? DS.caution : DS.accent
             )
             BriefRow(
-                title: "下面的实验只验证这个判断",
-                body: "明日实验不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
+                title: "下面的验证行动只验证这个判断",
+                body: "明日验证不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
                 accent: DS.success
             )
             if target == nil {
@@ -981,7 +981,7 @@ struct TodayView: View {
             stepLabel("今日完成", subtitle: "今天的输入已经转成明天可验证的动作。")
 
             if let mainQuest = store.quests.first(where: { $0.type == .main }) {
-                completionCard(icon: "flag.checkered", title: "明日主线实验", body: mainQuest.title)
+                completionCard(icon: "flag.checkered", title: "明日验证行动", body: mainQuest.title)
             }
 
             if let principle = store.principles.first {
@@ -1158,8 +1158,8 @@ struct TodayView: View {
         case .reviewCards: return "确认卡片"
         case .selectMode: return "确认模式"
         case .selectLens: return "进入今日复盘"
-        case .answerQuestions: return "设计明日实验"
-        case .reviewQuests: return "保存明日实验"
+        case .answerQuestions: return "设计明日验证"
+        case .reviewQuests: return "保存明日验证"
         case .extractPrinciple: return "保存原则"
         case .sessionComplete: return "开始新一天"
         }
@@ -1187,14 +1187,14 @@ struct TodayView: View {
 
     private var progressCaption: String {
         switch store.todayDraft.state {
-        case .verifyYesterday: return "当前：结果校准。只验证昨天实验，不补写今天复盘。"
+        case .verifyYesterday: return "当前：结果校准。只校准昨天验证行动，不补写今天复盘。"
         case .capture: return "当前：今天内容。先讲清发生了什么、怎么做、怎么想。"
         case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
         case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
         case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
         case .selectLens: return "当前：训练处方。由明思判断本轮主训练焦点。"
         case .answerQuestions: return "当前：今日复盘。只修补理解、证据、判断和经验缺口。"
-        case .reviewQuests: return "当前：明日实验。把今天一个判断变成明天可验证动作。"
+        case .reviewQuests: return "当前：明日验证。把今天一个判断变成明天可验证动作。"
         case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
         case .sessionComplete: return "当前：今日闭环完成。明天回来先做结果校准。"
         }

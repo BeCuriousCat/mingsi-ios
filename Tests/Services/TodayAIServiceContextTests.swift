@@ -1141,7 +1141,7 @@ final class TodayAIServiceContextTests: XCTestCase {
           "promptGuidance": "Decompose the situation into non-negotiable facts.",
           "purpose": "拆掉默认前提。",
           "questionStrategy": "先识别硬事实。",
-          "taskSelectionRule": "优先设计能验证核心前提的明日实验。",
+          "taskSelectionRule": "优先设计能验证核心前提的明日验证行动。",
           "applicability": "适用于前提混杂的场景。",
           "disableConditions": ["不要用抽象原则替代当天具体证据。"],
           "uiMetadata": {

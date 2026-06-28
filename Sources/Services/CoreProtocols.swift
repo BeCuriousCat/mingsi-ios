@@ -21,8 +21,8 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
         case .organizeCards: return "整理卡片"
         case .recommendLenses: return "推荐透镜"
         case .generateQuestions: return "生成追问"
-        case .generateQuests: return "设计明日实验"
-        case .verifyQuest: return "验证实验"
+        case .generateQuests: return "设计明日验证"
+        case .verifyQuest: return "结果校准"
         case .extractPrinciple: return "沉淀原则"
         case .suggestProjectLinks: return "建议长期议题"
         case .generateProjectInsights: return "生成项目洞察"
@@ -2101,7 +2101,7 @@ private struct PromptEvalCase {
                 <IMPORTANCE>high</IMPORTANCE>
                 <SENSITIVITY>normal</SENSITIVITY>
                 <CONFIDENCE>high</CONFIDENCE>
-                <REASON>可转化为明日实验。</REASON>
+                <REASON>可转化为明日验证。</REASON>
                 </CARD>
                 </MINGSI_STREAM>
                 """
@@ -3482,12 +3482,12 @@ final class LocalPromptProvider: PromptProvider {
         let outputSchemaVersion: Int
         switch id {
         case .generateQuestions:
-            promptVersion = "1.10.0"
-            rollbackTargetVersion = "1.9.0"
+            promptVersion = "1.11.0"
+            rollbackTargetVersion = "1.10.0"
             outputSchemaVersion = 6
         case .generateQuests:
-            promptVersion = "1.5.0"
-            rollbackTargetVersion = "1.4.0"
+            promptVersion = "1.6.0"
+            rollbackTargetVersion = "1.5.0"
             outputSchemaVersion = 3
         case .verifyQuest:
             promptVersion = "1.6.0"
@@ -3520,6 +3520,18 @@ final class LocalPromptProvider: PromptProvider {
         current: PromptTemplate
     ) -> PromptTemplate? {
         switch (id, version) {
+        case (.generateQuestions, "1.10.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.9.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV1100UserText(for: mode),
+                outputSchemaVersion: 6
+            )
         case (.generateQuestions, "1.9.0"):
             return PromptTemplate(
                 id: id,
@@ -3651,6 +3663,18 @@ final class LocalPromptProvider: PromptProvider {
                 systemText: current.systemText,
                 userText: Self.generateQuestionsV090UserText(for: mode),
                 outputSchemaVersion: 1
+            )
+        case (.generateQuests, "1.5.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.4.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestsV150UserText(for: mode),
+                outputSchemaVersion: 3
             )
         case (.generateQuests, "1.4.0"):
             return PromptTemplate(
@@ -4387,6 +4411,44 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func generateQuestionsV1100UserText(for mode: SessionMode) -> String {
+        let teachingNeedle = """
+        Teaching frame:
+        - Use coachTeachingPlan before wording questions.
+        - Start from missingMoveTitle as the missing thinking move.
+        - Use trainingTargetTitle to keep this as training, not an AI answer.
+        - Keep whyNotAnswer visible in why_this_matters or why_now.
+        - Use proceedStandard to define proceed_when.
+        - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
+        - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
+        - routeSteps are teaching route cues, not permission to add extra workflow steps.
+        """
+        let observationFrame = """
+        Teaching frame:
+        - Use coachTeachingPlan before wording questions.
+        - Start from missingMoveTitle as the missing thinking move.
+        - Use trainingTargetTitle to keep this as training, not an AI answer.
+        - Keep whyNotAnswer visible in why_this_matters or why_now.
+        - Use proceedStandard to define proceed_when.
+        - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
+        - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
+        - routeSteps are teaching route cues, not permission to add extra workflow steps.
+
+        Observation frame:
+        - Use coachObservation before wording questions.
+        - Treat coachObservation as the coach's interpretation of confirmed material, not source evidence.
+        - Start from primaryGap and trainingAbility when deciding the first question.
+        - Use feedback.observed to show what MingSi saw, feedback.diagnosis to name the gap, and feedback.ask as the repair question shape.
+        - Use experienceReplayPrompt when the user's prior experience should be reproduced, adapted, or rejected.
+        """
+        return generateQuestionsV190UserText(for: mode)
+            .replacingOccurrences(of: teachingNeedle, with: observationFrame)
+            .replacingOccurrences(
+                of: "Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.",
+                with: "Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachObservation, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode."
+            )
+    }
+
     private static func generateQuestionsV100UserText(for mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         return """
@@ -4689,6 +4751,80 @@ final class LocalPromptProvider: PromptProvider {
         Use coachTeachingPlan.experienceReplayPrompt when a quest should reuse, adapt, or reject past experience.
         If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
         Do not erase unresolved teaching gaps just because a quest can be generated.
+
+        Lens-specific quest rules:
+        - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
+        - When selectedLens is evidence_check, choose an action that gathers missing evidence or separates fact from interpretation.
+        - When selectedLens is opposing_view, choose an action that can test the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, choose the smallest action likely to change the result, not the easiest visible work.
+        - When selectedLens is first_principles, choose an action that validates a hard constraint or strips away an inherited assumption.
+        - When selectedLens is judgment_calibration, choose an action that tests one prediction or produces a clear calibration signal.
+        \(modeGuidance)
+
+        Input will include confirmedCards, reflectionAnswers, selectedLens, lensFeedback, coachTeachingPlan, and sessionMode.
+        Return JSON:
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "string",
+            "why_it_matters": "string",
+            "completion_criteria": "string",
+            "expected_resistance": "string",
+            "reflection_question": "string",
+            "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this quest will calibrate",
+            "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+            "linked_cards": ["string"]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": ["string"]
+        }
+        """
+    }
+
+    private static func generateQuestsV150UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate tomorrow's quests from confirmed cards and user answers.
+        Create exactly one main quest unless information is insufficient.
+        Create at most two side quests and at most one observation quest.
+        The main quest should target the highest-value action, not the easiest task.
+        Treat the main quest as a calibration instrument, not a generic todo.
+        You are not a satisfaction-maximizing assistant.
+        Empathy is not agreement.
+        Acknowledge pressure or context only when it helps the user face the real action-design gap.
+        Do not turn a weak judgment into a quest just to let the user proceed.
+        If the user's answers still contain weak evidence, skipped tradeoffs, premature conclusions, vague goals, avoided responsibility, or harmful patterns, name the unresolved evidence gap, skipped tradeoff, premature conclusion, or avoided responsibility before designing the quest.
+        Critique the action design or thinking move, not the person.
+        Do not diagnose personality, intelligence, motivation, or hidden intent.
+        Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+        The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+        Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
+        Every quest must name the selected lens reasoning move it trains in lens_move.
+        Use reflectionAnswers calibrationTarget when it exists; otherwise derive a concrete target from confirmedCards and the user's answer.
+        Do not invent vague calibration targets like "improve thinking" or "understand the situation".
+        Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
+        If information is insufficient, ask for clarification rather than inventing a task.
+        Use lensFeedback as verified lens outcomes from previous days.
+        Reinforce lensMoves that produced high-value calibration evidence.
+        When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
+        When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
+        Use coachTeachingPlan.proceedStandard to preserve the evidence or answer standard that made action safe.
+        Use coachTeachingPlan.experienceReplayPrompt when a quest should reuse, adapt, or reject past experience.
+        If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
+        Do not erase unresolved teaching gaps just because a quest can be generated.
+
+        Loop boundary:
+        - This prompt runs inside 明日实验, after 今日复盘 has produced at least one testable judgment.
+        - Do not continue today's review, add new reflection questions, or rewrite the user's whole story.
+        - Convert one reviewed judgment into tomorrow's action; tomorrow's result calibration will later ask whether the action was done, whether it created value, and how the judgment changed.
+
+        Judgment sentence training:
+        - Reuse the reviewed judgment sentence shape: 我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
+        - Use reflectionAnswers calibrationTarget as X when present.
+        - main_quest.calibration_target must be X.
+        - completion_criteria should preserve Y as an observable signal or artifact.
+        - reflection_question or expected_resistance should preserve Z as the condition that would update the judgment.
 
         Lens-specific quest rules:
         - When selectedLens is system_thinking, choose an action that can interrupt a feedback loop, test a constraint, or observe a delayed effect.
@@ -5101,16 +5237,16 @@ final class LocalPromptProvider: PromptProvider {
             - Use experienceReplayPrompt when the user's prior experience should be reproduced, adapted, or rejected.
 
             Loop boundary:
-            - This prompt runs inside 今日复盘, not 明日实验.
+            - This prompt runs inside 今日复盘, not 明日验证.
             - Train the user to clarify today's content and today's review: what happened, how they acted, what they believed, what evidence is missing, and what judgment is now testable.
-            - Do not design tomorrow's quest here. You may prepare the judgment and calibration signal that tomorrow's quest will use.
+            - Do not design tomorrow's validation action (验证行动) here. You may prepare the judgment and calibration signal that tomorrow's action will use.
 
             Judgment sentence training:
             - Help the user repair answers toward this judgment sentence: 我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
             - Ask questions that make X, Y, or Z more concrete instead of giving the answer for the user.
             - calibration_target must be X: the belief, prediction, causal explanation, or tradeoff being tested.
             - expected_update should say how the answer changes X, Y, or Z.
-            - proceed_when should say what is enough to move from 今日复盘 into 明日实验.
+            - proceed_when should say what is enough to move from 今日复盘 into 明日验证.
 
             Required coaching coverage:
             - At least one question must name an evidence gap or missing observation.
@@ -5168,22 +5304,22 @@ final class LocalPromptProvider: PromptProvider {
 
         case .generateQuests:
             return """
-            Generate tomorrow's quests from confirmed cards and user answers.
-            Create exactly one main quest unless information is insufficient.
-            Create at most two side quests and at most one observation quest.
-            The main quest should target the highest-value action, not the easiest task.
-            Treat the main quest as a calibration instrument, not a generic todo.
+            Generate tomorrow's validation actions from confirmed cards and user answers.
+            Create exactly one main validation action unless information is insufficient.
+            Create at most two side validation actions and at most one observation action.
+            The main validation action should target the highest-value action, not the easiest task.
+            Treat the main validation action as a calibration instrument, not a generic todo.
             You are not a satisfaction-maximizing assistant.
             Empathy is not agreement.
             Acknowledge pressure or context only when it helps the user face the real action-design gap.
-            Do not turn a weak judgment into a quest just to let the user proceed.
-            If the user's answers still contain weak evidence, skipped tradeoffs, premature conclusions, vague goals, avoided responsibility, or harmful patterns, name the unresolved evidence gap, skipped tradeoff, premature conclusion, or avoided responsibility before designing the quest.
+            Do not turn a weak judgment into a validation action just to let the user proceed.
+            If the user's answers still contain weak evidence, skipped tradeoffs, premature conclusions, vague goals, avoided responsibility, or harmful patterns, name the unresolved evidence gap, skipped tradeoff, premature conclusion, or avoided responsibility before designing the action.
             Critique the action design or thinking move, not the person.
             Do not diagnose personality, intelligence, motivation, or hidden intent.
-            Each quest must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
-            The main quest must test one important judgment, close one evidence gap, or produce one observable calibration signal.
-            Every quest must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
-            Every quest must name the selected lens reasoning move it trains in lens_move.
+            Each validation action must include why it matters, concrete completion criteria, expected resistance, one reflection question, and linked card titles.
+            The main validation action must test one important judgment, close one evidence gap, or produce one observable calibration signal.
+            Every validation action must name the specific judgment, assumption, prediction, causal explanation, or tradeoff it will calibrate in calibration_target.
+            Every validation action must name the selected lens reasoning move it trains in lens_move.
             Use reflectionAnswers calibrationTarget when it exists; otherwise derive a concrete target from confirmedCards and the user's answer.
             Do not invent vague calibration targets like "improve thinking" or "understand the situation".
             Reject low-value tasks that feel productive but do not reduce uncertainty or improve tomorrow's judgment.
@@ -5193,14 +5329,14 @@ final class LocalPromptProvider: PromptProvider {
             When lensFeedback says adjust, make the same lensMoves smaller, more observable, and more explicit about completion evidence.
             When lensFeedback says avoid, avoid repeating quest patterns and lensMoves that were low-value, missed, or did not produce a usable calibration signal.
             Use coachTeachingPlan.proceedStandard to preserve the evidence or answer standard that made action safe.
-            Use coachTeachingPlan.experienceReplayPrompt when a quest should reuse, adapt, or reject past experience.
+            Use coachTeachingPlan.experienceReplayPrompt when a validation action should reuse, adapt, or reject past experience.
             If coachTeachingPlan.auditNote exists, keep it visible in why_it_matters or expected_resistance.
-            Do not erase unresolved teaching gaps just because a quest can be generated.
+            Do not erase unresolved teaching gaps just because a validation action can be generated.
 
             Loop boundary:
-            - This prompt runs inside 明日实验, after 今日复盘 has produced at least one testable judgment.
+            - This prompt runs inside 明日验证, after 今日复盘 has produced at least one testable judgment.
             - Do not continue today's review, add new reflection questions, or rewrite the user's whole story.
-            - Convert one reviewed judgment into tomorrow's action; tomorrow's result calibration will later ask whether the action was done, whether it created value, and how the judgment changed.
+            - Convert one reviewed judgment into tomorrow's 验证行动; tomorrow's result calibration will later ask whether the action was done, whether it created value, and how the judgment changed.
 
             Judgment sentence training:
             - Reuse the reviewed judgment sentence shape: 我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
