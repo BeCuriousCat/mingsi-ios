@@ -2338,7 +2338,7 @@ private struct AIGenerationProgressView: View {
                         .frame(width: 42, height: 42)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isUsingAI ? "正在流式整理" : "使用本地规则生成")
+                        Text(organizingProgressTitle(isUsingOnlineModel: isUsingAI))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
                         Text(statusText.isEmpty ? fallbackStatusText : statusText)
@@ -2369,8 +2369,8 @@ private struct AIGenerationProgressView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 generationStep(
-                    title: "连接模型流",
-                    subtitle: isUsingAI ? "接收受控卡片标签，不展示聊天流。" : "未配置可用 API 时使用本地 fallback。",
+                    title: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).title,
+                    subtitle: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).subtitle,
                     state: streamingCards.isEmpty && cardCount == 0 ? .active : .done
                 )
                 generationStep(
@@ -2387,7 +2387,7 @@ private struct AIGenerationProgressView: View {
 
             if let failureMessage, !failureMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("本次使用了 fallback", systemImage: "exclamationmark.triangle")
+                    Label(organizingProgressLocalDraftLabel, systemImage: "exclamationmark.triangle")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.caution)
                     Text(failureMessage)
@@ -2422,7 +2422,7 @@ private struct AIGenerationProgressView: View {
     }
 
     private var fallbackStatusText: String {
-        isUsingAI ? "等待第一张候选卡片。" : "未配置可用 API 时，先给出可编辑的本地卡片。"
+        organizingProgressFallbackStatusText(isUsingOnlineModel: isUsingAI)
     }
 
     private func generationStep(title: String, subtitle: String, state: AIGenerationStepState) -> some View {
@@ -2547,6 +2547,37 @@ private enum AIGenerationStepState {
         case .pending: return DS.mutedInk.opacity(0.45)
         }
     }
+}
+
+func organizingProgressTitle(isUsingOnlineModel: Bool) -> String {
+    isUsingOnlineModel ? "明思正在整理训练材料" : "明思正在准备本地训练草稿"
+}
+
+func organizingProgressFallbackStatusText(isUsingOnlineModel: Bool) -> String {
+    isUsingOnlineModel ? "等待第一张候选卡片。" : "暂时使用本地训练草稿，你可以先继续确认材料。"
+}
+
+func organizingProgressSourceStepCopy(isUsingOnlineModel: Bool) -> (title: String, subtitle: String) {
+    if isUsingOnlineModel {
+        return (
+            title: "整理输入材料",
+            subtitle: "明思把原始输入拆成可确认的训练卡片。"
+        )
+    }
+    return (
+        title: "整理输入材料",
+        subtitle: "暂时使用本地规则，先保留可编辑的训练卡片。"
+    )
+}
+
+let organizingProgressLocalDraftLabel = "本次使用本地训练草稿"
+
+let organizingStreamingConnectingStatusText = "明思正在整理训练材料。"
+
+let organizingStreamingLocalDraftStatusText = "整理未完成，已使用本地训练草稿。"
+
+func organizingStreamingInterruptedStatusText(closedCount: Int) -> String {
+    "整理中断，已保留 \(closedCount) 张闭合卡片。"
 }
 
 private extension ThinkingLens {

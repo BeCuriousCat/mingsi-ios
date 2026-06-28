@@ -57,6 +57,51 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(runningText.contains("AI"))
     }
 
+    func testOrganizingProgressCopy_usesTrainingLanguageInsteadOfPipelineTerms() {
+        let onlineTitle = organizingProgressTitle(isUsingOnlineModel: true)
+        let localTitle = organizingProgressTitle(isUsingOnlineModel: false)
+        let onlineStatus = organizingProgressFallbackStatusText(isUsingOnlineModel: true)
+        let localStatus = organizingProgressFallbackStatusText(isUsingOnlineModel: false)
+        let onlineSource = organizingProgressSourceStepCopy(isUsingOnlineModel: true)
+        let localSource = organizingProgressSourceStepCopy(isUsingOnlineModel: false)
+        let failureLabel = organizingProgressLocalDraftLabel
+        let connectingStatus = organizingStreamingConnectingStatusText
+        let localFailureStatus = organizingStreamingLocalDraftStatusText
+        let interruptedStatus = organizingStreamingInterruptedStatusText(closedCount: 2)
+
+        XCTAssertEqual(onlineTitle, "明思正在整理训练材料")
+        XCTAssertEqual(localTitle, "明思正在准备本地训练草稿")
+        XCTAssertEqual(onlineStatus, "等待第一张候选卡片。")
+        XCTAssertEqual(localStatus, "暂时使用本地训练草稿，你可以先继续确认材料。")
+        XCTAssertEqual(onlineSource.title, "整理输入材料")
+        XCTAssertEqual(onlineSource.subtitle, "明思把原始输入拆成可确认的训练卡片。")
+        XCTAssertEqual(localSource.title, "整理输入材料")
+        XCTAssertEqual(localSource.subtitle, "暂时使用本地规则，先保留可编辑的训练卡片。")
+        XCTAssertEqual(failureLabel, "本次使用本地训练草稿")
+        XCTAssertEqual(connectingStatus, "明思正在整理训练材料。")
+        XCTAssertEqual(localFailureStatus, "整理未完成，已使用本地训练草稿。")
+        XCTAssertEqual(interruptedStatus, "整理中断，已保留 2 张闭合卡片。")
+
+        let combined = [
+            onlineTitle,
+            localTitle,
+            onlineStatus,
+            localStatus,
+            onlineSource.title,
+            onlineSource.subtitle,
+            localSource.title,
+            localSource.subtitle,
+            failureLabel,
+            connectingStatus,
+            localFailureStatus,
+            interruptedStatus
+        ].joined(separator: "\n")
+        XCTAssertFalse(combined.contains("AI"))
+        XCTAssertFalse(combined.contains("API"))
+        XCTAssertFalse(combined.contains("fallback"))
+        XCTAssertFalse(combined.contains("模型流"))
+    }
+
     func testLoadPersistedState_restoresUnfinishedPriorDayDraftWithoutChangingDate() async throws {
         let dailyRepo = InMemoryDailyEntryRepository()
         let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()

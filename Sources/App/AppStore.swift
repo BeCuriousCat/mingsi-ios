@@ -5496,7 +5496,7 @@ final class AppStore: ObservableObject {
         if let todayAIService {
             do {
                 streamingCards = []
-                streamingStatusText = "正在连接 GLM 流式整理。"
+                streamingStatusText = organizingStreamingConnectingStatusText
                 thinkingCards = try await todayAIService.streamOrganizedCards(
                     for: TodayAIContext(draft: todayDraft),
                     onUpdate: { [weak self] drafts in
@@ -5513,10 +5513,10 @@ final class AppStore: ObservableObject {
                         let streamedCards = streamingCards.compactMap(\.domainCard)
                         if streamedCards.isEmpty {
                             generateLocalCards(from: input)
-                            streamingStatusText = "流式整理失败，已使用本地 fallback。"
+                            streamingStatusText = organizingStreamingLocalDraftStatusText
                         } else {
                             thinkingCards = streamedCards
-                            streamingStatusText = "流式中断，已保留 \(streamedCards.count) 张闭合卡片。"
+                            streamingStatusText = organizingStreamingInterruptedStatusText(closedCount: streamedCards.count)
                         }
                         persistCards()
                     }
