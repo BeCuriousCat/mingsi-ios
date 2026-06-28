@@ -1332,6 +1332,30 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.nextRepairQuestion.contains("明天"))
     }
 
+    func testQuestExecutionTrainingPolicyFramesValidationActionAsExecutionPractice() {
+        let quest = Quest(
+            type: .main,
+            title: "明天让负责人书面确认验收标准",
+            whyItMatters: "验证书面验收能否减少接口返工。",
+            completionCriteria: "明天下午前在会议记录中留下负责人、验收标准和一次返工次数记录。",
+            expectedResistance: "可能想直接开会推进，忽略书面确认。",
+            reflectionQuestion: "结果是否支持书面验收减少返工？",
+            calibrationTarget: "书面验收能减少接口返工",
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口返工"]
+        )
+
+        let feedback = QuestExecutionTrainingPolicy().makeFeedback(for: quest)
+
+        XCTAssertEqual(feedback.trainingDimension, .testableActionDesign)
+        XCTAssertTrue(feedback.judgmentLine.contains("书面验收能减少接口返工"))
+        XCTAssertTrue(feedback.evidenceLine.contains("会议记录"))
+        XCTAssertTrue(feedback.resistanceLine.contains("直接开会"))
+        XCTAssertTrue(feedback.calibrationLine.contains("结果校准"))
+        XCTAssertTrue(feedback.trainingLine.contains("执行力"))
+        XCTAssertTrue(feedback.trainingLine.contains("可验证行动"))
+    }
+
     func testCoachTeachingPolicy_overrideRouteKeepsAuditBoundary() {
         let turn = CoachTurnState(
             phase: .formAction,

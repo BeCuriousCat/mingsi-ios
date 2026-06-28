@@ -3031,6 +3031,7 @@ private struct QuestCardView: View {
     @State private var draftCriteria: String
     @State private var draftResistance: String
     @State private var draftQuestion: String
+    private let executionFeedback: QuestExecutionTrainingFeedback
 
     init(
         quest: Quest,
@@ -3045,6 +3046,7 @@ private struct QuestCardView: View {
             .filter { $0.status == .active }
         self.selectTrainingPrinciple = selectTrainingPrinciple
         self.update = update
+        self.executionFeedback = QuestExecutionTrainingPolicy().makeFeedback(for: quest)
         _draftTitle = State(initialValue: quest.title)
         _draftWhy = State(initialValue: quest.whyItMatters)
         _draftCriteria = State(initialValue: quest.completionCriteria)
@@ -3084,11 +3086,11 @@ private struct QuestCardView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    BriefRow(title: "完成标准", body: quest.completionCriteria, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    if let calibrationTarget = quest.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !calibrationTarget.isEmpty {
-                        BriefRow(title: "校准目标", body: calibrationTarget, accent: DS.accent)
-                    }
+                    BriefRow(title: "验证判断", body: executionFeedback.judgmentLine, accent: DS.accent)
+                    BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
+                    BriefRow(title: "结果校准信号", body: executionFeedback.calibrationLine, accent: DS.success)
+                    BriefRow(title: "执行力训练", body: executionFeedback.trainingLine, accent: DS.graphite)
                     if let trainingTarget {
                         BriefRow(
                             title: "训练原则",
@@ -3103,8 +3105,6 @@ private struct QuestCardView: View {
                     if !trainingPrinciples.isEmpty {
                         questTrainingPrinciplePicker
                     }
-                    BriefRow(title: "预期阻力", body: quest.expectedResistance, accent: DS.caution)
-                    BriefRow(title: "回看问题", body: quest.reflectionQuestion, accent: DS.graphite)
                 }
             }
         }

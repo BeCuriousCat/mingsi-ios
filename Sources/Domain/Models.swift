@@ -3055,6 +3055,48 @@ struct Quest: Identifiable, Hashable {
     }
 }
 
+struct QuestExecutionTrainingFeedback: Hashable {
+    var trainingDimension: ThinkingTrainingDimension
+    var judgmentLine: String
+    var evidenceLine: String
+    var resistanceLine: String
+    var calibrationLine: String
+    var trainingLine: String
+}
+
+struct QuestExecutionTrainingPolicy {
+    func makeFeedback(for quest: Quest) -> QuestExecutionTrainingFeedback {
+        let targetJudgment = trimmed(quest.calibrationTarget)
+            ?? "这条验证行动必须回到今天的一个明确判断。"
+        let completionEvidence = trimmed(quest.completionCriteria)
+            ?? "明天需要留下一个可检查结果。"
+        let expectedResistance = trimmed(quest.expectedResistance)
+            ?? "先写出最可能阻断执行的一件事。"
+        let calibrationPrompt = trimmed(quest.reflectionQuestion)
+            ?? "明天用结果校准这个判断是否成立。"
+
+        return QuestExecutionTrainingFeedback(
+            trainingDimension: .testableActionDesign,
+            judgmentLine: targetJudgment,
+            evidenceLine: completionEvidence,
+            resistanceLine: expectedResistance,
+            calibrationLine: "结果校准时回答：\(calibrationPrompt)",
+            trainingLine: trainingLine(for: quest)
+        )
+    }
+
+    private func trainingLine(for quest: Quest) -> String {
+        let move = quest.lensMove?.displayTitle ?? ThinkingTrainingDimension.testableActionDesign.displayTitle
+        return "执行力训练：把今天的判断转成一个可验证行动，并用\(move)检查它是否真的改变结果。"
+    }
+
+    private func trimmed(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+}
+
 enum PrincipleStatus: String, CaseIterable, Identifiable, Codable {
     case active
     case needsReview

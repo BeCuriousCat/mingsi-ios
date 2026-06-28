@@ -341,6 +341,11 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["验证判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["完成证据"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["阻力预案"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["结果校准信号"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["执行力训练"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练原则"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["Visual QA - 会前确认负责人"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["命中信号：写出负责人"].waitForExistence(timeout: 4))

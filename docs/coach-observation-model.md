@@ -385,6 +385,23 @@ Quest copy should preserve the training link:
 这个任务不是普通待办。它验证你今天对 X 的判断。
 ```
 
+Each visible quest card should translate the action into execution training
+materials, not only show a task title and completion criteria. The minimum
+visible rows are:
+
+```text
+验证判断：X。
+完成证据：Y。
+阻力预案：Z。
+结果校准信号：明天如何回看结果。
+执行力训练：把判断转成可验证行动。
+```
+
+This is the Review Quests equivalent of the answer feedback frame. It makes the
+user see that MingSi is training execution ability: define the judgment, leave
+evidence, anticipate resistance, and use tomorrow's result to update the
+judgment.
+
 ## Experience Replay Rule
 
 MingSi should use prior experience as training material, not authority.
