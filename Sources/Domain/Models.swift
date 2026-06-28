@@ -1427,7 +1427,7 @@ struct CoachObservation: Codable, Hashable {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v1"
+    static let policyVersion = "coach-observation.local-v2"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1545,6 +1545,11 @@ struct CoachObservationPolicy {
             missing.append(contentsOf: narrativeCore.filter { !providedMaterials.contains($0) })
         }
 
+        if !providedMaterials.contains(.object),
+           providedNarrativeCore.count >= 2 {
+            missing.append(.object)
+        }
+
         if providedMaterials.contains(.action),
            !providedMaterials.contains(.goal) {
             missing.append(.goal)
@@ -1584,6 +1589,14 @@ struct CoachObservationPolicy {
             text: text
         ) {
             return .narrative
+        }
+
+        if shouldTrainObjectBeforeGoal(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: text
+        ) {
+            return .object
         }
 
         if providedMaterials.contains(.action),
@@ -1669,7 +1682,9 @@ struct CoachObservationPolicy {
             return "用户当前解释还没有被反例或替代解释挑战。"
         case .judgment:
             return "用户需要把当前取舍的标准说清楚。"
-        case .narrative, .object:
+        case .object:
+            return "用户讲了背景、动作或结果，但还没有说清谁受影响、服务对象是谁。"
+        case .narrative:
             return "用户还没有把事件讲到别人可以复盘的程度。"
         }
     }
@@ -1725,7 +1740,15 @@ struct CoachObservationPolicy {
                 ask: "明天或近期哪个信号会证明你今天的判断需要更新？",
                 proceedWhen: "当你能说清校准信号时，再进入行动。"
             )
-        case .constraint, .causal, .counterexample, .judgment, .narrative, .object:
+        case .object:
+            return CoachObservationFeedback(
+                observed: "你已经说出背景、动作或结果，但还没有说明谁受影响。",
+                diagnosis: "当前主要缺口是对象 gap：别人还不知道这件事服务于谁、影响谁。",
+                training: "本轮先练\(ability.displayTitle)，把事情中的人、对象和受影响问题讲清楚。",
+                ask: "请补一句：这件事影响谁，或你要服务谁的什么问题？",
+                proceedWhen: "当你能说清对象、对象的问题和影响时，再进入目标或行动判断。"
+            )
+        case .constraint, .causal, .counterexample, .judgment, .narrative:
             if gap == .narrative {
                 return CoachObservationFeedback(
                     observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
@@ -1787,6 +1810,20 @@ struct CoachObservationPolicy {
         let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
         let missingNarrativeCoreCount = narrativeCore.filter { missingMaterials.contains($0) }.count
         return providedNarrativeCoreCount <= 1 && missingNarrativeCoreCount >= 3
+    }
+
+    private func shouldTrainObjectBeforeGoal(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard missingMaterials.contains(.object),
+              !hasExplicitGoalGapSignal(text)
+        else { return false }
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        return providedNarrativeCoreCount >= 2
     }
 
     private func hasProvidedBackground(_ text: String) -> Bool {

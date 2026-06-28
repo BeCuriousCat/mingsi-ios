@@ -1019,6 +1019,27 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("背景、触发点、行动和结果"))
     }
 
+    func testCoachObservationPolicy_identifiesMissingAffectedObjectAsDescriptionGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .task,
+                title: "方案推进卡住",
+                body: "今天需求评审后，我打算先重写方案。因为会上大家提出很多意见，后来方案没有通过。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .object)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.providedMaterials.contains(.background))
+        XCTAssertTrue(observation.providedMaterials.contains(.trigger))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.providedMaterials.contains(.result))
+        XCTAssertTrue(observation.missingMaterials.contains(.object))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("对象"))
+        XCTAssertTrue(observation.feedback.ask.contains("谁"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("对象"))
+    }
+
     func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
