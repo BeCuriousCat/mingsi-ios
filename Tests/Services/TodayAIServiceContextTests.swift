@@ -127,6 +127,32 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertNil(payload.legacyKeyValues["coachTurnRule"])
     }
 
+    func testOrganizeCards_doesNotInjectCoachObservation() async throws {
+        let client = CapturingLLMClient(response: Self.cardsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        let card = ThinkingCard(
+            type: .decision,
+            title: "验收口径不清",
+            body: "会议里团队讨论方案返工，我认为原因是验收口径不清，但还缺少事实支撑。",
+            isConfirmed: true
+        )
+
+        _ = try await service.organizeCards(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(rawText: "验收口径不清。"),
+                confirmedCards: [card]
+            )
+        )
+
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertNil(payload.coachObservation)
+        XCTAssertNil(payload.legacyKeyValues["coachObservationPrimaryGap"])
+        XCTAssertNil(payload.legacyKeyValues["coachObservationRule"])
+    }
+
     func testOrganizeCards_doesNotInjectCoachContextMemory() async throws {
         let client = CapturingLLMClient(response: Self.cardsResponse)
         let service = TodayAIService(
@@ -1009,6 +1035,44 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(payload.legacyKeyValues["coachTurnOpenEvidenceGaps"], "missing_observation,missing_baseline")
         XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTurnRule"]).contains("stateful coach turn"))
         XCTAssertTrue(try XCTUnwrap(payload.directives.coachTurnRule).contains("stateful coach turn"))
+    }
+
+    func testStructuredContext_includesCoachObservationForQuestionGeneration() async throws {
+        let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        let card = ThinkingCard(
+            type: .decision,
+            title: "验收口径不清",
+            body: "会议里团队讨论方案返工，我认为原因是验收口径不清，但还缺少事实支撑。",
+            isConfirmed: true
+        )
+
+        _ = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "我认为方案返工是因为验收口径不清。",
+                    selectedLens: .evidenceCheck
+                ),
+                confirmedCards: [card]
+            )
+        )
+
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        let observation = try XCTUnwrap(payload.coachObservation)
+        XCTAssertEqual(observation.policyVersion, CoachObservationPolicy.policyVersion)
+        XCTAssertEqual(observation.primaryGap, .observation)
+        XCTAssertEqual(observation.trainingAbility, .observation)
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.missingMaterials.contains(.fact))
+        XCTAssertTrue(observation.feedback.observed.contains("判断"))
+        XCTAssertTrue(observation.feedback.ask.contains("事实"))
+        XCTAssertEqual(payload.legacyKeyValues["coachObservationPrimaryGap"], CoachObservationGap.observation.rawValue)
+        XCTAssertEqual(payload.legacyKeyValues["coachObservationTrainingAbility"], CoreTrainingAbility.observation.displayTitle)
+        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachObservationRule"]).contains("coachObservation"))
+        XCTAssertTrue(try XCTUnwrap(payload.directives.coachObservationRule).contains("coachObservation"))
     }
 
     func testStructuredContext_exposesRuntimeLensAssetMetadata() async throws {

@@ -293,6 +293,56 @@ Rules:
 - A user override may proceed, but `auditNote` and `proceedStandard` must keep
   the unresolved gap visible.
 
+### Coach Observation Context
+
+Coach Observation Context gives `generateQuestions` a structured interpretation
+of the observed material before it words reflection questions. It is designed to
+make MingSi show what it noticed in the user's description, what thinking gap is
+still open, what core ability is being trained, and which prior experience might
+need replay, adaptation, or rejection. Prompt context may carry:
+
+```json
+{
+  "coachObservation": {
+    "policyVersion": "coach-observation.local-v1",
+    "providedMaterials": ["event", "action"],
+    "missingMaterials": ["stakeholder", "constraint"],
+    "thinkingProcessObservation": "short description of the user's visible thinking process",
+    "primaryGap": "observation",
+    "secondaryGaps": ["evidence"],
+    "trainingAbility": "communication",
+    "feedback": {
+      "observed": "what MingSi saw in the observed material",
+      "diagnosis": "why the current thinking is incomplete or risky",
+      "training": "the core ability this turn trains",
+      "ask": "the repair question shape the user should answer",
+      "proceedWhen": "what kind of answer is enough to proceed"
+    },
+    "experienceReplayPrompt": "how prior experience should be reproduced, adapted, or rejected"
+  }
+}
+```
+
+The prompt directive key is `coachObservationRule`.
+
+Rules:
+
+- `generateQuestions` must use `coachObservation` before wording questions:
+  cite the observed material, start from `primaryGap`, train the named
+  `trainingAbility`, use `feedback.ask` as the repair shape, and use
+  `experienceReplayPrompt` when prior experience should be reproduced, adapted,
+  or rejected.
+- organizeCards must not receive `coachObservation`; it only cleans current raw
+  input into reviewable cards and must not inherit coach interpretation.
+- `coachObservation` is not source evidence. It is the coach's interpretation of
+  confirmed material and should not create new facts, card titles, or user
+  claims.
+- If `missingMaterials` is non-empty, questions should repair the highest-value
+  missing material instead of asking a broad questionnaire.
+- `feedback.observed`, `feedback.diagnosis`, and `feedback.training` should make
+  the user feel the coach is training a thinking move, not generating a generic
+  AI answer.
+
 ### Judgment Sentence Training
 
 MingSi separates two loops:

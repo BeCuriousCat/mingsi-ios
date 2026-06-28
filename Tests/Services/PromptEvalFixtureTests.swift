@@ -973,14 +973,14 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertEqual(gate.manualReviewCount, PromptID.allCases.count - 1)
         let candidate = try XCTUnwrap(gate.rollbackCandidates.first)
         XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
-        XCTAssertEqual(candidate.currentVersion, "1.9.0")
-        XCTAssertEqual(candidate.rollbackTargetVersion, "1.8.0")
+        XCTAssertEqual(candidate.currentVersion, "1.10.0")
+        XCTAssertEqual(candidate.rollbackTargetVersion, "1.9.0")
         XCTAssertEqual(candidate.lastPassingRunId, rollbackPassingRun.id)
         XCTAssertEqual(candidate.reason, .failedCases)
         XCTAssertTrue(gate.blockingIssues.contains {
             $0.promptId == PromptID.generateQuestions.rawValue &&
             $0.reason == .failedCases &&
-                $0.rollbackCandidate?.rollbackTargetVersion == "1.8.0"
+                $0.rollbackCandidate?.rollbackTargetVersion == "1.9.0"
         })
     }
 

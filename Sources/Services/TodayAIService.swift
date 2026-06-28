@@ -478,6 +478,7 @@ struct CoachContextMemorySelection: Hashable {
     var coachDiagnosis: CoachDiagnosis?
     var coachTurnState: CoachTurnState?
     var coachTeachingPlan: CoachTeachingPlan?
+    var coachObservation: CoachObservation?
 
     var relevantPrinciples: [PrincipleAsset] {
         retrievedPrinciples.map(\.principle)
@@ -521,8 +522,23 @@ struct CoachContextMemoryPolicy {
             coachTeachingPlan: coachTeachingPlan(
                 for: promptID,
                 context: context
+            ),
+            coachObservation: coachObservation(
+                for: promptID,
+                context: context
             )
         )
+    }
+
+    private func coachObservation(
+        for promptID: PromptID,
+        context: TodayAIContext
+    ) -> CoachObservation? {
+        guard allowsCoachObservation(promptID),
+              !context.confirmedCards.isEmpty else {
+            return nil
+        }
+        return CoachObservationPolicy().observe(cards: context.confirmedCards)
     }
 
     private func coachTeachingPlan(
@@ -608,6 +624,17 @@ struct CoachContextMemoryPolicy {
             return false
         }
     }
+
+    private func allowsCoachObservation(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions:
+            return true
+        case .organizeCards, .recommendLenses, .generateQuests, .verifyQuest,
+             .extractPrinciple, .suggestProjectLinks, .generateProjectInsights,
+             .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
 }
 
 struct DefaultContextAssembler: ContextAssembler {
@@ -644,6 +671,9 @@ struct DefaultContextAssembler: ContextAssembler {
                     : nil,
                 coachTeachingRule: memory.coachTeachingPlan != nil
                     ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, use repairQuestion when the user's answer still leaves the gap open, ask whether prior experience should be reproduced/adapted/rejected, and only proceed when the proceed standard is satisfied."
+                    : nil,
+                coachObservationRule: memory.coachObservation != nil
+                    ? "Use coachObservation before wording questions: cite what was observed, the primary gap, the training ability, the repair ask, and the experience replay prompt. Treat coachObservation as the coach's interpretation of confirmed material, not as new source evidence."
                     : nil
             )
         )
@@ -758,7 +788,8 @@ struct DefaultContextAssembler: ContextAssembler {
             trainingPrescription: memory.trainingPrescription.map(PromptContextPayload.TrainingPrescriptionContext.init),
             coachDiagnosis: memory.coachDiagnosis.map(PromptContextPayload.CoachDiagnosisContext.init),
             coachTurnState: memory.coachTurnState.map(PromptContextPayload.CoachTurnStateContext.init),
-            coachTeachingPlan: memory.coachTeachingPlan.map(PromptContextPayload.CoachTeachingPlanContext.init)
+            coachTeachingPlan: memory.coachTeachingPlan.map(PromptContextPayload.CoachTeachingPlanContext.init),
+            coachObservation: memory.coachObservation.map(PromptContextPayload.CoachObservationContext.init)
         )
     }
 

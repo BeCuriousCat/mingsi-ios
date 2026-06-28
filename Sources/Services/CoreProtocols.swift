@@ -445,6 +445,46 @@ struct PromptContextPayload: Codable, Hashable {
         }
     }
 
+    struct CoachObservationContext: Codable, Hashable {
+        struct FeedbackContext: Codable, Hashable {
+            var observed: String
+            var diagnosis: String
+            var training: String
+            var ask: String
+            var proceedWhen: String
+
+            init(_ feedback: CoachObservationFeedback) {
+                self.observed = feedback.observed
+                self.diagnosis = feedback.diagnosis
+                self.training = feedback.training
+                self.ask = feedback.ask
+                self.proceedWhen = feedback.proceedWhen
+            }
+        }
+
+        var policyVersion: String
+        var providedMaterials: [CoachObservationMaterial]
+        var missingMaterials: [CoachObservationMaterial]
+        var thinkingProcessObservation: String
+        var primaryGap: CoachObservationGap
+        var secondaryGaps: [CoachObservationGap]
+        var trainingAbility: CoreTrainingAbility
+        var feedback: FeedbackContext
+        var experienceReplayPrompt: String
+
+        init(_ observation: CoachObservation) {
+            self.policyVersion = observation.policyVersion
+            self.providedMaterials = observation.providedMaterials
+            self.missingMaterials = observation.missingMaterials
+            self.thinkingProcessObservation = observation.thinkingProcessObservation
+            self.primaryGap = observation.primaryGap
+            self.secondaryGaps = observation.secondaryGaps
+            self.trainingAbility = observation.trainingAbility
+            self.feedback = FeedbackContext(observation.feedback)
+            self.experienceReplayPrompt = observation.experienceReplayPrompt
+        }
+    }
+
     struct Card: Codable, Hashable {
         var id: String
         var type: String
@@ -518,6 +558,7 @@ struct PromptContextPayload: Codable, Hashable {
         var coachDiagnosisRule: String?
         var coachTurnRule: String?
         var coachTeachingRule: String?
+        var coachObservationRule: String?
     }
 
     struct VerificationContext: Codable, Hashable {
@@ -650,6 +691,7 @@ struct PromptContextPayload: Codable, Hashable {
     var coachDiagnosis: CoachDiagnosisContext?
     var coachTurnState: CoachTurnStateContext?
     var coachTeachingPlan: CoachTeachingPlanContext?
+    var coachObservation: CoachObservationContext?
     var cards: [Card]
     var answers: [Answer]
     var quests: [QuestContext]
@@ -703,7 +745,8 @@ struct PromptContextPayload: Codable, Hashable {
         trainingPrescription: TrainingPrescriptionContext? = nil,
         coachDiagnosis: CoachDiagnosisContext? = nil,
         coachTurnState: CoachTurnStateContext? = nil,
-        coachTeachingPlan: CoachTeachingPlanContext? = nil
+        coachTeachingPlan: CoachTeachingPlanContext? = nil,
+        coachObservation: CoachObservationContext? = nil
     ) {
         self.currentInput = currentInput
         self.userChoice = userChoice
@@ -711,6 +754,7 @@ struct PromptContextPayload: Codable, Hashable {
         self.coachDiagnosis = coachDiagnosis
         self.coachTurnState = coachTurnState
         self.coachTeachingPlan = coachTeachingPlan
+        self.coachObservation = coachObservation
         self.cards = cards
         self.answers = answers
         self.quests = quests
@@ -744,6 +788,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachTeachingRule = directives.coachTeachingRule {
             copy.directives.coachTeachingRule = coachTeachingRule
+        }
+        if let coachObservationRule = directives.coachObservationRule {
+            copy.directives.coachObservationRule = coachObservationRule
         }
         return copy
     }
@@ -824,6 +871,22 @@ struct PromptContextPayload: Codable, Hashable {
                 values["coachTeachingAuditNote"] = auditNote
             }
         }
+        if let coachObservation {
+            values["coachObservationPolicyVersion"] = coachObservation.policyVersion
+            values["coachObservationProvidedMaterials"] = coachObservation.providedMaterials.map(\.rawValue).joined(separator: ",")
+            values["coachObservationMissingMaterials"] = coachObservation.missingMaterials.map(\.rawValue).joined(separator: ",")
+            values["coachObservationThinkingProcess"] = coachObservation.thinkingProcessObservation
+            values["coachObservationPrimaryGap"] = coachObservation.primaryGap.rawValue
+            values["coachObservationSecondaryGaps"] = coachObservation.secondaryGaps.map(\.rawValue).joined(separator: ",")
+            values["coachObservationTrainingAbility"] = coachObservation.trainingAbility.displayTitle
+            values["coachObservationTrainingAbilityRaw"] = coachObservation.trainingAbility.rawValue
+            values["coachObservationObserved"] = coachObservation.feedback.observed
+            values["coachObservationDiagnosis"] = coachObservation.feedback.diagnosis
+            values["coachObservationTraining"] = coachObservation.feedback.training
+            values["coachObservationAsk"] = coachObservation.feedback.ask
+            values["coachObservationProceedWhen"] = coachObservation.feedback.proceedWhen
+            values["coachObservationExperienceReplayPrompt"] = coachObservation.experienceReplayPrompt
+        }
         if let rawText = currentInput.rawText {
             values["rawText"] = rawText
         }
@@ -880,6 +943,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachTeachingRule = directives.coachTeachingRule {
             values["coachTeachingRule"] = coachTeachingRule
+        }
+        if let coachObservationRule = directives.coachObservationRule {
+            values["coachObservationRule"] = coachObservationRule
         }
         if let streamProtocol = directives.streamProtocol {
             values["streamProtocol"] = streamProtocol
@@ -3416,8 +3482,8 @@ final class LocalPromptProvider: PromptProvider {
         let outputSchemaVersion: Int
         switch id {
         case .generateQuestions:
-            promptVersion = "1.9.0"
-            rollbackTargetVersion = "1.8.0"
+            promptVersion = "1.10.0"
+            rollbackTargetVersion = "1.9.0"
             outputSchemaVersion = 6
         case .generateQuests:
             promptVersion = "1.5.0"
@@ -3454,6 +3520,18 @@ final class LocalPromptProvider: PromptProvider {
         current: PromptTemplate
     ) -> PromptTemplate? {
         switch (id, version) {
+        case (.generateQuestions, "1.9.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.8.0",
+                systemText: current.systemText,
+                userText: Self.generateQuestionsV190UserText(for: mode),
+                outputSchemaVersion: 6
+            )
         case (.generateQuestions, "1.8.0"):
             return PromptTemplate(
                 id: id,
@@ -4151,6 +4229,108 @@ final class LocalPromptProvider: PromptProvider {
         - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
         - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
         - routeSteps are teaching route cues, not permission to add extra workflow steps.
+
+        Required coaching coverage:
+        - At least one question must name an evidence gap or missing observation.
+        - At least one question must ask for a disconfirming signal: what would prove the current interpretation wrong?
+        - At least one question must connect to tomorrow's action or next calibration signal.
+        - Classify each question's evidence gap with evidence_gap_type. Use none when the question is primarily a tradeoff, framing, or prioritization question.
+        - Evidence gap taxonomy: missing_observation, missing_baseline, missing_causal_link, missing_counterexample, missing_constraint, missing_calibration_signal, none.
+        - Do not label every question as an evidence gap; only choose a missing_* type when the answer would close that specific gap.
+        - Declare answer_use for every question: update_judgment, choose_action, test_assumption, collect_evidence, or watch_calibration_signal.
+        - Do not ask aesthetically smart questions whose answer would not change a judgment or action.
+        - If the answer would not change a judgment, action, evidence plan, assumption test, or calibration signal, replace the question.
+        - Every question must include why_now: why this question is the right next move in the current coach turn.
+        - Every question must include expected_update: what judgment, action, evidence plan, or calibration signal the answer is expected to change.
+        - Every question must include proceed_when: what kind of answer is sufficient to move toward action.
+        - Each question must declare the lens-specific reasoning move it trains with lens_move.
+        - Lens move taxonomy: fact_interpretation_split, alternative_explanation, leverage_tradeoff, constraint_decomposition, feedback_loop, delayed_effect, second_order_consequence, prediction_calibration.
+        - Match lens_move to selectedLens: evidence_check uses fact_interpretation_split; opposing_view uses alternative_explanation; leverage_analysis uses leverage_tradeoff; first_principles uses constraint_decomposition; system_thinking uses feedback_loop, delayed_effect, or second_order_consequence; judgment_calibration uses prediction_calibration.
+        - Every question must cite at least one confirmed card title in source_card_titles.
+        - Do not invent source_card_titles; use exact titles from confirmedCards.
+        - If a question cannot be tied to a confirmed card, replace it with a grounded question.
+        - Every question must name the judgment or assumption it will calibrate in calibration_target.
+        - Do not use vague calibration targets like "the user's thinking" or "the situation"; name a concrete belief, prediction, causal explanation, or tradeoff.
+        - If the target cannot be stated, replace the question with one whose calibration target is explicit.
+        - When selectedLens is system_thinking, include feedback loop, delayed effects, constraint, or second-order consequence language.
+        - When selectedLens is evidence_check, separate facts, interpretations, assumptions, and validation needs.
+        - When selectedLens is opposing_view, ask for the strongest alternative explanation or stakeholder objection.
+        - When selectedLens is leverage_analysis, force a tradeoff between high-leverage action and low-value busyness.
+        - When selectedLens is first_principles, separate hard constraints from inherited assumptions.
+        - When selectedLens is judgment_calibration, compare original prediction, confidence, actual evidence, and judgment update.
+        - When lensFeedback is present, use verified outcomes and lensMoves to tune the next questions: reinforce lensMoves marked reinforce, make lensMoves marked adjust more concrete, and avoid lensMoves marked avoid.
+        - Do not repeat a lens move that produced low-value or uncalibratable work; replace it with a question that names a clearer evidence gap and calibration target.
+        \(modeGuidance)
+
+        Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
+        Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.
+        Return JSON:
+        {
+          "questions": [
+            {
+              "question": "string",
+              "why_this_matters": "string",
+              "why_now": "why this question is the right next move in the current coach turn",
+              "expected_update": "what judgment, action, evidence plan, or calibration signal the answer is expected to change",
+              "proceed_when": "what kind of answer is sufficient to move toward action",
+              "evidence_gap_type": "missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal | none",
+              "answer_use": "update_judgment | choose_action | test_assumption | collect_evidence | watch_calibration_signal",
+              "lens_move": "fact_interpretation_split | alternative_explanation | leverage_tradeoff | constraint_decomposition | feedback_loop | delayed_effect | second_order_consequence | prediction_calibration",
+              "source_card_titles": ["exact confirmed card title"],
+              "calibration_target": "specific judgment, assumption, prediction, causal explanation, or tradeoff this question will calibrate",
+              "expected_answer_type": "fact | judgment | tradeoff | validation"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func generateQuestionsV190UserText(for mode: SessionMode) -> String {
+        let modeGuidance = Self.modeGuidance(for: mode)
+        return """
+        Generate lens-specific reflection questions from the confirmed cards.
+        Questions must be specific to the user's content.
+        Do not ask generic self-help questions.
+        Do not ask questions that only invite opinions, venting, or vague self-description.
+        Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+        You are not a satisfaction-maximizing assistant.
+        Do not flatter, reassure, or agree just to make the user feel validated.
+        Empathy is not agreement.
+        Acknowledge pressure or context only when it helps the user face the real thinking gap.
+        If the user's input contains a weak claim, missing evidence, premature conclusion, vague goal, avoided responsibility, or harmful pattern, name it clearly.
+        Critique the thinking move, not the person.
+        Do not diagnose personality, intelligence, motivation, or hidden intent.
+        Every correction must say what was observed, why it is weak or risky, what ability it trains, and what to repair next.
+
+        Coach-led training plan:
+        - Use trainingPrescription as the coach plan, not a lens picker.
+        - Read primaryTrainingDimension, secondaryTrainingDimensions, and baselineTrainingDimensions before writing questions.
+        - The first question must train primaryTrainingDimension unless the confirmed cards make that unsafe or impossible.
+        - Every question must serve either primaryTrainingDimension or one baselineTrainingDimension; use secondaryTrainingDimensions as optional follow-up, not as a second main focus.
+        - Use selectedLens/finalTrainingLens to choose lens_move, but use training dimensions to decide what skill the question trains.
+        - Do not treat a user override as proof that the coach diagnosis was wrong; keep override boundaries explicit in why_this_matters.
+
+        Teaching frame:
+        - Use coachTeachingPlan before wording questions.
+        - Start from missingMoveTitle as the missing thinking move.
+        - Use trainingTargetTitle to keep this as training, not an AI answer.
+        - Keep whyNotAnswer visible in why_this_matters or why_now.
+        - Use proceedStandard to define proceed_when.
+        - Use repairQuestion when the user's prior answer still does not close the gap; ask the user to repair their own answer instead of giving an answer.
+        - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
+        - routeSteps are teaching route cues, not permission to add extra workflow steps.
+
+        Loop boundary:
+        - This prompt runs inside 今日复盘, not 明日实验.
+        - Train the user to clarify today's content and today's review: what happened, how they acted, what they believed, what evidence is missing, and what judgment is now testable.
+        - Do not design tomorrow's quest here. You may prepare the judgment and calibration signal that tomorrow's quest will use.
+
+        Judgment sentence training:
+        - Help the user repair answers toward this judgment sentence: 我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
+        - Ask questions that make X, Y, or Z more concrete instead of giving the answer for the user.
+        - calibration_target must be X: the belief, prediction, causal explanation, or tradeoff being tested.
+        - expected_update should say how the answer changes X, Y, or Z.
+        - proceed_when should say what is enough to move from 今日复盘 into 明日实验.
 
         Required coaching coverage:
         - At least one question must name an evidence gap or missing observation.
@@ -4913,6 +5093,13 @@ final class LocalPromptProvider: PromptProvider {
             - Use experienceReplayPrompt to ask whether prior experience should be reproduced, adapted, or rejected in this case.
             - routeSteps are teaching route cues, not permission to add extra workflow steps.
 
+            Observation frame:
+            - Use coachObservation before wording questions.
+            - Treat coachObservation as the coach's interpretation of confirmed material, not source evidence.
+            - Start from primaryGap and trainingAbility when deciding the first question.
+            - Use feedback.observed to show what MingSi saw, feedback.diagnosis to name the gap, and feedback.ask as the repair question shape.
+            - Use experienceReplayPrompt when the user's prior experience should be reproduced, adapted, or rejected.
+
             Loop boundary:
             - This prompt runs inside 今日复盘, not 明日实验.
             - Train the user to clarify today's content and today's review: what happened, how they acted, what they believed, what evidence is missing, and what judgment is now testable.
@@ -4958,7 +5145,7 @@ final class LocalPromptProvider: PromptProvider {
             \(modeGuidance)
 
             Question count: quick 1-2, standard 3, deep 4-5 with a stronger opposing-view question.
-            Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.
+            Input will include confirmedCards, selectedLens, finalTrainingLens, trainingPrescription, coachObservation, coachTeachingPlan, priorAnswers, lensFeedback, and sessionMode.
             Return JSON:
             {
               "questions": [
