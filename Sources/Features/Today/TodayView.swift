@@ -1482,7 +1482,7 @@ struct TodayView: View {
     private func teachingRouteView(_ plan: CoachTeachingPlan) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(title: "本轮漏想点", body: plan.missingMoveTitle, accent: DS.brick)
-            BriefRow(title: "训练目标", body: plan.trainingTargetTitle, accent: DS.accent)
+            BriefRow(title: "训练目标", body: plan.trainingTargetLine, accent: DS.accent)
             BriefRow(title: "为什么不是直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
             BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
             BriefRow(title: "教练追问", body: plan.repairQuestion, accent: DS.brick)

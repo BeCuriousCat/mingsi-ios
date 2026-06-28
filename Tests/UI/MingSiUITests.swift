@@ -233,7 +233,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
         let trainingRepair = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "本轮正在练")
+            NSPredicate(format: "label CONTAINS %@", "本轮正在练思考力中的证据意识")
         ).firstMatch
         XCTAssertTrue(trainingRepair.waitForExistence(timeout: 4))
         let gapPreview = app.staticTexts.matching(

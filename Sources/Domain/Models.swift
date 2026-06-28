@@ -777,6 +777,20 @@ enum ThinkingTrainingDimension: String, Codable, CaseIterable, Identifiable, Has
         }
     }
 
+    var foundationalCapabilityTitle: String {
+        switch self {
+        case .testableActionDesign:
+            return "执行力"
+        case .factInterpretationSeparation, .evidenceDiscipline, .counterexampleSeeking,
+             .assumptionTesting, .systemFeedbackAwareness, .judgmentCalibration:
+            return "思考力"
+        }
+    }
+
+    var trainingTitle: String {
+        "\(foundationalCapabilityTitle)中的\(displayTitle)"
+    }
+
     static func primary(forLensId lensId: String) -> ThinkingTrainingDimension? {
         ThinkingLens(rawValue: lensId)?.primaryTrainingDimension
     }
@@ -1364,7 +1378,7 @@ struct CoachAnswerFeedbackPolicy {
             repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
-            trainingTargetLine: "本轮正在练\(plan.trainingTargetTitle)。",
+            trainingTargetLine: "本轮正在练\(plan.trainingTargetLine)。",
             nextRepairQuestion: plan.repairQuestion,
             experienceReplayPrompt: plan.experienceReplayPrompt,
             judgmentSentencePrompt: Self.judgmentSentencePrompt,
@@ -2324,6 +2338,16 @@ struct CoachTeachingPlan: Codable, Hashable {
 
     var experienceReplayTrainingLine: String {
         ExperienceReplayTraining.line
+    }
+
+    var trainingTargetLine: String {
+        if trainingTargetTitle == ThinkingTrainingDimension.testableActionDesign.displayTitle {
+            return ThinkingTrainingDimension.testableActionDesign.trainingTitle
+        }
+        for dimension in ThinkingTrainingDimension.allCases where dimension.displayTitle == trainingTargetTitle {
+            return dimension.trainingTitle
+        }
+        return trainingTargetTitle
     }
 }
 

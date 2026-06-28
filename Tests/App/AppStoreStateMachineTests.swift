@@ -1235,6 +1235,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(plan.policyVersion, CoachTeachingPolicy.policyVersion)
         XCTAssertTrue(plan.missingMoveTitle.contains("可观察证据"))
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertEqual(plan.trainingTargetLine, "思考力中的证据意识")
         XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
         XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
         XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
@@ -1277,6 +1278,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertTrue(plan.missingMoveTitle.contains("明天能留下证据"))
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.testableActionDesign.displayTitle)
+        XCTAssertEqual(plan.trainingTargetLine, "执行力中的可验证行动")
         XCTAssertTrue(plan.whyNotAnswer.contains("足够形成验证行动"))
         XCTAssertTrue(plan.proceedStandard.contains("明日行动"))
         XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"])

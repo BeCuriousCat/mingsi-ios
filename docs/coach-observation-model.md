@@ -117,6 +117,11 @@ For example: `本轮先练沟通力中的描述力` or `本轮先练思考力中
 This keeps the training understandable to the user while prompt and coach logic
 still operate on the specific gap and ability.
 
+The same rule applies after the user answers a question. Answer feedback and the
+teaching route should keep showing the foundational capability lane, such as
+`本轮正在练思考力中的证据意识` or `训练目标：执行力中的可验证行动`, instead of
+falling back to method labels only.
+
 ## Coach Communication Form
 
 Every coach intervention should follow this shape:
