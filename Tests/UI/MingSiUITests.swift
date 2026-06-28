@@ -535,12 +535,12 @@ final class MingSiUITests: XCTestCase {
         let scrollView = scrollViews.firstMatch
         XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
 
-        var remainingScrolls = 10
+        var remainingScrolls = 12
         while (!element.exists || !isElementInTappableScrollArea(element, app: app)) && remainingScrolls > 0 {
             if element.exists, element.frame.midY < app.frame.height * 0.24 {
-                scrollView.swipeDown()
+                drag(scrollView, fromY: 0.35, toY: 0.62)
             } else {
-                scrollView.swipeUp()
+                drag(scrollView, fromY: 0.72, toY: 0.45)
             }
             remainingScrolls -= 1
         }
@@ -557,18 +557,38 @@ final class MingSiUITests: XCTestCase {
 
     private func typeFirstQuestionAnswer(_ text: String, in app: XCUIApplication) {
         let answerFields = app.textFields.matching(identifier: "today.question.answer-field")
-        var answerField = answerFields.element(boundBy: 0)
+        let answerField = answerFields.element(boundBy: 0)
         XCTAssertTrue(answerField.waitForExistence(timeout: 8))
-
-        let scrollView = app.scrollViews.firstMatch
-        if scrollView.exists, answerField.frame.midY > app.frame.height * 0.58 {
-            scrollView.swipeUp()
-            answerField = answerFields.element(boundBy: 0)
-            XCTAssertTrue(answerField.waitForExistence(timeout: 4))
-        }
+        scrollToElement(answerField, in: app)
+        positionQuestionAnswerFieldForTyping(answerField, in: app)
 
         answerField.tap()
         answerField.typeText(text)
+    }
+
+    private func positionQuestionAnswerFieldForTyping(_ element: XCUIElement, in app: XCUIApplication) {
+        let scrollView = app.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
+
+        var remainingAdjustments = 4
+        while element.exists, element.frame.minY < app.frame.minY + 96, remainingAdjustments > 0 {
+            drag(scrollView, fromY: 0.35, toY: 0.62)
+            remainingAdjustments -= 1
+        }
+
+        while element.exists, element.frame.maxY > app.frame.height * 0.74, remainingAdjustments > 0 {
+            drag(scrollView, fromY: 0.72, toY: 0.45)
+            remainingAdjustments -= 1
+        }
+
+        XCTAssertTrue(element.exists)
+        XCTAssertTrue(element.frame.minY >= app.frame.minY + 96)
+        XCTAssertTrue(element.frame.maxY <= app.frame.height * 0.74)
+    }
+
+    private func drag(_ scrollView: XCUIElement, fromY: CGFloat, toY: CGFloat) {
+        scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: fromY))
+            .press(forDuration: 0.01, thenDragTo: scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: toY)))
     }
 
     private func tapPrimaryAction(in app: XCUIApplication, expectingState state: String) {

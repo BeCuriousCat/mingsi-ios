@@ -340,6 +340,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -415,6 +416,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -510,6 +512,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -578,6 +581,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -593,6 +597,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.quests = [quest]
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -1920,9 +1925,9 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
         XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
-        XCTAssertTrue(store.todayLoopMessage.contains("本轮训练还差"))
+        XCTAssertTrue(store.todayLoopMessage.contains("还缺"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
-        XCTAssertTrue(store.todayLoopMessage.contains("先说清"))
+        XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
         XCTAssertTrue(store.todayLoopMessage.contains("教练追问"))
         XCTAssertTrue(store.todayLoopMessage.contains("过往经验"))
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -4887,6 +4892,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -5288,6 +5294,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let question = ReflectionQuestion(
             question: "这个闭环应该归属哪一天？",
             whyItMatters: "补完不能改写原始记录日期。",
+            calibrationTarget: "补完历史草稿不会改写原始记录日期",
             answer: "事实是草稿创建于昨天，验收标准是历史记录日期仍归属创建草稿的那一天。"
         )
         try await dailyRepo.saveDraft(unfinished)

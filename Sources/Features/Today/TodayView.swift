@@ -20,6 +20,9 @@ enum TodayAutomationID {
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
     static let questionAnswerField = "today.question.answer-field"
+    static func questionAnswerField(questionId: String) -> String {
+        "today.question.answer-field.\(questionId)"
+    }
     static let questEditAction = "today.quest.edit-action"
     static let questTrainingPrinciplePicker = "today.quest.training-principle-picker"
     static let principleFeedbackNoteField = "today.principle.feedback.note-field"
@@ -714,7 +717,11 @@ struct TodayView: View {
             }
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
-                QuestionCardView(question: question, answer: bindingForQuestion(questionID: question.id, fallbackIndex: index))
+                QuestionCardView(
+                    question: question,
+                    answer: bindingForQuestion(questionID: question.id, fallbackIndex: index),
+                    isPrimaryAnswerField: index == 0
+                )
             }
         }
     }
@@ -905,6 +912,13 @@ struct TodayView: View {
                 body: target ?? "还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。",
                 accent: target == nil ? DS.caution : DS.accent
             )
+            if let target {
+                BriefRow(
+                    title: "校准目标",
+                    body: target,
+                    accent: DS.accent
+                )
+            }
             BriefRow(
                 title: "下面的验证行动只验证这个判断",
                 body: "明日验证不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
@@ -2871,6 +2885,7 @@ private struct ThinkingCardRow: View {
 private struct QuestionCardView: View {
     let question: ReflectionQuestion
     @Binding var answer: String
+    var isPrimaryAnswerField: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2983,15 +2998,23 @@ private struct QuestionCardView: View {
             TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
+                .lineLimit(3...6)
+                .frame(minHeight: 78, alignment: .topLeading)
                 .padding(12)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                         .stroke(Color.primary.opacity(0.05), lineWidth: 1)
                 )
-                .accessibilityIdentifier(TodayAutomationID.questionAnswerField)
+                .accessibilityIdentifier(answerFieldAutomationID)
         }
         .questionSurface()
+    }
+
+    private var answerFieldAutomationID: String {
+        isPrimaryAnswerField
+            ? TodayAutomationID.questionAnswerField
+            : TodayAutomationID.questionAnswerField(questionId: question.id.uuidString)
     }
 
     private var hasTeachingCue: Bool {
