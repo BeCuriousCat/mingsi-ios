@@ -47,6 +47,16 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayDraft.rawText.isEmpty)
     }
 
+    func testPendingAIRepairBannerText_usesTrainingLanguage() {
+        let pendingText = pendingTrainingRepairBannerText(isRunning: false, pendingCount: 2)
+        let runningText = pendingTrainingRepairBannerText(isRunning: true, pendingCount: 2)
+
+        XCTAssertEqual(pendingText, "有 2 个训练结果待补齐")
+        XCTAssertEqual(runningText, "明思正在补齐训练结果，请等待")
+        XCTAssertFalse(pendingText.contains("AI"))
+        XCTAssertFalse(runningText.contains("AI"))
+    }
+
     func testLoadPersistedState_restoresUnfinishedPriorDayDraftWithoutChangingDate() async throws {
         let dailyRepo = InMemoryDailyEntryRepository()
         let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()

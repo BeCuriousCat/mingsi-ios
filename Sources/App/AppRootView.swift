@@ -42,7 +42,10 @@ struct AppRootView: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.caution)
-                    Text(store.isAIRunning ? "AI 正在补跑，请等待结果" : "有 \(store.pendingAIRepairCount) 个 AI 结果待补跑")
+                    Text(pendingTrainingRepairBannerText(
+                        isRunning: store.isAIRunning,
+                        pendingCount: store.pendingAIRepairCount
+                    ))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
@@ -73,4 +76,11 @@ struct AppRootView: View {
             }
         }
     }
+}
+
+func pendingTrainingRepairBannerText(isRunning: Bool, pendingCount: Int) -> String {
+    if isRunning {
+        return "明思正在补齐训练结果，请等待"
+    }
+    return "有 \(pendingCount) 个训练结果待补齐"
 }
