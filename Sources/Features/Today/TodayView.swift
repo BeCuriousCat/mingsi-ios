@@ -323,7 +323,7 @@ struct TodayView: View {
                 accent: DS.caution
             )
 
-            stepLabel("验证昨日实验", subtitle: "用一个真实结果校准昨天的判断。")
+            stepLabel("校准昨日验证", subtitle: "用一个真实结果校准昨天的判断。")
 
             if let quest = store.mainQuest ?? store.quests.first {
                 VStack(alignment: .leading, spacing: 6) {

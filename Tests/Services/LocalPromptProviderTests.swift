@@ -211,11 +211,15 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(questionText.contains("验证行动"))
         XCTAssertFalse(questionText.contains("明日实验"))
         XCTAssertFalse(questionText.contains("明天实验"))
+        XCTAssertFalse(questionText.contains("校准实验"))
+        XCTAssertFalse(questionText.contains("小实验"))
 
         XCTAssertTrue(questText.contains("明日验证"))
         XCTAssertTrue(questText.contains("验证行动"))
         XCTAssertFalse(questText.contains("明日实验"))
         XCTAssertFalse(questText.contains("明天实验"))
+        XCTAssertFalse(questText.contains("校准实验"))
+        XCTAssertFalse(questText.contains("小实验"))
     }
 
     func testGenerateQuestionsTemplate_declaresNonAppeasingCoachStance() {
@@ -246,7 +250,7 @@ final class LocalPromptProviderTests: XCTestCase {
         let template = provider.template(for: .generateQuests, mode: .standard)
         let text = template.userText
 
-        XCTAssertTrue(text.contains("exactly one main quest"))
+        XCTAssertTrue(text.contains("exactly one main validation action"))
         XCTAssertTrue(text.contains("highest-value action"))
         XCTAssertTrue(text.contains("completion criteria"))
         XCTAssertTrue(text.contains("\"main_quest\""))
@@ -308,7 +312,7 @@ final class LocalPromptProviderTests: XCTestCase {
         let text = template.userText
 
         XCTAssertTrue(text.contains("not a satisfaction-maximizing assistant"))
-        XCTAssertTrue(text.contains("Do not turn a weak judgment into a quest just to let the user proceed"))
+        XCTAssertTrue(text.contains("Do not turn a weak judgment into a validation action just to let the user proceed"))
         XCTAssertTrue(text.contains("name the unresolved evidence gap, skipped tradeoff, premature conclusion, or avoided responsibility"))
         XCTAssertTrue(text.contains("Critique the action design or thinking move, not the person"))
         XCTAssertTrue(text.contains("Do not diagnose personality, intelligence, motivation, or hidden intent"))

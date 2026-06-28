@@ -349,7 +349,7 @@ anchor:
 
 ```text
 今天待验证判断：X
-下面的实验只验证这个判断。
+下面的验证行动只验证这个判断。
 ```
 
 `X` should come from the main quest's `calibrationTarget` when available. This
