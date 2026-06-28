@@ -108,7 +108,14 @@ Map the primary gap to a user-facing training ability:
 | calibration gap | 校准力 | 用未来结果修正今天判断 |
 | experience gap | 校准力 / 判断力 | 判断过往经验该复现、调整还是否定 |
 
-The product may show high-level labels like 沟通力、思考力、执行力, but prompt and coach logic should operate on the specific gap and ability.
+The product should show both layers:
+
+- foundational capability lane: 沟通力、思考力、执行力;
+- specific drill: 描述力、观察力、分析力、判断力、执行力、校准力.
+
+For example: `本轮先练沟通力中的描述力` or `本轮先练思考力中的观察力`.
+This keeps the training understandable to the user while prompt and coach logic
+still operate on the specific gap and ability.
 
 ## Coach Communication Form
 

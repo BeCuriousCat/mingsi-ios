@@ -723,7 +723,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
                 title: "能力训练诊断",
-                body: "本轮主练：\(observation.trainingAbility.displayTitle)。\(observation.trainingAbility.coachingMeaning)",
+                body: "本轮主练：\(observation.trainingAbility.trainingTitle)。\(observation.trainingAbility.coachingMeaning)",
                 accent: DS.accent
             )
             BriefRow(

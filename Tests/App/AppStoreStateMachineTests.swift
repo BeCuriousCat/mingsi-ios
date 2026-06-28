@@ -1029,6 +1029,22 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
     }
 
+    func testCoachObservationFeedback_namesFoundationalCapabilityLane() {
+        let narrativeObservation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "我只有很乱和焦虑的感受。")
+        ]))
+
+        XCTAssertTrue(narrativeObservation.feedback.training.contains("沟通力"))
+        XCTAssertTrue(narrativeObservation.feedback.training.contains("描述力"))
+
+        let thinkingObservation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "判断方案要重写", body: "我觉得方案应该重写。")
+        ]))
+
+        XCTAssertTrue(thinkingObservation.feedback.training.contains("思考力"))
+        XCTAssertTrue(thinkingObservation.feedback.training.contains("观察力"))
+    }
+
     func testCoachObservation_experienceReplayTrainingLineUsesReproduceAdaptReject() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),

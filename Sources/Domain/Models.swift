@@ -1469,6 +1469,21 @@ enum CoreTrainingAbility: String, Codable, CaseIterable, Hashable {
         }
     }
 
+    var foundationalCapabilityTitle: String {
+        switch self {
+        case .description:
+            return "沟通力"
+        case .observation, .analysis, .judgment, .calibration:
+            return "思考力"
+        case .execution:
+            return "执行力"
+        }
+    }
+
+    var trainingTitle: String {
+        "\(foundationalCapabilityTitle)中的\(displayTitle)"
+    }
+
     var coachingMeaning: String {
         switch self {
         case .description:
@@ -1866,7 +1881,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你提到了过往做法或经验，但还没有判断这次条件是否一样。",
                 diagnosis: "当前主要缺口是经验复现判断：旧经验不能直接当成答案。",
-                training: "本轮先练\(ability.displayTitle)，判断经验该复现、调整还是否定。",
+                training: "本轮先练\(ability.trainingTitle)，判断经验该复现、调整还是否定。",
                 ask: "这条经验在本次是复现、调整，还是否定？请用一句话说明条件差异。",
                 proceedWhen: "当你能说清条件差异和复用边界时，再进入行动。"
             )
@@ -1874,7 +1889,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经说出了判断或结论，但还没有写出一个可观察事实。",
                 diagnosis: "当前主要缺口是观察 gap：事实和解释还没有分开。",
-                training: "本轮先练\(ability.displayTitle)，不急着让 AI 给结论。",
+                training: "本轮先练\(ability.trainingTitle)，不急着让 AI 给结论。",
                 ask: needsMaterialSeparation
                     ? "请先把事实、感受、解释、判断分开写：哪一句是看到的事实，哪一句只是解释或判断？"
                     : "请补充一个你亲眼看到、直接听到或能被记录验证的事实。",
@@ -1884,7 +1899,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经有动作或推进方式，但还没有说清这个动作服务于谁。",
                 diagnosis: "当前主要缺口是目标 gap：行动对象、重要性和达成标准还不清楚。",
-                training: "本轮先练\(ability.displayTitle)，把重要性和成功标准说清。",
+                training: "本轮先练\(ability.trainingTitle)，把重要性和成功标准说清。",
                 ask: needsMaterialSeparation
                     ? "请先把事实、感受、解释、判断分开，再补一句：如果这件事做对了，谁的什么问题会变少？"
                     : "如果这件事做对了，谁的什么问题会变少？",
@@ -1894,7 +1909,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经有行动倾向，但还没有把行动写成可检查结果。",
                 diagnosis: "当前主要缺口是执行 gap：下一步、负责人或验收标准还不够清楚。",
-                training: "本轮先练\(ability.displayTitle)，把思考落成可执行安排。",
+                training: "本轮先练\(ability.trainingTitle)，把思考落成可执行安排。",
                 ask: "明天最小的一步是什么，完成后留下什么证据？",
                 proceedWhen: "当行动能被明天验证时，可以设计明日验证。"
             )
@@ -1902,7 +1917,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经有判断，但还没有定义未来用什么信号校准。",
                 diagnosis: "当前主要缺口是校准 gap：结果出现后还不知道如何更新判断。",
-                training: "本轮先练\(ability.displayTitle)，让判断能被未来结果修正。",
+                training: "本轮先练\(ability.trainingTitle)，让判断能被未来结果修正。",
                 ask: "明天或近期哪个信号会证明你今天的判断需要更新？",
                 proceedWhen: "当你能说清校准信号时，再进入行动。"
             )
@@ -1910,7 +1925,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经说出背景、动作或结果，但还没有说明谁受影响。",
                 diagnosis: "当前主要缺口是对象 gap：别人还不知道这件事服务于谁、影响谁。",
-                training: "本轮先练\(ability.displayTitle)，把事情中的人、对象和受影响问题讲清楚。",
+                training: "本轮先练\(ability.trainingTitle)，把事情中的人、对象和受影响问题讲清楚。",
                 ask: "请补一句：这件事影响谁，或你要服务谁的什么问题？",
                 proceedWhen: "当你能说清对象、对象的问题和影响时，再进入目标或行动判断。"
             )
@@ -1918,7 +1933,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经描述了事情推进受阻，但还没有说清具体限制。",
                 diagnosis: "当前主要缺口是约束 gap：还不知道卡住来自时间、资源、权限、信息、关系还是系统边界。",
-                training: "本轮先练\(ability.displayTitle)，把限制条件拆出来，再决定怎么推进。",
+                training: "本轮先练\(ability.trainingTitle)，把限制条件拆出来，再决定怎么推进。",
                 ask: "请补一句：现在最大的限制是什么，来自时间、资源、权限、信息、关系还是系统边界？",
                 proceedWhen: "当你能说清关键边界和它如何限制行动时，再进入目标或行动判断。"
             )
@@ -1926,7 +1941,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经给出一个因果解释，但还没有说明 A 到 B 中间发生了什么。",
                 diagnosis: "当前主要缺口是因果 gap：解释链条还没有被拆开，容易把相关性当成原因。",
-                training: "本轮先练\(ability.displayTitle)，把因果链条拆到别人可以检查。",
+                training: "本轮先练\(ability.trainingTitle)，把因果链条拆到别人可以检查。",
                 ask: needsMaterialSeparation
                     ? "请先把事实、感受、解释、判断分开，再补一句：A 到 B 中间发生了什么？"
                     : "请补一句：A 到 B 中间发生了什么，哪个环节最关键？",
@@ -1936,7 +1951,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经形成一个解释，但还没有说什么证据会挑战它。",
                 diagnosis: "当前主要缺口是反例 gap：如果没有推翻条件，解释容易只沿着自己相信的方向变强。",
-                training: "本轮先练\(ability.displayTitle)，主动找能推翻或削弱当前解释的信号。",
+                training: "本轮先练\(ability.trainingTitle)，主动找能推翻或削弱当前解释的信号。",
                 ask: "请补一句：什么事实出现时，会推翻或削弱你现在的解释？",
                 proceedWhen: "当你能说清推翻信号或替代解释时，再进入目标或行动判断。"
             )
@@ -1945,7 +1960,7 @@ struct CoachObservationPolicy {
                 return CoachObservationFeedback(
                     observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
                     diagnosis: "当前主要缺口是讲述 gap：别人还不能复盘发生了什么。",
-                    training: "本轮先练\(ability.displayTitle)，把一件事讲清楚，再进入分析或行动。",
+                    training: "本轮先练\(ability.trainingTitle)，把一件事讲清楚，再进入分析或行动。",
                     ask: "请补充前因后果：什么背景下，谁做了什么，触发点是什么，后来发生了什么？",
                     proceedWhen: "当你能说清背景、触发点、行动和结果时，再进入下一步。"
                 )
@@ -1953,7 +1968,7 @@ struct CoachObservationPolicy {
             return CoachObservationFeedback(
                 observed: "你已经提供了一部分材料，但还有关键思考材料没有展开。",
                 diagnosis: "当前主要缺口是 \(gap.rawValue) gap。",
-                training: "本轮先练\(ability.displayTitle)，先补缺口再要答案。",
+                training: "本轮先练\(ability.trainingTitle)，先补缺口再要答案。",
                 ask: "请补充一条能关闭这个缺口的具体材料。",
                 proceedWhen: "当这条材料能被别人复盘时，再进入下一步。"
             )

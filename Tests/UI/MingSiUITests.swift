@@ -165,7 +165,7 @@ final class MingSiUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(narrativeTraining.waitForExistence(timeout: 4))
         let abilityDiagnosis = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "本轮主练：判断力")
+            NSPredicate(format: "label CONTAINS %@", "本轮主练：思考力中的判断力")
         ).firstMatch
         XCTAssertTrue(abilityDiagnosis.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
