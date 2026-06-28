@@ -1855,7 +1855,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
         XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练理由") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -5670,23 +5672,29 @@ final class AppStoreStateMachineTests: XCTestCase {
     func testTodayPrimaryActionBlockerExplainsMissingPrerequisites() {
         store.todayDraft.state = .capture
         store.todayDraft.rawText = "   "
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先写下") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("讲清楚一件事") == true)
 
         store.todayDraft.rawText = "今天想复盘会议里的卡点。"
         store.todayDraft.hasSelectedSessionMode = false
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练深度") == true)
 
         store.todayDraft.state = .reviewCards
         store.todayDraft.hasSelectedSessionMode = true
         store.thinkingCards = [ThinkingCard(type: .fact, title: "事实", body: "还没确认。")]
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认至少一张卡片") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认至少一张材料卡片") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认过的材料") == true)
 
         var confirmedCard = ThinkingCard(type: .fact, title: "事实", body: "已确认。")
         confirmedCard.isConfirmed = true
         store.thinkingCards = [confirmedCard]
         store.todayDraft.state = .selectLens
         store.todayDraft.selectedLens = nil
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("思考透镜") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练处方") == true)
 
         store.todayDraft.state = .answerQuestions
         store.todayDraft.selectedLens = .firstPrinciples
@@ -5697,7 +5705,9 @@ final class AppStoreStateMachineTests: XCTestCase {
                 answer: "   "
             )
         ]
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个问题") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个教练问题") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是 AI 直接生成任务") == true)
 
         store.todayDraft.state = .reviewQuests
         store.questions[0].answer = "会议目标没有对齐。"
@@ -5711,7 +5721,9 @@ final class AppStoreStateMachineTests: XCTestCase {
                 reflectionQuestion: "目标是否被写下来？"
             )
         ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("完成标准") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("可检查") == true)
 
         store.quests = [
             Quest(
@@ -5723,7 +5735,9 @@ final class AppStoreStateMachineTests: XCTestCase {
                 reflectionQuestion: "目标是否被写下来？"
             )
         ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("待验证判断") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是普通待办") == true)
 
         store.quests = [
             Quest(

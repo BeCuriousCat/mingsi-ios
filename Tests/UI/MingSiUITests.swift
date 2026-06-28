@@ -338,7 +338,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["今天待验证判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["先补上今天待验证判断，再保存明日验证。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["进入条件：先补上今天待验证判断，再保存明日验证。 训练理由：验证行动要验证今天的判断，不是普通待办。"].waitForExistence(timeout: 4))
 
         let repairAction = app.buttons["today.return-to-review-for-judgment-action"]
         scrollToElement(repairAction, in: app)

@@ -1544,51 +1544,90 @@ final class AppStore: ObservableObject {
         case .capture:
             let trimmedInput = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedInput.isEmpty {
-                return "先写下一段今天的事实、困惑或行动。"
+                return todayEntryCondition(
+                    requirement: "先写下一段今天的事实、困惑或行动。",
+                    reason: "这是讲清楚一件事的材料，不是让 AI 凭空总结。"
+                )
             }
             if !todayDraft.hasSelectedSessionMode {
-                return "先选择 Quick、Standard 或 Deep 训练深度。"
+                return todayEntryCondition(
+                    requirement: "先选择 Quick、Standard 或 Deep 训练深度。",
+                    reason: "训练深度决定今天要练到什么程度。"
+                )
             }
             return nil
         case .reviewCards:
             if thinkingCards.contains(where: { $0.isConfirmed }) {
                 return nil
             }
-            return "确认至少一张卡片后再继续。"
+            return todayEntryCondition(
+                requirement: "先确认至少一张材料卡片。",
+                reason: "教练只能基于你确认过的材料判断缺口。"
+            )
         case .selectLens:
             if todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil {
                 return nil
             }
-            return trainingPrescription == nil ? "等待教练生成思考透镜训练处方。" : "先接受教练推荐的思考透镜、改选训练焦点或跳过。"
+            return trainingPrescription == nil
+                ? todayEntryCondition(
+                    requirement: "等待教练生成思考透镜训练处方。",
+                    reason: "先由明思观察材料，再决定本轮训练焦点。"
+                )
+                : todayEntryCondition(
+                    requirement: "先接受教练训练处方、改选训练焦点或跳过。",
+                    reason: "透镜应服务于本轮缺口，不是随手挑一个 Prompt。"
+                )
         case .answerQuestions:
             guard hasAnsweredReflectionQuestion else {
-                return "至少回答一个问题后再设计明日验证。"
+                return todayEntryCondition(
+                    requirement: "先回答一个教练问题。",
+                    reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
+                )
             }
             guard hasAnsweredCalibrationTarget else {
-                return "先在今日复盘中形成一个待验证判断，再设计明日验证。"
+                return todayEntryCondition(
+                    requirement: "先在今日复盘中形成一个待验证判断。",
+                    reason: "验证行动要验证今天的判断，不是普通待办。"
+                )
             }
             if let feedback = coachAnswerFeedbackPreview, feedback.readiness != .ready {
                 let gaps = feedback.openEvidenceGaps
                     .filter { $0 != .none }
                     .map(\.displayTitle)
                 let gapLine = gaps.isEmpty ? "本轮训练缺口" : gaps.joined(separator: "、")
-                return "先补齐缺口：\(gapLine)。\(feedback.reason)"
+                return todayEntryCondition(
+                    requirement: "先补齐训练缺口：\(gapLine)。",
+                    reason: feedback.reason
+                )
             }
             return nil
         case .reviewQuests:
             guard let mainQuest else {
-                return "先保留一个验证行动。"
+                return todayEntryCondition(
+                    requirement: "先保留一个验证行动。",
+                    reason: "执行力训练需要一个明天真的能做的小行动。"
+                )
             }
             if mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "给验证行动补上可验证的完成标准。"
+                return todayEntryCondition(
+                    requirement: "给验证行动补上可验证的完成标准。",
+                    reason: "完成标准要能让明天回看时可检查。"
+                )
             }
             let calibrationTarget = mainQuest.calibrationTarget?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if calibrationTarget.isEmpty {
-                return "先补上今天待验证判断，再保存明日验证。"
+                return todayEntryCondition(
+                    requirement: "先补上今天待验证判断，再保存明日验证。",
+                    reason: "验证行动要验证今天的判断，不是普通待办。"
+                )
             }
             return nil
         }
+    }
+
+    private func todayEntryCondition(requirement: String, reason: String) -> String {
+        "进入条件：\(requirement) 训练理由：\(reason)"
     }
 
     var canCreateProjectFromCurrentFocus: Bool {
