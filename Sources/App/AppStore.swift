@@ -5288,7 +5288,7 @@ final class AppStore: ObservableObject {
     }
 
     private func recordAIFallback(prompt: PromptID, reason: String, canRetry: Bool) {
-        let message = "AI \(prompt.displayName)失败：\(reason) 已使用本地结果，可继续流程。"
+        let message = "\(trainingPromptName(for: prompt))未完成：\(reason) 已使用本地训练结果，可继续流程。"
         lastAIFailureMessage = message
         canRetryCurrentAI = canRetry
         if canRetry {
@@ -5298,11 +5298,30 @@ final class AppStore: ObservableObject {
     }
 
     private func recordAIRepairFailure(prompt: PromptID, reason: String) {
-        let message = "AI \(prompt.displayName)重试失败：\(reason) 已保留当前内容，可稍后再试。"
+        let message = "\(trainingPromptName(for: prompt))重试未完成：\(reason) 已保留当前内容，可稍后再试。"
         lastAIFailureMessage = message
         canRetryCurrentAI = true
         pendingAIRepairPrompts.insert(prompt)
         todayLoopMessage = message
+    }
+
+    private func trainingPromptName(for prompt: PromptID) -> String {
+        switch prompt {
+        case .organizeCards:
+            return "整理卡片训练"
+        case .generateQuestions:
+            return "教练追问训练"
+        case .generateQuests:
+            return "明日验证训练"
+        case .extractPrinciple:
+            return "原则沉淀训练"
+        case .weeklyCalibration:
+            return "周度校准训练"
+        case .monthlyGrowth:
+            return "月度成长训练"
+        default:
+            return "\(prompt.displayName)训练"
+        }
     }
 
     private func aiFailureMessage(for error: Error) -> String {
@@ -5311,7 +5330,7 @@ final class AppStore: ObservableObject {
         }
         if case TodayAIParsingError.qualityGateFailed(let reasons) = error {
             let reasonText = reasons.isEmpty ? "unknown" : reasons.joined(separator: ", ")
-            return "AI 输出质量未达标（\(reasonText)）"
+            return "训练输出质量未达标（\(reasonText)）"
         }
         return error.localizedDescription
     }

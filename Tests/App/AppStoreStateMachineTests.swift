@@ -5503,7 +5503,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .organizing)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 整理卡片失败"))
+        XCTAssertTrue(store.todayLoopMessage.contains("整理卡片训练未完成"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 整理卡片失败"))
         XCTAssertTrue(store.todayLoopMessage.contains("HTTP 500"))
 
         store.retryCurrentAIStep()
@@ -5590,7 +5591,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForState(.answerQuestions)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains("训练输出质量未达标"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 输出质量未达标"))
         XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.genericQuestion.rawValue))
 
         let fallbackQuestion = try XCTUnwrap(store.questions.first)
@@ -5671,7 +5673,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForState(.reviewQuests)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains("训练输出质量未达标"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 输出质量未达标"))
         XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.busyworkQuest.rawValue))
 
         let fallbackQuest = try XCTUnwrap(store.quests.first(where: { $0.type == .main }))
