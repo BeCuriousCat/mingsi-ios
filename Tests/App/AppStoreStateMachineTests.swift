@@ -4189,10 +4189,43 @@ final class AppStoreStateMachineTests: XCTestCase {
     func testAnswerQuestions_withGapClosingAnswer_generatesQuests() async throws {
         try await advanceTo(.answerQuestions)
         store.questions = [
-            ReflectionQuestion(question: "Q?", whyItMatters: "Matters", answer: "事实是今天已经确认关键证据。")
+            ReflectionQuestion(
+                question: "Q?",
+                whyItMatters: "Matters",
+                calibrationTarget: "验收标准明确会减少返工",
+                answer: "事实是今天已经确认关键证据。"
+            )
         ]
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
+    }
+
+    func testAnswerQuestions_answerWithoutCalibrationTargetBlocksQuestGeneration() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.answerQuestions)
+        store.questions = [
+            ReflectionQuestion(
+                question: "Q?",
+                whyItMatters: "Matters",
+                answer: "事实是今天已经确认关键证据。"
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(store.todayLoopMessage.contains("待验证判断"))
+        XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
 
     // MARK: - ReviewQuests -> ExtractPrinciple (async)

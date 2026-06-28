@@ -1497,6 +1497,19 @@ final class AppStore: ObservableObject {
         questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    var answeredCalibrationTarget: String? {
+        questions.first { question in
+            !question.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                !(question.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }?
+        .calibrationTarget?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var hasAnsweredCalibrationTarget: Bool {
+        answeredCalibrationTarget != nil
+    }
+
     var coachAnswerFeedbackPreview: CoachTurnState? {
         guard todayDraft.state == .answerQuestions, hasAnsweredReflectionQuestion else { return nil }
         return CoachTurnPolicy().updateAfterAnswers(
@@ -1540,6 +1553,9 @@ final class AppStore: ObservableObject {
         case .answerQuestions:
             guard hasAnsweredReflectionQuestion else {
                 return "至少回答一个问题后再设计明日实验。"
+            }
+            guard hasAnsweredCalibrationTarget else {
+                return "先在今日复盘中形成一个待验证判断，再设计明日实验。"
             }
             if let feedback = coachAnswerFeedbackPreview, feedback.readiness != .ready {
                 let gaps = feedback.openEvidenceGaps
@@ -4849,6 +4865,10 @@ final class AppStore: ObservableObject {
     private func generateQuestsFromAnswers() {
         guard hasAnsweredReflectionQuestion else {
             todayLoopMessage = "至少回答一个问题，才能设计明日实验。"
+            return
+        }
+        guard hasAnsweredCalibrationTarget else {
+            todayLoopMessage = "先在今日复盘中形成一个待验证判断，再设计明日实验。"
             return
         }
         refreshCoachTurnStateAfterAnswers()
