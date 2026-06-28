@@ -159,7 +159,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [activeMainQuest()]
         store.submitTodayStep()
         XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
-        XCTAssertFalse(store.todayLoopMessage.isEmpty)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先选择昨天验证行动的完成情况。 训练理由：校准力训练要先看行动有没有真实发生。"
+        )
     }
 
     func testVerifyYesterday_withQuest_requiresValueRating() {
@@ -167,6 +170,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.selectYesterdayCompletion(.done)
         store.submitTodayStep()
         XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先选择昨天验证行动的实际价值。 训练理由：校准不是完成打卡，而是判断行动是否产生价值。"
+        )
     }
 
     func testVerifyYesterday_withQuestAndBothSelections_advancesToCapture() async throws {
@@ -186,7 +193,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.submitTodayStep()
 
         XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
-        XCTAssertTrue(store.todayLoopMessage.contains("请选择昨天判断要确认、调整还是推翻"))
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：请选择昨天判断要确认、调整还是推翻。 训练理由：结果校准要用真实结果更新判断，不是继续写今天复盘。"
+        )
     }
 
     func testVerifyYesterday_sendsQuestTrainingTargetToVerificationPrompt() async throws {

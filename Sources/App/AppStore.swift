@@ -4501,15 +4501,15 @@ final class AppStore: ObservableObject {
             return
         }
         guard todayDraft.yesterdayCompletion != nil else {
-            todayLoopMessage = "请选择昨天验证行动的完成情况。"
+            todayLoopMessage = "进入条件：先选择昨天验证行动的完成情况。 训练理由：校准力训练要先看行动有没有真实发生。"
             return
         }
         guard todayDraft.yesterdayValueRating != nil else {
-            todayLoopMessage = "请选择昨天任务的价值判断。"
+            todayLoopMessage = "进入条件：先选择昨天验证行动的实际价值。 训练理由：校准不是完成打卡，而是判断行动是否产生价值。"
             return
         }
         guard todayDraft.yesterdayJudgmentUpdate != nil else {
-            todayLoopMessage = "请选择昨天判断要确认、调整还是推翻。"
+            todayLoopMessage = "进入条件：请选择昨天判断要确认、调整还是推翻。 训练理由：结果校准要用真实结果更新判断，不是继续写今天复盘。"
             return
         }
 
