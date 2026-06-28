@@ -306,6 +306,18 @@ not:
 用户选择一个滤镜 -> AI 按滤镜提问
 ```
 
+The Select Lens screen should make that observation visible before the user
+accepts or changes the lens. The same observation frame used in Answer Questions
+should appear here at least with:
+
+- ability training diagnosis;
+- material inventory: `已说清` and `先补`;
+- observed, primary gap, training, and repair ask.
+
+This prevents lens selection from feeling like a prompt preset picker. The user
+should see that the recommended lens follows from what MingSi noticed in their
+description.
+
 ### Answer Questions
 
 Answer Questions is the visible `今日复盘` stage. It should make the user feel

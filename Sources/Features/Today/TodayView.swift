@@ -689,7 +689,7 @@ struct TodayView: View {
             )
 
             stepLabel("教练追问", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
-            answerObservationFrame(
+            observationTrainingFrame(
                 CoachObservationPolicy().observe(cards: store.thinkingCards)
             )
 
@@ -719,7 +719,7 @@ struct TodayView: View {
         }
     }
 
-    private func answerObservationFrame(_ observation: CoachObservation) -> some View {
+    private func observationTrainingFrame(_ observation: CoachObservation) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
                 title: "能力训练诊断",
@@ -1341,6 +1341,10 @@ struct TodayView: View {
                 BriefRow(title: "诊断主要缺口", body: "只抓一个当前最该补的漏想点，避免把训练变成泛泛提问。", accent: DS.brick)
                 BriefRow(title: "推荐训练处方", body: "透镜只是训练方式；主线是补上没想清的部分，并保留你的改选权。", accent: DS.success)
             }
+
+            observationTrainingFrame(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
         }
         .padding(DS.cardInnerPadding)
         .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))

@@ -194,6 +194,24 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["安排执行"].waitForExistence(timeout: 4))
     }
 
+    func testTodaySelectLensShowsObservationInventoryBeforeLensChoice() throws {
+        let app = seededTodayApp(stage: "select_lens")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.select_lens"].waitForExistence(timeout: 8))
+        let coachObservationTitle = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "coach observation")
+        ).firstMatch
+        XCTAssertTrue(coachObservationTitle.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["能力训练诊断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先补"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我观察到"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["当前主要缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本轮训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["请你补充"].waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsShowsCoachGapPreviewAfterTyping() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
