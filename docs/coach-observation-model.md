@@ -329,6 +329,8 @@ Question cards should show the observation frame:
 - ability diagnosis: which basic capability is being trained this turn;
 - material separation training: make `fact`, `feeling`, `interpretation`,
   `judgment`, and `action` visible as distinct materials;
+- narrative training: translate the material inventory into a communication
+  drill, such as `讲清楚一件事：已说清：感受；先补：交代背景、说明对象、说清触发、写出做法、补上结果`;
 - material inventory: what the user has already made clear and what must be
   supplied next;
 - observed: what MingSi saw in the user's input or answer;

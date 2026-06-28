@@ -731,6 +731,7 @@ struct TodayView: View {
                 body: "事实、感受、解释、判断、行动",
                 accent: DS.caution
             )
+            BriefRow(title: "讲述训练", body: observation.narrativeTrainingLine, accent: DS.accent)
             materialInventoryRows(for: observation)
             BriefRow(title: "我观察到", body: observation.feedback.observed, accent: DS.accent)
             BriefRow(title: "当前主要缺口", body: observation.feedback.diagnosis, accent: DS.brick)

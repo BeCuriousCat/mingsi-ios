@@ -1019,6 +1019,16 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("背景、触发点、行动和结果"))
     }
 
+    func testCoachObservation_translatesMaterialInventoryIntoNarrativeTraining() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "我只有一种很乱和焦虑的感受。")
+        ]))
+
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("讲清楚一件事"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("已说清：感受"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
+    }
+
     func testCoachObservationPolicy_identifiesMissingAffectedObjectAsDescriptionGap() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(

@@ -1505,6 +1505,54 @@ struct CoachObservation: Codable, Hashable {
     var trainingAbility: CoreTrainingAbility
     var feedback: CoachObservationFeedback
     var experienceReplayPrompt: String
+
+    var narrativeTrainingLine: String {
+        "讲清楚一件事：已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；先补：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
+    }
+}
+
+extension CoachObservationMaterial {
+    var trainingCue: String {
+        switch self {
+        case .background:
+            return "交代背景"
+        case .object:
+            return "说明对象"
+        case .trigger:
+            return "说清触发"
+        case .action:
+            return "写出做法"
+        case .result:
+            return "补上结果"
+        case .feeling:
+            return "感受"
+        case .fact:
+            return "可观察事实"
+        case .interpretation:
+            return "解释"
+        case .judgment:
+            return "判断"
+        case .assumption:
+            return "假设"
+        case .constraint:
+            return "限制条件"
+        case .goal:
+            return "目标"
+        case .standard:
+            return "成功标准"
+        case .openQuestion:
+            return "开放问题"
+        case .experience:
+            return "过往经验"
+        case .calibrationSignal:
+            return "校准信号"
+        }
+    }
+
+    static func trainingLine(for materials: [CoachObservationMaterial]) -> String {
+        let cues = materials.map(\.trainingCue).filter { !$0.isEmpty }
+        return cues.isEmpty ? "暂无" : cues.joined(separator: "、")
+    }
 }
 
 struct CoachObservationPolicy {
