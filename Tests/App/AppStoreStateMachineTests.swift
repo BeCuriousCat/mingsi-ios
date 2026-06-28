@@ -1085,6 +1085,31 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("链条"))
     }
 
+    func testCoachObservationPolicy_identifiesUnchallengedExplanationAsCounterexampleGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "方案反馈",
+                body: "事实是用户代表在评审里提出三处流程问题，后来方案延期。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的解释",
+                body: "我认为延期是因为流程问题影响了验收判断，中间链条是评审问题先让验收标准变模糊，再导致方案延期。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .counterexample)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("反例"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("反例"))
+        XCTAssertTrue(observation.feedback.ask.contains("推翻"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("替代解释"))
+    }
+
     func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")

@@ -1427,7 +1427,7 @@ struct CoachObservation: Codable, Hashable {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v4"
+    static let policyVersion = "coach-observation.local-v5"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1616,6 +1616,10 @@ struct CoachObservationPolicy {
             return .causal
         }
 
+        if shouldTrainCounterexampleAnalysis(providedMaterials: providedMaterials, text: text) {
+            return .counterexample
+        }
+
         if providedMaterials.contains(.action),
            missingMaterials.contains(.goal) {
             return .goal
@@ -1665,6 +1669,10 @@ struct CoachObservationPolicy {
 
         if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
             gaps.append(.causal)
+        }
+
+        if shouldTrainCounterexampleAnalysis(providedMaterials: providedMaterials, text: text) {
+            gaps.append(.counterexample)
         }
 
         return unique(gaps.filter { $0 != primaryGap })
@@ -1791,7 +1799,15 @@ struct CoachObservationPolicy {
                     : "请补一句：A 到 B 中间发生了什么，哪个环节最关键？",
                 proceedWhen: "当你能说清中间链条和关键环节时，再进入目标或行动判断。"
             )
-        case .counterexample, .judgment, .narrative:
+        case .counterexample:
+            return CoachObservationFeedback(
+                observed: "你已经形成一个解释，但还没有说什么证据会挑战它。",
+                diagnosis: "当前主要缺口是反例 gap：如果没有推翻条件，解释容易只沿着自己相信的方向变强。",
+                training: "本轮先练\(ability.displayTitle)，主动找能推翻或削弱当前解释的信号。",
+                ask: "请补一句：什么事实出现时，会推翻或削弱你现在的解释？",
+                proceedWhen: "当你能说清推翻信号或替代解释时，再进入目标或行动判断。"
+            )
+        case .judgment, .narrative:
             if gap == .narrative {
                 return CoachObservationFeedback(
                     observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
@@ -1812,8 +1828,10 @@ struct CoachObservationPolicy {
     }
 
     private func containsMixedThinkingMaterials(_ materials: [CoachObservationMaterial]) -> Bool {
-        let thinkingMaterials: Set<CoachObservationMaterial> = [.fact, .feeling, .interpretation, .judgment]
-        return Set(materials).intersection(thinkingMaterials).count >= 3
+        let materialSet = Set(materials)
+        let reasoningMaterials: Set<CoachObservationMaterial> = [.fact, .interpretation, .judgment]
+        return materialSet.contains(.feeling)
+            && !materialSet.intersection(reasoningMaterials).isEmpty
     }
 
     private func experienceReplayPrompt(for gap: CoachObservationGap) -> String {
@@ -1895,6 +1913,21 @@ struct CoachObservationPolicy {
         else { return false }
 
         return providedMaterials.contains(.result) || providedMaterials.contains(.judgment)
+    }
+
+    private func shouldTrainCounterexampleAnalysis(
+        providedMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard providedMaterials.contains(.fact),
+              providedMaterials.contains(.interpretation),
+              providedMaterials.contains(.judgment),
+              !containsMixedThinkingMaterials(providedMaterials),
+              !shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text),
+              !hasCounterexampleSignal(text)
+        else { return false }
+
+        return suggestsCausalShortcut(text) || providedMaterials.contains(.assumption)
     }
 
     private func hasProvidedBackground(_ text: String) -> Bool {
@@ -1983,6 +2016,13 @@ struct CoachObservationPolicy {
         containsAny(text, [
             "中间", "链条", "机制", "路径", "环节", "反馈", "回路", "延迟",
             "先", "再", "进而", "影响路径", "mechanism", "chain", "path"
+        ])
+    }
+
+    private func hasCounterexampleSignal(_ text: String) -> Bool {
+        containsAny(text, [
+            "反例", "推翻", "削弱", "相反证据", "替代解释", "不成立", "证伪",
+            "如果不是", "还有可能", "counterexample", "disconfirm", "falsify"
         ])
     }
 
