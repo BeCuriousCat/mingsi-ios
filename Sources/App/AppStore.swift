@@ -4159,7 +4159,7 @@ final class AppStore: ObservableObject {
             questions: questions,
             prescription: trainingPrescription
         )
-        return "\(feedback.repairedLine) \(feedback.missingLine) \(feedback.proceedLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayPrompt)"
+        return "\(feedback.repairedLine) \(feedback.missingLine) \(feedback.proceedLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayDecisionLine) \(feedback.experienceReplayPrompt)"
     }
 
     private func makeCoachTrainingPrescription() -> TrainingPrescription {

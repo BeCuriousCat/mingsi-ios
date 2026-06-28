@@ -1143,6 +1143,7 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var proceedLine: String
     var trainingTargetLine: String
     var nextRepairQuestion: String
+    var experienceReplayDecisionLine: String
     var experienceReplayPrompt: String
     var judgmentSentencePrompt: String
     var teachingPlan: CoachTeachingPlan
@@ -1380,6 +1381,7 @@ struct CoachAnswerFeedbackPolicy {
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
             trainingTargetLine: "本轮正在练\(plan.trainingTargetLine)。",
             nextRepairQuestion: plan.repairQuestion,
+            experienceReplayDecisionLine: ExperienceReplayTraining.line,
             experienceReplayPrompt: plan.experienceReplayPrompt,
             judgmentSentencePrompt: Self.judgmentSentencePrompt,
             teachingPlan: plan

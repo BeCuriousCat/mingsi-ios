@@ -802,7 +802,11 @@ struct TodayView: View {
                 accent: DS.caution
             )
             BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
-            BriefRow(title: "过往经验复现", body: feedback.experienceReplayPrompt, accent: DS.graphite)
+            BriefRow(
+                title: "过往经验复现",
+                body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
+                accent: DS.graphite
+            )
             BriefRow(
                 title: "判断句训练",
                 body: feedback.judgmentSentencePrompt,

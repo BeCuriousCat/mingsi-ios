@@ -1396,6 +1396,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
+        XCTAssertEqual(feedback.experienceReplayDecisionLine, ExperienceReplayTraining.line)
+        XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.reproduceLine))
+        XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.adaptLine))
+        XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.rejectLine))
         XCTAssertTrue(feedback.proceedLine.contains("不能进入明日验证"))
         XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
     }
