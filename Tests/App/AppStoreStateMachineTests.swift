@@ -47,6 +47,61 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayDraft.rawText.isEmpty)
     }
 
+    func testPendingAIRepairBannerText_usesTrainingLanguage() {
+        let pendingText = pendingTrainingRepairBannerText(isRunning: false, pendingCount: 2)
+        let runningText = pendingTrainingRepairBannerText(isRunning: true, pendingCount: 2)
+
+        XCTAssertEqual(pendingText, "有 2 个训练结果待补齐")
+        XCTAssertEqual(runningText, "明思正在补齐训练结果，请等待")
+        XCTAssertFalse(pendingText.contains("AI"))
+        XCTAssertFalse(runningText.contains("AI"))
+    }
+
+    func testOrganizingProgressCopy_usesTrainingLanguageInsteadOfPipelineTerms() {
+        let onlineTitle = organizingProgressTitle(isUsingOnlineModel: true)
+        let localTitle = organizingProgressTitle(isUsingOnlineModel: false)
+        let onlineStatus = organizingProgressFallbackStatusText(isUsingOnlineModel: true)
+        let localStatus = organizingProgressFallbackStatusText(isUsingOnlineModel: false)
+        let onlineSource = organizingProgressSourceStepCopy(isUsingOnlineModel: true)
+        let localSource = organizingProgressSourceStepCopy(isUsingOnlineModel: false)
+        let failureLabel = organizingProgressLocalDraftLabel
+        let connectingStatus = organizingStreamingConnectingStatusText
+        let localFailureStatus = organizingStreamingLocalDraftStatusText
+        let interruptedStatus = organizingStreamingInterruptedStatusText(closedCount: 2)
+
+        XCTAssertEqual(onlineTitle, "明思正在整理训练材料")
+        XCTAssertEqual(localTitle, "明思正在准备本地训练草稿")
+        XCTAssertEqual(onlineStatus, "等待第一张候选卡片。")
+        XCTAssertEqual(localStatus, "暂时使用本地训练草稿，你可以先继续确认材料。")
+        XCTAssertEqual(onlineSource.title, "整理输入材料")
+        XCTAssertEqual(onlineSource.subtitle, "明思把原始输入拆成可确认的训练卡片。")
+        XCTAssertEqual(localSource.title, "整理输入材料")
+        XCTAssertEqual(localSource.subtitle, "暂时使用本地规则，先保留可编辑的训练卡片。")
+        XCTAssertEqual(failureLabel, "本次使用本地训练草稿")
+        XCTAssertEqual(connectingStatus, "明思正在整理训练材料。")
+        XCTAssertEqual(localFailureStatus, "整理未完成，已使用本地训练草稿。")
+        XCTAssertEqual(interruptedStatus, "整理中断，已保留 2 张闭合卡片。")
+
+        let combined = [
+            onlineTitle,
+            localTitle,
+            onlineStatus,
+            localStatus,
+            onlineSource.title,
+            onlineSource.subtitle,
+            localSource.title,
+            localSource.subtitle,
+            failureLabel,
+            connectingStatus,
+            localFailureStatus,
+            interruptedStatus
+        ].joined(separator: "\n")
+        XCTAssertFalse(combined.contains("AI"))
+        XCTAssertFalse(combined.contains("API"))
+        XCTAssertFalse(combined.contains("fallback"))
+        XCTAssertFalse(combined.contains("模型流"))
+    }
+
     func testLoadPersistedState_restoresUnfinishedPriorDayDraftWithoutChangingDate() async throws {
         let dailyRepo = InMemoryDailyEntryRepository()
         let priorDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -159,7 +214,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [activeMainQuest()]
         store.submitTodayStep()
         XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
-        XCTAssertFalse(store.todayLoopMessage.isEmpty)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先选择昨天验证行动的完成情况。 训练理由：校准力训练要先看行动有没有真实发生。"
+        )
     }
 
     func testVerifyYesterday_withQuest_requiresValueRating() {
@@ -167,14 +225,33 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.selectYesterdayCompletion(.done)
         store.submitTodayStep()
         XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先选择昨天验证行动的实际价值。 训练理由：校准不是完成打卡，而是判断行动是否产生价值。"
+        )
     }
 
     func testVerifyYesterday_withQuestAndBothSelections_advancesToCapture() async throws {
         store.quests = [activeMainQuest()]
         store.selectYesterdayCompletion(.partial)
         store.selectYesterdayValueRating(.medium)
+        store.selectYesterdayJudgmentUpdate(.adjusted)
         store.submitTodayStep()
         try await waitForState(.capture)
+    }
+
+    func testVerifyYesterday_withQuestRequiresJudgmentUpdate() {
+        store.quests = [activeMainQuest()]
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：请选择昨天判断要确认、调整还是推翻。 训练理由：结果校准要用真实结果更新判断，不是继续写今天复盘。"
+        )
     }
 
     func testVerifyYesterday_sendsQuestTrainingTargetToVerificationPrompt() async throws {
@@ -218,6 +295,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
         store.selectYesterdayCompletion(.done)
         store.selectYesterdayValueRating(.high)
+        store.selectYesterdayJudgmentUpdate(.confirmed)
 
         store.submitTodayStep()
         try await waitForState(.capture)
@@ -227,6 +305,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(trainingPrinciple.principleId, selected.id.uuidString)
         XCTAssertEqual(trainingPrinciple.principleTitle, "先写验收标准")
         XCTAssertEqual(trainingPrinciple.matchSignal, "用户选择")
+        XCTAssertEqual(request.contextPayload?.verification?.judgmentUpdate, YesterdayJudgmentUpdate.confirmed.rawValue)
     }
 
     func testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory() async throws {
@@ -261,6 +340,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -336,6 +416,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -431,6 +512,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -499,6 +581,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -514,6 +597,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.quests = [quest]
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -944,6 +1028,249 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(decision.proceedWhen.contains("明日"))
     }
 
+    func testCoachObservationPolicy_identifiesActionWithoutGoalAsGoalGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "明天先拉会推进", body: "我打算先找几个人开会，把事情往前推。"),
+            ThinkingCard(type: .communication, title: "讨论有点混乱", body: "大家说了很多，但不知道到底服务于谁。")
+        ]))
+
+        XCTAssertEqual(observation.policyVersion, CoachObservationPolicy.policyVersion)
+        XCTAssertEqual(observation.primaryGap, .goal)
+        XCTAssertEqual(observation.trainingAbility, .judgment)
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.goal))
+        XCTAssertTrue(observation.feedback.observed.contains("动作"))
+        XCTAssertTrue(observation.feedback.ask.contains("谁"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("成功标准"))
+    }
+
+    func testCoachObservationPolicy_identifiesJudgmentWithoutFactAsObservationGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "我觉得方案不可行", body: "这件事大概率会失败。"),
+            ThinkingCard(type: .idea, title: "可能是沟通问题", body: "只是感觉，没有看到明确事实。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .observation)
+        XCTAssertEqual(observation.trainingAbility, .observation)
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.missingMaterials.contains(.fact))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("结论"))
+        XCTAssertTrue(observation.feedback.training.contains("观察力"))
+        XCTAssertTrue(observation.feedback.ask.contains("事实"))
+    }
+
+    func testCoachObservationPolicy_identifiesExperienceMentionWithoutFitCheck() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),
+            ThinkingCard(type: .idea, title: "可能要复用经验", body: "还没判断这次条件是不是一样。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .experience)
+        XCTAssertEqual(observation.trainingAbility, .calibration)
+        XCTAssertTrue(observation.secondaryGaps.contains(.counterexample))
+        XCTAssertTrue(observation.feedback.ask.contains("复现、调整，还是否定"))
+        XCTAssertTrue(observation.experienceReplayPrompt.contains("条件"))
+    }
+
+    func testCoachObservationPolicy_identifiesThinStoryAsNarrativeGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "感觉方案推进不下去，我有点焦虑。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .narrative)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.missingMaterials.contains(.background))
+        XCTAssertTrue(observation.missingMaterials.contains(.trigger))
+        XCTAssertTrue(observation.missingMaterials.contains(.result))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("别人可以复盘"))
+        XCTAssertTrue(observation.feedback.observed.contains("感受"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("讲述 gap"))
+        XCTAssertTrue(observation.feedback.ask.contains("前因后果"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("背景、触发点、行动和结果"))
+    }
+
+    func testCoachObservation_translatesMaterialInventoryIntoNarrativeTraining() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "我只有一种很乱和焦虑的感受。")
+        ]))
+
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("讲清楚一件事"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("已说清：感受"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
+    }
+
+    func testCoachObservationFeedback_namesFoundationalCapabilityLane() {
+        let narrativeObservation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "我只有很乱和焦虑的感受。")
+        ]))
+
+        XCTAssertTrue(narrativeObservation.feedback.training.contains("沟通力"))
+        XCTAssertTrue(narrativeObservation.feedback.training.contains("描述力"))
+
+        let thinkingObservation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "判断方案要重写", body: "我觉得方案应该重写。")
+        ]))
+
+        XCTAssertTrue(thinkingObservation.feedback.training.contains("思考力"))
+        XCTAssertTrue(thinkingObservation.feedback.training.contains("观察力"))
+    }
+
+    func testCoachObservation_experienceReplayTrainingLineUsesReproduceAdaptReject() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),
+            ThinkingCard(type: .idea, title: "可能要复用经验", body: "还没判断这次条件是不是一样。")
+        ]))
+
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("复现：条件相同，可以照用哪条做法"))
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("调整：条件不同，哪部分要改"))
+        XCTAssertTrue(observation.experienceReplayTrainingLine.contains("否定：这条经验为什么不适用"))
+    }
+
+    func testCoachObservationPolicy_identifiesMissingAffectedObjectAsDescriptionGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .task,
+                title: "方案推进卡住",
+                body: "今天需求评审后，我打算先重写方案。因为会上大家提出很多意见，后来方案没有通过。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .object)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.providedMaterials.contains(.background))
+        XCTAssertTrue(observation.providedMaterials.contains(.trigger))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.providedMaterials.contains(.result))
+        XCTAssertTrue(observation.missingMaterials.contains(.object))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("对象"))
+        XCTAssertTrue(observation.feedback.ask.contains("谁"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("对象"))
+    }
+
+    func testCoachObservationPolicy_identifiesBlockedProgressWithoutConstraintAsAnalysisGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .problem,
+                title: "跨团队推进卡住",
+                body: "今天在项目沟通中，我和产品团队讨论接口方案，但推进不下去，后来决定先暂停方案调整。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .constraint)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.background))
+        XCTAssertTrue(observation.providedMaterials.contains(.object))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.constraint))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("约束"))
+        XCTAssertTrue(observation.feedback.ask.contains("限制"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("边界"))
+    }
+
+    func testCoachObservationPolicy_identifiesUntracedCausalExplanationAsAnalysisGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "会议结果",
+                body: "事实是会议结束后没有明确负责人，后来接口方案返工。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的解释",
+                body: "我认为返工是因为大家都不想负责，所以方案没有通过。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .causal)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("因果链"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("因果"))
+        XCTAssertTrue(observation.feedback.ask.contains("中间"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("链条"))
+    }
+
+    func testCoachObservationPolicy_identifiesUnchallengedExplanationAsCounterexampleGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "方案反馈",
+                body: "事实是用户代表在评审里提出三处流程问题，后来方案延期。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的解释",
+                body: "我认为延期是因为流程问题影响了验收判断，中间链条是评审问题先让验收标准变模糊，再导致方案延期。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .counterexample)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("反例"))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("反例"))
+        XCTAssertTrue(observation.feedback.ask.contains("推翻"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("替代解释"))
+    }
+
+    func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .narrative)
+        XCTAssertEqual(observation.trainingAbility, .description)
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.background))
+        XCTAssertTrue(observation.missingMaterials.contains(.object))
+        XCTAssertTrue(observation.missingMaterials.contains(.trigger))
+        XCTAssertTrue(observation.missingMaterials.contains(.result))
+        XCTAssertTrue(observation.feedback.training.contains("描述力"))
+        XCTAssertTrue(observation.feedback.ask.contains("什么背景下"))
+    }
+
+    func testCoachObservationPolicy_separatesFactFeelingInterpretationJudgmentAndAction() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "会议记录",
+                body: "事实是会议结束后没有明确负责人。"
+            ),
+            ThinkingCard(
+                type: .idea,
+                title: "我的反应",
+                body: "我感到焦虑，猜测大家可能都不想负责，所以判断这个方案会返工。"
+            ),
+            ThinkingCard(
+                type: .task,
+                title: "明天动作",
+                body: "我打算明天先让 Alex 写清负责人和验收标准。"
+            )
+        ]))
+
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.feeling))
+        XCTAssertTrue(observation.providedMaterials.contains(.interpretation))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.feedback.ask.contains("事实、感受、解释、判断"))
+    }
+
+    func testCoachObservationPolicy_keepsOnePrimaryGapPerTurn() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "先照以前方式推进", body: "我打算先拉会处理，沿用以前有效的做法。"),
+            ThinkingCard(type: .decision, title: "这次应该也有效", body: "我觉得可以先推进，但还没说清目标，也没判断这次条件是否一样。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .experience)
+        XCTAssertFalse(observation.secondaryGaps.contains(observation.primaryGap))
+        XCTAssertEqual(observation.feedback.ask.filter { $0 == "？" }.count, 1)
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
@@ -978,6 +1305,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(plan.policyVersion, CoachTeachingPolicy.policyVersion)
         XCTAssertTrue(plan.missingMoveTitle.contains("可观察证据"))
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
+        XCTAssertEqual(plan.trainingTargetLine, "思考力中的证据意识")
         XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
         XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
         XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
@@ -987,12 +1315,12 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(plan.experienceReplayPrompt.contains("复现"))
     }
 
-    func testCoachTeachingPolicy_readyRouteFormsTomorrowExperiment() {
+    func testCoachTeachingPolicy_readyRouteFormsTomorrowValidation() {
         let turn = CoachTurnState(
             phase: .formAction,
             readiness: .ready,
             recommendedMove: .generateQuest,
-            reason: "已有任务、事实或判断，可以把下一步设计成校准实验。",
+            reason: "已有任务、事实或判断，可以把下一步设计成验证行动。",
             openEvidenceGaps: [],
             baselineChecks: [.testableAction, .judgmentUpdate],
             decisionSource: .coachAccepted,
@@ -1002,7 +1330,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let prescription = TrainingPrescription(
             recommendedLensId: ThinkingLens.judgmentCalibration.rawValue,
             recommendedPromptId: ThinkingLens.judgmentCalibration.catalogItem.promptId,
-            recommendationReason: "当前可以把判断转成校准实验。",
+            recommendationReason: "当前可以把判断转成验证行动。",
             confidence: 0.76,
             policyVersion: "test",
             alternativeLensIds: [],
@@ -1020,9 +1348,121 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertTrue(plan.missingMoveTitle.contains("明天能留下证据"))
         XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.testableActionDesign.displayTitle)
-        XCTAssertTrue(plan.whyNotAnswer.contains("足够形成小实验"))
+        XCTAssertEqual(plan.trainingTargetLine, "执行力中的可验证行动")
+        XCTAssertTrue(plan.whyNotAnswer.contains("足够形成验证行动"))
         XCTAssertTrue(plan.proceedStandard.contains("明日行动"))
-        XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"])
+        XCTAssertEqual(plan.routeSteps, ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"])
+    }
+
+    func testCoachAnswerFeedbackPolicySeparatesRepairedAndMissingTrainingMaterials() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "用户已经有判断倾向，但事实、解释和依据还需要拆开。",
+            openEvidenceGaps: [.missingObservation, .missingCausalLink],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先拆事实和解释。"
+        )
+        let question = ReflectionQuestion(
+            question: "哪一句是可观察事实，哪一句是解释？",
+            whyItMatters: "它防止把解释当事实。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "事实是客户代表在评审里提出三处流程问题；我的解释是这些问题让验收标准变模糊。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: confirmedCards([
+                ThinkingCard(type: .decision, title: "延期原因", body: "我认为延期是流程问题影响验收。")
+            ]),
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertEqual(feedback.readiness, .notReady)
+        XCTAssertFalse(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
+        XCTAssertTrue(feedback.repairedLine.contains("补上"))
+        XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
+        XCTAssertTrue(feedback.proceedLine.contains("不能进入明日验证"))
+        XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
+    }
+
+    func testCoachAnswerFeedbackPolicyAllowsValidationWhenAnswerClosesGaps() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "材料里同时出现预测和实际结果，适合校准原判断。",
+            openEvidenceGaps: [.missingCalibrationSignal],
+            baselineChecks: [.judgmentUpdate],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先定义校准信号。"
+        )
+        let question = ReflectionQuestion(
+            question: "明天用什么信号校准这个判断？",
+            whyItMatters: "它防止任务完成但判断没有更新。",
+            evidenceGapType: .missingCalibrationSignal,
+            answerUse: .watchCalibrationSignal,
+            lensMove: .predictionCalibration,
+            answer: "明天观察返工次数是否下降；如果没有下降，就更新原来认为验收能减少返工的判断。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertEqual(feedback.readiness, .ready)
+        XCTAssertTrue(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.repairedLine.contains("缺校准信号"))
+        XCTAssertTrue(feedback.missingLine.contains("关键缺口已关闭"))
+        XCTAssertTrue(feedback.proceedLine.contains("可以进入明日验证"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("明天"))
+    }
+
+    func testQuestExecutionTrainingPolicyFramesValidationActionAsExecutionPractice() {
+        let quest = Quest(
+            type: .main,
+            title: "明天让负责人书面确认验收标准",
+            whyItMatters: "验证书面验收能否减少接口返工。",
+            completionCriteria: "明天下午前在会议记录中留下负责人、验收标准和一次返工次数记录。",
+            expectedResistance: "可能想直接开会推进，忽略书面确认。",
+            reflectionQuestion: "结果是否支持书面验收减少返工？",
+            calibrationTarget: "书面验收能减少接口返工",
+            lensMove: .predictionCalibration,
+            sourceCardTitles: ["接口返工"]
+        )
+
+        let feedback = QuestExecutionTrainingPolicy().makeFeedback(for: quest)
+
+        XCTAssertEqual(feedback.trainingDimension, .testableActionDesign)
+        XCTAssertTrue(feedback.judgmentLine.contains("书面验收能减少接口返工"))
+        XCTAssertTrue(feedback.evidenceLine.contains("会议记录"))
+        XCTAssertTrue(feedback.resistanceLine.contains("直接开会"))
+        XCTAssertTrue(feedback.calibrationLine.contains("结果校准"))
+        XCTAssertTrue(feedback.trainingLine.contains("执行力"))
+        XCTAssertTrue(feedback.trainingLine.contains("可验证行动"))
     }
 
     func testCoachTeachingPolicy_overrideRouteKeepsAuditBoundary() {
@@ -1248,6 +1688,44 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .selectLens)
     }
 
+    func testAnswerQuestionsGuard_withoutAnswerExplainsTrainingEntryCondition() {
+        store.todayDraft.state = .answerQuestions
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                answer: "   "
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先回答一个教练问题。 训练理由：明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
+        )
+    }
+
+    func testAnswerQuestionsGuard_withoutCalibrationTargetExplainsTrainingEntryCondition() {
+        store.todayDraft.state = .answerQuestions
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                answer: "这次会议没有明确负责人。"
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先在今日复盘中形成一个待验证判断。 训练理由：验证行动要验证今天的判断，不是普通待办。"
+        )
+    }
+
     // MARK: - SelectLens -> AnswerQuestions
 
     func testSelectLens_noLensSelected_blocksProgression() async throws {
@@ -1447,9 +1925,9 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
         XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
-        XCTAssertTrue(store.todayLoopMessage.contains("本轮训练还差"))
+        XCTAssertTrue(store.todayLoopMessage.contains("还缺"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
-        XCTAssertTrue(store.todayLoopMessage.contains("先说清"))
+        XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
         XCTAssertTrue(store.todayLoopMessage.contains("教练追问"))
         XCTAssertTrue(store.todayLoopMessage.contains("过往经验"))
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -1485,6 +1963,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
         XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练理由") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
@@ -2697,7 +3179,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
@@ -2763,7 +3245,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
@@ -2892,7 +3374,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
@@ -2947,7 +3429,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.7.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
@@ -4058,10 +4540,43 @@ final class AppStoreStateMachineTests: XCTestCase {
     func testAnswerQuestions_withGapClosingAnswer_generatesQuests() async throws {
         try await advanceTo(.answerQuestions)
         store.questions = [
-            ReflectionQuestion(question: "Q?", whyItMatters: "Matters", answer: "事实是今天已经确认关键证据。")
+            ReflectionQuestion(
+                question: "Q?",
+                whyItMatters: "Matters",
+                calibrationTarget: "验收标准明确会减少返工",
+                answer: "事实是今天已经确认关键证据。"
+            )
         ]
         store.submitTodayStep()
         try await waitForState(.reviewQuests)
+    }
+
+    func testAnswerQuestions_answerWithoutCalibrationTargetBlocksQuestGeneration() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+
+        try await advanceTo(.answerQuestions)
+        store.questions = [
+            ReflectionQuestion(
+                question: "Q?",
+                whyItMatters: "Matters",
+                answer: "事实是今天已经确认关键证据。"
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(store.todayLoopMessage.contains("待验证判断"))
+        XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
 
     // MARK: - ReviewQuests -> ExtractPrinciple (async)
@@ -4154,7 +4669,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         }
         let request = try XCTUnwrap(reminder.scheduledRequests.first)
         XCTAssertEqual(reminder.permissionRequestCount, 1)
-        XCTAssertEqual(request.title, "明日主线任务")
+        XCTAssertEqual(request.title, "明日验证行动")
         XCTAssertEqual(request.body, "Confirm meeting owner")
         XCTAssertTrue(store.reminderStatusMessage.contains("提醒已安排"))
     }
@@ -4377,6 +4892,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
+        verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -4778,6 +5294,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let question = ReflectionQuestion(
             question: "这个闭环应该归属哪一天？",
             whyItMatters: "补完不能改写原始记录日期。",
+            calibrationTarget: "补完历史草稿不会改写原始记录日期",
             answer: "事实是草稿创建于昨天，验收标准是历史记录日期仍归属创建草稿的那一天。"
         )
         try await dailyRepo.saveDraft(unfinished)
@@ -5048,7 +5565,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .organizing)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 整理卡片失败"))
+        XCTAssertTrue(store.todayLoopMessage.contains("整理卡片训练未完成"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 整理卡片失败"))
         XCTAssertTrue(store.todayLoopMessage.contains("HTTP 500"))
 
         store.retryCurrentAIStep()
@@ -5091,17 +5609,103 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.retryCurrentAIStep()
 
         try await waitUntil(
-            store.todayLoopMessage.contains("重试失败"),
+            store.todayLoopMessage.contains("重试未完成"),
             timeout: 2,
             file: #filePath,
             line: #line,
-            failureMessage: "Expected retry failure message"
+            failureMessage: "Expected retry training failure message"
         ) {
-            store.todayLoopMessage.contains("重试失败")
+            store.todayLoopMessage.contains("重试未完成")
         }
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertEqual(store.thinkingCards.first?.title, fallbackTitle)
         XCTAssertTrue(store.canRetryCurrentAI)
+    }
+
+    func testAIRetryInProgressMessage_usesTrainingLanguage() async throws {
+        let llmClient = SuspendingLLMClient(response: Self.cardsResponse(title: "Repaired card"))
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: llmClient
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.todayDraft.state = .organizing
+        store.todayDraft.rawText = "Today I need to retry card organization."
+        store.canRetryCurrentAI = true
+
+        store.retryCurrentAIStep()
+
+        try await waitUntil(
+            llmClient.completeCallCount == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected retry to start one model request"
+        ) {
+            llmClient.completeCallCount == 1
+        }
+        XCTAssertTrue(store.todayLoopMessage.contains("正在重试整理卡片训练"))
+        XCTAssertFalse(store.todayLoopMessage.contains("正在重试 AI"))
+
+        llmClient.release()
+    }
+
+    func testPendingAIRepairInProgressMessage_usesTrainingLanguage() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let dailyRepo = SQLiteDailyEntryRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let client = SuspendingLLMClient(response: Self.cardsResponse(title: "Background repaired card"))
+        let draft = DailyEntryDraft(
+            rawText: "Today I need background repair.",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .organizing
+        )
+        try await dailyRepo.saveDraft(draft)
+        try await promptRunRepo.savePromptRun(
+            PromptRun(
+                promptId: PromptID.organizeCards.rawValue,
+                promptVersion: "1.0.0",
+                inputSchemaVersion: 1,
+                outputSchemaVersion: 1,
+                modelProvider: "GLM",
+                modelName: "glm-test",
+                sessionMode: SessionMode.standard.rawValue,
+                sourceRecordIds: [draft.id.uuidString],
+                requestSummary: "organize failure",
+                error: "HTTP 500"
+            )
+        )
+
+        store = AppStore(
+            dailyEntryRepository: dailyRepo,
+            promptRunRepository: promptRunRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        await store.loadPersistedState()
+
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        store.retryPendingAIRepairs()
+
+        try await waitUntil(
+            client.completeCallCount == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected background repair to start one model request"
+        ) {
+            client.completeCallCount == 1
+        }
+        XCTAssertTrue(store.todayLoopMessage.contains("正在后台补齐未完成训练"))
+        XCTAssertFalse(store.todayLoopMessage.contains("正在后台重试 AI"))
+
+        client.release()
     }
 
     func testQuestionQualityGateFailure_usesStructuredFallbackAndRetryMessage() async throws {
@@ -5135,7 +5739,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForState(.answerQuestions)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains("训练输出质量未达标"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 输出质量未达标"))
         XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.genericQuestion.rawValue))
 
         let fallbackQuestion = try XCTUnwrap(store.questions.first)
@@ -5216,7 +5821,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await waitForState(.reviewQuests)
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 输出质量未达标"))
+        XCTAssertTrue(store.todayLoopMessage.contains("训练输出质量未达标"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 输出质量未达标"))
         XCTAssertTrue(store.todayLoopMessage.contains(PromptCoachingQualityIssueReason.busyworkQuest.rawValue))
 
         let fallbackQuest = try XCTUnwrap(store.quests.first(where: { $0.type == .main }))
@@ -5254,7 +5860,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(llmClient.completeCallCount, 1)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 正在运行"))
+        XCTAssertTrue(store.todayLoopMessage.contains("明思正在训练处理中"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 正在运行"))
 
         llmClient.release()
         try await waitForGeneratedCards()
@@ -5265,23 +5872,29 @@ final class AppStoreStateMachineTests: XCTestCase {
     func testTodayPrimaryActionBlockerExplainsMissingPrerequisites() {
         store.todayDraft.state = .capture
         store.todayDraft.rawText = "   "
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先写下") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("讲清楚一件事") == true)
 
         store.todayDraft.rawText = "今天想复盘会议里的卡点。"
         store.todayDraft.hasSelectedSessionMode = false
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练深度") == true)
 
         store.todayDraft.state = .reviewCards
         store.todayDraft.hasSelectedSessionMode = true
         store.thinkingCards = [ThinkingCard(type: .fact, title: "事实", body: "还没确认。")]
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认至少一张卡片") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认至少一张材料卡片") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("确认过的材料") == true)
 
         var confirmedCard = ThinkingCard(type: .fact, title: "事实", body: "已确认。")
         confirmedCard.isConfirmed = true
         store.thinkingCards = [confirmedCard]
         store.todayDraft.state = .selectLens
         store.todayDraft.selectedLens = nil
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("思考透镜") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练处方") == true)
 
         store.todayDraft.state = .answerQuestions
         store.todayDraft.selectedLens = .firstPrinciples
@@ -5292,7 +5905,9 @@ final class AppStoreStateMachineTests: XCTestCase {
                 answer: "   "
             )
         ]
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个问题") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个教练问题") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是 AI 直接生成任务") == true)
 
         store.todayDraft.state = .reviewQuests
         store.questions[0].answer = "会议目标没有对齐。"
@@ -5306,7 +5921,9 @@ final class AppStoreStateMachineTests: XCTestCase {
                 reflectionQuestion: "目标是否被写下来？"
             )
         ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("完成标准") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("可检查") == true)
 
         store.quests = [
             Quest(
@@ -5316,6 +5933,21 @@ final class AppStoreStateMachineTests: XCTestCase {
                 completionCriteria: "会前写出目标。",
                 expectedResistance: "大家默认直接开会。",
                 reflectionQuestion: "目标是否被写下来？"
+            )
+        ]
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("待验证判断") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是普通待办") == true)
+
+        store.quests = [
+            Quest(
+                type: .main,
+                title: "明确会议目标",
+                whyItMatters: "减少会后返工。",
+                completionCriteria: "会前写出目标。",
+                expectedResistance: "大家默认直接开会。",
+                reflectionQuestion: "目标是否被写下来？",
+                calibrationTarget: "会前写出目标能减少会后返工"
             )
         ]
         XCTAssertNil(store.todayPrimaryActionBlocker)
@@ -5353,7 +5985,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.todayDraft.state, .capture)
         XCTAssertEqual(store.thinkingCards, generatedCards)
-        XCTAssertTrue(store.todayLoopMessage.contains("已回到今日输入"))
+        XCTAssertTrue(store.todayLoopMessage.contains("已回到今天内容"))
     }
 
     func testSupplementCaptureAfterGeneratedCards_appendsTextAndReturnsToCaptureForRegeneration() async throws {
@@ -7479,7 +8111,12 @@ final class AppStoreStateMachineTests: XCTestCase {
         case .reviewQuests:
             try await advanceTo(.answerQuestions)
             store.questions = [
-                ReflectionQuestion(question: "Q?", whyItMatters: "M", answer: "事实是今天已经确认关键证据。")
+                ReflectionQuestion(
+                    question: "Q?",
+                    whyItMatters: "M",
+                    calibrationTarget: "验收标准明确会减少返工",
+                    answer: "事实是今天已经确认关键证据。"
+                )
             ]
             store.submitTodayStep()
             try await waitForState(.reviewQuests)
@@ -8341,6 +8978,22 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.loadsPersistedStateOnLaunch)
     }
 
+    func testVisualQATodayStageSeed_verifyYesterdayKeepsResultCalibrationState() {
+        let store = AppStore(refreshesAIServiceFromKeychain: false)
+
+        store.applyVisualQATodaySeed(
+            environment: [
+                "MINGSI_VISUAL_QA_TODAY_INPUT": "今天先保持验证昨日入口。",
+                "MINGSI_VISUAL_QA_TODAY_STAGE": "verify_yesterday"
+            ]
+        )
+
+        XCTAssertEqual(store.selectedTab, .today)
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(store.todayDraft.rawText, "今天先保持验证昨日入口。")
+        XCTAssertFalse(store.loadsPersistedStateOnLaunch)
+    }
+
     func testVisualQATodayStageSeed_selectLensSeedsConfirmedFallbackCards() {
         let store = AppStore(refreshesAIServiceFromKeychain: false)
 
@@ -8484,6 +9137,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.primaryActionHint, "today.primary-action-hint")
         XCTAssertEqual(TodayAutomationID.previousAction, "today.previous-action")
         XCTAssertEqual(TodayAutomationID.supplementCaptureAction, "today.supplement-capture-action")
+        XCTAssertEqual(TodayAutomationID.returnToReviewForJudgmentAction, "today.return-to-review-for-judgment-action")
         XCTAssertEqual(TodayAutomationID.retryCurrentStepAction, "today.retry-current-step-action")
         XCTAssertEqual(TodayAutomationID.skipPrincipleAction, "today.skip-principle-action")
         XCTAssertEqual(TodayAutomationID.resetAction, "today.reset-action")
@@ -10881,6 +11535,54 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(EvidenceGapType.missingConstraint.displayTitle, "缺约束")
         XCTAssertEqual(EvidenceGapType.missingCalibrationSignal.displayTitle, "缺校准信号")
         XCTAssertEqual(EvidenceGapType.none.displayTitle, "非证据缺口")
+    }
+
+    func testReflectionQuestion_answerPromptGuidesMissingThinkingMaterial() {
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "还缺哪个可观察事实？",
+                whyItMatters: "补证据",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence
+            ).answerTrainingPrompt,
+            "先写事实，再写解释：补一个可观察事实，不需要完整结论。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "怎么验证这个解释？",
+                whyItMatters: "测假设",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption
+            ).answerTrainingPrompt,
+            "写支持或推翻：写出能验证或推翻假设的材料。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "下一步选什么？",
+                whyItMatters: "做取舍",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction
+            ).answerTrainingPrompt,
+            "写选择、取舍依据、完成标准：写出一个可执行选择。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "明天观察什么结果？",
+                whyItMatters: "留信号",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal
+            ).answerTrainingPrompt,
+            "写观察信号和更新条件：写出明天要观察的结果信号。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "判断怎么变？",
+                whyItMatters: "校准判断",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .updateJudgment
+            ).answerTrainingPrompt,
+            "写原判断、依据、更新后判断：写下判断如何更新。"
+        )
     }
 
     func testPrincipleRetrievalSignalDisplayText_mapsKnownSignalsAndFallsBackDeterministically() {

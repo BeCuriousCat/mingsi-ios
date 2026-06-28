@@ -1028,9 +1028,9 @@ struct HistoryView: View {
 
     private var questsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("明日任务")
+            SectionLabel("明日验证")
             if visibleRecord.quests.isEmpty {
-                EmptyStateLine(text: "这一天没有生成明日任务。")
+                EmptyStateLine(text: "这一天没有设计明日验证。")
             } else {
                 if let mainQuest = visibleRecord.mainQuest {
                     QuestRowCompact(
@@ -1351,8 +1351,8 @@ struct ProjectsView: View {
                         }
 
                         ProjectCurrentFocus(
-                            title: store.mainQuest?.title ?? "还没有生成主线任务",
-                            detail: store.mainQuest?.completionCriteria ?? "完成今日复盘后，明日任务会成为项目推进的临时焦点。",
+                            title: store.mainQuest?.title ?? "还没有设计验证行动",
+                            detail: store.mainQuest?.completionCriteria ?? "完成今日复盘后，明日验证会成为项目推进的临时焦点。",
                             canCreateProject: store.canCreateProjectFromCurrentFocus,
                             createProject: {
                                 Task {
@@ -5463,9 +5463,9 @@ private struct ProjectEvidenceLine: View {
         case .thinkingCard:
             return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
         case .quest:
-            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日任务"
+            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
         case .verification:
-            return record.verification?.calibrationNote ?? "次日验证"
+            return record.verification?.calibrationNote ?? "结果校准"
         case .principle:
             return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
         }

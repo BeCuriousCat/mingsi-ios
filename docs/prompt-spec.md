@@ -177,6 +177,44 @@ Rules:
 - Baseline dimensions are checks, not permission to generate a broad questionnaire. Keep one main coaching focus per loop.
 - Do not treat a user's override lens as proof that the coach diagnosis was wrong. Keep `primaryTrainingDimension` tied to the coach recommendation and use `finalTrainingLens` for the generated lens move.
 
+### Non-Appeasing Coach Stance
+
+`generateQuestions`, `generateQuests`, and `extractPrinciple` must tell the LLM
+that MingSi is not a satisfaction-maximizing assistant. The prompts must forbid
+flattering, reassuring, or agreeing only to validate the user.
+
+Empathy is not agreement. The coach may acknowledge pressure, ambiguity, or
+context only when that acknowledgement helps the user face the real thinking
+gap, action-design gap, or reusable-rule gap. It must not turn pressure,
+difficulty, or feeling understood into evidence that the user's current
+judgment is sound.
+
+When the user's input contains a weak claim, missing evidence, premature
+conclusion, vague goal, avoided responsibility, harmful pattern, or unchecked
+experience reuse, the prompt should name the weak thinking move, task-design
+gap, or reusable-rule gap clearly. The critique must target the thinking move,
+action design, or principle candidate, not the person. The prompt must not
+diagnose personality, intelligence, motivation, or hidden intent.
+
+Stage-specific boundaries:
+
+- `generateQuestions` should ask the user to repair the missing thinking move
+  instead of validating confidence.
+- `generateQuests` must not turn a weak judgment into a quest just to let the
+  user proceed. If action is still useful, the quest must test the unresolved
+  evidence gap, skipped tradeoff, premature conclusion, or avoided
+  responsibility.
+- `extractPrinciple` must not turn an unverified story or comforting lesson into
+  a principle. If the lesson lacks evidence, exceptions, trigger boundaries, or
+  a concrete action standard, return `principle_candidate: null`.
+
+Every correction should state:
+
+- what was observed;
+- why it is weak or risky;
+- what ability it trains;
+- what to repair next.
+
 ### Coach Turn State
 
 Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. Prompt context may carry:
@@ -255,6 +293,84 @@ Rules:
 - A user override may proceed, but `auditNote` and `proceedStandard` must keep
   the unresolved gap visible.
 
+### Coach Observation Context
+
+Coach Observation Context gives `generateQuestions` a structured interpretation
+of the observed material before it words reflection questions. It is designed to
+make MingSi show what it noticed in the user's description, what thinking gap is
+still open, what core ability is being trained, and which prior experience might
+need replay, adaptation, or rejection. Prompt context may carry:
+
+```json
+{
+  "coachObservation": {
+    "policyVersion": "coach-observation.local-v1",
+    "providedMaterials": ["event", "action"],
+    "missingMaterials": ["stakeholder", "constraint"],
+    "thinkingProcessObservation": "short description of the user's visible thinking process",
+    "primaryGap": "observation",
+    "secondaryGaps": ["evidence"],
+    "trainingAbility": "communication",
+    "feedback": {
+      "observed": "what MingSi saw in the observed material",
+      "diagnosis": "why the current thinking is incomplete or risky",
+      "training": "the core ability this turn trains",
+      "ask": "the repair question shape the user should answer",
+      "proceedWhen": "what kind of answer is enough to proceed"
+    },
+    "experienceReplayPrompt": "how prior experience should be reproduced, adapted, or rejected"
+  }
+}
+```
+
+The prompt directive key is `coachObservationRule`.
+
+Rules:
+
+- `generateQuestions` must use `coachObservation` before wording questions:
+  cite the observed material, start from `primaryGap`, train the named
+  `trainingAbility`, use `feedback.ask` as the repair shape, and use
+  `experienceReplayPrompt` when prior experience should be reproduced, adapted,
+  or rejected.
+- organizeCards must not receive `coachObservation`; it only cleans current raw
+  input into reviewable cards and must not inherit coach interpretation.
+- `coachObservation` is not source evidence. It is the coach's interpretation of
+  confirmed material and should not create new facts, card titles, or user
+  claims.
+- If `missingMaterials` is non-empty, questions should repair the highest-value
+  missing material instead of asking a broad questionnaire.
+- `feedback.observed`, `feedback.diagnosis`, and `feedback.training` should make
+  the user feel the coach is training a thinking move, not generating a generic
+  AI answer.
+
+### Judgment Sentence Training
+
+MingSi separates two loops:
+
+- 今日理解闭环: today content and 今日复盘 clarify what happened, what the user
+  did, what the user believes, what evidence is missing, and which judgment is
+  now testable.
+- 行动验证闭环: 明日验证 turns one reviewed judgment into a validation action; result
+  calibration later compares the action, evidence, value, and judgment update.
+
+`generateQuestions` must train the user toward this judgment sentence without
+answering for them:
+
+```text
+我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。
+```
+
+For `generateQuestions`, `calibration_target must be X`: the belief,
+prediction, causal explanation, or tradeoff being tested. `expected_update` and
+`proceed_when` should help the user make X, Y, and Z concrete enough to move
+from 今日复盘 into 明日验证.
+
+`generateQuests` must reuse the same sentence instead of starting a new review.
+When reflection answers include `calibrationTarget`, use it as X;
+`main_quest.calibration_target must be X`. The quest's completion criteria
+should preserve Y as the observable signal or artifact, and the reflection
+question should preserve Z as the condition that would update the judgment.
+
 ### Quest
 
 ```json
@@ -298,6 +414,7 @@ Question output can be flagged with:
 - `missingTrainingDimensionAlignment`: question does not serve the primary training dimension or any baseline training dimension.
 - `missingPrimaryTrainingDimensionFocus`: first question does not serve the primary training dimension, so the coach-led main focus is being diluted by baseline checks.
 - `missingCoachTurnAlignment`: question ignores the current coach turn phase, readiness, or recommended move. For example, a `not_ready` turn that recommends evidence gathering should not accept a generic action-choice question.
+- `appeasingWithoutCorrection`: question, quest, or principle flatters, reassures, validates, increases confidence without naming a missing thinking move, evidence gap, risk, repair action, action-design gap, or reusable-rule gap, or acknowledges an unresolved gap while still letting the user proceed without repair.
 - `repeatedAvoidedLensMove`: question repeats a `lensMove` that recent verified `lensFeedback` marked as `avoid`.
 - `unadjustedLensMove`: question repeats a `lensMove` and calibration target that recent verified `lensFeedback` marked as `adjust`, instead of making the move smaller or more observable.
 - `missingReinforcedLensMove`: question batch ignores a `lensMove` that recent verified `lensFeedback` marked as `reinforce`.
@@ -314,6 +431,7 @@ Selected built-in lens move mapping:
 
 Quest output can be flagged with:
 
+- `appeasingWithoutCorrection`: quest validates the user's current judgment or confidence without naming the unresolved evidence gap, skipped tradeoff, premature conclusion, avoided responsibility, or repair action.
 - `busyworkQuest`: quest looks productive but does not reduce uncertainty, test a judgment, or create a calibration signal.
 - `weakCompletionCriteria`: quest completion criteria are too short or not observable enough.
 - `vagueCalibrationTarget`: quest calibration target is too abstract to verify tomorrow.
@@ -330,6 +448,7 @@ Verification output can be flagged with:
 
 Principle output can be flagged with:
 
+- `appeasingWithoutCorrection`: principle turns reassurance, confidence, or an unverified lesson into a reusable rule without naming missing evidence, exceptions, trigger boundary, or action standard.
 - `missingPrincipleSourceGrounding`: principle candidate cites no confirmed source card, so the reusable rule cannot be traced back to today's evidence.
 - `weakPrincipleActionability`: principle candidate is grounded but still too slogan-like, lacks at least two concrete next-time actions, or has no observable success criteria.
 
@@ -668,7 +787,9 @@ Instruction:
 ```text
 Review yesterday's quest, completion status, and actual value.
 Verify Quest input includes targetJudgment when yesterday's quest had a calibration target.
+Verify Quest input includes judgmentUpdate (`confirmed | adjusted | rejected`) from the user's result calibration choice.
 Compare targetJudgment with actual evidence when targetJudgment is present.
+Use judgmentUpdate as the user's current stance, then check whether the evidence supports that stance.
 Name the observable evidence or signal that proves what actually happened.
 Compare completion criteria or acceptance criteria with the evidence before judging completion quality.
 Identify whether the task was well-chosen, too vague, too large, blocked, avoided, or lower-value than expected.

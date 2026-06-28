@@ -16,7 +16,7 @@ final class MingSiUITests: XCTestCase {
         acceptPrescription.tap()
         tapPrimaryAction(in: app, expectingState: "answer_questions")
 
-        typeFirstQuestionAnswer("先验证最小行动是否真的降低返工。", in: app)
+        typeFirstQuestionAnswer("事实是会议结束后没有明确负责人；验收标准是明天会议记录里写出负责人和可检查结果，再验证最小行动是否降低返工。", in: app)
         tapPrimaryAction(in: app, expectingState: "review_quests")
 
         tapPrimaryAction(in: app, expectingState: "extract_principle")
@@ -31,6 +31,9 @@ final class MingSiUITests: XCTestCase {
 
         tapPrimaryAction(in: app, expectingState: "select_lens")
 
+        XCTAssertTrue(app.staticTexts["明思观察了你的材料"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["诊断主要缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["推荐训练处方"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前阶段：补证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["建议：先减缓收敛，补齐关键证据。"].waitForExistence(timeout: 4))
@@ -99,11 +102,43 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.buttons["today.primary-action"].waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureShowsMaterialScaffold() throws {
+        let app = seededTodayApp(stage: "capture")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["今日理解闭环"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今天内容 → 今日复盘"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["行动验证闭环"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["明日验证 → 结果校准"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今天内容"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["这里只收集今天内容：事实、动作、感受和想法；先不复盘，也不写明天。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本页只写今天内容"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["基础能力训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["讲清楚一件事"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["沟通力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["思考力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["执行力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["发生了什么"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我怎么做"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我怎么想"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["问题类型"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复盘问题"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["描述力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["观察力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["分析力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["判断力"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["校准力"].waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsSeedCanTypeThroughAccessibilityIdentifier() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
 
-        typeFirstQuestionAnswer("先验证最小行动是否真的降低返工。", in: app)
+        typeFirstQuestionAnswer("事实是会议结束后没有明确负责人；验收标准是明天会议记录里写出负责人和可检查结果，再验证最小行动是否降低返工。", in: app)
 
         let primaryAction = app.buttons["today.primary-action"]
         XCTAssertTrue(primaryAction.exists)
@@ -115,20 +150,77 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今日复盘"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["明思观察你怎么讲述、判断和跳步，再指出当前最该补的思考材料。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本页只复盘今天"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["能力训练诊断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["材料分离训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["事实、感受、解释、判断、行动"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["讲述训练"].waitForExistence(timeout: 4))
+        let narrativeTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "讲清楚一件事")
+        ).firstMatch
+        XCTAssertTrue(narrativeTraining.waitForExistence(timeout: 4))
+        let abilityDiagnosis = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "本轮主练：思考力中的判断力")
+        ).firstMatch
+        XCTAssertTrue(abilityDiagnosis.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
+        let providedMaterials = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "事实")
+        ).firstMatch
+        XCTAssertTrue(providedMaterials.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先补"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我观察到"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["当前主要缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本轮训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["请你补充"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
         let repairPrompt = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "刚才的回答")
         ).firstMatch
         XCTAssertTrue(repairPrompt.waitForExistence(timeout: 4))
+        let experienceReproduceTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
+        ).firstMatch
+        XCTAssertTrue(experienceReproduceTraining.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["经验判断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["复现：照用哪条做法？"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["调整：哪些条件不同？"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复现：条件相同，可以照用哪条做法"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["调整：条件不同，哪部分要改"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["作答训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["不是 AI 答案"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["补盲区"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["复现经验"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["安排执行"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["输入材料"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先写事实，再写解释：补一个可观察事实，不需要完整结论。"].waitForExistence(timeout: 4))
+    }
+
+    func testTodaySelectLensShowsObservationInventoryBeforeLensChoice() throws {
+        let app = seededTodayApp(stage: "select_lens")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.select_lens"].waitForExistence(timeout: 8))
+        let coachObservationTitle = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "coach observation")
+        ).firstMatch
+        XCTAssertTrue(coachObservationTitle.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["能力训练诊断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先补"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["我观察到"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["当前主要缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本轮训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["请你补充"].waitForExistence(timeout: 4))
     }
 
     func testTodayAnswerQuestionsShowsCoachGapPreviewAfterTyping() throws {
@@ -139,10 +231,24 @@ final class MingSiUITests: XCTestCase {
         typeFirstQuestionAnswer("先让 Alex 写清验收标准。", in: app)
 
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
+        let trainingRepair = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "本轮正在练思考力中的证据意识")
+        ).firstMatch
+        XCTAssertTrue(trainingRepair.waitForExistence(timeout: 4))
         let gapPreview = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "观察事实")
         ).firstMatch
         XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["判断句训练"].waitForExistence(timeout: 4))
+        let judgmentTemplate = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "我现在相信 X")
+        ).firstMatch
+        XCTAssertTrue(judgmentTemplate.waitForExistence(timeout: 4))
+        let calibrationTemplate = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "明天用 Y")
+        ).firstMatch
+        XCTAssertTrue(calibrationTemplate.waitForExistence(timeout: 4))
     }
 
     func testTodayAnswerQuestionsCanNavigateBackToThinkingCardsWhileAnswerFieldIsActive() throws {
@@ -211,11 +317,52 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["闭环二：明日验证与结果校准"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["把今日复盘后的一个判断变成明天的验证行动；明天回来只校准结果，不继续写今天复盘。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["明日验证"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今日复盘已结束；下面把今天的判断转成明天可验证的行动，不是继续写总结。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本页只设计明天的验证行动"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今日复盘交接点"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["今天待验证判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["下面的验证行动只验证这个判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["校准目标"].waitForExistence(timeout: 4))
-        let calibrationTarget = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "明天最值得验证的关键判断")
-        ).firstMatch
-        XCTAssertTrue(calibrationTarget.waitForExistence(timeout: 4))
+    }
+
+    func testTodayReviewQuestsMissingCalibrationTargetCanReturnToReview() throws {
+        let app = seededTodayApp(stage: "review_quests", missingCalibrationTarget: true)
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["今天待验证判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["进入条件：先补上今天待验证判断，再保存明日验证。 训练理由：验证行动要验证今天的判断，不是普通待办。"].waitForExistence(timeout: 4))
+
+        let repairAction = app.buttons["today.return-to-review-for-judgment-action"]
+        scrollToElement(repairAction, in: app)
+        repairAction.tap()
+
+        XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["本页只复盘今天"].waitForExistence(timeout: 4))
+    }
+
+    func testTodayVerifyYesterdayFramesResultCalibration() throws {
+        let app = seededTodayApp(stage: "verify_yesterday")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.verify_yesterday"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["闭环二：结果校准"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["只回看昨天设计的验证行动：做没做、有没有价值、判断如何更新；完成后才进入今天内容。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["结果校准"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先校准昨天的明日验证，再开始收集今天的新材料。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本页只校准昨天结果"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["只检查做没做、有没有实际价值、昨天判断要不要更新；新的今日内容在下一段填写。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["昨天判断怎么更新？"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["确认判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["调整判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["推翻判断"].waitForExistence(timeout: 4))
     }
 
     func testTodayReviewQuestsSeedShowsQuestTrainingTarget() throws {
@@ -223,6 +370,11 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["验证判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["完成证据"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["阻力预案"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["结果校准信号"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["执行力训练"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练原则"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["Visual QA - 会前确认负责人"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["命中信号：写出负责人"].waitForExistence(timeout: 4))
@@ -349,7 +501,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(recallAudit.label.contains("Owner keyword was a false positive."))
     }
 
-    private func seededTodayApp(stage: String) -> XCUIApplication {
+    private func seededTodayApp(stage: String, missingCalibrationTarget: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = """
         事实：会议结束后没有明确负责人。
@@ -358,6 +510,9 @@ final class MingSiUITests: XCTestCase {
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = stage
         app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        if missingCalibrationTarget {
+            app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MISSING_CALIBRATION_TARGET"] = "1"
+        }
         return app
     }
 
@@ -380,12 +535,12 @@ final class MingSiUITests: XCTestCase {
         let scrollView = scrollViews.firstMatch
         XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
 
-        var remainingScrolls = 10
+        var remainingScrolls = 12
         while (!element.exists || !isElementInTappableScrollArea(element, app: app)) && remainingScrolls > 0 {
             if element.exists, element.frame.midY < app.frame.height * 0.24 {
-                scrollView.swipeDown()
+                drag(scrollView, fromY: 0.35, toY: 0.62)
             } else {
-                scrollView.swipeUp()
+                drag(scrollView, fromY: 0.72, toY: 0.45)
             }
             remainingScrolls -= 1
         }
@@ -402,18 +557,38 @@ final class MingSiUITests: XCTestCase {
 
     private func typeFirstQuestionAnswer(_ text: String, in app: XCUIApplication) {
         let answerFields = app.textFields.matching(identifier: "today.question.answer-field")
-        var answerField = answerFields.element(boundBy: 0)
+        let answerField = answerFields.element(boundBy: 0)
         XCTAssertTrue(answerField.waitForExistence(timeout: 8))
-
-        let scrollView = app.scrollViews.firstMatch
-        if scrollView.exists, answerField.frame.midY > app.frame.height * 0.58 {
-            scrollView.swipeUp()
-            answerField = answerFields.element(boundBy: 0)
-            XCTAssertTrue(answerField.waitForExistence(timeout: 4))
-        }
+        scrollToElement(answerField, in: app)
+        positionQuestionAnswerFieldForTyping(answerField, in: app)
 
         answerField.tap()
         answerField.typeText(text)
+    }
+
+    private func positionQuestionAnswerFieldForTyping(_ element: XCUIElement, in app: XCUIApplication) {
+        let scrollView = app.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
+
+        var remainingAdjustments = 4
+        while element.exists, element.frame.minY < app.frame.minY + 96, remainingAdjustments > 0 {
+            drag(scrollView, fromY: 0.35, toY: 0.62)
+            remainingAdjustments -= 1
+        }
+
+        while element.exists, element.frame.maxY > app.frame.height * 0.74, remainingAdjustments > 0 {
+            drag(scrollView, fromY: 0.72, toY: 0.45)
+            remainingAdjustments -= 1
+        }
+
+        XCTAssertTrue(element.exists)
+        XCTAssertTrue(element.frame.minY >= app.frame.minY + 96)
+        XCTAssertTrue(element.frame.maxY <= app.frame.height * 0.74)
+    }
+
+    private func drag(_ scrollView: XCUIElement, fromY: CGFloat, toY: CGFloat) {
+        scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: fromY))
+            .press(forDuration: 0.01, thenDragTo: scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: toY)))
     }
 
     private func tapPrimaryAction(in app: XCUIApplication, expectingState state: String) {

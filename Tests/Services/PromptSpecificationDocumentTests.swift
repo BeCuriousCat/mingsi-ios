@@ -50,6 +50,28 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("Do not rely on the deterministic quality gate as the first place where training-dimension alignment happens"))
     }
 
+    func testPromptSpecDocumentsNonAppeasingCoachStance() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Non-Appeasing Coach Stance"))
+        XCTAssertTrue(spec.contains("satisfaction-maximizing assistant"))
+        XCTAssertTrue(spec.contains("must forbid"))
+        XCTAssertTrue(spec.contains("flattering, reassuring, or agreeing"))
+        XCTAssertTrue(spec.contains("Empathy is not agreement"))
+        XCTAssertTrue(spec.contains("pressure, ambiguity, or"))
+        XCTAssertTrue(spec.contains("context only when"))
+        XCTAssertTrue(spec.contains("It must not turn pressure"))
+        XCTAssertTrue(spec.contains("generateQuests"))
+        XCTAssertTrue(spec.contains("extractPrinciple"))
+        XCTAssertTrue(spec.contains("weak claim, missing evidence, premature"))
+        XCTAssertTrue(spec.contains("critique must target the thinking move"))
+        XCTAssertTrue(spec.contains("action design, or principle candidate, not the person"))
+        XCTAssertTrue(spec.contains("must not turn a weak judgment into a quest"))
+        XCTAssertTrue(spec.contains("must not turn an unverified story or comforting lesson into"))
+        XCTAssertTrue(spec.contains("personality, intelligence, motivation, or hidden intent"))
+        XCTAssertTrue(spec.contains("appeasingWithoutCorrection"))
+    }
+
     func testPromptSpecDocumentsCoachTurnStateForStatefulCoachLoop() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
         let contextPRD = try readRepositoryFile("docs/prompt-context-engineering-prd.md")
@@ -90,6 +112,31 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("missing thinking move"))
         XCTAssertTrue(spec.contains("not an AI answer"))
         XCTAssertTrue(spec.contains("organizeCards must not receive `coachTeachingPlan`"))
+    }
+
+    func testPromptSpecDocumentsCoachObservationContext() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Coach Observation Context"))
+        XCTAssertTrue(spec.contains("coachObservation"))
+        XCTAssertTrue(spec.contains("coachObservationRule"))
+        XCTAssertTrue(spec.contains("observed material"))
+        XCTAssertTrue(spec.contains("primaryGap"))
+        XCTAssertTrue(spec.contains("trainingAbility"))
+        XCTAssertTrue(spec.contains("feedback.ask"))
+        XCTAssertTrue(spec.contains("organizeCards must not receive `coachObservation`"))
+    }
+
+    func testPromptSpecDocumentsXYZJudgmentSentenceTraining() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Judgment Sentence Training"))
+        XCTAssertTrue(spec.contains("我现在相信 X"))
+        XCTAssertTrue(spec.contains("明天用 Y"))
+        XCTAssertTrue(spec.contains("如果出现 Z"))
+        XCTAssertTrue(spec.contains("generateQuestions"))
+        XCTAssertTrue(spec.contains("generateQuests"))
+        XCTAssertTrue(spec.contains("calibration_target must be X"))
     }
 
     func testPromptContextPRDDocumentsCoachContextMemoryV1() throws {

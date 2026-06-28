@@ -1065,6 +1065,16 @@ final class AppDatabase {
             }
         }
 
+        migrator.registerMigration("v30_daily_entry_yesterday_judgment_update") { db in
+            guard try db.tableExists("daily_entries") else { return }
+            let columns = Set(try db.columns(in: "daily_entries").map(\.name))
+            guard !columns.contains("yesterday_judgment_update") else { return }
+
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "yesterday_judgment_update", .text)
+            }
+        }
+
         return migrator
     }
 }
@@ -1822,6 +1832,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
     var customLensQuestionsJson: String?
     var yesterdayCompletion: String?
     var yesterdayValueRating: String?
+    var yesterdayJudgmentUpdate: String?
     var state: String
     var privacyFlagsJson: String?
     var createdAt: String
@@ -1847,6 +1858,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         customLensQuestionsJson = try? PersistenceJSON.encode(draft.customLensQuestions)
         yesterdayCompletion = draft.yesterdayCompletion?.rawValue
         yesterdayValueRating = draft.yesterdayValueRating?.rawValue
+        yesterdayJudgmentUpdate = draft.yesterdayJudgmentUpdate?.rawValue
         state = draft.state.rawValue
         privacyFlagsJson = nil
         createdAt = now
@@ -1894,6 +1906,15 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         } else {
             valueRating = nil
         }
+        let judgmentUpdate: YesterdayJudgmentUpdate?
+        if let yesterdayJudgmentUpdate {
+            guard let parsedJudgmentUpdate = YesterdayJudgmentUpdate(rawValue: yesterdayJudgmentUpdate) else {
+                throw PersistenceError.invalidStoredValue("daily_entries.yesterday_judgment_update")
+            }
+            judgmentUpdate = parsedJudgmentUpdate
+        } else {
+            judgmentUpdate = nil
+        }
         return DailyEntryDraft(
             id: uuid,
             date: Date(mingsiStorageString: date) ?? .now,
@@ -1907,6 +1928,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
             customLensQuestions: customLensQuestions,
             yesterdayCompletion: completion,
             yesterdayValueRating: valueRating,
+            yesterdayJudgmentUpdate: judgmentUpdate,
             state: state
         )
     }

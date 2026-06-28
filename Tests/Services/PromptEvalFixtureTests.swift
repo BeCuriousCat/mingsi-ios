@@ -44,7 +44,7 @@ final class PromptEvalFixtureTests: XCTestCase {
                   "importance": "high",
                   "sensitivity": "normal",
                   "confidence": "high",
-                  "reason": "可转化为明日任务。"
+                  "reason": "可转化为明日验证。"
                 }
               ]
             }
@@ -263,7 +263,9 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.source_card_grounding" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.calibration_target_declared" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.lens_feedback_tunes_moves" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.prompt_declares_non_appeasing_coach_stance" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_functional_coach_fields" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_blocks_appeasing_output" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_blocks_generic_uncalibratable_output" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_honors_avoid_lens_moves" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_adjusted_lens_move" } ?? false)
@@ -281,6 +283,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         let questsRun = runs.first { $0.promptId == PromptID.generateQuests.rawValue }
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.calibration_signal_task" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_blocks_busywork_without_calibration" } ?? false)
+        XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_blocks_appeasing_output" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_source_grounding" } ?? false)
         XCTAssertTrue(questsRun?.caseResults.contains { $0.caseId == "quests.quality_gate_requires_selected_lens_move" } ?? false)
 
@@ -291,6 +294,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         let principleRun = runs.first { $0.promptId == PromptID.extractPrinciple.rawValue }
         XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_source_grounding" } ?? false)
         XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_requires_actionability" } ?? false)
+        XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_blocks_appeasing_output" } ?? false)
     }
 
     func testPromptCoachingQualityPolicy_flagsGenericQuestionsVagueTargetsAndAvoidedMoves() throws {
@@ -483,7 +487,7 @@ final class PromptEvalFixtureTests: XCTestCase {
             ReflectionQuestion(
                 question: "明天应该优先做哪个动作来减少会议返工？",
                 whyItMatters: "它帮助选择下一步动作。",
-                evidenceGapType: .none,
+                evidenceGapType: EvidenceGapType.none,
                 answerUse: .chooseAction,
                 lensMove: .leverageTradeoff,
                 sourceCardTitles: ["会议返工来自验收口径不清"],
@@ -515,6 +519,107 @@ final class PromptEvalFixtureTests: XCTestCase {
         let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
 
         XCTAssertTrue(issues.contains { $0.reason == .missingFunctionalCoachField })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAppeasingQuestionsWithoutCorrection() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "你已经想得很充分了，可以继续按这个方向推进吗？",
+                whyItMatters: "你的想法很有价值，这个问题帮助你更有信心地行动。",
+                whyNow: "当前最重要的是认可你已经做出的判断。",
+                expectedUpdate: "答案会让你更确定自己原来的方向。",
+                proceedWhen: "当你觉得有信心时就可以推进。",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "继续按当前判断推进"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsEmpathyUsedAsAgreementWithoutCorrection() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "我理解你最近压力很大，要不要先继续按原计划推进？",
+                whyItMatters: "你的处境确实不容易，这个问题帮助你先保护节奏。",
+                whyNow: "当前最重要的是承认这个情况很困难。",
+                expectedUpdate: "答案会让你觉得现在这样也合理。",
+                proceedWhen: "当你觉得被理解时就可以推进。",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "继续按原计划推进"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAcknowledgedGapThatStillLetsUserProceed() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "虽然现在证据不足，但你压力很大，是否先继续推进当前方案？",
+                whyItMatters: "它承认目前还有证据缺口，同时帮助你保持推进节奏。",
+                whyNow: "当前可以先继续推进，后面再慢慢补证据。",
+                expectedUpdate: "答案会让你决定是否维持原方案。",
+                proceedWhen: "当你决定先推进时就可以进入行动。",
+                evidenceGapType: .missingObservation,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "继续按当前方案推进能减少会议返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAppeasingQuestsWithoutCorrection() throws {
+        let quests = [
+            Quest(
+                type: .main,
+                title: "继续按当前方案推进",
+                whyItMatters: "你已经想得很充分了，这会让你更有信心。",
+                completionCriteria: "明天完成推进并确认自己更有信心。",
+                expectedResistance: "可能担心还没准备好，但你的判断已经够好了。",
+                reflectionQuestion: "你是否更认可自己当前的方向？",
+                calibrationTarget: "继续按当前判断推进",
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"]
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuests(quests)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsAppeasingPrinciplesWithoutCorrection() throws {
+        let principles = [
+            PrincipleAsset(
+                title: "相信自己当前判断",
+                summary: "你的想法很有价值，后续可以继续按当前判断推进。",
+                triggerContext: "当你觉得方向已经明确时。",
+                actions: ["认可自己的判断", "继续推进当前方案"],
+                successCriteria: "自己觉得更有信心。",
+                exceptions: "无。",
+                sourceCardTitles: ["会议返工来自验收口径不清"]
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluatePrinciples(principles)
+
+        XCTAssertTrue(issues.contains { $0.reason == .appeasingWithoutCorrection })
     }
 
     func testPromptCoachingQualityPolicy_allowsQuestionAlignedToEvidenceTrainingDimension() throws {
@@ -868,14 +973,14 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertEqual(gate.manualReviewCount, PromptID.allCases.count - 1)
         let candidate = try XCTUnwrap(gate.rollbackCandidates.first)
         XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
-        XCTAssertEqual(candidate.currentVersion, "1.7.0")
-        XCTAssertEqual(candidate.rollbackTargetVersion, "1.6.0")
+        XCTAssertEqual(candidate.currentVersion, "1.11.0")
+        XCTAssertEqual(candidate.rollbackTargetVersion, "1.10.0")
         XCTAssertEqual(candidate.lastPassingRunId, rollbackPassingRun.id)
         XCTAssertEqual(candidate.reason, .failedCases)
         XCTAssertTrue(gate.blockingIssues.contains {
             $0.promptId == PromptID.generateQuestions.rawValue &&
             $0.reason == .failedCases &&
-                $0.rollbackCandidate?.rollbackTargetVersion == "1.6.0"
+                $0.rollbackCandidate?.rollbackTargetVersion == "1.10.0"
         })
     }
 

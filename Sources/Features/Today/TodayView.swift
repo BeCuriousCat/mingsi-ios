@@ -6,6 +6,7 @@ enum TodayAutomationID {
     static let primaryActionHint = "today.primary-action-hint"
     static let previousAction = "today.previous-action"
     static let supplementCaptureAction = "today.supplement-capture-action"
+    static let returnToReviewForJudgmentAction = "today.return-to-review-for-judgment-action"
     static let retryCurrentStepAction = "today.retry-current-step-action"
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
@@ -19,6 +20,9 @@ enum TodayAutomationID {
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
     static let questionAnswerField = "today.question.answer-field"
+    static func questionAnswerField(questionId: String) -> String {
+        "today.question.answer-field.\(questionId)"
+    }
     static let questEditAction = "today.quest.edit-action"
     static let questTrainingPrinciplePicker = "today.quest.training-principle-picker"
     static let principleFeedbackNoteField = "today.principle.feedback.note-field"
@@ -55,6 +59,13 @@ enum TodayAutomationID {
     }
 }
 
+private struct LoopBoundaryCopy {
+    let title: String
+    let body: String
+    let icon: String
+    let tint: Color
+}
+
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
     @State private var isCaptureFocused = false
@@ -75,6 +86,7 @@ struct TodayView: View {
                                 proxy.scrollTo(TodayScrollAnchor.top, anchor: .top)
                             }
                         }
+                        loopBoundaryHint
 
                         switch store.todayDraft.state {
                         case .verifyYesterday:
@@ -122,6 +134,59 @@ struct TodayView: View {
         }
     }
 
+    private var loopBoundaryHint: some View {
+        let boundary = currentLoopBoundary
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: boundary.icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(boundary.tint)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(boundary.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(boundary.tint)
+                Text(boundary.body)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(boundary.tint.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(boundary.tint.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private var currentLoopBoundary: LoopBoundaryCopy {
+        switch store.todayDraft.state {
+        case .verifyYesterday:
+            return LoopBoundaryCopy(
+                title: "闭环二：结果校准",
+                body: "只回看昨天设计的验证行动：做没做、有没有价值、判断如何更新；完成后才进入今天内容。",
+                icon: "scope",
+                tint: DS.caution
+            )
+        case .reviewQuests, .extractPrinciple, .sessionComplete:
+            return LoopBoundaryCopy(
+                title: "闭环二：明日验证与结果校准",
+                body: "把今日复盘后的一个判断变成明天的验证行动；明天回来只校准结果，不继续写今天复盘。",
+                icon: "flag.checkered",
+                tint: DS.success
+            )
+        case .capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions:
+            return LoopBoundaryCopy(
+                title: "闭环一：今天内容与今日复盘",
+                body: "先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。",
+                icon: "person.text.rectangle",
+                tint: DS.brick
+            )
+        }
+    }
+
     // MARK: - Header
 
     private var header: some View {
@@ -158,7 +223,7 @@ struct TodayView: View {
                         Button {
                             store.retryCurrentAIStep()
                         } label: {
-                            Label("重试 AI", systemImage: "arrow.clockwise")
+                            Label("重试当前步骤", systemImage: "arrow.clockwise")
                         }
                         .font(.footnote.weight(.semibold))
                         .buttonStyle(.bordered)
@@ -171,9 +236,55 @@ struct TodayView: View {
     }
 
     private func loopProgress(scrollToTop: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            loopProgressGroup(
+                title: "今日理解闭环",
+                route: "今天内容 → 今日复盘",
+                states: [.capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions],
+                tint: DS.brick,
+                scrollToTop: scrollToTop
+            )
+
+            loopProgressGroup(
+                title: "行动验证闭环",
+                route: "明日验证 → 结果校准",
+                states: [.reviewQuests, .extractPrinciple, .sessionComplete, .verifyYesterday],
+                tint: DS.success,
+                scrollToTop: scrollToTop
+            )
+
+            Text(progressCaption)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+        }
+        .padding(.top, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: scrollToTop)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("今日流程进度")
+        .accessibilityHint("点按返回今日顶部")
+    }
+
+    private func loopProgressGroup(
+        title: String,
+        route: String,
+        states: [DailyLoopState],
+        tint: Color,
+        scrollToTop: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(route)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                Spacer(minLength: 0)
+            }
+
             HStack(spacing: 6) {
-                ForEach(DailyLoopState.allCases) { state in
+                ForEach(states) { state in
                     Button {
                         if store.canNavigateTodayLoop(to: state) {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -186,25 +297,15 @@ struct TodayView: View {
                     } label: {
                         Capsule()
                             .fill(progressColor(for: state))
-                            .frame(height: 8)
-                            .opacity(store.canNavigateTodayLoop(to: state) || state == store.todayDraft.state ? 1 : 0.55)
+                            .frame(height: 7)
+                            .opacity(store.canNavigateTodayLoop(to: state) || state == store.todayDraft.state ? 1 : 0.5)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("回到\(state.title)")
                     .accessibilityHint(store.canNavigateTodayLoop(to: state) ? "点按回到该步骤编辑" : "该步骤暂不可返回")
                 }
             }
-
-            Text(progressCaption)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
         }
-        .padding(.top, 2)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: scrollToTop)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("今日流程进度")
-        .accessibilityHint("点按返回今日顶部")
     }
 
     // MARK: - Verify Yesterday
@@ -213,11 +314,23 @@ struct TodayView: View {
     // Design: Warm, reflective - not a form, a moment of honesty
     private var verifyYesterdaySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("先回看昨天", subtitle: "用一个真实结果校准昨天的判断。")
+            phaseBoundaryCard(
+                title: "结果校准",
+                body: "先校准昨天的明日验证，再开始收集今天的新材料。",
+                icon: "scope",
+                tint: DS.caution
+            )
+            BriefRow(
+                title: "本页只校准昨天结果",
+                body: "只检查做没做、有没有实际价值、昨天判断要不要更新；新的今日内容在下一段填写。",
+                accent: DS.caution
+            )
+
+            stepLabel("校准昨日验证", subtitle: "用一个真实结果校准昨天的判断。")
 
             if let quest = store.mainQuest ?? store.quests.first {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("昨日主线任务")
+                    Text("昨日验证行动")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(quest.title)
@@ -253,6 +366,20 @@ struct TodayView: View {
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("昨天判断怎么更新？")
+                    .font(.subheadline.weight(.medium))
+                HStack(spacing: 10) {
+                    ForEach(YesterdayJudgmentUpdate.allCases) { update in
+                        choiceChip(
+                            title: update.title,
+                            isSelected: store.todayDraft.yesterdayJudgmentUpdate == update,
+                            action: { store.selectYesterdayJudgmentUpdate(update) }
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -262,7 +389,21 @@ struct TodayView: View {
     // Design: Generous text area, inviting, feels like opening a notebook
     private var captureSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("今天发生了什么？", subtitle: "先收集原始材料，不急着写成文章。")
+            phaseBoundaryCard(
+                title: "今天内容",
+                body: "这里只收集今天内容：事实、动作、感受和想法；先不复盘，也不写明天。",
+                icon: "text.bubble",
+                tint: DS.accent
+            )
+            BriefRow(
+                title: "本页只写今天内容",
+                body: "把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。",
+                accent: DS.accent
+            )
+
+            stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
+
+            reviewScaffoldView
 
             CaptureTextView(text: Binding(
                 get: { store.todayDraft.rawText },
@@ -315,6 +456,80 @@ struct TodayView: View {
 
             starterPills
         }
+    }
+
+    private var reviewScaffoldView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("基础能力训练")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                Text("不是让 AI 替你总结，而是训练你把复杂事情说清、想清、安排清。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 6) {
+                trainingPill("沟通力")
+                trainingPill("思考力")
+                trainingPill("执行力")
+                Spacer(minLength: 0)
+            }
+
+            Text("讲清楚一件事")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+
+            BriefRow(title: "发生了什么", body: "先把背景、触发点、关键人物或对象讲清楚。", accent: DS.accent)
+            BriefRow(title: "我怎么做", body: "写出你的动作、选择、沟通或没有做的事。", accent: DS.brick)
+            BriefRow(title: "我怎么想", body: "说明当时基于哪些事实、假设、目标或取舍做判断。", accent: DS.caution)
+            BriefRow(title: "问题类型", body: "先判断这是对象理解、目标不清、证据不足、协作断点、执行约束，还是反馈缺失。", accent: DS.graphite)
+            BriefRow(title: "复盘问题", body: "最后写一个想追问自己的问题，让后续分析知道该从哪里切入。", accent: DS.success)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("训练要点")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .textCase(.uppercase)
+                HStack(spacing: 6) {
+                    trainingSkillTag("描述力")
+                    trainingSkillTag("观察力")
+                    trainingSkillTag("分析力")
+                }
+                HStack(spacing: 6) {
+                    trainingSkillTag("判断力")
+                    trainingSkillTag("执行力")
+                    trainingSkillTag("校准力")
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+
+    private func trainingPill(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(DS.accent)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(DS.accent.opacity(0.10), in: Capsule())
+    }
+
+    private func trainingSkillTag(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(DS.mutedInk)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04), in: Capsule())
     }
 
     // MARK: - Organizing
@@ -464,10 +679,25 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("回答问题", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
+            phaseBoundaryCard(
+                title: "今日复盘",
+                body: "明思观察你怎么讲述、判断和跳步，再指出当前最该补的思考材料。",
+                icon: "person.text.rectangle",
+                tint: DS.brick
+            )
+            BriefRow(
+                title: "本页只复盘今天",
+                body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
+                accent: DS.brick
+            )
 
-            if let preview = store.coachAnswerFeedbackPreview {
-                answerFeedbackPreviewView(preview)
+            stepLabel("教练追问", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
+            observationTrainingFrame(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
+
+            if let feedback = store.coachAnswerTrainingFeedback {
+                answerFeedbackPreviewView(feedback)
             } else if let teachingPlan = store.coachTurnState.map({
                 CoachTeachingPolicy().makePlan(
                     turn: $0,
@@ -487,33 +717,127 @@ struct TodayView: View {
             }
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
-                QuestionCardView(question: question, answer: bindingForQuestion(questionID: question.id, fallbackIndex: index))
+                QuestionCardView(
+                    question: question,
+                    answer: bindingForQuestion(questionID: question.id, fallbackIndex: index),
+                    isPrimaryAnswerField: index == 0
+                )
             }
         }
     }
 
-    private func answerFeedbackPreviewView(_ turn: CoachTurnState) -> some View {
+    private func observationTrainingFrame(_ observation: CoachObservation) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: turn.readiness == .ready ? "当前回答" : "当前仍缺",
-                body: turn.readiness == .ready ? "已补上本轮关键缺口，可以转成明天可验证的行动。" : answerFeedbackGapLine(for: turn),
-                accent: turn.readiness == .ready ? DS.success : DS.brick
+                title: "能力训练诊断",
+                body: "本轮主练：\(observation.trainingAbility.trainingTitle)。\(observation.trainingAbility.coachingMeaning)",
+                accent: DS.accent
             )
-            teachingRouteView(
-                CoachTeachingPolicy().makePlan(
-                    turn: turn,
-                    prescription: store.trainingPrescription
-                )
+            BriefRow(
+                title: "材料分离训练",
+                body: "事实、感受、解释、判断、行动",
+                accent: DS.caution
             )
+            BriefRow(title: "讲述训练", body: observation.narrativeTrainingLine, accent: DS.accent)
+            materialInventoryRows(for: observation)
+            BriefRow(title: "我观察到", body: observation.feedback.observed, accent: DS.accent)
+            BriefRow(title: "当前主要缺口", body: observation.feedback.diagnosis, accent: DS.brick)
+            BriefRow(title: "本轮训练", body: observation.feedback.training, accent: DS.caution)
+            BriefRow(title: "请你补充", body: observation.feedback.ask, accent: DS.accent)
+            BriefRow(title: "推进标准", body: observation.feedback.proceedWhen, accent: DS.success)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func materialInventoryRows(for observation: CoachObservation) -> some View {
+        BriefRow(
+            title: "已说清",
+            body: materialLine(for: observation.providedMaterials, fallback: "还没有足够材料"),
+            accent: DS.success
+        )
+        BriefRow(
+            title: "先补",
+            body: materialLine(for: observation.missingMaterials, fallback: "暂无明确缺口"),
+            accent: DS.brick
+        )
+    }
+
+    private func materialLine(
+        for materials: [CoachObservationMaterial],
+        fallback: String
+    ) -> String {
+        let titles = materials
+            .map(\.displayTitle)
+            .filter { !$0.isEmpty }
+        return titles.isEmpty ? fallback : titles.joined(separator: "、")
+    }
+
+    private func answerFeedbackPreviewView(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: "你刚补上",
+                body: feedback.repairedLine,
+                accent: DS.success
+            )
+            BriefRow(
+                title: "当前仍缺",
+                body: feedback.missingLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.brick
+            )
+            BriefRow(
+                title: "能否进入明日验证",
+                body: feedback.proceedLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.caution
+            )
+            BriefRow(
+                title: "能力修补",
+                body: feedback.trainingTargetLine,
+                accent: DS.caution
+            )
+            BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
+            BriefRow(title: "过往经验复现", body: feedback.experienceReplayPrompt, accent: DS.graphite)
+            BriefRow(
+                title: "判断句训练",
+                body: feedback.judgmentSentencePrompt,
+                accent: DS.success
+            )
+            teachingRouteView(feedback.teachingPlan)
         }
     }
 
-    private func answerFeedbackGapLine(for turn: CoachTurnState) -> String {
-        let gaps = turn.openEvidenceGaps
-            .filter { $0 != .none }
-            .map(\.displayTitle)
-        let gapLine = gaps.isEmpty ? "本轮训练缺口还没有关闭" : gaps.joined(separator: "、")
-        return "\(gapLine)。\(turn.reason)"
+    private func phaseBoundaryCard(title: String, body: String, icon: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 22, height: 22)
+                .background(tint.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                    .textCase(.uppercase)
+                Text(body)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(tint.opacity(0.14), lineWidth: 1)
+        )
     }
 
     // MARK: - Review Quests
@@ -522,7 +846,31 @@ struct TodayView: View {
     // Design: Quest cards feel actionable, main quest is visually prominent
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("明日任务", subtitle: "主线任务必须有明确完成标准。")
+            phaseBoundaryCard(
+                title: "明日验证",
+                body: "今日复盘已结束；下面把今天的判断转成明天可验证的行动，不是继续写总结。",
+                icon: "flag.checkered",
+                tint: DS.success
+            )
+            BriefRow(
+                title: "明天怎么回看",
+                body: "明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。",
+                accent: DS.caution
+            )
+            BriefRow(
+                title: "本页只设计明天的验证行动",
+                body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
+                accent: DS.success
+            )
+            BriefRow(
+                title: "今日复盘交接点",
+                body: "今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。",
+                accent: DS.accent
+            )
+
+            reviewQuestJudgmentAnchor
+
+            stepLabel("设计明日验证", subtitle: "验证行动必须验证今天的一个判断，并有明确完成标准。")
 
             if !store.referencedPrinciples.isEmpty {
                 ReferencedPrinciplesView(
@@ -554,6 +902,60 @@ struct TodayView: View {
                 )
             }
         }
+    }
+
+    private var reviewQuestJudgmentAnchor: some View {
+        let target = mainQuestCalibrationTarget
+        return VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: "今天待验证判断",
+                body: target ?? "还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。",
+                accent: target == nil ? DS.caution : DS.accent
+            )
+            if let target {
+                BriefRow(
+                    title: "校准目标",
+                    body: target,
+                    accent: DS.accent
+                )
+            }
+            BriefRow(
+                title: "下面的验证行动只验证这个判断",
+                body: "明日验证不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
+                accent: DS.success
+            )
+            if target == nil {
+                Button {
+                    store.navigateTodayLoop(to: .answerQuestions)
+                } label: {
+                    Label("回到今日复盘补判断", systemImage: "arrow.uturn.backward")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.caution)
+                .accessibilityIdentifier(TodayAutomationID.returnToReviewForJudgmentAction)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke((target == nil ? DS.caution : DS.accent).opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var mainQuestCalibrationTarget: String? {
+        let mainTarget = store.mainQuest?.calibrationTarget?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let mainTarget, !mainTarget.isEmpty {
+            return mainTarget
+        }
+
+        return store.quests
+            .compactMap { $0.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     // MARK: - Extract Principle
@@ -594,7 +996,7 @@ struct TodayView: View {
             stepLabel("今日完成", subtitle: "今天的输入已经转成明天可验证的动作。")
 
             if let mainQuest = store.quests.first(where: { $0.type == .main }) {
-                completionCard(icon: "flag.checkered", title: "明日主线任务", body: mainQuest.title)
+                completionCard(icon: "flag.checkered", title: "明日验证行动", body: mainQuest.title)
             }
 
             if let principle = store.principles.first {
@@ -759,20 +1161,20 @@ struct TodayView: View {
 
     private var primaryActionTitle: String {
         if store.isAIRunning {
-            return store.aiActivityMessage.isEmpty ? "AI 生成中" : store.aiActivityMessage
+            return store.aiActivityMessage.isEmpty ? "明思训练中" : store.aiActivityMessage
         }
 
         switch store.todayDraft.state {
-        case .verifyYesterday: return "保存验证"
+        case .verifyYesterday: return "保存校准结果"
         case .capture:
             let mode = store.todayDraft.hasSelectedSessionMode ? store.todayDraft.sessionMode.title : "选择模式"
             return "\(mode) 整理成卡片"
         case .organizing: return "查看卡片"
         case .reviewCards: return "确认卡片"
         case .selectMode: return "确认模式"
-        case .selectLens: return "回答问题"
-        case .answerQuestions: return "生成任务"
-        case .reviewQuests: return "保存任务"
+        case .selectLens: return "进入今日复盘"
+        case .answerQuestions: return "设计明日验证"
+        case .reviewQuests: return "保存明日验证"
         case .extractPrinciple: return "保存原则"
         case .sessionComplete: return "开始新一天"
         }
@@ -800,16 +1202,16 @@ struct TodayView: View {
 
     private var progressCaption: String {
         switch store.todayDraft.state {
-        case .verifyYesterday: return "1/10 校准昨天"
-        case .capture: return "2/10 收集输入并选择训练深度"
-        case .organizing: return "3/10 按训练深度整理卡片"
-        case .reviewCards: return "4/10 确认事实和问题"
-        case .selectMode: return "5/10 确认训练深度"
-        case .selectLens: return "6/10 选择思考透镜"
-        case .answerQuestions: return "7/10 自己回答关键问题"
-        case .reviewQuests: return "8/10 形成明日任务"
-        case .extractPrinciple: return "9/10 沉淀行动准则"
-        case .sessionComplete: return "10/10 今日闭环完成"
+        case .verifyYesterday: return "当前：结果校准。只校准昨天验证行动，不补写今天复盘。"
+        case .capture: return "当前：今天内容。先讲清发生了什么、怎么做、怎么想。"
+        case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
+        case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
+        case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
+        case .selectLens: return "当前：训练处方。由明思判断本轮主训练焦点。"
+        case .answerQuestions: return "当前：今日复盘。只修补理解、证据、判断和经验缺口。"
+        case .reviewQuests: return "当前：明日验证。把今天一个判断变成明天可验证动作。"
+        case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
+        case .sessionComplete: return "当前：今日闭环完成。明天回来先做结果校准。"
         }
     }
 
@@ -929,7 +1331,7 @@ struct TodayView: View {
     private func todayLensCoreCard(confirmedCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Today Core Card")
+                Text("Coach Observation")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
                     .textCase(.uppercase)
@@ -944,10 +1346,20 @@ struct TodayView: View {
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("透镜会决定下一组追问的角度。推荐可以直接选，也可以生成或手写一个本次专属方法卡。")
+            Text("明思不是让你先挑一个滤镜，而是先看你讲述里哪些材料已经说清、哪些关键思考还跳过。")
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 7) {
+                BriefRow(title: "明思观察了你的材料", body: "先从已确认卡片里看事实、判断、目标、约束和行动是否齐全。", accent: DS.accent)
+                BriefRow(title: "诊断主要缺口", body: "只抓一个当前最该补的漏想点，避免把训练变成泛泛提问。", accent: DS.brick)
+                BriefRow(title: "推荐训练处方", body: "透镜只是训练方式；主线是补上没想清的部分，并保留你的改选权。", accent: DS.success)
+            }
+
+            observationTrainingFrame(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
         }
         .padding(DS.cardInnerPadding)
         .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
@@ -959,9 +1371,9 @@ struct TodayView: View {
 
     private var lensCoreTitle: String {
         guard let first = store.thinkingCards.first(where: \.isConfirmed) else {
-            return "先选择看问题的方法。"
+            return "先看你这次讲述漏掉了什么。"
         }
-        return "围绕「\(first.title)」换一个角度看。"
+        return "围绕「\(first.title)」训练没想清的部分。"
     }
 
     private func trainingPrescriptionCard(
@@ -1084,7 +1496,7 @@ struct TodayView: View {
     private func teachingRouteView(_ plan: CoachTeachingPlan) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(title: "本轮漏想点", body: plan.missingMoveTitle, accent: DS.brick)
-            BriefRow(title: "训练目标", body: plan.trainingTargetTitle, accent: DS.accent)
+            BriefRow(title: "训练目标", body: plan.trainingTargetLine, accent: DS.accent)
             BriefRow(title: "为什么不是直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
             BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
             BriefRow(title: "教练追问", body: plan.repairQuestion, accent: DS.brick)
@@ -1133,18 +1545,12 @@ struct TodayView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(DS.mutedInk)
                 .textCase(.uppercase)
-            Text("复现：照用哪条做法？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("调整：哪些条件不同？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("否定：这条经验为什么不适用？")
-                .font(.caption)
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            ForEach(ExperienceReplayTraining.decisionLines, id: \.self) { line in
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -1946,7 +2352,7 @@ private struct AIGenerationProgressView: View {
                         .frame(width: 42, height: 42)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isUsingAI ? "正在流式整理" : "使用本地规则生成")
+                        Text(organizingProgressTitle(isUsingOnlineModel: isUsingAI))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
                         Text(statusText.isEmpty ? fallbackStatusText : statusText)
@@ -1977,8 +2383,8 @@ private struct AIGenerationProgressView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 generationStep(
-                    title: "连接模型流",
-                    subtitle: isUsingAI ? "接收受控卡片标签，不展示聊天流。" : "未配置可用 API 时使用本地 fallback。",
+                    title: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).title,
+                    subtitle: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).subtitle,
                     state: streamingCards.isEmpty && cardCount == 0 ? .active : .done
                 )
                 generationStep(
@@ -1995,7 +2401,7 @@ private struct AIGenerationProgressView: View {
 
             if let failureMessage, !failureMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("本次使用了 fallback", systemImage: "exclamationmark.triangle")
+                    Label(organizingProgressLocalDraftLabel, systemImage: "exclamationmark.triangle")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.caution)
                     Text(failureMessage)
@@ -2030,7 +2436,7 @@ private struct AIGenerationProgressView: View {
     }
 
     private var fallbackStatusText: String {
-        isUsingAI ? "等待第一张候选卡片。" : "未配置可用 API 时，先给出可编辑的本地卡片。"
+        organizingProgressFallbackStatusText(isUsingOnlineModel: isUsingAI)
     }
 
     private func generationStep(title: String, subtitle: String, state: AIGenerationStepState) -> some View {
@@ -2157,6 +2563,37 @@ private enum AIGenerationStepState {
     }
 }
 
+func organizingProgressTitle(isUsingOnlineModel: Bool) -> String {
+    isUsingOnlineModel ? "明思正在整理训练材料" : "明思正在准备本地训练草稿"
+}
+
+func organizingProgressFallbackStatusText(isUsingOnlineModel: Bool) -> String {
+    isUsingOnlineModel ? "等待第一张候选卡片。" : "暂时使用本地训练草稿，你可以先继续确认材料。"
+}
+
+func organizingProgressSourceStepCopy(isUsingOnlineModel: Bool) -> (title: String, subtitle: String) {
+    if isUsingOnlineModel {
+        return (
+            title: "整理输入材料",
+            subtitle: "明思把原始输入拆成可确认的训练卡片。"
+        )
+    }
+    return (
+        title: "整理输入材料",
+        subtitle: "暂时使用本地规则，先保留可编辑的训练卡片。"
+    )
+}
+
+let organizingProgressLocalDraftLabel = "本次使用本地训练草稿"
+
+let organizingStreamingConnectingStatusText = "明思正在整理训练材料。"
+
+let organizingStreamingLocalDraftStatusText = "整理未完成，已使用本地训练草稿。"
+
+func organizingStreamingInterruptedStatusText(closedCount: Int) -> String {
+    "整理中断，已保留 \(closedCount) 张闭合卡片。"
+}
+
 private extension ThinkingLens {
     var shortLabel: String { catalogItem.shortLabel }
     var methodLine: String { catalogItem.methodLine }
@@ -2188,6 +2625,45 @@ private extension SensitivityLevel {
         case .normal: return "普通"
         case .possiblySensitive: return "可能敏感"
         case .sensitive: return "敏感"
+        }
+    }
+}
+
+private extension CoachObservationMaterial {
+    var displayTitle: String {
+        switch self {
+        case .background:
+            return "背景"
+        case .object:
+            return "对象"
+        case .trigger:
+            return "触发点"
+        case .action:
+            return "行动"
+        case .result:
+            return "结果"
+        case .feeling:
+            return "感受"
+        case .fact:
+            return "事实"
+        case .interpretation:
+            return "解释"
+        case .judgment:
+            return "判断"
+        case .assumption:
+            return "假设"
+        case .constraint:
+            return "约束"
+        case .goal:
+            return "目标"
+        case .standard:
+            return "标准"
+        case .openQuestion:
+            return "问题"
+        case .experience:
+            return "经验"
+        case .calibrationSignal:
+            return "校准信号"
         }
     }
 }
@@ -2409,6 +2885,7 @@ private struct ThinkingCardRow: View {
 private struct QuestionCardView: View {
     let question: ReflectionQuestion
     @Binding var answer: String
+    var isPrimaryAnswerField: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2512,18 +2989,32 @@ private struct QuestionCardView: View {
                 )
             }
 
-            TextField("写下你的判断，不需要完整答案", text: $answer, axis: .vertical)
+            if hasTeachingCue {
+                answerDrillView
+            }
+
+            BriefRow(title: "输入材料", body: question.answerTrainingPrompt, accent: DS.accent)
+
+            TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
+                .lineLimit(3...6)
+                .frame(minHeight: 78, alignment: .topLeading)
                 .padding(12)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                         .stroke(Color.primary.opacity(0.05), lineWidth: 1)
                 )
-                .accessibilityIdentifier(TodayAutomationID.questionAnswerField)
+                .accessibilityIdentifier(answerFieldAutomationID)
         }
         .questionSurface()
+    }
+
+    private var answerFieldAutomationID: String {
+        isPrimaryAnswerField
+            ? TodayAutomationID.questionAnswerField
+            : TodayAutomationID.questionAnswerField(questionId: question.id.uuidString)
     }
 
     private var hasTeachingCue: Bool {
@@ -2532,6 +3023,41 @@ private struct QuestionCardView: View {
             trimmed(question.whyNow) != nil ||
             trimmed(question.expectedUpdate) != nil ||
             trimmed(question.proceedWhen) != nil
+    }
+
+    private var answerDrillView: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("作答训练")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+                .textCase(.uppercase)
+            BriefRow(
+                title: "不是 AI 答案",
+                body: "这一段训练你自己补上没想到的部分，明思只负责指出该补哪里。",
+                accent: DS.accent
+            )
+            BriefRow(
+                title: "补盲区",
+                body: "先回答\(teachingGapTitle ?? "当前判断缺口")，不要急着给结论。",
+                accent: DS.brick
+            )
+            BriefRow(
+                title: "复现经验",
+                body: "把召回经验判成复现、调整或否定，避免机械套用历史做法。",
+                accent: DS.graphite
+            )
+            BriefRow(
+                title: "安排执行",
+                body: "写出\(question.answerUse?.displayTitle ?? "答案会改变什么")，再留一个明天能验证的结果信号。",
+                accent: DS.success
+            )
+        }
+        .padding(10)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
     }
 
     private var teachingGapTitle: String? {
@@ -2560,6 +3086,7 @@ private struct QuestCardView: View {
     @State private var draftCriteria: String
     @State private var draftResistance: String
     @State private var draftQuestion: String
+    private let executionFeedback: QuestExecutionTrainingFeedback
 
     init(
         quest: Quest,
@@ -2574,6 +3101,7 @@ private struct QuestCardView: View {
             .filter { $0.status == .active }
         self.selectTrainingPrinciple = selectTrainingPrinciple
         self.update = update
+        self.executionFeedback = QuestExecutionTrainingPolicy().makeFeedback(for: quest)
         _draftTitle = State(initialValue: quest.title)
         _draftWhy = State(initialValue: quest.whyItMatters)
         _draftCriteria = State(initialValue: quest.completionCriteria)
@@ -2613,11 +3141,11 @@ private struct QuestCardView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    BriefRow(title: "完成标准", body: quest.completionCriteria, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    if let calibrationTarget = quest.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !calibrationTarget.isEmpty {
-                        BriefRow(title: "校准目标", body: calibrationTarget, accent: DS.accent)
-                    }
+                    BriefRow(title: "验证判断", body: executionFeedback.judgmentLine, accent: DS.accent)
+                    BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
+                    BriefRow(title: "结果校准信号", body: executionFeedback.calibrationLine, accent: DS.success)
+                    BriefRow(title: "执行力训练", body: executionFeedback.trainingLine, accent: DS.graphite)
                     if let trainingTarget {
                         BriefRow(
                             title: "训练原则",
@@ -2632,8 +3160,6 @@ private struct QuestCardView: View {
                     if !trainingPrinciples.isEmpty {
                         questTrainingPrinciplePicker
                     }
-                    BriefRow(title: "预期阻力", body: quest.expectedResistance, accent: DS.caution)
-                    BriefRow(title: "回看问题", body: quest.reflectionQuestion, accent: DS.graphite)
                 }
             }
         }

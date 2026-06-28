@@ -70,6 +70,22 @@ enum YesterdayValueRating: String, CaseIterable, Identifiable {
     }
 }
 
+enum YesterdayJudgmentUpdate: String, CaseIterable, Identifiable {
+    case confirmed
+    case adjusted
+    case rejected
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .confirmed: return "确认判断"
+        case .adjusted: return "调整判断"
+        case .rejected: return "推翻判断"
+        }
+    }
+}
+
 enum DailyLoopState: String, CaseIterable, Identifiable {
     case verifyYesterday
     case capture
@@ -86,14 +102,14 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .verifyYesterday: return "验证昨日"
-        case .capture: return "今日输入"
+        case .verifyYesterday: return "结果校准"
+        case .capture: return "今天内容"
         case .organizing: return "整理中"
         case .reviewCards: return "思考卡片"
         case .selectMode: return "选择模式"
         case .selectLens: return "选择透镜"
-        case .answerQuestions: return "回答问题"
-        case .reviewQuests: return "明日任务"
+        case .answerQuestions: return "今日复盘"
+        case .reviewQuests: return "明日验证"
         case .extractPrinciple: return "原则沉淀"
         case .sessionComplete: return "今日完成"
         }
@@ -522,7 +538,7 @@ enum BuiltinLensCatalog {
             methodIndex: 1,
             purpose: "把事实、判断、假设和待验证缺口拆开，避免在证据不足时推进决策。",
             questionStrategy: "先要求用户区分已知事实和解释性判断，再找出最需要补证据的一处。",
-            taskSelectionRule: "优先生成能补齐关键证据、确认验收口径或降低事实不确定性的明日任务。",
+            taskSelectionRule: "优先设计能补齐关键证据、确认验收口径或降低事实不确定性的明日验证行动。",
             applicability: "适用于事实、风险、问题或高优先级卡片较多，且当前判断依赖未验证依据的场景。",
             disableConditions: [
                 "不要用于用户已经明确选择其他透镜的请求。",
@@ -550,7 +566,7 @@ enum BuiltinLensCatalog {
             methodIndex: 2,
             purpose: "主动寻找反证、替代解释和被忽略的利益相关方，降低只证明自己正确的风险。",
             questionStrategy: "先让用户描述相反证据会是什么，再追问谁会不同意以及最强反方理由。",
-            taskSelectionRule: "优先生成能验证关键反方假设、暴露盲点或让不同角色参与校准的明日任务。",
+            taskSelectionRule: "优先设计能验证关键反方假设、暴露盲点或让不同角色参与校准的明日验证行动。",
             applicability: "适用于问题和风险偏多、用户判断较强、或 Deep 模式下需要挑战默认解释的场景。",
             disableConditions: [
                 "不要为了反对而反对，必须回到当天确认卡片。",
@@ -578,12 +594,12 @@ enum BuiltinLensCatalog {
             methodIndex: 3,
             purpose: "识别最小但最能改变结果的动作、约束或决策，避免把容易完成误判为高价值。",
             questionStrategy: "先比较不同动作的结果影响，再排除低杠杆忙碌，最后收敛一个关键约束。",
-            taskSelectionRule: "优先生成能改变关键结果、解除瓶颈或让后续动作变简单的明日主线任务。",
+            taskSelectionRule: "优先设计能改变关键结果、解除瓶颈或让后续动作变简单的明日验证行动。",
             applicability: "适用于任务、决策或行动卡片较多，且用户需要从多个动作中选择下一步的场景。",
             disableConditions: [
                 "不要在事实和验收口径明显不清时跳过证据校验。",
                 "不要把轻松完成当作高杠杆。",
-                "不要生成多个并列主线任务。"
+                "不要生成多个并列验证行动。"
             ]
         ),
         LensCatalogItem(
@@ -606,7 +622,7 @@ enum BuiltinLensCatalog {
             methodIndex: 4,
             purpose: "拆掉默认前提，保留不可再拆的事实、约束和目标，再从这些基本条件重建下一步。",
             questionStrategy: "先识别硬事实和不可变约束，再分离沿用假设，最后从零重建一个最小行动。",
-            taskSelectionRule: "优先生成能验证核心前提、澄清必要条件或重建行动路径的明日任务。",
+            taskSelectionRule: "优先设计能验证核心前提、澄清必要条件或重建行动路径的明日验证行动。",
             applicability: "适用于卡片类型没有明显主导、前提混杂、或用户需要重新定义问题的场景。",
             disableConditions: [
                 "不要用抽象原则替代当天具体证据。",
@@ -634,7 +650,7 @@ enum BuiltinLensCatalog {
             methodIndex: 5,
             purpose: "识别事件背后的反馈回路、延迟影响、约束瓶颈和二阶后果，避免只修表面症状。",
             questionStrategy: "先画出反馈回路和延迟影响，再追问二阶后果、关键约束和下一次可观察的校准信号。",
-            taskSelectionRule: "优先生成能打断负反馈、验证关键约束或采集校准信号的明日任务。",
+            taskSelectionRule: "优先设计能打断负反馈、验证关键约束或采集校准信号的明日验证行动。",
             applicability: "适用于同类问题反复出现、短期动作带来长期代价、返工增加、依赖传导或结果延迟显现的场景。",
             disableConditions: [
                 "不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。",
@@ -662,7 +678,7 @@ enum BuiltinLensCatalog {
             methodIndex: 6,
             purpose: "把原判断、置信度、实际证据和判断更新放在同一张桌面上，训练可校准的判断能力。",
             questionStrategy: "先还原原判断和信心，再对照实际证据，最后要求用户说清判断如何更新和下一次校准信号。",
-            taskSelectionRule: "优先生成能验证一个预测、采集一个校准信号或降低下一次误判概率的明日任务。",
+            taskSelectionRule: "优先设计能验证一个预测、采集一个校准信号或降低下一次误判概率的明日验证行动。",
             applicability: "适用于用户提到预测、预期、把握、信心、实际结果、判断反转、复盘偏差或需要更新判断的场景。",
             disableConditions: [
                 "不要把校准变成事后诸葛，必须先明确原判断或可观察预测。",
@@ -759,6 +775,20 @@ enum ThinkingTrainingDimension: String, Codable, CaseIterable, Identifiable, Has
         case .testableActionDesign:
             return "可验证行动"
         }
+    }
+
+    var foundationalCapabilityTitle: String {
+        switch self {
+        case .testableActionDesign:
+            return "执行力"
+        case .factInterpretationSeparation, .evidenceDiscipline, .counterexampleSeeking,
+             .assumptionTesting, .systemFeedbackAwareness, .judgmentCalibration:
+            return "思考力"
+        }
+    }
+
+    var trainingTitle: String {
+        "\(foundationalCapabilityTitle)中的\(displayTitle)"
     }
 
     static func primary(forLensId lensId: String) -> ThinkingTrainingDimension? {
@@ -1072,7 +1102,7 @@ enum NextCoachMove: String, Codable, Hashable {
         case .recommendTrainingLens:
             return "进入训练透镜，围绕主焦点练习。"
         case .generateQuest:
-            return "可以继续生成明日任务。"
+            return "可以继续设计明日验证。"
         }
     }
 }
@@ -1103,6 +1133,19 @@ struct CoachTurnState: Codable, Hashable {
     var decisionSource: CoachDiagnosisSource
     var policyVersion: String
     var turnSummary: String
+}
+
+struct CoachAnswerTrainingFeedback: Codable, Hashable {
+    var readiness: ConvergenceReadiness
+    var canProceedToValidation: Bool
+    var repairedLine: String
+    var missingLine: String
+    var proceedLine: String
+    var trainingTargetLine: String
+    var nextRepairQuestion: String
+    var experienceReplayPrompt: String
+    var judgmentSentencePrompt: String
+    var teachingPlan: CoachTeachingPlan
 }
 
 struct CoachTurnPolicy {
@@ -1314,6 +1357,858 @@ struct CoachTurnPolicy {
     }
 }
 
+struct CoachAnswerFeedbackPolicy {
+    static let judgmentSentencePrompt = "把下一句写成：我现在相信 X；明天用 Y 观察它是否成立；如果出现 Z，我就更新判断。"
+
+    func makeFeedback(
+        turn: CoachTurnState,
+        previous: CoachTurnState?,
+        questions: [ReflectionQuestion],
+        prescription: TrainingPrescription?
+    ) -> CoachAnswerTrainingFeedback {
+        let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
+        let remainingGaps = activeGaps(from: turn.openEvidenceGaps)
+        let previousGaps = activeGaps(from: previous?.openEvidenceGaps ?? [])
+        let repairedGaps = previousGaps.filter { !remainingGaps.contains($0) }
+        let canProceed = turn.readiness == .ready && remainingGaps.isEmpty
+
+        return CoachAnswerTrainingFeedback(
+            readiness: turn.readiness,
+            canProceedToValidation: canProceed,
+            repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
+            missingLine: missingLine(remainingGaps: remainingGaps),
+            proceedLine: proceedLine(canProceed: canProceed, plan: plan),
+            trainingTargetLine: "本轮正在练\(plan.trainingTargetLine)。",
+            nextRepairQuestion: plan.repairQuestion,
+            experienceReplayPrompt: plan.experienceReplayPrompt,
+            judgmentSentencePrompt: Self.judgmentSentencePrompt,
+            teachingPlan: plan
+        )
+    }
+
+    private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
+        gaps.filter { $0 != .none }
+    }
+
+    private func repairedLine(
+        repairedGaps: [EvidenceGapType],
+        questions: [ReflectionQuestion]
+    ) -> String {
+        let answeredCount = questions.filter {
+            !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
+        guard !repairedGaps.isEmpty else {
+            return answeredCount > 0
+                ? "你已经回答，但还没有补上本轮关键缺口。"
+                : "还没有新的回答材料。"
+        }
+        return "你补上了\(gapLine(for: repairedGaps))。"
+    }
+
+    private func missingLine(remainingGaps: [EvidenceGapType]) -> String {
+        remainingGaps.isEmpty
+            ? "关键缺口已关闭。"
+            : "还缺\(gapLine(for: remainingGaps))。"
+    }
+
+    private func proceedLine(
+        canProceed: Bool,
+        plan: CoachTeachingPlan
+    ) -> String {
+        canProceed
+            ? "可以进入明日验证：\(plan.proceedStandard)"
+            : "现在不能进入明日验证：\(plan.proceedStandard)"
+    }
+
+    private func gapLine(for gaps: [EvidenceGapType]) -> String {
+        gaps.map(\.displayTitle).joined(separator: "、")
+    }
+}
+
+enum CoachObservationMaterial: String, Codable, CaseIterable, Hashable {
+    case background
+    case object
+    case trigger
+    case action
+    case result
+    case feeling
+    case fact
+    case interpretation
+    case judgment
+    case assumption
+    case constraint
+    case goal
+    case standard
+    case openQuestion = "open_question"
+    case experience
+    case calibrationSignal = "calibration_signal"
+}
+
+enum CoachObservationGap: String, Codable, CaseIterable, Hashable {
+    case narrative
+    case observation
+    case object
+    case goal
+    case constraint
+    case causal
+    case counterexample
+    case judgment
+    case execution
+    case calibration
+    case experience
+}
+
+enum CoreTrainingAbility: String, Codable, CaseIterable, Hashable {
+    case description
+    case observation
+    case analysis
+    case judgment
+    case execution
+    case calibration
+
+    var displayTitle: String {
+        switch self {
+        case .description:
+            return "描述力"
+        case .observation:
+            return "观察力"
+        case .analysis:
+            return "分析力"
+        case .judgment:
+            return "判断力"
+        case .execution:
+            return "执行力"
+        case .calibration:
+            return "校准力"
+        }
+    }
+
+    var foundationalCapabilityTitle: String {
+        switch self {
+        case .description:
+            return "沟通力"
+        case .observation, .analysis, .judgment, .calibration:
+            return "思考力"
+        case .execution:
+            return "执行力"
+        }
+    }
+
+    var trainingTitle: String {
+        "\(foundationalCapabilityTitle)中的\(displayTitle)"
+    }
+
+    var coachingMeaning: String {
+        switch self {
+        case .description:
+            return "把事情讲到别人能复盘，而不是只留下感受或结论。"
+        case .observation:
+            return "分清事实、解释和证据，先看见材料再下判断。"
+        case .analysis:
+            return "拆出因果、约束和反例，避免只沿着一个解释走。"
+        case .judgment:
+            return "说清服务对象、重要性和成功标准，让取舍有依据。"
+        case .execution:
+            return "把想清楚的事安排成可完成、可检查的下一步。"
+        case .calibration:
+            return "用未来结果修正今天判断，避免经验被机械套用。"
+        }
+    }
+}
+
+struct CoachObservationFeedback: Codable, Hashable {
+    var observed: String
+    var diagnosis: String
+    var training: String
+    var ask: String
+    var proceedWhen: String
+}
+
+struct CoachObservation: Codable, Hashable {
+    var policyVersion: String
+    var providedMaterials: [CoachObservationMaterial]
+    var missingMaterials: [CoachObservationMaterial]
+    var thinkingProcessObservation: String
+    var primaryGap: CoachObservationGap
+    var secondaryGaps: [CoachObservationGap]
+    var trainingAbility: CoreTrainingAbility
+    var feedback: CoachObservationFeedback
+    var experienceReplayPrompt: String
+
+    var narrativeTrainingLine: String {
+        "讲清楚一件事：已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；先补：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
+    }
+
+    var experienceReplayTrainingLine: String {
+        ExperienceReplayTraining.line
+    }
+}
+
+extension CoachObservationMaterial {
+    var trainingCue: String {
+        switch self {
+        case .background:
+            return "交代背景"
+        case .object:
+            return "说明对象"
+        case .trigger:
+            return "说清触发"
+        case .action:
+            return "写出做法"
+        case .result:
+            return "补上结果"
+        case .feeling:
+            return "感受"
+        case .fact:
+            return "可观察事实"
+        case .interpretation:
+            return "解释"
+        case .judgment:
+            return "判断"
+        case .assumption:
+            return "假设"
+        case .constraint:
+            return "限制条件"
+        case .goal:
+            return "目标"
+        case .standard:
+            return "成功标准"
+        case .openQuestion:
+            return "开放问题"
+        case .experience:
+            return "过往经验"
+        case .calibrationSignal:
+            return "校准信号"
+        }
+    }
+
+    static func trainingLine(for materials: [CoachObservationMaterial]) -> String {
+        let cues = materials.map(\.trainingCue).filter { !$0.isEmpty }
+        return cues.isEmpty ? "暂无" : cues.joined(separator: "、")
+    }
+}
+
+struct CoachObservationPolicy {
+    static let policyVersion = "coach-observation.local-v5"
+
+    func observe(cards: [ThinkingCard]) -> CoachObservation {
+        let consideredCards = consideredCards(from: cards)
+        let text = consideredCards
+            .map { "\($0.title) \($0.body)" }
+            .joined(separator: " ")
+        let normalizedText = text.lowercased()
+        let providedMaterials = providedMaterials(from: consideredCards, text: normalizedText)
+        let missingMaterials = missingMaterials(from: providedMaterials, text: normalizedText)
+        let primaryGap = primaryGap(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: normalizedText
+        )
+        let secondaryGaps = secondaryGaps(
+            primaryGap: primaryGap,
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: normalizedText
+        )
+        let ability = trainingAbility(for: primaryGap)
+
+        return CoachObservation(
+            policyVersion: Self.policyVersion,
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            thinkingProcessObservation: thinkingProcessObservation(for: primaryGap),
+            primaryGap: primaryGap,
+            secondaryGaps: secondaryGaps,
+            trainingAbility: ability,
+            feedback: feedback(for: primaryGap, ability: ability, providedMaterials: providedMaterials),
+            experienceReplayPrompt: experienceReplayPrompt(for: primaryGap)
+        )
+    }
+
+    private func consideredCards(from cards: [ThinkingCard]) -> [ThinkingCard] {
+        let confirmedCards = cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        return confirmedCards.isEmpty
+            ? cards.filter { !$0.isExcludedFromModel }
+            : confirmedCards
+    }
+
+    private func providedMaterials(
+        from cards: [ThinkingCard],
+        text: String
+    ) -> [CoachObservationMaterial] {
+        var materials: [CoachObservationMaterial] = []
+
+        if hasProvidedBackground(text) {
+            materials.append(.background)
+        }
+
+        if hasProvidedActorOrObject(text) {
+            materials.append(.object)
+        }
+
+        if hasProvidedTrigger(text) {
+            materials.append(.trigger)
+        }
+
+        if cards.contains(where: { $0.type == .task }) ||
+            containsAny(text, ["打算", "计划", "明天", "先拉会", "行动", "推进", "调整", "暂停", "action", "tomorrow"]) {
+            materials.append(.action)
+        }
+
+        if hasProvidedResult(text) {
+            materials.append(.result)
+        }
+
+        if cards.contains(where: { $0.type == .decision }) ||
+            containsAny(text, ["我觉得", "大概率", "应该", "不可行", "有效", "倾向", "判断", "结论", "认为"]) {
+            materials.append(.judgment)
+        }
+
+        if hasProvidedInterpretation(text) {
+            materials.append(.interpretation)
+        }
+
+        if hasProvidedAssumption(text) {
+            materials.append(.assumption)
+        }
+
+        if hasProvidedFact(cards: cards, text: text) {
+            materials.append(.fact)
+        }
+
+        if hasProvidedGoal(text: text) {
+            materials.append(.goal)
+        }
+
+        if containsAny(text, ["以前", "之前", "过往", "经验", "复用", "沿用", "照着做", "上次", "previous", "experience"]) {
+            materials.append(.experience)
+        }
+
+        if containsAny(text, ["感受", "压力", "焦虑", "担心", "兴奋", "难受", "feeling"]) {
+            materials.append(.feeling)
+        }
+
+        if containsAny(text, ["约束", "限制", "边界", "成本", "资源", "constraint", "limit"]) {
+            materials.append(.constraint)
+        }
+
+        return unique(materials)
+    }
+
+    private func missingMaterials(
+        from providedMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> [CoachObservationMaterial] {
+        var missing: [CoachObservationMaterial] = []
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCore = narrativeCore.filter { providedMaterials.contains($0) }
+        if !providedMaterials.isEmpty, providedNarrativeCore.count < 2 {
+            missing.append(contentsOf: narrativeCore.filter { !providedMaterials.contains($0) })
+        }
+
+        if !providedMaterials.contains(.object),
+           providedNarrativeCore.count >= 2 {
+            missing.append(.object)
+        }
+
+        if providedMaterials.contains(.action),
+           !providedMaterials.contains(.goal) {
+            missing.append(.goal)
+        }
+
+        if providedMaterials.contains(.judgment),
+           !providedMaterials.contains(.fact) {
+            missing.append(.fact)
+        }
+
+        if providedMaterials.contains(.experience),
+           lacksExperienceFitCheck(text) {
+            missing.append(.calibrationSignal)
+        }
+
+        if suggestsBlockedProgress(text),
+           !providedMaterials.contains(.constraint) {
+            missing.append(.constraint)
+        }
+
+        return unique(missing)
+    }
+
+    private func primaryGap(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> CoachObservationGap {
+        if providedMaterials.contains(.experience),
+           lacksExperienceFitCheck(text) {
+            return .experience
+        }
+
+        if providedMaterials.contains(.judgment),
+           missingMaterials.contains(.fact) {
+            return .observation
+        }
+
+        if shouldTrainNarrativeBeforeGoal(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: text
+        ) {
+            return .narrative
+        }
+
+        if shouldTrainObjectBeforeGoal(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: text
+        ) {
+            return .object
+        }
+
+        if shouldTrainConstraintBeforeGoal(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: text
+        ) {
+            return .constraint
+        }
+
+        if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
+            return .causal
+        }
+
+        if shouldTrainCounterexampleAnalysis(providedMaterials: providedMaterials, text: text) {
+            return .counterexample
+        }
+
+        if providedMaterials.contains(.action),
+           missingMaterials.contains(.goal) {
+            return .goal
+        }
+
+        if missingMaterials.contains(.calibrationSignal) {
+            return .calibration
+        }
+
+        if providedMaterials.contains(.action) {
+            return .execution
+        }
+
+        return .narrative
+    }
+
+    private func secondaryGaps(
+        primaryGap: CoachObservationGap,
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> [CoachObservationGap] {
+        var gaps: [CoachObservationGap] = []
+
+        if isThinNarrative(providedMaterials: providedMaterials, missingMaterials: missingMaterials) {
+            gaps.append(.narrative)
+        }
+
+        if providedMaterials.contains(.experience),
+           lacksExperienceFitCheck(text) {
+            gaps.append(.counterexample)
+        }
+
+        if providedMaterials.contains(.judgment),
+           missingMaterials.contains(.fact) {
+            gaps.append(.observation)
+        }
+
+        if providedMaterials.contains(.action),
+           missingMaterials.contains(.goal) {
+            gaps.append(.goal)
+        }
+
+        if missingMaterials.contains(.constraint) {
+            gaps.append(.constraint)
+        }
+
+        if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
+            gaps.append(.causal)
+        }
+
+        if shouldTrainCounterexampleAnalysis(providedMaterials: providedMaterials, text: text) {
+            gaps.append(.counterexample)
+        }
+
+        return unique(gaps.filter { $0 != primaryGap })
+    }
+
+    private func trainingAbility(for gap: CoachObservationGap) -> CoreTrainingAbility {
+        switch gap {
+        case .narrative, .object:
+            return .description
+        case .observation:
+            return .observation
+        case .constraint, .causal, .counterexample:
+            return .analysis
+        case .goal, .judgment:
+            return .judgment
+        case .execution:
+            return .execution
+        case .calibration, .experience:
+            return .calibration
+        }
+    }
+
+    private func thinkingProcessObservation(for gap: CoachObservationGap) -> String {
+        switch gap {
+        case .experience:
+            return "用户正在调用过往经验，但还没有检查这次条件是否相同。"
+        case .observation:
+            return "用户先给出结论或判断，但还没有补出能支撑判断的可观察事实。"
+        case .goal:
+            return "用户已经进入动作推进，但还没有把服务对象、目标和成功标准说清楚。"
+        case .execution:
+            return "用户已经有行动倾向，下一步需要把行动变成可检查结果。"
+        case .calibration:
+            return "用户需要定义未来用什么信号校准今天的判断。"
+        case .constraint:
+            return "用户描述了限制，但还没有把边界条件转成判断依据。"
+        case .causal:
+            return "用户描述了现象，但还没有追踪因果链或反馈结构。"
+        case .counterexample:
+            return "用户当前解释还没有被反例或替代解释挑战。"
+        case .judgment:
+            return "用户需要把当前取舍的标准说清楚。"
+        case .object:
+            return "用户讲了背景、动作或结果，但还没有说清谁受影响、服务对象是谁。"
+        case .narrative:
+            return "用户还没有把事件讲到别人可以复盘的程度。"
+        }
+    }
+
+    private func feedback(
+        for gap: CoachObservationGap,
+        ability: CoreTrainingAbility,
+        providedMaterials: [CoachObservationMaterial]
+    ) -> CoachObservationFeedback {
+        let needsMaterialSeparation = containsMixedThinkingMaterials(providedMaterials)
+        switch gap {
+        case .experience:
+            return CoachObservationFeedback(
+                observed: "你提到了过往做法或经验，但还没有判断这次条件是否一样。",
+                diagnosis: "当前主要缺口是经验复现判断：旧经验不能直接当成答案。",
+                training: "本轮先练\(ability.trainingTitle)，判断经验该复现、调整还是否定。",
+                ask: "这条经验在本次是复现、调整，还是否定？请用一句话说明条件差异。",
+                proceedWhen: "当你能说清条件差异和复用边界时，再进入行动。"
+            )
+        case .observation:
+            return CoachObservationFeedback(
+                observed: "你已经说出了判断或结论，但还没有写出一个可观察事实。",
+                diagnosis: "当前主要缺口是观察 gap：事实和解释还没有分开。",
+                training: "本轮先练\(ability.trainingTitle)，不急着让 AI 给结论。",
+                ask: needsMaterialSeparation
+                    ? "请先把事实、感受、解释、判断分开写：哪一句是看到的事实，哪一句只是解释或判断？"
+                    : "请补充一个你亲眼看到、直接听到或能被记录验证的事实。",
+                proceedWhen: "当答案能分开事实和解释时，可以进入下一步判断。"
+            )
+        case .goal:
+            return CoachObservationFeedback(
+                observed: "你已经有动作或推进方式，但还没有说清这个动作服务于谁。",
+                diagnosis: "当前主要缺口是目标 gap：行动对象、重要性和达成标准还不清楚。",
+                training: "本轮先练\(ability.trainingTitle)，把重要性和成功标准说清。",
+                ask: needsMaterialSeparation
+                    ? "请先把事实、感受、解释、判断分开，再补一句：如果这件事做对了，谁的什么问题会变少？"
+                    : "如果这件事做对了，谁的什么问题会变少？",
+                proceedWhen: "当你能说清服务对象、问题和成功标准时，再安排下一步行动。"
+            )
+        case .execution:
+            return CoachObservationFeedback(
+                observed: "你已经有行动倾向，但还没有把行动写成可检查结果。",
+                diagnosis: "当前主要缺口是执行 gap：下一步、负责人或验收标准还不够清楚。",
+                training: "本轮先练\(ability.trainingTitle)，把思考落成可执行安排。",
+                ask: "明天最小的一步是什么，完成后留下什么证据？",
+                proceedWhen: "当行动能被明天验证时，可以设计明日验证。"
+            )
+        case .calibration:
+            return CoachObservationFeedback(
+                observed: "你已经有判断，但还没有定义未来用什么信号校准。",
+                diagnosis: "当前主要缺口是校准 gap：结果出现后还不知道如何更新判断。",
+                training: "本轮先练\(ability.trainingTitle)，让判断能被未来结果修正。",
+                ask: "明天或近期哪个信号会证明你今天的判断需要更新？",
+                proceedWhen: "当你能说清校准信号时，再进入行动。"
+            )
+        case .object:
+            return CoachObservationFeedback(
+                observed: "你已经说出背景、动作或结果，但还没有说明谁受影响。",
+                diagnosis: "当前主要缺口是对象 gap：别人还不知道这件事服务于谁、影响谁。",
+                training: "本轮先练\(ability.trainingTitle)，把事情中的人、对象和受影响问题讲清楚。",
+                ask: "请补一句：这件事影响谁，或你要服务谁的什么问题？",
+                proceedWhen: "当你能说清对象、对象的问题和影响时，再进入目标或行动判断。"
+            )
+        case .constraint:
+            return CoachObservationFeedback(
+                observed: "你已经描述了事情推进受阻，但还没有说清具体限制。",
+                diagnosis: "当前主要缺口是约束 gap：还不知道卡住来自时间、资源、权限、信息、关系还是系统边界。",
+                training: "本轮先练\(ability.trainingTitle)，把限制条件拆出来，再决定怎么推进。",
+                ask: "请补一句：现在最大的限制是什么，来自时间、资源、权限、信息、关系还是系统边界？",
+                proceedWhen: "当你能说清关键边界和它如何限制行动时，再进入目标或行动判断。"
+            )
+        case .causal:
+            return CoachObservationFeedback(
+                observed: "你已经给出一个因果解释，但还没有说明 A 到 B 中间发生了什么。",
+                diagnosis: "当前主要缺口是因果 gap：解释链条还没有被拆开，容易把相关性当成原因。",
+                training: "本轮先练\(ability.trainingTitle)，把因果链条拆到别人可以检查。",
+                ask: needsMaterialSeparation
+                    ? "请先把事实、感受、解释、判断分开，再补一句：A 到 B 中间发生了什么？"
+                    : "请补一句：A 到 B 中间发生了什么，哪个环节最关键？",
+                proceedWhen: "当你能说清中间链条和关键环节时，再进入目标或行动判断。"
+            )
+        case .counterexample:
+            return CoachObservationFeedback(
+                observed: "你已经形成一个解释，但还没有说什么证据会挑战它。",
+                diagnosis: "当前主要缺口是反例 gap：如果没有推翻条件，解释容易只沿着自己相信的方向变强。",
+                training: "本轮先练\(ability.trainingTitle)，主动找能推翻或削弱当前解释的信号。",
+                ask: "请补一句：什么事实出现时，会推翻或削弱你现在的解释？",
+                proceedWhen: "当你能说清推翻信号或替代解释时，再进入目标或行动判断。"
+            )
+        case .judgment, .narrative:
+            if gap == .narrative {
+                return CoachObservationFeedback(
+                    observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
+                    diagnosis: "当前主要缺口是讲述 gap：别人还不能复盘发生了什么。",
+                    training: "本轮先练\(ability.trainingTitle)，把一件事讲清楚，再进入分析或行动。",
+                    ask: "请补充前因后果：什么背景下，谁做了什么，触发点是什么，后来发生了什么？",
+                    proceedWhen: "当你能说清背景、触发点、行动和结果时，再进入下一步。"
+                )
+            }
+            return CoachObservationFeedback(
+                observed: "你已经提供了一部分材料，但还有关键思考材料没有展开。",
+                diagnosis: "当前主要缺口是 \(gap.rawValue) gap。",
+                training: "本轮先练\(ability.trainingTitle)，先补缺口再要答案。",
+                ask: "请补充一条能关闭这个缺口的具体材料。",
+                proceedWhen: "当这条材料能被别人复盘时，再进入下一步。"
+            )
+        }
+    }
+
+    private func containsMixedThinkingMaterials(_ materials: [CoachObservationMaterial]) -> Bool {
+        let materialSet = Set(materials)
+        let reasoningMaterials: Set<CoachObservationMaterial> = [.fact, .interpretation, .judgment]
+        return materialSet.contains(.feeling)
+            && !materialSet.intersection(reasoningMaterials).isEmpty
+    }
+
+    private func experienceReplayPrompt(for gap: CoachObservationGap) -> String {
+        switch gap {
+        case .experience:
+            return "请检查过往经验和本次条件：哪些条件相同可以复现，哪些不同需要调整，哪些会让旧经验失效？"
+        case .observation:
+            return "回想过往一次因为事实和解释混在一起而误判的经验：这次要复现哪条事实检查？"
+        case .goal:
+            return "回想过往一次因为没有先定义服务对象或成功标准而返工的经验：这次要复现哪条目标检查？"
+        default:
+            return "回想一次相似经验：这次应该复现、调整，还是否定那条经验？"
+        }
+    }
+
+    private func isThinNarrative(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial]
+    ) -> Bool {
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        let missingNarrativeCoreCount = narrativeCore.filter { missingMaterials.contains($0) }.count
+        return providedNarrativeCoreCount < 2 && missingNarrativeCoreCount >= 3
+    }
+
+    private func shouldTrainNarrativeBeforeGoal(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard providedMaterials.contains(.action),
+              missingMaterials.contains(.goal),
+              !hasExplicitGoalGapSignal(text)
+        else { return false }
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        let missingNarrativeCoreCount = narrativeCore.filter { missingMaterials.contains($0) }.count
+        return providedNarrativeCoreCount <= 1 && missingNarrativeCoreCount >= 3
+    }
+
+    private func shouldTrainObjectBeforeGoal(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard missingMaterials.contains(.object),
+              !hasExplicitGoalGapSignal(text)
+        else { return false }
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        return providedNarrativeCoreCount >= 2
+    }
+
+    private func shouldTrainConstraintBeforeGoal(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard missingMaterials.contains(.constraint),
+              suggestsBlockedProgress(text),
+              !hasExplicitGoalGapSignal(text)
+        else { return false }
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        return providedNarrativeCoreCount >= 3
+    }
+
+    private func shouldTrainCausalAnalysis(
+        providedMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard providedMaterials.contains(.fact),
+              providedMaterials.contains(.interpretation),
+              suggestsCausalShortcut(text),
+              !hasCausalMechanism(text)
+        else { return false }
+
+        return providedMaterials.contains(.result) || providedMaterials.contains(.judgment)
+    }
+
+    private func shouldTrainCounterexampleAnalysis(
+        providedMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard providedMaterials.contains(.fact),
+              providedMaterials.contains(.interpretation),
+              providedMaterials.contains(.judgment),
+              !containsMixedThinkingMaterials(providedMaterials),
+              !shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text),
+              !hasCounterexampleSignal(text)
+        else { return false }
+
+        return suggestsCausalShortcut(text) || providedMaterials.contains(.assumption)
+    }
+
+    private func hasProvidedBackground(_ text: String) -> Bool {
+        containsAny(text, [
+            "背景", "当时", "会议", "评审", "沟通中", "讨论中", "项目里", "需求评审",
+            "context", "meeting", "project context"
+        ])
+    }
+
+    private func hasProvidedActorOrObject(_ text: String) -> Bool {
+        containsAny(text, [
+            "用户", "客户", "同事", "团队", "负责人", "alex", "产品", "研发", "设计",
+            "使用者", "服务对象", "actor", "customer", "team", "owner"
+        ])
+    }
+
+    private func hasProvidedTrigger(_ text: String) -> Bool {
+        containsAny(text, [
+            "因为", "由于", "触发", "开始", "收到", "发现", "被提醒", "提出", "导致",
+            "trigger", "because", "started"
+        ])
+    }
+
+    private func hasProvidedResult(_ text: String) -> Bool {
+        containsAny(text, [
+            "结果", "最后", "后来", "导致", "变成", "完成", "失败", "返工",
+            "outcome", "result", "ended"
+        ])
+    }
+
+    private func hasProvidedInterpretation(_ text: String) -> Bool {
+        containsAny(text, [
+            "猜测", "可能是", "可能都", "我理解", "我以为", "意味着", "说明",
+            "所以", "因为", "看起来", "似乎", "interpret", "means", "seems"
+        ])
+    }
+
+    private func hasProvidedAssumption(_ text: String) -> Bool {
+        containsAny(text, [
+            "假设", "前提", "如果", "估计", "默认", "assume", "assumption", "if "
+        ])
+    }
+
+    private func hasProvidedFact(cards: [ThinkingCard], text: String) -> Bool {
+        if cards.contains(where: { $0.type == .fact }) {
+            return true
+        }
+        if containsAny(text, ["没有事实", "没有看到明确事实", "缺少事实", "缺事实", "只是感觉"]) {
+            return false
+        }
+        return containsAny(text, [
+            "事实：", "看到", "听到", "记录", "数据", "实际", "确认", "可观察",
+            "fact:", "observed", "documented", "confirmed"
+        ])
+    }
+
+    private func hasProvidedGoal(text: String) -> Bool {
+        if hasExplicitGoalGapSignal(text) {
+            return false
+        }
+        return containsAny(text, [
+            "目标是", "为了", "成功标准是", "解决", "服务于", "达成", "验收标准是",
+            "goal is", "success criteria"
+        ])
+    }
+
+    private func hasExplicitGoalGapSignal(_ text: String) -> Bool {
+        containsAny(text, ["不知道到底服务于谁", "没说清目标", "目标不清", "不知道目标", "没有目标"])
+    }
+
+    private func suggestsBlockedProgress(_ text: String) -> Bool {
+        containsAny(text, [
+            "卡住", "推进不下去", "推不动", "受阻", "阻塞", "暂停", "停滞",
+            "没有进展", "难推进", "blocked", "stalled", "stuck"
+        ])
+    }
+
+    private func suggestsCausalShortcut(_ text: String) -> Bool {
+        containsAny(text, [
+            "因为", "由于", "所以", "导致", "造成", "归因", "是因为",
+            "therefore", "because", "caused", "led to"
+        ])
+    }
+
+    private func hasCausalMechanism(_ text: String) -> Bool {
+        containsAny(text, [
+            "中间", "链条", "机制", "路径", "环节", "反馈", "回路", "延迟",
+            "先", "再", "进而", "影响路径", "mechanism", "chain", "path"
+        ])
+    }
+
+    private func hasCounterexampleSignal(_ text: String) -> Bool {
+        containsAny(text, [
+            "反例", "推翻", "削弱", "相反证据", "替代解释", "不成立", "证伪",
+            "如果不是", "还有可能", "counterexample", "disconfirm", "falsify"
+        ])
+    }
+
+    private func lacksExperienceFitCheck(_ text: String) -> Bool {
+        if containsAny(text, ["还没判断", "没有判断", "没判断", "未判断", "不确定这次条件"]) {
+            return true
+        }
+        let hasExperienceFitSignal = containsAny(text, [
+            "条件相同", "条件一样", "条件不同", "需要调整", "不能复用", "可以复现",
+            "复现、调整", "复现还是调整", "否定这条经验"
+        ])
+        return !hasExperienceFitSignal
+    }
+
+    private func containsAny(_ text: String, _ keywords: [String]) -> Bool {
+        keywords.contains { text.contains($0.lowercased()) }
+    }
+
+    private func unique<T: Hashable>(_ values: [T]) -> [T] {
+        var seen: Set<T> = []
+        return values.filter { seen.insert($0).inserted }
+    }
+}
+
 enum CoachConvergenceRisk: String, Codable, Hashable {
     case low
     case medium
@@ -1440,6 +2335,28 @@ struct CoachTeachingPlan: Codable, Hashable {
     var experienceReplayPrompt: String
     var routeSteps: [String]
     var auditNote: String?
+
+    var experienceReplayTrainingLine: String {
+        ExperienceReplayTraining.line
+    }
+
+    var trainingTargetLine: String {
+        if trainingTargetTitle == ThinkingTrainingDimension.testableActionDesign.displayTitle {
+            return ThinkingTrainingDimension.testableActionDesign.trainingTitle
+        }
+        for dimension in ThinkingTrainingDimension.allCases where dimension.displayTitle == trainingTargetTitle {
+            return dimension.trainingTitle
+        }
+        return trainingTargetTitle
+    }
+}
+
+enum ExperienceReplayTraining {
+    static let reproduceLine = "复现：条件相同，可以照用哪条做法"
+    static let adaptLine = "调整：条件不同，哪部分要改"
+    static let rejectLine = "否定：这条经验为什么不适用"
+    static let decisionLines = [reproduceLine, adaptLine, rejectLine]
+    static let line = "经验判断：\(reproduceLine)；\(adaptLine)；\(rejectLine)。"
 }
 
 struct CoachTeachingPolicy {
@@ -1468,11 +2385,11 @@ struct CoachTeachingPolicy {
                 policyVersion: Self.policyVersion,
                 missingMoveTitle: "现在不是继续分析，而是把判断转成明天能留下证据的行动。",
                 trainingTargetTitle: (prescription?.primaryTrainingDimension ?? .testableActionDesign).displayTitle,
-                whyNotAnswer: "当前证据已经足够形成小实验，继续追问的收益低于行动校准。",
+                whyNotAnswer: "当前证据已经足够形成验证行动，继续追问的收益低于行动校准。",
                 proceedStandard: "明日行动能留下负责人、验收标准和可观察结果。",
                 repairQuestion: "明天这个行动会留下什么结果证据，让你回看今天的判断是否成立？",
-                experienceReplayPrompt: "回想过往一次小实验有效的经验：这次应该复现哪条做法，哪些条件不同？",
-                routeSteps: ["固定当前判断", "设计一个明日小实验", "明天用结果校准判断"],
+                experienceReplayPrompt: "回想过往一次验证行动有效的经验：这次应该复现哪条做法，哪些条件不同？",
+                routeSteps: ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"],
                 auditNote: nil
             )
         }
@@ -1700,7 +2617,7 @@ struct CoachDecisionPolicyV2 {
                 openEvidenceGaps: [],
                 convergenceRisk: .low,
                 scores: scores,
-                reason: "已有任务、事实或判断，并出现负责人、验收标准或可观察结果，可以把下一步设计成校准实验。",
+                reason: "已有任务、事实或判断，并出现负责人、验收标准或可观察结果，可以把下一步设计成验证行动。",
                 whyNow: "当前材料已经足够形成明日可验证行动。",
                 expectedUpdate: "把当前判断转成一个明日能产生证据的行动。",
                 proceedWhen: "明日行动能留下负责人、验收标准和可观察结果。".trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1719,7 +2636,7 @@ struct CoachDecisionPolicyV2 {
                 convergenceRisk: risk,
                 scores: scores,
                 reason: "当前存在高风险、问题或明确证据缺口，直接行动会过早收敛。",
-                whyNow: "现在的主要风险是过早收敛，先补证据比生成任务更重要。",
+                whyNow: "现在的主要风险是过早收敛，先补证据比设计明日验证更重要。",
                 expectedUpdate: "回答应补足可观察事实、基线或验收口径。",
                 proceedWhen: "能说清至少一个可观察事实和一个验收基线后再推进。",
                 learningSignals: learningSignals
@@ -2161,6 +3078,40 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
         try container.encodeIfPresent(calibrationTarget, forKey: .calibrationTarget)
         try container.encode(answer, forKey: .answer)
     }
+
+    var answerTrainingPrompt: String {
+        if let answerUse {
+            return answerUse.answerTrainingPrompt
+        }
+
+        switch evidenceGapType {
+        case .some(.missingObservation), .some(.missingBaseline):
+            return QuestionAnswerUse.collectEvidence.answerTrainingPrompt
+        case .some(.missingCausalLink), .some(.missingCounterexample), .some(.missingConstraint):
+            return QuestionAnswerUse.testAssumption.answerTrainingPrompt
+        case .some(.missingCalibrationSignal):
+            return QuestionAnswerUse.watchCalibrationSignal.answerTrainingPrompt
+        case .some(.none), nil:
+            return QuestionAnswerUse.updateJudgment.answerTrainingPrompt
+        }
+    }
+}
+
+extension QuestionAnswerUse {
+    var answerTrainingPrompt: String {
+        switch self {
+        case .collectEvidence:
+            return "先写事实，再写解释：补一个可观察事实，不需要完整结论。"
+        case .testAssumption:
+            return "写支持或推翻：写出能验证或推翻假设的材料。"
+        case .chooseAction:
+            return "写选择、取舍依据、完成标准：写出一个可执行选择。"
+        case .watchCalibrationSignal:
+            return "写观察信号和更新条件：写出明天要观察的结果信号。"
+        case .updateJudgment:
+            return "写原判断、依据、更新后判断：写下判断如何更新。"
+        }
+    }
 }
 
 enum QuestType: String, CaseIterable, Identifiable {
@@ -2238,6 +3189,48 @@ struct Quest: Identifiable, Hashable {
             guard !trimmed.isEmpty, !result.contains(trimmed) else { return }
             result.append(trimmed)
         }
+    }
+}
+
+struct QuestExecutionTrainingFeedback: Hashable {
+    var trainingDimension: ThinkingTrainingDimension
+    var judgmentLine: String
+    var evidenceLine: String
+    var resistanceLine: String
+    var calibrationLine: String
+    var trainingLine: String
+}
+
+struct QuestExecutionTrainingPolicy {
+    func makeFeedback(for quest: Quest) -> QuestExecutionTrainingFeedback {
+        let targetJudgment = trimmed(quest.calibrationTarget)
+            ?? "这条验证行动必须回到今天的一个明确判断。"
+        let completionEvidence = trimmed(quest.completionCriteria)
+            ?? "明天需要留下一个可检查结果。"
+        let expectedResistance = trimmed(quest.expectedResistance)
+            ?? "先写出最可能阻断执行的一件事。"
+        let calibrationPrompt = trimmed(quest.reflectionQuestion)
+            ?? "明天用结果校准这个判断是否成立。"
+
+        return QuestExecutionTrainingFeedback(
+            trainingDimension: .testableActionDesign,
+            judgmentLine: targetJudgment,
+            evidenceLine: completionEvidence,
+            resistanceLine: expectedResistance,
+            calibrationLine: "结果校准时回答：\(calibrationPrompt)",
+            trainingLine: trainingLine(for: quest)
+        )
+    }
+
+    private func trainingLine(for quest: Quest) -> String {
+        let move = quest.lensMove?.displayTitle ?? ThinkingTrainingDimension.testableActionDesign.displayTitle
+        return "执行力训练：把今天的判断转成一个可验证行动，并用\(move)检查它是否真的改变结果。"
+    }
+
+    private func trimmed(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }
 
@@ -2585,6 +3578,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
     var customLensQuestions: [ReflectionQuestion]
     var yesterdayCompletion: YesterdayCompletion?
     var yesterdayValueRating: YesterdayValueRating?
+    var yesterdayJudgmentUpdate: YesterdayJudgmentUpdate?
     var state: DailyLoopState
 
     init(
@@ -2600,6 +3594,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         customLensQuestions: [ReflectionQuestion] = [],
         yesterdayCompletion: YesterdayCompletion? = nil,
         yesterdayValueRating: YesterdayValueRating? = nil,
+        yesterdayJudgmentUpdate: YesterdayJudgmentUpdate? = nil,
         state: DailyLoopState = .verifyYesterday
     ) {
         self.id = id
@@ -2614,6 +3609,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         self.customLensQuestions = customLensQuestions
         self.yesterdayCompletion = yesterdayCompletion
         self.yesterdayValueRating = yesterdayValueRating
+        self.yesterdayJudgmentUpdate = yesterdayJudgmentUpdate
         self.state = state
     }
 }
@@ -4779,9 +5775,9 @@ struct ProjectEvidenceDigest: Hashable {
         case .thinkingCard:
             return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
         case .quest:
-            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日任务"
+            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
         case .verification:
-            return record.verification?.calibrationNote ?? "次日验证"
+            return record.verification?.calibrationNote ?? "结果校准"
         case .principle:
             return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
         }
