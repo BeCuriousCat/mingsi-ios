@@ -215,6 +215,16 @@ Independent image review of the Subtask 073 light and dark screenshots confirms 
 
 ## Post-MVP Recommended Next Slice
 
+As of 2026-06-29, the active MingSi product focus is Coach Training Loop v2. The user has redirected priority away from broad external distribution work and back to the core product question: make MingSi visibly train the user's foundational abilities instead of behaving like an AI answer tool.
+
+For MingSi product work, prefer coach-quality slices before marketplace, sync, subscription, or remote-distribution slices:
+
+- Coach observation v2: expand deterministic and prompt-eval coverage for narrative, observation, object/user, goal, constraint, causal, counterexample, judgment, execution, calibration, and experience gaps.
+- Teaching feedback v2: make each answer feedback frame show what the user just repaired, what remains missing, whether the turn can proceed, the exact next repair sentence, and the reproduce/adapt/reject experience decision.
+- Experience replay capture: require prior principles or patterns to be classified as reproduce, adapt, or reject before they influence a tomorrow validation action or any future training recommendation.
+- Review sustainability: use repeated local gaps to form lightweight next-training recommendations while keeping LLM observations out of high-confidence long-term growth evidence.
+- Rendered Today UX proof: keep UI automation centered on the Today training loop, stage boundaries, input behavior, coach correction, and calibration target visibility.
+
 After MVP acceptance, the next bounded MingSi slice should be chosen from:
 
 - Live GLM acceptance execution with a real user-provided BYOK key and approved external network window: run `scripts/run_alpha_acceptance.sh --summary-json /tmp/mingsi-alpha-acceptance.json` as the full post-MVP Alpha gate so the result is machine-readable. For narrower diagnosis, run `scripts/check_alpha_prerequisites.sh` first, then `scripts/run_live_glm_acceptance.sh` to drive only the Subtask 115 live harness before extending failure-path confirmation to History repair or Growth reports.

@@ -507,9 +507,17 @@ This model should be implemented before broad prompt expansion:
    - judgment without fact -> observation gap -> observation training;
    - experience reuse without fit check -> experience gap -> calibration training plus counterexample check.
 3. Done: enforce one primary gap per turn so coach feedback remains training, not a broad questionnaire.
-4. Next: add prompt context fields only after the observation model is stable.
-5. Next: update `generateQuestions` prompt to use coach observation before writing questions.
-6. Next: render the observation frame in Today before the question input.
-7. Next: add quality gates that reject questions missing an observation/gap/training/ask link.
+4. Done: carry coach observation and turn state through typed prompt context for question and quest generation.
+5. Done: update prompt assets so questions, quests, and principle extraction use coach observation, non-appeasing correction, and training language.
+6. Done: render observation, training prescription, stage boundaries, answer feedback, experience replay, and tomorrow calibration cues in Today.
+7. Done: add quality gates and tests that reject appeasing or generic outputs that ignore observation/gap/training/ask links.
+
+The next implementation layer is Coach Training Loop v2:
+
+1. Broaden observation fixtures so every reusable gap type has at least one deterministic policy test and one prompt-eval expectation.
+2. Make answer feedback consistently teach the same repair structure: what improved, what remains missing, whether the user is ready, the exact next repair sentence, and the experience-replay choice.
+3. Turn experience replay into a visible user decision: reproduce, adapt, or reject before prior experience can influence a tomorrow validation action.
+4. Track repeated local gaps as low-cost training recommendations without converting LLM observations into authoritative long-term growth evidence.
+5. Keep rendered UI proof focused on the Today training loop, especially stage boundaries, input behavior, coach correction, and calibration target visibility.
 
 Do not implement this as a generic chat agent. Keep it Today-local, auditable, and testable.

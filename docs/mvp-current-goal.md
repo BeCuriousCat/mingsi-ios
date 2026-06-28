@@ -4,47 +4,59 @@ Date: 2026-06-29
 
 ## Active Codex Pursuit Goal
 
-MingSi MVP acceptance is complete. The current product work is Post-MVP Alpha hardening: keep the accepted personal-alpha loop runnable, preserve the coach-led training direction, and close external or operational gaps without reopening the MVP stop condition.
+MingSi MVP acceptance is complete. The current product work is Coach Training Loop v2: make MingSi feel less like an AI answer surface and more like a coach that observes how the user describes, judges, recalls experience, and turns judgment into action.
 
 This repo is also dogfooding a second, separate framework project: Codex-to-Claude Code managed delegation. The framework is a tooling project, not a MingSi feature. It should remain generic enough to extract later and must not bake MingSi business semantics into its skill or wrapper contract.
 
 Current Codex goal:
 
-> Keep MingSi alpha-ready while improving the coach-led loop and its operating reliability: use Claude Code for bounded implementation or audit slices when resource health allows, keep Codex in manager/reviewer/final-verifier mode, and keep every accepted claim backed by tests, screenshots, logs, PromptRun audit, or repository evidence.
+> Coach Training Loop v2: strengthen MingSi's core coach logic, teaching logic, and Today UX so the user clearly experiences "MingSi is training me" instead of "AI gave me an answer." The coach should focus on what the user skipped while describing the situation, guide more complete thinking, and help the user reproduce, adapt, or reject past experience.
+
+This is not a feature expansion milestone. It is a training-quality milestone:
+
+- MingSi should train foundational ability, not narrow industry tricks.
+- Communication training means helping the user make an event replayable by another person.
+- Thinking training means separating facts, feelings, interpretations, judgments, assumptions, goals, constraints, counterexamples, and calibration signals.
+- Execution training means turning one reviewed judgment into an action with owner, standard, resistance plan, evidence, and tomorrow's calibration signal.
+- The coach may be respectful, but must not appease. It should name weak thinking moves and repair them without attacking the person.
+- User lens choice remains a downstream override. MingSi should carry the primary diagnostic burden for choosing the training focus.
 
 Coach Turn State v1 is no longer the active stop condition. It has a completion audit in `docs/coach-turn-state-v1-audit.md`, and `docs/mvp-stage-progress.md` records the product as being in Post-MVP follow-up. Future coach work should build on that stateful turn instead of reimplementing it.
 
 ## Current Stop Condition
 
-The MVP stop condition is already accepted. The active Post-MVP Alpha gate is narrower:
+The next milestone can stop only when Coach Training Loop v2 is coherent:
 
-- Local app prerequisites pass through `scripts/check_alpha_prerequisites.sh`.
-- Rendered UI automation can be repeated through `scripts/run_ui_automation.sh` when a UI change or user-facing flow needs proof.
-- The full Alpha acceptance runner remains `scripts/run_alpha_acceptance.sh --summary-json <path>`.
-- The only known external Alpha prerequisite is a real BYOK GLM network call with a user-provided key and an approved external network-call window.
-- Product changes must preserve the accepted MVP loop: Today completion, History evidence archive, Project/Growth evidence chains, Settings BYOK/audit visibility, PromptProvider / LLMClient boundaries, AI failure visibility, and local-first persistence.
+- `CoachObservationPolicy`, `CoachDecisionPolicyV2`, `CoachTeachingPolicy`, prompt directives, and Today UI all use the same training vocabulary: observed material, primary gap, baseline checks, ability trained, repair ask, and proceed condition.
+- Today makes the two loops visible and hard to confuse: `今天内容 -> 今日复盘` and `明日验证 -> 结果校准`.
+- The coach selects one primary training focus, while quietly checking baseline thinking foundations so the user is not trapped in a single lens.
+- User answers get actionable coach feedback: what improved, what is still missing, whether the turn is ready, the next repair sentence, and the experience-replay decision.
+- Generated tomorrow actions are explicitly tied to a reviewed judgment and calibration target, not generic todos.
+- Prompt quality gates reject appeasing outputs, generic advice, and questions or quests that do not connect observation -> gap -> training -> ask.
+- Tests cover deterministic policy, prompt specs, prompt quality gates, persistence boundaries where affected, and rendered Today UX for the user-facing training cues.
+- The milestone does not add a general chat agent, LangChain/LangGraph, subscription, sync, marketplace, or remote distribution behavior.
 
-Do not claim full external Alpha acceptance until the live BYOK GLM path has been run with a real key and recorded evidence. A missing key is a documented external blocker, not a reason to reopen accepted local MVP work.
+Alpha guardrails still apply: local app prerequisites must remain runnable through `scripts/check_alpha_prerequisites.sh`, rendered UI automation should remain repeatable through `scripts/run_ui_automation.sh`, and the full Alpha acceptance runner remains `scripts/run_alpha_acceptance.sh --summary-json <path>`. Do not claim full external Alpha acceptance until the live BYOK GLM path has been run with a real key and recorded evidence.
 
 ## Current Stage Priority
 
-1. Keep the accepted alpha loop stable and runnable.
-2. Prefer bounded, testable Post-MVP slices from `docs/mvp-stage-progress.md`.
-3. Use Claude Code aggressively for suitable local implementation or read-only audit tasks when `scripts/claude_delegate.sh health` is healthy.
-4. Keep framework/delegation reliability separate from MingSi business semantics, but dogfood it on safe slices.
+1. Make the coach's observation visible before the user experiences a prompt or task.
+2. Improve the teaching route after user answers: the coach should explain the thinking repair, not only decide pass/fail.
+3. Strengthen experience replay as a decision drill: reproduce, adapt, or reject past experience before applying it.
+4. Keep the accepted alpha loop stable and runnable while improving the coach-led loop.
 5. Preserve structured Prompt/Context asset versioning, eval, rollback, and PromptRun audit.
 6. Keep coach-led training evidence local, deterministic, auditable, and testable; LLM may explain but must not authoritatively create long-term practice evidence.
 
 ## Recommended Next Slices
 
-Choose based on the user's newest report or highest current risk:
+Choose based on the user's newest report or highest current coach-quality risk:
 
-- **Live GLM Alpha acceptance**: if a real BYOK key and network window are available, run `scripts/check_alpha_prerequisites.sh`, then `scripts/run_live_glm_acceptance.sh`, or the full `scripts/run_alpha_acceptance.sh --summary-json /tmp/mingsi-alpha-acceptance.json`.
-- **UI automation follow-up**: use `scripts/run_ui_automation.sh` and extend `MingSiUITests` only when new rendered Today, Settings, History repair, or Growth/Project action surfaces need proof.
-- **Prompt / Context assetization follow-up**: preserve typed `PromptContextPayload` and `PromptProvider` boundaries while improving publisher onboarding, external key distribution, remote prompt registry rollout, install/distribution UX, or registry refresh behavior.
-- **Lens Asset follow-up**: build on the pack-aware local registry, trust metadata, Settings import/manage surface, and runtime enabled-pack catalog without adding prompt- or UI-specific branches to Today state.
-- **Principle retrieval / PromptRun audit follow-up**: improve recall feedback policy, structured localized recall signals, and not-applicable/misrecalled weighting instead of adding another hand-maintained denial counter.
-- **Delegation framework follow-up**: if the user redirects to framework work, improve worker launch reliability, conclusion-first monitoring, worktree setup, process cleanup, and experience capture without tying the framework to MingSi.
+- **Coach observation v2**: broaden deterministic observation fixtures and prompt-eval cases for narrative, object/user, goal, constraint, causal, counterexample, judgment, execution, calibration, and experience gaps.
+- **Teaching feedback v2**: make answer feedback consistently show `你刚补上 / 当前仍缺 / 能否进入明日验证 / 下一句修补 / 过往经验复现`.
+- **Experience replay capture**: ensure recalled principles or patterns require a user-visible reproduce/adapt/reject classification before becoming useful practice material.
+- **Review sustainability**: use repeated local gap history to surface a lightweight next training recommendation without letting LLM observations become high-confidence long-term evidence.
+- **Rendered Today UX proof**: keep using `scripts/run_ui_automation.sh` or focused `MingSiUITests` when user-facing training copy, stage boundaries, or input behavior changes.
+- **Live GLM Alpha acceptance**: run only when a real BYOK key and approved network window are available; this is an external Alpha proof gate, not the current coach-quality slice.
 
 ## Current Implementation Bias
 
