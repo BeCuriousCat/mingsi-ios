@@ -192,6 +192,8 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["补盲区"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["复现经验"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["安排执行"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["输入材料"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["补一个可观察事实，不需要完整结论"].waitForExistence(timeout: 4))
     }
 
     func testTodaySelectLensShowsObservationInventoryBeforeLensChoice() throws {

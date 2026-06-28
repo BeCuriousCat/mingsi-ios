@@ -2975,6 +2975,40 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
         try container.encodeIfPresent(calibrationTarget, forKey: .calibrationTarget)
         try container.encode(answer, forKey: .answer)
     }
+
+    var answerTrainingPrompt: String {
+        if let answerUse {
+            return answerUse.answerTrainingPrompt
+        }
+
+        switch evidenceGapType {
+        case .some(.missingObservation), .some(.missingBaseline):
+            return QuestionAnswerUse.collectEvidence.answerTrainingPrompt
+        case .some(.missingCausalLink), .some(.missingCounterexample), .some(.missingConstraint):
+            return QuestionAnswerUse.testAssumption.answerTrainingPrompt
+        case .some(.missingCalibrationSignal):
+            return QuestionAnswerUse.watchCalibrationSignal.answerTrainingPrompt
+        case .some(.none), nil:
+            return QuestionAnswerUse.updateJudgment.answerTrainingPrompt
+        }
+    }
+}
+
+extension QuestionAnswerUse {
+    var answerTrainingPrompt: String {
+        switch self {
+        case .collectEvidence:
+            return "补一个可观察事实，不需要完整结论"
+        case .testAssumption:
+            return "写出能验证或推翻假设的材料"
+        case .chooseAction:
+            return "写出一个可执行选择和取舍依据"
+        case .watchCalibrationSignal:
+            return "写出明天要观察的结果信号"
+        case .updateJudgment:
+            return "写下判断如何更新，以及依据是什么"
+        }
+    }
 }
 
 enum QuestType: String, CaseIterable, Identifiable {

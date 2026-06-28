@@ -337,7 +337,20 @@ Question cards should show the observation frame:
 - ask: what the user should now supply;
 - proceed: what makes the answer sufficient.
 
-The answer box should not imply the user needs a polished essay. It should ask for the missing thinking material.
+The answer box should not imply the user needs a polished essay or generic
+judgment. It should name the missing thinking material the coach is training in
+this question. Examples:
+
+```text
+collectEvidence -> 补一个可观察事实，不需要完整结论
+testAssumption -> 写出能验证或推翻假设的材料
+chooseAction -> 写出一个可执行选择和取舍依据
+watchCalibrationSignal -> 写出明天要观察的结果信号
+updateJudgment -> 写下判断如何更新，以及依据是什么
+```
+
+The same instruction should remain visible outside the empty placeholder, so the
+training target does not disappear after the user starts typing.
 
 After the user answers, the feedback frame should train a judgment sentence,
 not merely say whether the answer is good enough. The minimum shape is:

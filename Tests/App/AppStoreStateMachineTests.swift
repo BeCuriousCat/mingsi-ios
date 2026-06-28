@@ -11284,6 +11284,36 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(EvidenceGapType.none.displayTitle, "非证据缺口")
     }
 
+    func testReflectionQuestion_answerPromptGuidesMissingThinkingMaterial() {
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "还缺哪个可观察事实？",
+                whyItMatters: "补证据",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence
+            ).answerTrainingPrompt,
+            "补一个可观察事实，不需要完整结论"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "怎么验证这个解释？",
+                whyItMatters: "测假设",
+                evidenceGapType: .missingCounterexample,
+                answerUse: .testAssumption
+            ).answerTrainingPrompt,
+            "写出能验证或推翻假设的材料"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "明天观察什么结果？",
+                whyItMatters: "留信号",
+                evidenceGapType: .missingCalibrationSignal,
+                answerUse: .watchCalibrationSignal
+            ).answerTrainingPrompt,
+            "写出明天要观察的结果信号"
+        )
+    }
+
     func testPrincipleRetrievalSignalDisplayText_mapsKnownSignalsAndFallsBackDeterministically() {
         XCTAssertEqual(
             PrincipleRetrievalSignalDisplay.displayText(for: " meeting ownership "),

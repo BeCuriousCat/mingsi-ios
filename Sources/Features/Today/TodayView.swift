@@ -2952,7 +2952,9 @@ private struct QuestionCardView: View {
                 answerDrillView
             }
 
-            TextField("写下你的判断，不需要完整答案", text: $answer, axis: .vertical)
+            BriefRow(title: "输入材料", body: question.answerTrainingPrompt, accent: DS.accent)
+
+            TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.subheadline)
                 .padding(12)
