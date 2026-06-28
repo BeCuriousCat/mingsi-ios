@@ -11345,7 +11345,7 @@ extension AppStoreStateMachineTests {
                 evidenceGapType: .missingObservation,
                 answerUse: .collectEvidence
             ).answerTrainingPrompt,
-            "补一个可观察事实，不需要完整结论"
+            "先写事实，再写解释：补一个可观察事实，不需要完整结论。"
         )
         XCTAssertEqual(
             ReflectionQuestion(
@@ -11354,7 +11354,16 @@ extension AppStoreStateMachineTests {
                 evidenceGapType: .missingCounterexample,
                 answerUse: .testAssumption
             ).answerTrainingPrompt,
-            "写出能验证或推翻假设的材料"
+            "写支持或推翻：写出能验证或推翻假设的材料。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "下一步选什么？",
+                whyItMatters: "做取舍",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction
+            ).answerTrainingPrompt,
+            "写选择、取舍依据、完成标准：写出一个可执行选择。"
         )
         XCTAssertEqual(
             ReflectionQuestion(
@@ -11363,7 +11372,16 @@ extension AppStoreStateMachineTests {
                 evidenceGapType: .missingCalibrationSignal,
                 answerUse: .watchCalibrationSignal
             ).answerTrainingPrompt,
-            "写出明天要观察的结果信号"
+            "写观察信号和更新条件：写出明天要观察的结果信号。"
+        )
+        XCTAssertEqual(
+            ReflectionQuestion(
+                question: "判断怎么变？",
+                whyItMatters: "校准判断",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .updateJudgment
+            ).answerTrainingPrompt,
+            "写原判断、依据、更新后判断：写下判断如何更新。"
         )
     }
 

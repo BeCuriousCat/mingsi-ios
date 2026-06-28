@@ -3101,15 +3101,15 @@ extension QuestionAnswerUse {
     var answerTrainingPrompt: String {
         switch self {
         case .collectEvidence:
-            return "补一个可观察事实，不需要完整结论"
+            return "先写事实，再写解释：补一个可观察事实，不需要完整结论。"
         case .testAssumption:
-            return "写出能验证或推翻假设的材料"
+            return "写支持或推翻：写出能验证或推翻假设的材料。"
         case .chooseAction:
-            return "写出一个可执行选择和取舍依据"
+            return "写选择、取舍依据、完成标准：写出一个可执行选择。"
         case .watchCalibrationSignal:
-            return "写出明天要观察的结果信号"
+            return "写观察信号和更新条件：写出明天要观察的结果信号。"
         case .updateJudgment:
-            return "写下判断如何更新，以及依据是什么"
+            return "写原判断、依据、更新后判断：写下判断如何更新。"
         }
     }
 }
