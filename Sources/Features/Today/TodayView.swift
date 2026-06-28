@@ -1147,7 +1147,7 @@ struct TodayView: View {
 
     private var primaryActionTitle: String {
         if store.isAIRunning {
-            return store.aiActivityMessage.isEmpty ? "AI 生成中" : store.aiActivityMessage
+            return store.aiActivityMessage.isEmpty ? "明思训练中" : store.aiActivityMessage
         }
 
         switch store.todayDraft.state {

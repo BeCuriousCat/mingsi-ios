@@ -1535,7 +1535,7 @@ final class AppStore: ObservableObject {
 
     var todayPrimaryActionBlocker: String? {
         if isAIRunning {
-            return "AI 正在运行，完成后会继续。"
+            return coachBusyMessage
         }
 
         switch todayDraft.state {
@@ -1628,6 +1628,18 @@ final class AppStore: ObservableObject {
 
     private func todayEntryCondition(requirement: String, reason: String) -> String {
         "进入条件：\(requirement) 训练理由：\(reason)"
+    }
+
+    private var coachBusyMessage: String {
+        "明思正在训练处理中，完成后会继续。"
+    }
+
+    private var coachBusyRetryMessage: String {
+        "明思正在训练处理中，请等待当前请求完成。"
+    }
+
+    private var coachBusyRepairMessage: String {
+        "明思正在训练处理中，请等待当前补跑完成。"
     }
 
     var canCreateProjectFromCurrentFocus: Bool {
@@ -3715,7 +3727,7 @@ final class AppStore: ObservableObject {
 
     func retryCurrentAIStep() {
         guard !isAIRunning else {
-            todayLoopMessage = "AI 正在运行，请等待当前请求完成。"
+            todayLoopMessage = coachBusyRetryMessage
             return
         }
 
@@ -3770,7 +3782,7 @@ final class AppStore: ObservableObject {
     func retryPendingAIRepairs() {
         guard pendingAIRepairCount > 0 else { return }
         guard !isAIRunning else {
-            todayLoopMessage = "AI 正在运行，请等待当前补跑完成。"
+            todayLoopMessage = coachBusyRepairMessage
             return
         }
         let draftID = todayDraft.id
@@ -4825,7 +4837,7 @@ final class AppStore: ObservableObject {
 
     private func organizeCapture() {
         guard !isAIRunning else {
-            todayLoopMessage = "AI 正在运行，请等待当前请求完成。"
+            todayLoopMessage = coachBusyRetryMessage
             return
         }
 

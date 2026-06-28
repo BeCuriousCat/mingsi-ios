@@ -5709,7 +5709,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(llmClient.completeCallCount, 1)
-        XCTAssertTrue(store.todayLoopMessage.contains("AI 正在运行"))
+        XCTAssertTrue(store.todayLoopMessage.contains("明思正在训练处理中"))
+        XCTAssertFalse(store.todayLoopMessage.contains("AI 正在运行"))
 
         llmClient.release()
         try await waitForGeneratedCards()
