@@ -1427,7 +1427,7 @@ struct CoachObservation: Codable, Hashable {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v2"
+    static let policyVersion = "coach-observation.local-v3"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1489,7 +1489,7 @@ struct CoachObservationPolicy {
         }
 
         if cards.contains(where: { $0.type == .task }) ||
-            containsAny(text, ["打算", "计划", "明天", "先拉会", "行动", "action", "tomorrow"]) {
+            containsAny(text, ["打算", "计划", "明天", "先拉会", "行动", "推进", "调整", "暂停", "action", "tomorrow"]) {
             materials.append(.action)
         }
 
@@ -1565,6 +1565,11 @@ struct CoachObservationPolicy {
             missing.append(.calibrationSignal)
         }
 
+        if suggestsBlockedProgress(text),
+           !providedMaterials.contains(.constraint) {
+            missing.append(.constraint)
+        }
+
         return unique(missing)
     }
 
@@ -1597,6 +1602,14 @@ struct CoachObservationPolicy {
             text: text
         ) {
             return .object
+        }
+
+        if shouldTrainConstraintBeforeGoal(
+            providedMaterials: providedMaterials,
+            missingMaterials: missingMaterials,
+            text: text
+        ) {
+            return .constraint
         }
 
         if providedMaterials.contains(.action),
@@ -1640,6 +1653,10 @@ struct CoachObservationPolicy {
         if providedMaterials.contains(.action),
            missingMaterials.contains(.goal) {
             gaps.append(.goal)
+        }
+
+        if missingMaterials.contains(.constraint) {
+            gaps.append(.constraint)
         }
 
         return unique(gaps.filter { $0 != primaryGap })
@@ -1748,7 +1765,15 @@ struct CoachObservationPolicy {
                 ask: "请补一句：这件事影响谁，或你要服务谁的什么问题？",
                 proceedWhen: "当你能说清对象、对象的问题和影响时，再进入目标或行动判断。"
             )
-        case .constraint, .causal, .counterexample, .judgment, .narrative:
+        case .constraint:
+            return CoachObservationFeedback(
+                observed: "你已经描述了事情推进受阻，但还没有说清具体限制。",
+                diagnosis: "当前主要缺口是约束 gap：还不知道卡住来自时间、资源、权限、信息、关系还是系统边界。",
+                training: "本轮先练\(ability.displayTitle)，把限制条件拆出来，再决定怎么推进。",
+                ask: "请补一句：现在最大的限制是什么，来自时间、资源、权限、信息、关系还是系统边界？",
+                proceedWhen: "当你能说清关键边界和它如何限制行动时，再进入目标或行动判断。"
+            )
+        case .causal, .counterexample, .judgment, .narrative:
             if gap == .narrative {
                 return CoachObservationFeedback(
                     observed: "你已经写出感受或判断，但事情的前因后果还没有展开。",
@@ -1826,6 +1851,21 @@ struct CoachObservationPolicy {
         return providedNarrativeCoreCount >= 2
     }
 
+    private func shouldTrainConstraintBeforeGoal(
+        providedMaterials: [CoachObservationMaterial],
+        missingMaterials: [CoachObservationMaterial],
+        text: String
+    ) -> Bool {
+        guard missingMaterials.contains(.constraint),
+              suggestsBlockedProgress(text),
+              !hasExplicitGoalGapSignal(text)
+        else { return false }
+
+        let narrativeCore: [CoachObservationMaterial] = [.background, .object, .trigger, .action, .result]
+        let providedNarrativeCoreCount = narrativeCore.filter { providedMaterials.contains($0) }.count
+        return providedNarrativeCoreCount >= 3
+    }
+
     private func hasProvidedBackground(_ text: String) -> Bool {
         containsAny(text, [
             "背景", "当时", "会议", "评审", "沟通中", "讨论中", "项目里", "需求评审",
@@ -1892,6 +1932,13 @@ struct CoachObservationPolicy {
 
     private func hasExplicitGoalGapSignal(_ text: String) -> Bool {
         containsAny(text, ["不知道到底服务于谁", "没说清目标", "目标不清", "不知道目标", "没有目标"])
+    }
+
+    private func suggestsBlockedProgress(_ text: String) -> Bool {
+        containsAny(text, [
+            "卡住", "推进不下去", "推不动", "受阻", "阻塞", "暂停", "停滞",
+            "没有进展", "难推进", "blocked", "stalled", "stuck"
+        ])
     }
 
     private func lacksExperienceFitCheck(_ text: String) -> Bool {

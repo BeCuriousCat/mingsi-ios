@@ -1040,6 +1040,26 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("对象"))
     }
 
+    func testCoachObservationPolicy_identifiesBlockedProgressWithoutConstraintAsAnalysisGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .problem,
+                title: "跨团队推进卡住",
+                body: "今天在项目沟通中，我和产品团队讨论接口方案，但推进不下去，后来决定先暂停方案调整。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .constraint)
+        XCTAssertEqual(observation.trainingAbility, .analysis)
+        XCTAssertTrue(observation.providedMaterials.contains(.background))
+        XCTAssertTrue(observation.providedMaterials.contains(.object))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.missingMaterials.contains(.constraint))
+        XCTAssertTrue(observation.feedback.diagnosis.contains("约束"))
+        XCTAssertTrue(observation.feedback.ask.contains("限制"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("边界"))
+    }
+
     func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
