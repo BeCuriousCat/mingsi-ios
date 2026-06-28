@@ -1628,6 +1628,44 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .selectLens)
     }
 
+    func testAnswerQuestionsGuard_withoutAnswerExplainsTrainingEntryCondition() {
+        store.todayDraft.state = .answerQuestions
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                answer: "   "
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先回答一个教练问题。 训练理由：明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
+        )
+    }
+
+    func testAnswerQuestionsGuard_withoutCalibrationTargetExplainsTrainingEntryCondition() {
+        store.todayDraft.state = .answerQuestions
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                answer: "这次会议没有明确负责人。"
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：先在今日复盘中形成一个待验证判断。 训练理由：验证行动要验证今天的判断，不是普通待办。"
+        )
+    }
+
     // MARK: - SelectLens -> AnswerQuestions
 
     func testSelectLens_noLensSelected_blocksProgression() async throws {

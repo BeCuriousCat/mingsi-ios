@@ -4911,11 +4911,17 @@ final class AppStore: ObservableObject {
 
     private func generateQuestsFromAnswers() {
         guard hasAnsweredReflectionQuestion else {
-            todayLoopMessage = "至少回答一个问题，才能设计明日验证。"
+            todayLoopMessage = todayEntryCondition(
+                requirement: "先回答一个教练问题。",
+                reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
+            )
             return
         }
         guard hasAnsweredCalibrationTarget else {
-            todayLoopMessage = "先在今日复盘中形成一个待验证判断，再设计明日验证。"
+            todayLoopMessage = todayEntryCondition(
+                requirement: "先在今日复盘中形成一个待验证判断。",
+                reason: "验证行动要验证今天的判断，不是普通待办。"
+            )
             return
         }
         refreshCoachTurnStateAfterAnswers()
