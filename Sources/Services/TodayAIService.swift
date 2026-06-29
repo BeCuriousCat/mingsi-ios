@@ -106,7 +106,7 @@ final class TodayAIService {
             promptID: .generateQuestions,
             context: context
         )
-        let data = try await llmClient.complete(request)
+        let data = try await completePossiblyStreaming(request)
         let questions = try parser.parseQuestions(from: data)
         let visiblePayload = request.contextPayload
         try validateCoachingQuality(
@@ -120,6 +120,26 @@ final class TodayAIService {
             )
         )
         return questions
+    }
+
+    private func completePossiblyStreaming(_ request: LLMRequest) async throws -> Data {
+        guard let streamingClient = llmClient as? StreamingLLMClient else {
+            return try await llmClient.complete(request)
+        }
+
+        var rawText = ""
+        for try await event in streamingClient.stream(request) {
+            switch event {
+            case .token(let text):
+                rawText += text
+            case .completed:
+                break
+            }
+        }
+
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw TodayAIParsingError.emptyResult }
+        return Data(trimmed.utf8)
     }
 
     func generateQuests(for context: TodayAIContext) async throws -> [Quest] {

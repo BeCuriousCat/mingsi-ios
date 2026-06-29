@@ -242,6 +242,48 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(legacy["streamProtocol"], "MINGSI_STREAM_V1")
     }
 
+    func testGenerateQuestions_usesStreamingClientWhenAvailable() async throws {
+        let client = StreamingCapturingLLMClient(tokens: [
+            #"{"questions":["#,
+            #"{"question":"哪个可观察信号能证明这个判断需要更新？","#,
+            #""why_this_matters":"把判断变成可以校准的训练。","#,
+            #""why_now":"当前材料已经有判断，但缺少未来校准信号。","#,
+            #""expected_update":"补上判断更新所需的结果信号。","#,
+            #""proceed_when":"能说出一个明天可观察的校准信号。","#,
+            #""evidence_gap_type":"missing_calibration_signal","#,
+            #""answer_use":"watch_calibration_signal","#,
+            #""lens_move":"prediction_calibration","#,
+            #""source_card_titles":["优先改注册流程"],"#,
+            #""calibration_target":"优先改注册流程能改善新用户首次使用"}"#,
+            #"]}"#
+        ])
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        let questions = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "我判断应该优先改注册流程。",
+                    sessionMode: .standard,
+                    hasSelectedSessionMode: true
+                ),
+                confirmedCards: [
+                    ThinkingCard(
+                        type: .decision,
+                        title: "优先改注册流程",
+                        body: "我判断应该优先改注册流程，标准是影响新用户首次使用。"
+                    )
+                ]
+            )
+        )
+
+        XCTAssertEqual(questions.count, 1)
+        XCTAssertEqual(client.streamRequestCount, 1)
+        XCTAssertEqual(client.completeRequestCount, 0)
+    }
+
     func testOrganizeCardsPrompt_usesStreamingXMLInstructions() {
         let template = LocalPromptProvider().template(for: .organizeCards, mode: .standard)
 
@@ -3015,16 +3057,20 @@ private struct FixedMemoryContextAssembler: ContextAssembler {
 private final class StreamingCapturingLLMClient: LLMClient, StreamingLLMClient {
     private let tokens: [String]
     private(set) var requests: [LLMRequest] = []
+    private(set) var completeRequestCount = 0
+    private(set) var streamRequestCount = 0
 
     init(tokens: [String]) {
         self.tokens = tokens
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        completeRequestCount += 1
         throw LLMClientError.invalidResponse
     }
 
     func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        streamRequestCount += 1
         requests.append(request)
         return AsyncThrowingStream { continuation in
             for token in tokens {

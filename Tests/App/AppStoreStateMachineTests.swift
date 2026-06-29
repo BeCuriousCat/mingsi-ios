@@ -9200,6 +9200,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionSkipAction, "today.training-prescription.skip-action")
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionOverrideAudit, "today.training-prescription.override-audit")
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionDecisionOverrideAudit, "today.training-prescription.decision-override-audit")
+        XCTAssertEqual(TodayAutomationID.answerDiagnosisToggle, "today.answer.diagnosis-toggle")
+        XCTAssertEqual(TodayAutomationID.questionCoachBasisToggle, "today.question.coach-basis-toggle")
         XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
         XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
         XCTAssertEqual(TodayAutomationID.questTrainingPrinciplePicker, "today.quest.training-principle-picker")

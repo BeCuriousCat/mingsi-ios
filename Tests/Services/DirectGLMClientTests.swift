@@ -6,6 +6,7 @@ final class DirectGLMClientTests: XCTestCase {
     override func tearDown() {
         GLMStubURLProtocol.responses = []
         GLMStubURLProtocol.requestBodies = []
+        GLMStubURLProtocol.requestTimeouts = []
         super.tearDown()
     }
 
@@ -144,6 +145,31 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertFalse(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
     }
 
+    func testStream_keepsRequestTimeoutAsIdleTimeoutForDisconnectedStreams() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: """
+                data: {"choices":[{"delta":{"content":"<CARD>"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        ]
+
+        let client = makeClient(
+            configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
+                requestTimeout: 180
+            )
+        )
+
+        for try await _ in client.stream(makeRequest()) {}
+
+        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [180])
+    }
+
     func testComplete_prefersStructuredContextPayloadOverLegacyFlattenedPayload() async throws {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
@@ -270,6 +296,7 @@ private struct StubbedHTTPResponse {
 private final class GLMStubURLProtocol: URLProtocol {
     static var responses: [StubbedHTTPResponse] = []
     static var requestBodies: [String] = []
+    static var requestTimeouts: [TimeInterval] = []
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -281,6 +308,7 @@ private final class GLMStubURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.requestBodies.append(Self.bodyString(for: request))
+        Self.requestTimeouts.append(request.timeoutInterval)
 
         let response = Self.responses.isEmpty
             ? StubbedHTTPResponse(statusCode: 500, body: #"{"error":"missing stub"}"#)

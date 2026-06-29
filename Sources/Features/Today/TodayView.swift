@@ -19,6 +19,8 @@ enum TodayAutomationID {
     static let coachDiagnosisAcceptAction = "today.coach-diagnosis.accept-action"
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
+    static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
+    static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
     static func questionAnswerField(questionId: String) -> String {
         "today.question.answer-field.\(questionId)"
@@ -679,42 +681,7 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            phaseBoundaryCard(
-                title: "今日复盘",
-                body: "明思观察你怎么讲述、判断和跳步，再指出当前最该补的思考材料。",
-                icon: "person.text.rectangle",
-                tint: DS.brick
-            )
-            BriefRow(
-                title: "本页只复盘今天",
-                body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
-                accent: DS.brick
-            )
-
             stepLabel("教练追问", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
-            observationTrainingFrame(
-                CoachObservationPolicy().observe(cards: store.thinkingCards)
-            )
-
-            if let feedback = store.coachAnswerTrainingFeedback {
-                answerFeedbackPreviewView(feedback)
-            } else if let teachingPlan = store.coachTurnState.map({
-                CoachTeachingPolicy().makePlan(
-                    turn: $0,
-                    prescription: store.trainingPrescription
-                )
-            }) {
-                teachingRouteView(teachingPlan)
-            }
-
-            if !store.referencedPrinciples.isEmpty {
-                ReferencedPrinciplesView(
-                    principles: store.referencedPrinciples,
-                    retrievalReason: store.referencedPrincipleRetrievalReason,
-                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
-                    onFeedback: recordReferencedPrincipleFeedback
-                )
-            }
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
@@ -723,6 +690,48 @@ struct TodayView: View {
                     isPrimaryAnswerField: index == 0
                 )
             }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    BriefRow(
+                        title: "本页只复盘今天",
+                        body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
+                        accent: DS.brick
+                    )
+                    observationTrainingFrame(
+                        CoachObservationPolicy().observe(cards: store.thinkingCards)
+                    )
+
+                    if let feedback = store.coachAnswerTrainingFeedback {
+                        answerFeedbackPreviewView(feedback)
+                    } else if let teachingPlan = store.coachTurnState.map({
+                        CoachTeachingPolicy().makePlan(
+                            turn: $0,
+                            prescription: store.trainingPrescription
+                        )
+                    }) {
+                        teachingRouteView(teachingPlan)
+                    }
+
+                    if !store.referencedPrinciples.isEmpty {
+                        ReferencedPrinciplesView(
+                            principles: store.referencedPrinciples,
+                            retrievalReason: store.referencedPrincipleRetrievalReason,
+                            retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
+                            onFeedback: recordReferencedPrincipleFeedback
+                        )
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Label(
+                    "查看教练诊断",
+                    systemImage: "list.bullet.clipboard"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+            }
+            .accessibilityIdentifier(TodayAutomationID.answerDiagnosisToggle)
         }
     }
 
@@ -2890,6 +2899,7 @@ private struct QuestionCardView: View {
     let question: ReflectionQuestion
     @Binding var answer: String
     var isPrimaryAnswerField: Bool = false
+    @State private var showsCoachBasis = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2929,75 +2939,16 @@ private struct QuestionCardView: View {
                 }
             }
 
-            if !question.sourceCardTitles.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "link")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                    Text("来源：\(question.sourceCardTitles.prefix(2).joined(separator: " / "))")
-                        .font(.caption2)
-                        .foregroundStyle(DS.mutedInk)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if let calibrationTarget = question.calibrationTarget,
-               !calibrationTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "target")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                    Text("校准：\(calibrationTarget)")
-                        .font(.caption2)
-                        .foregroundStyle(DS.mutedInk)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
             Text(question.question)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(question.whyItMatters)
+            Text(compactCoachCue)
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
-                .lineSpacing(2)
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if hasTeachingCue {
-                VStack(alignment: .leading, spacing: 7) {
-                    if let lensMove = question.lensMove {
-                        BriefRow(title: "训练动作", body: lensMove.displayTitle, accent: DS.accent)
-                    }
-                    if let gapTitle = teachingGapTitle {
-                        BriefRow(title: "补的缺口", body: gapTitle, accent: DS.brick)
-                    }
-                    if let whyNow = trimmed(question.whyNow) {
-                        BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
-                    }
-                    if let expectedUpdate = trimmed(question.expectedUpdate) {
-                        BriefRow(title: "答案会改变", body: expectedUpdate, accent: DS.accent)
-                    }
-                    if let proceedWhen = trimmed(question.proceedWhen) {
-                        BriefRow(title: "推进标准", body: proceedWhen, accent: DS.success)
-                    }
-                }
-                .padding(10)
-                .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(DS.hairline, lineWidth: 1)
-                )
-            }
-
-            if hasTeachingCue {
-                answerDrillView
-            }
-
-            BriefRow(title: "输入材料", body: question.answerTrainingPrompt, accent: DS.accent)
 
             TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -3011,6 +2962,18 @@ private struct QuestionCardView: View {
                         .stroke(Color.primary.opacity(0.05), lineWidth: 1)
                 )
                 .accessibilityIdentifier(answerFieldAutomationID)
+
+            if hasCoachBasis {
+                DisclosureGroup(isExpanded: $showsCoachBasis) {
+                    coachBasisView
+                        .padding(.top, 8)
+                } label: {
+                    Label("教练依据", systemImage: "list.bullet.clipboard")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+                .accessibilityIdentifier(TodayAutomationID.questionCoachBasisToggle)
+            }
         }
         .questionSurface()
     }
@@ -3029,32 +2992,54 @@ private struct QuestionCardView: View {
             trimmed(question.proceedWhen) != nil
     }
 
-    private var answerDrillView: some View {
+    private var hasCoachBasis: Bool {
+        hasTeachingCue ||
+            trimmed(question.whyItMatters) != nil ||
+            !question.sourceCardTitles.isEmpty ||
+            trimmed(question.calibrationTarget) != nil
+    }
+
+    private var compactCoachCue: String {
+        if let proceedWhen = trimmed(question.proceedWhen) {
+            return "先写到可以推进：\(proceedWhen)"
+        }
+        if let gapTitle = teachingGapTitle {
+            return "先补：\(gapTitle)"
+        }
+        return trimmed(question.whyItMatters) ?? question.answerTrainingPrompt
+    }
+
+    private var coachBasisView: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("作答训练")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(DS.mutedInk)
-                .textCase(.uppercase)
-            BriefRow(
-                title: "不是 AI 答案",
-                body: "这一段训练你自己补上没想到的部分，明思只负责指出该补哪里。",
-                accent: DS.accent
-            )
-            BriefRow(
-                title: "补盲区",
-                body: "先回答\(teachingGapTitle ?? "当前判断缺口")，不要急着给结论。",
-                accent: DS.brick
-            )
-            BriefRow(
-                title: "复现经验",
-                body: "把召回经验判成复现、调整或否定，避免机械套用历史做法。",
-                accent: DS.graphite
-            )
-            BriefRow(
-                title: "安排执行",
-                body: "写出\(question.answerUse?.displayTitle ?? "答案会改变什么")，再留一个明天能验证的结果信号。",
-                accent: DS.success
-            )
+            if let whyItMatters = trimmed(question.whyItMatters) {
+                BriefRow(title: "为什么问", body: whyItMatters, accent: DS.accent)
+            }
+            if !question.sourceCardTitles.isEmpty {
+                BriefRow(
+                    title: "来源",
+                    body: question.sourceCardTitles.prefix(2).joined(separator: " / "),
+                    accent: DS.graphite
+                )
+            }
+            if let calibrationTarget = trimmed(question.calibrationTarget) {
+                BriefRow(title: "校准对象", body: calibrationTarget, accent: DS.success)
+            }
+            if let lensMove = question.lensMove {
+                BriefRow(title: "训练动作", body: lensMove.displayTitle, accent: DS.accent)
+            }
+            if let gapTitle = teachingGapTitle {
+                BriefRow(title: "补的缺口", body: gapTitle, accent: DS.brick)
+            }
+            if let whyNow = trimmed(question.whyNow) {
+                BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
+            }
+            if let expectedUpdate = trimmed(question.expectedUpdate) {
+                BriefRow(title: "答案会改变", body: expectedUpdate, accent: DS.accent)
+            }
+            if let proceedWhen = trimmed(question.proceedWhen) {
+                BriefRow(title: "推进标准", body: proceedWhen, accent: DS.success)
+            }
+            BriefRow(title: "作答方式", body: question.answerTrainingPrompt, accent: DS.accent)
         }
         .padding(10)
         .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))

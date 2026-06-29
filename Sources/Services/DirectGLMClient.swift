@@ -411,7 +411,7 @@ extension LLMClientError {
         case .transport(let error):
             let nsError = error as NSError
             if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorTimedOut {
-                return "请求超时。已等待较长时间仍未收到完整响应，请稍后重试或换用更快模型。"
+                return "请求超时。较长时间没有收到新内容，请稍后重试或换用更快模型。"
             }
             return "网络请求失败：\(error.localizedDescription)"
         }

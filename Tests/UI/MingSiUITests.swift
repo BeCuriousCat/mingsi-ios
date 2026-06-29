@@ -145,64 +145,49 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(primaryAction.isEnabled)
     }
 
-    func testTodayAnswerQuestionsShowsQuestionTeachingCue() throws {
+    func testTodayAnswerQuestionsPrioritizesQuestionAndAnswerBeforeDiagnostics() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["今日复盘"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["明思观察你怎么讲述、判断和跳步，再指出当前最该补的思考材料。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["本页只复盘今天"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["能力训练诊断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["材料分离训练"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["事实、感受、解释、判断、行动"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["讲述训练"].waitForExistence(timeout: 4))
-        let narrativeTraining = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "讲清楚一件事")
-        ).firstMatch
-        XCTAssertTrue(narrativeTraining.waitForExistence(timeout: 4))
-        let abilityDiagnosis = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "本轮主练：思考力中的判断力")
-        ).firstMatch
-        XCTAssertTrue(abilityDiagnosis.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
-        let providedMaterials = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "事实")
-        ).firstMatch
-        XCTAssertTrue(providedMaterials.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["先补"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["我观察到"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["当前主要缺口"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["本轮训练"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["请你补充"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
-        let repairPrompt = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "刚才的回答")
+
+        let questionText = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "先补上一个可观察事实")
         ).firstMatch
-        XCTAssertTrue(repairPrompt.waitForExistence(timeout: 4))
-        let experienceReproduceTraining = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
-        ).firstMatch
-        XCTAssertTrue(experienceReproduceTraining.waitForExistence(timeout: 4))
+        XCTAssertTrue(questionText.waitForExistence(timeout: 4))
+
+        let answerField = app.textFields.matching(identifier: "today.question.answer-field").firstMatch
+        XCTAssertTrue(answerField.waitForExistence(timeout: 4))
+        scrollToElement(answerField, in: app)
+        XCTAssertTrue(isElementInTappableScrollArea(answerField, app: app))
+
+        let coachBasisToggle = app.buttons["today.question.coach-basis-toggle"].firstMatch
+        XCTAssertTrue(coachBasisToggle.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["能力训练诊断"].exists)
+        XCTAssertFalse(app.staticTexts["训练动作"].exists)
+        XCTAssertFalse(app.staticTexts["作答方式"].exists)
+
+        coachBasisToggle.tap()
         XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["经验判断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["复现：条件相同，可以照用哪条做法"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["调整：条件不同，哪部分要改"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["否定：这条经验为什么不适用"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["作答训练"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["不是 AI 答案"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["补盲区"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["复现经验"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["安排执行"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["输入材料"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["先写事实，再写解释：补一个可观察事实，不需要完整结论。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["作答方式"].waitForExistence(timeout: 4))
+
+        let diagnosisToggle = app.buttons["today.answer.diagnosis-toggle"].firstMatch
+        scrollToElement(diagnosisToggle, in: app)
+        XCTAssertTrue(diagnosisToggle.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["能力训练诊断"].exists)
+
+        diagnosisToggle.tap()
+        XCTAssertTrue(app.staticTexts["能力训练诊断"].waitForExistence(timeout: 4))
+        let abilityDiagnosis = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "本轮主练：思考力中的判断力")
+        ).firstMatch
+        XCTAssertTrue(abilityDiagnosis.waitForExistence(timeout: 4))
     }
 
     func testTodaySelectLensShowsObservationInventoryBeforeLensChoice() throws {
