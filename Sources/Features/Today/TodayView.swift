@@ -691,6 +691,10 @@ struct TodayView: View {
                 )
             }
 
+            if let feedback = store.coachAnswerTrainingFeedback {
+                answerFeedbackPreviewView(feedback, includesTeachingRoute: false)
+            }
+
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 12) {
                     BriefRow(
@@ -703,7 +707,7 @@ struct TodayView: View {
                     )
 
                     if let feedback = store.coachAnswerTrainingFeedback {
-                        answerFeedbackPreviewView(feedback)
+                        teachingRouteView(feedback.teachingPlan)
                     } else if let teachingPlan = store.coachTurnState.map({
                         CoachTeachingPolicy().makePlan(
                             turn: $0,
@@ -788,7 +792,10 @@ struct TodayView: View {
         return titles.isEmpty ? fallback : titles.joined(separator: "、")
     }
 
-    private func answerFeedbackPreviewView(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+    private func answerFeedbackPreviewView(
+        _ feedback: CoachAnswerTrainingFeedback,
+        includesTeachingRoute: Bool = true
+    ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
                 title: "你刚补上",
@@ -821,7 +828,9 @@ struct TodayView: View {
                 body: feedback.judgmentSentencePrompt,
                 accent: DS.success
             )
-            teachingRouteView(feedback.teachingPlan)
+            if includesTeachingRoute {
+                teachingRouteView(feedback.teachingPlan)
+            }
         }
     }
 

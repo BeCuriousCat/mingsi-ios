@@ -1525,7 +1525,8 @@ final class AppStore: ObservableObject {
             turn: preview,
             previous: coachTurnState,
             questions: questions,
-            prescription: trainingPrescription
+            prescription: trainingPrescription,
+            observation: CoachObservationPolicy().observe(cards: confirmedCardsForAI)
         )
     }
 
@@ -4157,9 +4158,10 @@ final class AppStore: ObservableObject {
             turn: turn,
             previous: coachTurnState,
             questions: questions,
-            prescription: trainingPrescription
+            prescription: trainingPrescription,
+            observation: CoachObservationPolicy().observe(cards: confirmedCardsForAI)
         )
-        return "\(feedback.repairedLine) \(feedback.missingLine) \(feedback.proceedLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayDecisionLine) \(feedback.experienceReplayPrompt)"
+        return "\(feedback.repairedLine) \(feedback.missingLine) \(feedback.proceedLine) 能力训练：\(feedback.trainingTargetLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayDecisionLine) \(feedback.experienceReplayPrompt)"
     }
 
     private func makeCoachTrainingPrescription() -> TrainingPrescription {

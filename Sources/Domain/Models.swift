@@ -1365,7 +1365,8 @@ struct CoachAnswerFeedbackPolicy {
         turn: CoachTurnState,
         previous: CoachTurnState?,
         questions: [ReflectionQuestion],
-        prescription: TrainingPrescription?
+        prescription: TrainingPrescription?,
+        observation: CoachObservation? = nil
     ) -> CoachAnswerTrainingFeedback {
         let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
         let remainingGaps = activeGaps(from: turn.openEvidenceGaps)
@@ -1379,7 +1380,7 @@ struct CoachAnswerFeedbackPolicy {
             repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
-            trainingTargetLine: "本轮正在练\(plan.trainingTargetLine)。",
+            trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
             nextRepairQuestion: plan.repairQuestion,
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
             experienceReplayPrompt: plan.experienceReplayPrompt,
@@ -1420,6 +1421,16 @@ struct CoachAnswerFeedbackPolicy {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
             : "现在不能进入明日验证：\(plan.proceedStandard)"
+    }
+
+    private func trainingTargetLine(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else {
+            return "本轮正在练\(plan.trainingTargetLine)。"
+        }
+        return "本轮正在练\(observation.trainingAbility.trainingTitle)：\(observation.trainingAbility.coachingMeaning) 不是让 AI 替你给答案。"
     }
 
     private func gapLine(for gaps: [EvidenceGapType]) -> String {

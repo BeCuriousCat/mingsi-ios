@@ -1453,6 +1453,35 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
     }
 
+    func testCoachAnswerFeedbackPolicyCarriesObservedFoundationalAbilityTraining() {
+        let turn = CoachTurnState(
+            phase: .exploreProblem,
+            readiness: .notReady,
+            recommendedMove: .askClarifyingQuestion,
+            reason: "当前材料还不能让别人复盘发生了什么。",
+            openEvidenceGaps: [.missingObservation],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先把事件讲清楚。"
+        )
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .idea, title: "今天很乱", body: "我只有很乱和焦虑的感受。")
+        ]))
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: turn,
+            previous: nil,
+            questions: [],
+            prescription: nil,
+            observation: observation
+        )
+
+        XCTAssertTrue(feedback.trainingTargetLine.contains("沟通力中的描述力"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("把事情讲到别人能复盘"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
+    }
+
     func testCoachAnswerFeedbackPolicyAllowsValidationWhenAnswerClosesGaps() {
         let previous = CoachTurnState(
             phase: .clarifyJudgment,
@@ -1981,6 +2010,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayLoopMessage.contains("还缺"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
         XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
+        XCTAssertTrue(store.todayLoopMessage.contains("能力训练"))
+        XCTAssertTrue(store.todayLoopMessage.contains("不是让 AI 替你给答案"))
         XCTAssertTrue(store.todayLoopMessage.contains("教练追问"))
         XCTAssertTrue(store.todayLoopMessage.contains("过往经验"))
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -2016,6 +2047,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
         XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
+        XCTAssertTrue(store.coachAnswerTrainingFeedback?.trainingTargetLine.contains("不是让 AI 替你给答案") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练理由") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
