@@ -234,6 +234,7 @@ final class AppStore: ObservableObject {
     private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
     private var growthAIService: GrowthAIService?
+    private let usesInjectedTodayAIService: Bool
     private var runtimePromptProvider: PromptProvider {
         PromptAssetPackProvider(base: promptProvider, packs: runtimePromptAssetPacks)
     }
@@ -351,6 +352,7 @@ final class AppStore: ObservableObject {
         self.assetPackRegistrySyncFetcher = assetPackRegistrySyncFetcher
         self.syncsAssetPackRegistryOnLoad = syncsAssetPackRegistryOnLoad
         self.todayAIService = todayAIService
+        self.usesInjectedTodayAIService = todayAIService != nil
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
         self.growthAIService = growthAIService
@@ -4556,7 +4558,7 @@ final class AppStore: ObservableObject {
         var likelyIssue: String?
         var recommendation: String?
 
-        if let todayAIService {
+        if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let result = try await todayAIService.verifyQuest(
                     input: VerifyQuestInput(
@@ -4857,9 +4859,9 @@ final class AppStore: ObservableObject {
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         moveTodayLoop(to: .organizing, message: "正在生成结构化卡片。")
-        guard todayAIService != nil else {
+        guard canUseTodayAIServiceForTodayFlow else {
             generateLocalCards(from: trimmedInput)
-            recordAIFallback(prompt: .organizeCards, reason: "未配置 GLM，已使用本地整理。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地整理。")
             persistCards()
             return
         }
@@ -4907,12 +4909,12 @@ final class AppStore: ObservableObject {
                 moveTodayLoop(to: .answerQuestions)
                 return
             }
-            guard todayAIService != nil else {
+            guard canUseTodayAIServiceForTodayFlow else {
                 generateLocalQuestions(from: todayDraft.rawText)
                 Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
                 persistLensSession()
                 moveTodayLoop(to: .answerQuestions)
-                recordAIFallback(prompt: .generateQuestions, reason: "未配置 GLM，已使用本地追问。", canRetry: false)
+                recordLocalTrainingResult(message: "未配置 GLM，已使用本地追问。")
                 return
             }
             Task {
@@ -4947,11 +4949,11 @@ final class AppStore: ObservableObject {
         todayLoopMessage = "正在设计明日验证。"
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
-        guard todayAIService != nil else {
+        guard canUseTodayAIServiceForTodayFlow else {
             generateLocalQuests()
             Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests) }
             moveTodayLoop(to: .reviewQuests)
-            recordAIFallback(prompt: .generateQuests, reason: "未配置 GLM，已使用本地任务。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地明日验证。")
             return
         }
         Task {
@@ -4975,10 +4977,10 @@ final class AppStore: ObservableObject {
         todayLoopMessage = "正在沉淀原则候选。"
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
-        guard todayAIService != nil else {
+        guard canUseTodayAIServiceForTodayFlow else {
             generateLocalPrinciple()
             moveTodayLoop(to: .extractPrinciple)
-            recordAIFallback(prompt: .extractPrinciple, reason: "未配置 GLM，已使用本地原则候选。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地原则候选。")
             return
         }
         Task {
@@ -5289,6 +5291,12 @@ final class AppStore: ObservableObject {
         todayLoopMessage = message
     }
 
+    private func recordLocalTrainingResult(message: String) {
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
+        todayLoopMessage = message
+    }
+
     private func recordAIFallback(prompt: PromptID, reason: String, canRetry: Bool) {
         let message = "\(trainingPromptName(for: prompt))未完成：\(reason) 已使用本地训练结果，可继续流程。"
         lastAIFailureMessage = message
@@ -5531,7 +5539,7 @@ final class AppStore: ObservableObject {
 
         if allowsFallback {
             generateLocalCards(from: input)
-            recordAIFallback(prompt: .organizeCards, reason: "未配置 GLM，已使用本地整理。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地整理。")
             persistCards()
         }
     }
@@ -5586,7 +5594,7 @@ final class AppStore: ObservableObject {
         defer { endAIActivity() }
         let input = todayDraft.rawText
 
-        if let todayAIService {
+        if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
@@ -5630,7 +5638,7 @@ final class AppStore: ObservableObject {
             await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions)
             persistLensSession()
             moveTodayLoop(to: .answerQuestions)
-            recordAIFallback(prompt: .generateQuestions, reason: "未配置 GLM，已使用本地追问。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地追问。")
         }
     }
 
@@ -5642,7 +5650,7 @@ final class AppStore: ObservableObject {
         beginAIActivity("正在设计明日验证。")
         defer { endAIActivity() }
 
-        if let todayAIService {
+        if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
@@ -5684,7 +5692,7 @@ final class AppStore: ObservableObject {
             generateLocalQuests()
             await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests)
             moveTodayLoop(to: .reviewQuests)
-            recordAIFallback(prompt: .generateQuests, reason: "未配置 GLM，已使用本地任务。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地明日验证。")
         }
     }
 
@@ -5696,7 +5704,7 @@ final class AppStore: ObservableObject {
         beginAIActivity("正在沉淀行动准则。")
         defer { endAIActivity() }
 
-        if let todayAIService {
+        if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 principles = try await todayAIService.extractPrinciple(
                     for: TodayAIContext(
@@ -5730,7 +5738,7 @@ final class AppStore: ObservableObject {
         if allowsFallback {
             generateLocalPrinciple()
             moveTodayLoop(to: .extractPrinciple)
-            recordAIFallback(prompt: .extractPrinciple, reason: "未配置 GLM，已使用本地原则候选。", canRetry: false)
+            recordLocalTrainingResult(message: "未配置 GLM，已使用本地原则候选。")
         }
     }
 
@@ -6151,6 +6159,10 @@ final class AppStore: ObservableObject {
         questions.isEmpty &&
         quests.isEmpty &&
         principles.isEmpty
+    }
+
+    private var canUseTodayAIServiceForTodayFlow: Bool {
+        todayAIService != nil && (usesInjectedTodayAIService || apiKeyConfigured)
     }
 
     private func persistQuests() {

@@ -1469,6 +1469,33 @@ enum CoachObservationGap: String, Codable, CaseIterable, Hashable {
     case execution
     case calibration
     case experience
+
+    var displayTitle: String {
+        switch self {
+        case .narrative:
+            return "讲述缺口"
+        case .observation:
+            return "观察事实"
+        case .object:
+            return "对象缺口"
+        case .goal:
+            return "目标缺口"
+        case .constraint:
+            return "约束缺口"
+        case .causal:
+            return "因果链"
+        case .counterexample:
+            return "反例缺口"
+        case .judgment:
+            return "判断标准"
+        case .execution:
+            return "执行安排"
+        case .calibration:
+            return "校准信号"
+        case .experience:
+            return "经验复现"
+        }
+    }
 }
 
 enum CoreTrainingAbility: String, Codable, CaseIterable, Hashable {
@@ -2795,6 +2822,11 @@ struct CoachEngine {
     static let policyVersion = "coach-engine.local-v1"
 
     func diagnose(cards: [ThinkingCard]) -> CoachDiagnosis {
+        let observation = CoachObservationPolicy().observe(cards: cards)
+        if let diagnosis = diagnosis(from: observation) {
+            return diagnosis
+        }
+
         let confirmedCards = cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
         let consideredCards = confirmedCards.isEmpty
             ? cards.filter { !$0.isExcludedFromModel }
@@ -2849,6 +2881,22 @@ struct CoachEngine {
             source: .coachRecommended,
             policyVersion: Self.policyVersion
         )
+    }
+
+    private func diagnosis(from observation: CoachObservation) -> CoachDiagnosis? {
+        switch observation.primaryGap {
+        case .narrative, .object:
+            return CoachDiagnosis(
+                phase: .exploreProblem,
+                readiness: .notReady,
+                recommendedMove: .askClarifyingQuestion,
+                reason: "本轮先练\(observation.trainingAbility.trainingTitle)：先把事情讲清楚一件事，让别人能复盘并看见真正问题。\(observation.feedback.ask)",
+                source: .coachRecommended,
+                policyVersion: Self.policyVersion
+            )
+        case .observation, .constraint, .causal, .counterexample, .goal, .judgment, .calibration, .experience, .execution:
+            return nil
+        }
     }
 
     private func containsEvidenceGapSignal(_ card: ThinkingCard) -> Bool {

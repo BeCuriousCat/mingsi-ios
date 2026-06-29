@@ -1734,6 +1734,25 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(diagnosis.reason.contains("问题"))
     }
 
+    func testReviewCards_thinNarrativeCreatesDescriptionTrainingDiagnosis() async throws {
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = confirmedCards([
+            ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
+        ])
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        let diagnosis = try XCTUnwrap(store.coachDiagnosis)
+        XCTAssertEqual(diagnosis.phase, .exploreProblem)
+        XCTAssertEqual(diagnosis.readiness, .notReady)
+        XCTAssertEqual(diagnosis.recommendedMove, .askClarifyingQuestion)
+        XCTAssertTrue(diagnosis.reason.contains("沟通力"))
+        XCTAssertTrue(diagnosis.reason.contains("描述力"))
+        XCTAssertTrue(diagnosis.reason.contains("讲清楚一件事"))
+        XCTAssertTrue(store.coachTurnState?.turnSummary.contains("讲清楚一件事") == true)
+    }
+
     func testCoachDiagnosis_canAcceptSlowDownOrOverrideProgression() async throws {
         try await advanceTo(.reviewCards)
         store.thinkingCards = coachPrescriptionEvidenceCards()
@@ -1859,6 +1878,30 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachRecommendedLens"], ThinkingLens.evidenceCheck.rawValue)
         XCTAssertEqual(request.contextPayload?.legacyKeyValues["finalTrainingLens"], ThinkingLens.evidenceCheck.rawValue)
         XCTAssertEqual(request.contextPayload?.legacyKeyValues["trainingPrescriptionSource"], TrainingPrescriptionSource.coachRecommended.rawValue)
+    }
+
+    func testSelectLens_withoutConfiguredAPIKeyUsesLocalQuestionsWithoutRetryableFailure() async throws {
+        let isolatedKeychain = KeychainAPIKeyStore(service: "com.codex.mingsi.tests.\(UUID().uuidString)")
+        store = AppStore(
+            apiKeyStore: isolatedKeychain,
+            refreshesAIServiceFromKeychain: true
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        XCTAssertFalse(store.questions.isEmpty)
+        XCTAssertFalse(store.canRetryCurrentAI)
+        XCTAssertEqual(store.pendingAIRepairCount, 0)
+        XCTAssertNil(store.lastAIFailureMessage)
+        XCTAssertFalse(store.todayLoopMessage.contains("未完成"))
+        XCTAssertFalse(store.todayLoopMessage.contains("请求超时"))
+        XCTAssertFalse(store.todayLoopMessage.contains("网络请求失败"))
     }
 
     func testSelectLens_slowDownCoachDiagnosisPassesToQuestionsContext() async throws {

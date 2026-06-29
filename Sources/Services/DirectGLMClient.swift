@@ -183,11 +183,12 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation
     ) async throws {
         for attempt in 0...configuration.maxRetryAttempts {
-            let urlRequest = try makeURLRequest(
+            var urlRequest = try makeURLRequest(
                 request,
                 usesJSONResponseFormat: false,
                 stream: true
             )
+            urlRequest.timeoutInterval = 0
             let (bytes, response) = try await session.bytes(for: urlRequest)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw LLMClientError.invalidResponse
@@ -202,7 +203,8 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 throw LLMClientError.httpStatus(httpResponse.statusCode, data)
             }
 
-            for try await line in bytes.lines {
+            let lineIterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+            while let line = try await nextLineWithIdleTimeout(from: lineIterator) {
                 try Task.checkCancellation()
                 guard let event = Self.streamEvent(fromSSELine: line) else { continue }
                 continuation.yield(event)
@@ -264,6 +266,29 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
     }
 
+    private func nextLineWithIdleTimeout<I>(
+        from iterator: AsyncIteratorBox<I>
+    ) async throws -> String? where I: AsyncIteratorProtocol, I.Element == String {
+        let idleTimeout = configuration.requestTimeout
+        guard idleTimeout > 0 else {
+            return try await iterator.next()
+        }
+
+        return try await withThrowingTaskGroup(of: String?.self) { group in
+            group.addTask {
+                try await iterator.next()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(idleTimeout * 1_000_000_000))
+                throw LLMClientError.transport(URLError(.timedOut))
+            }
+
+            let result = try await group.next()
+            group.cancelAll()
+            return result ?? nil
+        }
+    }
+
     private static func streamEvent(fromSSELine line: String) -> LLMStreamEvent? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("data:") else { return nil }
@@ -284,6 +309,18 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             body.append(byte)
         }
         return body
+    }
+}
+
+private final class AsyncIteratorBox<I: AsyncIteratorProtocol>: @unchecked Sendable {
+    private var iterator: I
+
+    init(_ iterator: I) {
+        self.iterator = iterator
+    }
+
+    func next() async throws -> I.Element? {
+        try await iterator.next()
     }
 }
 

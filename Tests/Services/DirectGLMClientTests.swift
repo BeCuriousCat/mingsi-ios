@@ -7,6 +7,7 @@ final class DirectGLMClientTests: XCTestCase {
         GLMStubURLProtocol.responses = []
         GLMStubURLProtocol.requestBodies = []
         GLMStubURLProtocol.requestTimeouts = []
+        GLMStubURLProtocol.responseDelays = []
         super.tearDown()
     }
 
@@ -167,7 +168,46 @@ final class DirectGLMClientTests: XCTestCase {
 
         for try await _ in client.stream(makeRequest()) {}
 
-        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [180])
+        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [0])
+    }
+
+    func testStream_allowsLongTotalDurationWhenTokensKeepArrivingBeforeIdleTimeout() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: """
+                data: {"choices":[{"delta":{"content":"A"}}]}
+
+                data: {"choices":[{"delta":{"content":"B"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        ]
+        GLMStubURLProtocol.responseDelays = [
+            .milliseconds(0),
+            .milliseconds(0),
+            .milliseconds(80),
+            .milliseconds(0),
+            .milliseconds(80)
+        ]
+
+        let client = makeClient(
+            configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
+                requestTimeout: 0.12
+            )
+        )
+
+        var tokens: [String] = []
+        for try await event in client.stream(makeRequest()) {
+            if case .token(let token) = event {
+                tokens.append(token)
+            }
+        }
+
+        XCTAssertEqual(tokens, ["A", "B"])
     }
 
     func testComplete_prefersStructuredContextPayloadOverLegacyFlattenedPayload() async throws {
@@ -297,6 +337,7 @@ private final class GLMStubURLProtocol: URLProtocol {
     static var responses: [StubbedHTTPResponse] = []
     static var requestBodies: [String] = []
     static var requestTimeouts: [TimeInterval] = []
+    static var responseDelays: [Duration] = []
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -325,13 +366,20 @@ private final class GLMStubURLProtocol: URLProtocol {
 
         client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
         if response.body.contains("\n") {
-            for line in response.body.split(separator: "\n", omittingEmptySubsequences: false) {
-                client?.urlProtocol(self, didLoad: Data("\(line)\n".utf8))
+            let lines = response.body.split(separator: "\n", omittingEmptySubsequences: false)
+            Task {
+                for (index, line) in lines.enumerated() {
+                    if index < Self.responseDelays.count {
+                        try? await Task.sleep(for: Self.responseDelays[index])
+                    }
+                    client?.urlProtocol(self, didLoad: Data("\(line)\n".utf8))
+                }
+                client?.urlProtocolDidFinishLoading(self)
             }
         } else {
             client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
         }
-        client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}

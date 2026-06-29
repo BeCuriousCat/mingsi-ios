@@ -22,6 +22,8 @@ enum TodayAutomationID {
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
+    static let captureGuidanceToggle = "today.capture.guidance-toggle"
+    static let reviewQuestsGuidanceToggle = "today.review-quests.guidance-toggle"
     static func questionAnswerField(questionId: String) -> String {
         "today.question.answer-field.\(questionId)"
     }
@@ -397,15 +399,10 @@ struct TodayView: View {
                 icon: "text.bubble",
                 tint: DS.accent
             )
-            BriefRow(
-                title: "本页只写今天内容",
-                body: "把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。",
-                accent: DS.accent
-            )
 
             stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
 
-            reviewScaffoldView
+            FlowPills(items: ["发生了什么", "我怎么做", "我怎么想"])
 
             CaptureTextView(text: Binding(
                 get: { store.todayDraft.rawText },
@@ -444,6 +441,23 @@ struct TodayView: View {
                     .font(.caption)
             }
             .foregroundStyle(.secondary)
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 10) {
+                    BriefRow(
+                        title: "本页只写今天内容",
+                        body: "把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。",
+                        accent: DS.accent
+                    )
+                    reviewScaffoldView
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("查看训练提示", systemImage: "list.bullet.clipboard")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
+            .accessibilityIdentifier(TodayAutomationID.captureGuidanceToggle)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("训练深度")
@@ -874,21 +888,32 @@ struct TodayView: View {
                 icon: "flag.checkered",
                 tint: DS.success
             )
-            BriefRow(
-                title: "明天怎么回看",
-                body: "明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。",
-                accent: DS.caution
-            )
-            BriefRow(
-                title: "本页只设计明天的验证行动",
-                body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
-                accent: DS.success
-            )
-            BriefRow(
-                title: "今日复盘交接点",
-                body: "今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。",
-                accent: DS.accent
-            )
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 10) {
+                    BriefRow(
+                        title: "明天怎么回看",
+                        body: "明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。",
+                        accent: DS.caution
+                    )
+                    BriefRow(
+                        title: "本页只设计明天的验证行动",
+                        body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
+                        accent: DS.success
+                    )
+                    BriefRow(
+                        title: "今日复盘交接点",
+                        body: "今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。",
+                        accent: DS.accent
+                    )
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("查看验证边界", systemImage: "list.bullet.clipboard")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
+            .accessibilityIdentifier(TodayAutomationID.reviewQuestsGuidanceToggle)
 
             reviewQuestJudgmentAnchor
 
