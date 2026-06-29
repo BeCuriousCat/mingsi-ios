@@ -1083,6 +1083,31 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.feedback.proceedWhen.contains("标准"))
     }
 
+    func testCoachObservationPolicy_identifiesJudgmentWithoutCalibrationSignalAsCalibrationGap() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "注册反馈",
+                body: "事实是客服记录了 12 条用户反馈，3 个用户卡在注册步骤。"
+            ),
+            ThinkingCard(
+                type: .decision,
+                title: "优先改注册流程",
+                body: "我判断应该优先改注册流程，判断标准是影响新用户完成首次使用。"
+            )
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .calibration)
+        XCTAssertEqual(observation.trainingAbility, .calibration)
+        XCTAssertTrue(observation.providedMaterials.contains(.fact))
+        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
+        XCTAssertTrue(observation.providedMaterials.contains(.standard))
+        XCTAssertTrue(observation.missingMaterials.contains(.calibrationSignal))
+        XCTAssertTrue(observation.thinkingProcessObservation.contains("未来"))
+        XCTAssertTrue(observation.feedback.ask.contains("信号"))
+        XCTAssertTrue(observation.feedback.proceedWhen.contains("校准信号"))
+    }
+
     func testCoachObservationPolicy_identifiesExperienceMentionWithoutFitCheck() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .decision, title: "沿用以前的推进方式", body: "之前这样做有效，所以这次也想照着做。"),

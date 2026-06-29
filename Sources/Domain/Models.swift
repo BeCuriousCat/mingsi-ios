@@ -1591,7 +1591,7 @@ extension CoachObservationMaterial {
 }
 
 struct CoachObservationPolicy {
-    static let policyVersion = "coach-observation.local-v6"
+    static let policyVersion = "coach-observation.local-v7"
 
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
@@ -1686,6 +1686,10 @@ struct CoachObservationPolicy {
             materials.append(.standard)
         }
 
+        if hasProvidedCalibrationSignal(text) {
+            materials.append(.calibrationSignal)
+        }
+
         if containsAny(text, ["以前", "之前", "过往", "经验", "复用", "沿用", "照着做", "上次", "previous", "experience"]) {
             materials.append(.experience)
         }
@@ -1732,6 +1736,13 @@ struct CoachObservationPolicy {
            providedMaterials.contains(.fact),
            !providedMaterials.contains(.standard) {
             missing.append(.standard)
+        }
+
+        if providedMaterials.contains(.judgment),
+           providedMaterials.contains(.fact),
+           providedMaterials.contains(.standard),
+           !providedMaterials.contains(.calibrationSignal) {
+            missing.append(.calibrationSignal)
         }
 
         if providedMaterials.contains(.experience),
@@ -1849,6 +1860,10 @@ struct CoachObservationPolicy {
 
         if missingMaterials.contains(.constraint) {
             gaps.append(.constraint)
+        }
+
+        if missingMaterials.contains(.calibrationSignal) {
+            gaps.append(.calibration)
         }
 
         if shouldTrainCausalAnalysis(providedMaterials: providedMaterials, text: text) {
@@ -2181,6 +2196,14 @@ struct CoachObservationPolicy {
         containsAny(text, [
             "判断标准", "标准是", "成功标准是", "验收标准是", "取舍标准", "依据是",
             "优先级依据", "衡量", "判定标准", "重要性在于", "criteria", "criterion"
+        ])
+    }
+
+    private func hasProvidedCalibrationSignal(_ text: String) -> Bool {
+        containsAny(text, [
+            "校准信号", "未来信号", "明天看", "明天观察", "结果校准", "回来检查",
+            "用结果", "如果出现", "证明我错", "证明判断", "指标变化", "实际结果",
+            "calibration signal", "future signal", "outcome signal"
         ])
     }
 
