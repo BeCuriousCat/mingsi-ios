@@ -296,6 +296,58 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(evidenceAsk.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesJudgmentWithoutStandardAsJudgmentTraining() throws {
+        let app = seededTodayApp(
+            stage: "capture",
+            input: "我看到客服记录了 12 条用户反馈，3 个用户卡在注册步骤。我判断注册流程需要优先改。"
+        )
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let judgmentTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的判断力")
+        ).firstMatch
+        XCTAssertTrue(judgmentTraining.waitForExistence(timeout: 4))
+        let conclusionGap = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "判断不能只停在结论")
+        ).firstMatch
+        XCTAssertTrue(conclusionGap.waitForExistence(timeout: 4))
+        let standardAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "判断标准")
+        ).firstMatch
+        XCTAssertTrue(standardAsk.waitForExistence(timeout: 4))
+        let tradeoffAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "取舍依据")
+        ).firstMatch
+        XCTAssertTrue(tradeoffAsk.waitForExistence(timeout: 4))
+    }
+
+    func testTodayCaptureChallengesJudgmentWithoutCalibrationSignalAsCalibrationTraining() throws {
+        let app = seededTodayApp(
+            stage: "capture",
+            input: "我看到客服记录了 12 条用户反馈，3 个用户卡在注册步骤。我判断注册流程需要优先改，判断标准是影响新用户完成首次使用。"
+        )
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let calibrationTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的校准力")
+        ).firstMatch
+        XCTAssertTrue(calibrationTraining.waitForExistence(timeout: 4))
+        let futureSignal = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "判断需要未来信号")
+        ).firstMatch
+        XCTAssertTrue(futureSignal.waitForExistence(timeout: 4))
+        let signalAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "明天或近期哪个信号")
+        ).firstMatch
+        XCTAssertTrue(signalAsk.waitForExistence(timeout: 4))
+        let updateAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "更新判断")
+        ).firstMatch
+        XCTAssertTrue(updateAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayCaptureChallengesMissingObjectAsDescriptionTraining() throws {
         let app = seededTodayApp(stage: "capture", input: "今天需求评审后，我打算先重写方案，后来方案没有通过。")
         app.launch()

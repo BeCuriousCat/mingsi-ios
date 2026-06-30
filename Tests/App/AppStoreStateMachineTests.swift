@@ -1337,7 +1337,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(
             store.coachCaptureMaterialObservation,
-            "已说清：说明对象、写出做法、成功标准。下一句先补：目标。"
+            "思考力中的判断力：行动不能先替代目标。请补：如果这件事做对了，谁的什么问题会变少，成功标准是什么？"
         )
     }
 
@@ -1427,6 +1427,28 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("判断不能先当结论"))
         XCTAssertTrue(line.contains("可观察事实"))
         XCTAssertTrue(line.contains("事实和解释分开"))
+    }
+
+    func testCaptureMaterialObservationChallengesJudgmentWithoutStandardAsJudgmentTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我看到客服记录了 12 条用户反馈，3 个用户卡在注册步骤。我判断注册流程需要优先改。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的判断力"))
+        XCTAssertTrue(line.contains("判断不能只停在结论"))
+        XCTAssertTrue(line.contains("判断标准"))
+        XCTAssertTrue(line.contains("取舍依据"))
+    }
+
+    func testCaptureMaterialObservationChallengesJudgmentWithoutCalibrationSignalAsCalibrationTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我看到客服记录了 12 条用户反馈，3 个用户卡在注册步骤。我判断注册流程需要优先改，判断标准是影响新用户完成首次使用。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的校准力"))
+        XCTAssertTrue(line.contains("判断需要未来信号"))
+        XCTAssertTrue(line.contains("明天或近期哪个信号"))
+        XCTAssertTrue(line.contains("更新判断"))
     }
 
     func testCaptureMaterialObservationChallengesMissingObjectAsDescriptionTraining() throws {
