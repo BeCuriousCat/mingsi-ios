@@ -343,6 +343,30 @@ Rules:
   the user feel the coach is training a thinking move, not generating a generic
   AI answer.
 
+### Question Training Contract
+
+`generateQuestions` must turn the observation into one primary training contract
+before it writes questions. The contract is derived from
+`coachObservation.trainingAbility`, `coachObservation.primaryGap`, and
+`coachObservation.feedback.ask`.
+
+Rules:
+
+- The first question must ask the user to produce missing material for that
+  contract; it must not provide the missing material, solve the case, or turn the
+  coach into an answer generator.
+- `why_now` must name the observed gap that makes this the next training move,
+  not just say the topic is important.
+- `expected_update` must name the user-owned training output the answer should
+  create, such as a clearer event description, a separated fact, a stated
+  judgment standard, a condition difference, or a calibration signal.
+- `proceed_when` must name a self-checkable standard the user can inspect in
+  their own answer.
+- If `experienceReplayPrompt` is relevant, ask the user to decide whether prior
+  experience should reproduce, adapt, or reject today's move before applying it.
+- Later questions may touch baseline checks, but they must not dilute the
+  primary contract or become a broad questionnaire.
+
 ### Judgment Sentence Training
 
 MingSi separates two loops:

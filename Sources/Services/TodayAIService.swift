@@ -695,7 +695,7 @@ struct DefaultContextAssembler: ContextAssembler {
                     ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, use repairQuestion when the user's answer still leaves the gap open, ask whether prior experience should be reproduced/adapted/rejected, and only proceed when the proceed standard is satisfied."
                     : nil,
                 coachObservationRule: memory.coachObservation != nil
-                    ? "Use coachObservation before wording questions: cite what was observed, the primary gap, the training ability, the repair ask, and the experience replay prompt. Treat coachObservation as the coach's interpretation of confirmed material, not as new source evidence."
+                    ? "Use coachObservation before wording questions: cite what was observed, the primary gap, the training ability, the repair ask, and the experience replay prompt. Treat coachObservation as the coach's interpretation of confirmed material, not as new source evidence. Create one primary training contract from trainingAbility, primaryGap, and feedback.ask. The first question must ask the user to produce missing material; it must not provide the missing material or solve the case. why_now must name the observed gap, expected_update must name the user-owned training output, and proceed_when must name a self-checkable standard. If experienceReplayPrompt is relevant, ask whether prior experience should reproduce, adapt, or reject today's move before applying it."
                     : nil
             )
         )

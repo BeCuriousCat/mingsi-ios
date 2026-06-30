@@ -4631,6 +4631,14 @@ final class LocalPromptProvider: PromptProvider {
         - Start from primaryGap and trainingAbility when deciding the first question.
         - Use feedback.observed to show what MingSi saw, feedback.diagnosis to name the gap, and feedback.ask as the repair question shape.
         - Use experienceReplayPrompt when the user's prior experience should be reproduced, adapted, or rejected.
+
+        Question training contract:
+        - Each batch must have one primary training contract derived from coachObservation.trainingAbility, coachObservation.primaryGap, and coachObservation.feedback.ask.
+        - The first question must ask the user to produce missing material for that contract; it must not provide the missing material or solve the case for the user.
+        - why_now must name the observed gap, not just say the topic is important.
+        - expected_update must name the user-owned training output the answer should create.
+        - proceed_when must name a self-checkable standard the user can inspect in their own answer.
+        - If experienceReplayPrompt is relevant, ask the user to decide whether prior experience should reproduce, adapt, or reject today's move before applying it.
         """
         return generateQuestionsV190UserText(for: mode)
             .replacingOccurrences(of: teachingNeedle, with: observationFrame)
@@ -5426,6 +5434,14 @@ final class LocalPromptProvider: PromptProvider {
             - Start from primaryGap and trainingAbility when deciding the first question.
             - Use feedback.observed to show what MingSi saw, feedback.diagnosis to name the gap, and feedback.ask as the repair question shape.
             - Use experienceReplayPrompt when the user's prior experience should be reproduced, adapted, or rejected.
+
+            Question training contract:
+            - Each batch must have one primary training contract derived from coachObservation.trainingAbility, coachObservation.primaryGap, and coachObservation.feedback.ask.
+            - The first question must ask the user to produce missing material for that contract; it must not provide the missing material or solve the case for the user.
+            - why_now must name the observed gap, not just say the topic is important.
+            - expected_update must name the user-owned training output the answer should create.
+            - proceed_when must name a self-checkable standard the user can inspect in their own answer.
+            - If experienceReplayPrompt is relevant, ask the user to decide whether prior experience should reproduce, adapt, or reject today's move before applying it.
 
             Loop boundary:
             - This prompt runs inside 今日复盘, not 明日验证.

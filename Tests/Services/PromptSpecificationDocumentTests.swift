@@ -127,6 +127,25 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("organizeCards must not receive `coachObservation`"))
     }
 
+    func testPromptSpecDocumentsQuestionTrainingContract() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Question Training Contract"))
+        XCTAssertTrue(spec.contains("one primary training contract"))
+        XCTAssertTrue(spec.contains("trainingAbility"))
+        XCTAssertTrue(spec.contains("primaryGap"))
+        XCTAssertTrue(spec.contains("feedback.ask"))
+        XCTAssertTrue(spec.contains("produce missing material"))
+        XCTAssertTrue(spec.contains("must not provide the missing material"))
+        XCTAssertTrue(spec.contains("why_now"))
+        XCTAssertTrue(spec.contains("observed gap"))
+        XCTAssertTrue(spec.contains("expected_update"))
+        XCTAssertTrue(spec.contains("user-owned training output"))
+        XCTAssertTrue(spec.contains("proceed_when"))
+        XCTAssertTrue(spec.contains("self-checkable standard"))
+        XCTAssertTrue(spec.contains("reproduce, adapt, or reject"))
+    }
+
     func testPromptSpecDocumentsXYZJudgmentSentenceTraining() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
 

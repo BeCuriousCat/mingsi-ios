@@ -1114,7 +1114,13 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(payload.legacyKeyValues["coachObservationPrimaryGap"], CoachObservationGap.observation.rawValue)
         XCTAssertEqual(payload.legacyKeyValues["coachObservationTrainingAbility"], CoreTrainingAbility.observation.displayTitle)
         XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachObservationRule"]).contains("coachObservation"))
-        XCTAssertTrue(try XCTUnwrap(payload.directives.coachObservationRule).contains("coachObservation"))
+        let coachObservationRule = try XCTUnwrap(payload.directives.coachObservationRule)
+        XCTAssertTrue(coachObservationRule.contains("coachObservation"))
+        XCTAssertTrue(coachObservationRule.contains("primary training contract"))
+        XCTAssertTrue(coachObservationRule.contains("produce missing material"))
+        XCTAssertTrue(coachObservationRule.contains("must not provide the missing material"))
+        XCTAssertTrue(coachObservationRule.contains("self-checkable standard"))
+        XCTAssertTrue(coachObservationRule.contains("reproduce, adapt, or reject"))
     }
 
     func testStructuredContext_exposesRuntimeLensAssetMetadata() async throws {

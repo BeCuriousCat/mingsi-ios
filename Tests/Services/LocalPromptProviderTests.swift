@@ -203,6 +203,24 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("not source evidence"))
     }
 
+    func testGenerateQuestionsTemplate_declaresQuestionTrainingContract() {
+        let template = provider.template(for: .generateQuestions, mode: .standard)
+        let text = template.userText
+
+        XCTAssertTrue(text.contains("Question training contract"))
+        XCTAssertTrue(text.contains("one primary training contract"))
+        XCTAssertTrue(text.contains("trainingAbility"))
+        XCTAssertTrue(text.contains("primaryGap"))
+        XCTAssertTrue(text.contains("feedback.ask"))
+        XCTAssertTrue(text.contains("question must ask the user to produce missing material"))
+        XCTAssertTrue(text.contains("must not provide the missing material"))
+        XCTAssertTrue(text.contains("why_now must name the observed gap"))
+        XCTAssertTrue(text.contains("expected_update must name the user-owned training output"))
+        XCTAssertTrue(text.contains("proceed_when must name a self-checkable standard"))
+        XCTAssertTrue(text.contains("If experienceReplayPrompt is relevant"))
+        XCTAssertTrue(text.contains("reproduce, adapt, or reject"))
+    }
+
     func testCurrentTodayLoopTemplates_useTomorrowValidationLanguage() {
         let questionText = provider.template(for: .generateQuestions, mode: .standard).userText
         let questText = provider.template(for: .generateQuests, mode: .standard).userText
