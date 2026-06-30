@@ -873,6 +873,11 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
+                title: "下一句修补",
+                body: feedback.nextRepairQuestion,
+                accent: DS.brick
+            )
+            BriefRow(
                 title: "教练批改",
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
@@ -946,7 +951,6 @@ struct TodayView: View {
                 body: feedback.proceedLine,
                 accent: feedback.canProceedToValidation ? DS.success : DS.caution
             )
-            BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
         }
     }
 

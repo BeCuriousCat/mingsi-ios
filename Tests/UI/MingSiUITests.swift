@@ -485,7 +485,11 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(answerMaterialGap.waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["已修补"].exists)
         XCTAssertFalse(app.staticTexts["能否进入明日验证"].exists)
-        XCTAssertFalse(app.staticTexts["下一句修补"].exists)
+        XCTAssertTrue(app.staticTexts["下一句修补"].waitForExistence(timeout: 4))
+        let nextRepairQuestion = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "下一句请写成")
+        ).firstMatch
+        XCTAssertTrue(nextRepairQuestion.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
         let trainingRepair = app.staticTexts.matching(
