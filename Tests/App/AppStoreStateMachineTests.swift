@@ -1364,6 +1364,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("条件差异"))
     }
 
+    func testCaptureMaterialObservationChallengesVagueActionAsExecutionTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("为了让 Alex 减少返工，明天推进方案处理一下。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("执行力"))
+        XCTAssertTrue(line.contains("还不是可检查结果"))
+        XCTAssertTrue(line.contains("明天最小的一步"))
+        XCTAssertTrue(line.contains("完成后留下什么证据"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,

@@ -1560,6 +1560,9 @@ final class AppStore: ObservableObject {
         if observation.primaryGap == .experience {
             return "过往经验复现训练：旧经验不能直接当成答案。请判断这次是复现、调整，还是否定；下一句先补：条件差异。"
         }
+        if observation.primaryGap == .execution {
+            return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
+        }
         return "已说清：\(provided)。下一句先补：\(missing)。"
     }
 
