@@ -206,7 +206,7 @@ DirectGLMClient
 - 当前 MVP 通过 `PromptTracingLLMClient` 持久记录成功/失败 PromptRun。
 - API Key 缺失时走 `MissingAPIKeyLLMClient` 明确抛出失败；正式路径不能用 mock 响应伪装成 GLM 成功，只能在 UI 中标记为本地 fallback / 可补跑。
 - App 启动加载本地草稿时，会读取 `PromptRunRepository.unresolvedFailures`，把属于当前 DailyEntry 的可修复 Prompt 恢复到待补跑队列。
-- GLM 直连默认请求超时为 180 秒；超时错误必须明确显示为超时，避免用户无法判断是 Key、Base URL、额度还是等待时间问题。
+- GLM 直连默认请求超时为 300 秒；流式请求以 300 秒无新 token 作为空闲超时，超时错误必须明确显示为超时，避免用户无法判断是 Key、Base URL、额度还是等待时间问题。
 - `organizeCards` 在 MVP 必须支持 SSE 流式生成；其他 Prompt 仍可使用非流式 JSON 返回。
 
 ### Streaming Card Generation
