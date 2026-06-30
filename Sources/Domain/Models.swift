@@ -1144,6 +1144,7 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var proceedLine: String
     var abilityGapLine: String
     var trainingOutputLine: String
+    var selfCheckLine: String
     var trainingTargetLine: String
     var nextRepairQuestion: String
     var experienceReplayDecisionLine: String
@@ -1392,6 +1393,7 @@ struct CoachAnswerFeedbackPolicy {
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
             abilityGapLine: abilityGapLine(plan: plan, observation: observation),
             trainingOutputLine: trainingOutputLine(plan: plan, observation: observation),
+            selfCheckLine: selfCheckLine(plan: plan, observation: observation),
             trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
             nextRepairQuestion: nextRepairQuestion(plan: plan, observation: observation),
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
@@ -1487,6 +1489,22 @@ struct CoachAnswerFeedbackPolicy {
             return "训练产物：一段包含背景、对象、触发、行动、结果的完整讲述。"
         }
         return "训练产物：补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让下一步可判断、可执行、可复盘。"
+    }
+
+    private func selfCheckLine(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else {
+            return "自检标准：别人能根据你的材料判断\(plan.proceedStandard)"
+        }
+        if observation.primaryGap == .goal {
+            return "自检标准：这句话要能回答谁的什么问题会变少、成功标准是什么、明天看哪个可观察信号。"
+        }
+        if observation.primaryGap == .narrative {
+            return "自检标准：别人不追问你，也能复述背景、对象、触发、行动和结果。"
+        }
+        return "自检标准：补完后别人能指出已补\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，并知道下一步怎么判断。"
     }
 
     private func trainingTargetLine(

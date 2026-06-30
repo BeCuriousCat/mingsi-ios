@@ -901,6 +901,11 @@ struct TodayView: View {
                 accent: DS.success
             )
             BriefRow(
+                title: "自检标准",
+                body: feedback.selfCheckLine,
+                accent: DS.accent
+            )
+            BriefRow(
                 title: "能力修补",
                 body: feedback.trainingTargetLine,
                 accent: DS.caution
