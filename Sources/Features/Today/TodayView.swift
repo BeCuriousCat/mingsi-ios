@@ -890,6 +890,16 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
+                title: "你刚补上",
+                body: feedback.repairedLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.caution
+            )
+            BriefRow(
+                title: "能否进入明日验证",
+                body: feedback.proceedLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.brick
+            )
+            BriefRow(
                 title: "下一句修补",
                 body: feedback.nextRepairQuestion,
                 accent: DS.brick
