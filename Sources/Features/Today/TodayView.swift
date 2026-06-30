@@ -891,6 +891,11 @@ struct TodayView: View {
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
+                title: "能力缺口",
+                body: feedback.abilityGapLine,
+                accent: DS.accent
+            )
+            BriefRow(
                 title: "能力修补",
                 body: feedback.trainingTargetLine,
                 accent: DS.caution

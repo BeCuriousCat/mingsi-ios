@@ -1142,6 +1142,7 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var repairedLine: String
     var missingLine: String
     var proceedLine: String
+    var abilityGapLine: String
     var trainingTargetLine: String
     var nextRepairQuestion: String
     var experienceReplayDecisionLine: String
@@ -1388,6 +1389,7 @@ struct CoachAnswerFeedbackPolicy {
             repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
+            abilityGapLine: abilityGapLine(plan: plan, observation: observation),
             trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
             nextRepairQuestion: nextRepairQuestion(plan: plan, observation: observation),
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
@@ -1454,6 +1456,19 @@ struct CoachAnswerFeedbackPolicy {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
             : "现在不能进入明日验证：先修补训练缺口，\(plan.proceedStandard)"
+    }
+
+    private func abilityGapLine(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else {
+            return "能力缺口：\(plan.trainingTargetLine)还没有补成可复盘材料。"
+        }
+        if observation.primaryGap == .goal {
+            return "能力缺口：把行动当成答案，少了服务对象、成功标准和可观察信号。"
+        }
+        return "能力缺口：\(observation.trainingAbility.trainingTitle)还没练到位，\(observation.feedback.diagnosis)"
     }
 
     private func trainingTargetLine(
