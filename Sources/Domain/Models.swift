@@ -1386,7 +1386,8 @@ struct CoachAnswerFeedbackPolicy {
                 repairedGaps: repairedGaps,
                 remainingGaps: remainingGaps,
                 plan: plan,
-                questions: questions
+                questions: questions,
+                observation: observation
             ),
             repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
             missingLine: missingLine(remainingGaps: remainingGaps),
@@ -1408,7 +1409,8 @@ struct CoachAnswerFeedbackPolicy {
         repairedGaps: [EvidenceGapType],
         remainingGaps: [EvidenceGapType],
         plan: CoachTeachingPlan,
-        questions: [ReflectionQuestion]
+        questions: [ReflectionQuestion],
+        observation: CoachObservation?
     ) -> String {
         let answeredCount = questions.filter {
             !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1418,7 +1420,11 @@ struct CoachAnswerFeedbackPolicy {
             : "刚补上：\(gapLine(for: repairedGaps))"
         let nextPart = canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "还要训练：\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
+            : critiqueTrainingFocus(
+                plan: plan,
+                remainingGaps: remainingGaps,
+                observation: observation
+            )
         let critiqueParts = canProceed || repairedGaps.isEmpty
             ? [repairedPart, nextPart]
             : ["这不是合格复盘", repairedPart, nextPart]
@@ -1426,6 +1432,23 @@ struct CoachAnswerFeedbackPolicy {
             ? "这不是普通待办，下一步要用明日结果校准判断。"
             : "这不是普通待办，要先把思考训练缺口补齐。"
         return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
+    }
+
+    private func critiqueTrainingFocus(
+        plan: CoachTeachingPlan,
+        remainingGaps: [EvidenceGapType],
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else {
+            return "还要训练：\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
+        }
+        if observation.primaryGap == .goal {
+            return "还要训练：把行动当成答案，先补服务对象、成功标准和可观察信号"
+        }
+        if observation.primaryGap == .narrative {
+            return "还要训练：讲清楚一件事，先补背景、对象、触发、行动和结果"
+        }
+        return "还要训练：\(observation.trainingAbility.trainingTitle)，\(observation.feedback.diagnosis)"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
