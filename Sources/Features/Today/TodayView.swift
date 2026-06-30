@@ -3337,6 +3337,7 @@ private struct QuestCardView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                    BriefRow(title: "执行训练契约", body: executionFeedback.contractLine, accent: DS.success)
                     BriefRow(title: "验证判断", body: executionFeedback.judgmentLine, accent: DS.accent)
                     BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                     BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)

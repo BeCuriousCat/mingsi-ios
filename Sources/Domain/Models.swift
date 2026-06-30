@@ -3477,6 +3477,7 @@ struct Quest: Identifiable, Hashable {
 
 struct QuestExecutionTrainingFeedback: Hashable {
     var trainingDimension: ThinkingTrainingDimension
+    var contractLine: String
     var judgmentLine: String
     var evidenceLine: String
     var resistanceLine: String
@@ -3497,12 +3498,17 @@ struct QuestExecutionTrainingPolicy {
 
         return QuestExecutionTrainingFeedback(
             trainingDimension: .testableActionDesign,
+            contractLine: contractLine(),
             judgmentLine: targetJudgment,
             evidenceLine: completionEvidence,
             resistanceLine: expectedResistance,
             calibrationLine: "结果校准时回答：\(calibrationPrompt)",
             trainingLine: trainingLine(for: quest)
         )
+    }
+
+    private func contractLine() -> String {
+        "执行训练契约：这不是普通待办；明天必须留下完成证据，并用结果校准信号更新今天的判断。"
     }
 
     private func trainingLine(for quest: Quest) -> String {

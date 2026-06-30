@@ -700,6 +700,10 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["执行训练契约"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "不是普通待办")
+        ).firstMatch.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["验证判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["完成证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["阻力预案"].waitForExistence(timeout: 4))
