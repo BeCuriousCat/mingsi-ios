@@ -845,10 +845,11 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: "你刚补上",
-                body: feedback.repairedLine,
+                title: "教练批改",
+                body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
+            BriefRow(title: "已修补", body: feedback.repairedLine, accent: DS.success)
             BriefRow(
                 title: "当前仍缺",
                 body: feedback.missingLine,

@@ -214,6 +214,11 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
         typeFirstQuestionAnswer("先让 Alex 写清验收标准。", in: app)
 
+        XCTAssertTrue(app.staticTexts["教练批改"].waitForExistence(timeout: 4))
+        let coachCritique = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "下一句要补")
+        ).firstMatch
+        XCTAssertTrue(coachCritique.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
         let trainingRepair = app.staticTexts.matching(

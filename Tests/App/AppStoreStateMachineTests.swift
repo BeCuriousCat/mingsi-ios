@@ -1440,6 +1440,9 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(feedback.readiness, .notReady)
         XCTAssertFalse(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("教练批改"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("补上了缺观察事实"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("下一句要补缺因果链"))
         XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
         XCTAssertTrue(feedback.repairedLine.contains("补上"))
         XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
@@ -1517,6 +1520,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(feedback.readiness, .ready)
         XCTAssertTrue(feedback.canProceedToValidation)
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("教练批改"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("可以进入明日验证"))
         XCTAssertTrue(feedback.repairedLine.contains("缺校准信号"))
         XCTAssertTrue(feedback.missingLine.contains("关键缺口已关闭"))
         XCTAssertTrue(feedback.proceedLine.contains("可以进入明日验证"))

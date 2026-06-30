@@ -1138,6 +1138,7 @@ struct CoachTurnState: Codable, Hashable {
 struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var readiness: ConvergenceReadiness
     var canProceedToValidation: Bool
+    var coachCritiqueLine: String
     var repairedLine: String
     var missingLine: String
     var proceedLine: String
@@ -1377,6 +1378,13 @@ struct CoachAnswerFeedbackPolicy {
         return CoachAnswerTrainingFeedback(
             readiness: turn.readiness,
             canProceedToValidation: canProceed,
+            coachCritiqueLine: coachCritiqueLine(
+                canProceed: canProceed,
+                repairedGaps: repairedGaps,
+                remainingGaps: remainingGaps,
+                plan: plan,
+                questions: questions
+            ),
             repairedLine: repairedLine(repairedGaps: repairedGaps, questions: questions),
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
@@ -1387,6 +1395,25 @@ struct CoachAnswerFeedbackPolicy {
             judgmentSentencePrompt: Self.judgmentSentencePrompt,
             teachingPlan: plan
         )
+    }
+
+    private func coachCritiqueLine(
+        canProceed: Bool,
+        repairedGaps: [EvidenceGapType],
+        remainingGaps: [EvidenceGapType],
+        plan: CoachTeachingPlan,
+        questions: [ReflectionQuestion]
+    ) -> String {
+        let answeredCount = questions.filter {
+            !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.count
+        let repairedPart = repairedGaps.isEmpty
+            ? (answeredCount > 0 ? "这次回答还没有补上关键缺口" : "还没有可批改的新回答")
+            : "补上了\(gapLine(for: repairedGaps))"
+        let nextPart = canProceed
+            ? "可以进入明日验证：\(plan.proceedStandard)"
+            : "下一句要补\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
+        return "教练批改：\(repairedPart)；\(nextPart)。"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
