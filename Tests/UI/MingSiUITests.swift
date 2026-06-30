@@ -212,6 +212,29 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(mechanismAsk.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesUnchallengedExplanationAsCounterexampleTraining() throws {
+        let app = seededTodayApp(stage: "capture", input: "我看到用户代表在评审里提出三处流程问题，后来方案实际延期。我认为延期是因为流程问题影响了验收判断，中间链条是评审问题先让验收标准变模糊，再导致方案延期。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let analysisTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的分析力")
+        ).firstMatch
+        XCTAssertTrue(analysisTraining.waitForExistence(timeout: 4))
+        let counterexampleTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "反例")
+        ).firstMatch
+        XCTAssertTrue(counterexampleTraining.waitForExistence(timeout: 4))
+        let alternativeAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "替代解释")
+        ).firstMatch
+        XCTAssertTrue(alternativeAsk.waitForExistence(timeout: 4))
+        let weakenAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "削弱当前解释")
+        ).firstMatch
+        XCTAssertTrue(weakenAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayCaptureChallengesVagueActionAsExecutionTraining() throws {
         let app = seededTodayApp(stage: "capture", input: "为了让 Alex 减少返工，明天推进方案处理一下。")
         app.launch()

@@ -1572,6 +1572,9 @@ final class AppStore: ObservableObject {
         if observation.primaryGap == .causal {
             return "思考力中的分析力：这还是跳步的因果解释。请补：A 到 B 中间发生了什么，哪个环节最关键？"
         }
+        if observation.primaryGap == .counterexample {
+            return "思考力中的分析力：这条解释还没有被反例挑战。请补：什么事实会推翻、替代解释或削弱当前解释？"
+        }
         if observation.primaryGap == .execution {
             return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
         }

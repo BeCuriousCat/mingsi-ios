@@ -1385,6 +1385,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("哪个环节最关键"))
     }
 
+    func testCaptureMaterialObservationChallengesUnchallengedExplanationAsCounterexampleTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我看到用户代表在评审里提出三处流程问题，后来方案实际延期。我认为延期是因为流程问题影响了验收判断，中间链条是评审问题先让验收标准变模糊，再导致方案延期。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的分析力"))
+        XCTAssertTrue(line.contains("反例"))
+        XCTAssertTrue(line.contains("替代解释"))
+        XCTAssertTrue(line.contains("削弱当前解释"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueActionAsExecutionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("为了让 Alex 减少返工，明天推进方案处理一下。")
