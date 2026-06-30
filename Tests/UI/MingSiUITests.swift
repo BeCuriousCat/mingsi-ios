@@ -235,6 +235,29 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(weakenAsk.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesActionWithoutGoalAsJudgmentTraining() throws {
+        let app = seededTodayApp(stage: "capture", input: "先让 Alex 写清验收标准。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let judgmentTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的判断力")
+        ).firstMatch
+        XCTAssertTrue(judgmentTraining.waitForExistence(timeout: 4))
+        let actionBeforeGoal = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "行动不能先替代目标")
+        ).firstMatch
+        XCTAssertTrue(actionBeforeGoal.waitForExistence(timeout: 4))
+        let serviceObjectAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
+        ).firstMatch
+        XCTAssertTrue(serviceObjectAsk.waitForExistence(timeout: 4))
+        let successCriteriaAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "成功标准")
+        ).firstMatch
+        XCTAssertTrue(successCriteriaAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayCaptureChallengesVagueActionAsExecutionTraining() throws {
         let app = seededTodayApp(stage: "capture", input: "为了让 Alex 减少返工，明天推进方案处理一下。")
         app.launch()

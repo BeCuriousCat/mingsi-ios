@@ -1566,6 +1566,9 @@ final class AppStore: ObservableObject {
         if observation.primaryGap == .object {
             return "沟通力中的描述力：还没说清服务对象。请补：这件事影响谁，或你要服务谁的什么问题？"
         }
+        if observation.primaryGap == .goal {
+            return "思考力中的判断力：行动不能先替代目标。请补：如果这件事做对了，谁的什么问题会变少，成功标准是什么？"
+        }
         if observation.primaryGap == .constraint {
             return "思考力中的分析力：还没说清具体限制。请补：现在卡住来自时间、资源、权限、信息、关系还是系统边界？"
         }

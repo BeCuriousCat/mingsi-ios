@@ -1396,6 +1396,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("削弱当前解释"))
     }
 
+    func testCaptureMaterialObservationChallengesActionWithoutGoalAsJudgmentTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("先让 Alex 写清验收标准。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的判断力"))
+        XCTAssertTrue(line.contains("行动不能先替代目标"))
+        XCTAssertTrue(line.contains("谁的什么问题会变少"))
+        XCTAssertTrue(line.contains("成功标准"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueActionAsExecutionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("为了让 Alex 减少返工，明天推进方案处理一下。")
