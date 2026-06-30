@@ -136,6 +136,25 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(missing.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesVagueStoryAsDescriptionTraining() throws {
+        let app = seededTodayApp(stage: "capture", input: "今天有点乱，感觉推进不下去。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let challenge = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "还不是可复述事件")
+        ).firstMatch
+        XCTAssertTrue(challenge.waitForExistence(timeout: 4))
+        let descriptionTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "沟通力中的描述力")
+        ).firstMatch
+        XCTAssertTrue(descriptionTraining.waitForExistence(timeout: 4))
+        let concreteAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "什么背景下，谁做了什么，触发点是什么，后来发生了什么")
+        ).firstMatch
+        XCTAssertTrue(concreteAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsSeedCanTypeThroughAccessibilityIdentifier() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()

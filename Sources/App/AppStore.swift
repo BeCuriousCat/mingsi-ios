@@ -1554,6 +1554,9 @@ final class AppStore: ObservableObject {
         let observation = CoachObservationPolicy().observe(text: trimmed)
         let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
         let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
+        if observation.primaryGap == .narrative {
+            return "\(observation.trainingAbility.trainingTitle)：现在还不是可复述事件。已说清：\(provided)。下一句先补：\(missing)。请补：什么背景下，谁做了什么，触发点是什么，后来发生了什么。"
+        }
         return "已说清：\(provided)。下一句先补：\(missing)。"
     }
 

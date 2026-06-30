@@ -1341,6 +1341,18 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testCaptureMaterialObservationChallengesVagueStoryAsDescriptionTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("今天有点乱，感觉推进不下去。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("沟通力"))
+        XCTAssertTrue(line.contains("描述力"))
+        XCTAssertTrue(line.contains("还不是可复述事件"))
+        XCTAssertTrue(line.contains("下一句先补"))
+        XCTAssertTrue(line.contains("什么背景下，谁做了什么，触发点是什么，后来发生了什么"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
