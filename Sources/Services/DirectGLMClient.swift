@@ -194,7 +194,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 usesJSONResponseFormat: false,
                 stream: true
             )
-            urlRequest.timeoutInterval = 0
+            urlRequest.timeoutInterval = configuration.requestTimeout
             let (bytes, response) = try await session.bytes(for: urlRequest)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw LLMClientError.invalidResponse

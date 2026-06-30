@@ -180,7 +180,7 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertFalse(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
     }
 
-    func testStream_keepsRequestTimeoutAsIdleTimeoutForDisconnectedStreams() async throws {
+    func testStream_appliesDefaultFiveMinuteTimeoutToStreamingRequests() async throws {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
                 statusCode: 200,
@@ -193,16 +193,11 @@ final class DirectGLMClientTests: XCTestCase {
             )
         ]
 
-        let client = makeClient(
-            configuration: GLMClientConfiguration(
-                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
-                requestTimeout: 180
-            )
-        )
+        let client = makeClient()
 
         for try await _ in client.stream(makeRequest()) {}
 
-        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [0])
+        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [300])
     }
 
     func testStream_allowsLongTotalDurationWhenTokensKeepArrivingBeforeIdleTimeout() async throws {
