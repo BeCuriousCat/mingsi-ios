@@ -51,7 +51,41 @@ final class DirectGLMClientTests: XCTestCase {
     func testConfiguration_defaultTimeoutAllowsLongGLMResponses() {
         let configuration = GLMClientConfiguration()
 
-        XCTAssertEqual(configuration.requestTimeout, 180)
+        XCTAssertEqual(configuration.requestTimeout, 300)
+    }
+
+    func testConfiguration_normalizesBigModelAnthropicCodingPlanURLToOpenAICompatibleEndpoint() {
+        let configuration = GLMClientConfiguration(
+            baseURL: GLMClientConfiguration.normalizeBaseURL(
+                URL(string: "https://open.bigmodel.cn/api/anthropic")!
+            )
+        )
+
+        XCTAssertEqual(
+            configuration.baseURL.absoluteString,
+            "https://open.bigmodel.cn/api/coding/paas/v4"
+        )
+        XCTAssertEqual(
+            configuration.endpoint.absoluteString,
+            "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+        )
+    }
+
+    func testConfiguration_normalizesZAIAnthropicCodingPlanURLToOpenAICompatibleEndpoint() {
+        let configuration = GLMClientConfiguration(
+            baseURL: GLMClientConfiguration.normalizeBaseURL(
+                URL(string: "https://api.z.ai/api/anthropic")!
+            )
+        )
+
+        XCTAssertEqual(
+            configuration.baseURL.absoluteString,
+            "https://api.z.ai/api/coding/paas/v4"
+        )
+        XCTAssertEqual(
+            configuration.endpoint.absoluteString,
+            "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        )
     }
 
     func testComplete_retriesRecoverableRateLimitStatus() async throws {

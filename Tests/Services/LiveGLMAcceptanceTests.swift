@@ -60,6 +60,12 @@ final class LiveGLMAcceptanceTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
     }
 
+    func testHarnessProbeUsesFiveMinuteRequestTimeout() {
+        let harness = LiveGLMAcceptanceHarness(environment: [:])
+
+        XCTAssertEqual(harness.requestTimeout, 300)
+    }
+
     func testLiveGLMCompleteReturnsJSONWhenExplicitlyEnabled() async throws {
         let harness = LiveGLMAcceptanceHarness(environment: ProcessInfo.processInfo.environment)
 
@@ -81,6 +87,10 @@ private struct LiveGLMAcceptanceHarness {
         try KeychainAPIKeyStore().loadAPIKey()
     }
 
+    var requestTimeout: TimeInterval {
+        GLMClientConfiguration().requestTimeout
+    }
+
     var isEnabled: Bool {
         value("MINGSI_LIVE_GLM_ACCEPTANCE") == "1"
     }
@@ -96,7 +106,7 @@ private struct LiveGLMAcceptanceHarness {
                 baseURL: baseURL(),
                 model: value("MINGSI_LIVE_GLM_MODEL") ?? GLMClientConfiguration().model,
                 temperature: 0,
-                requestTimeout: 60,
+                requestTimeout: requestTimeout,
                 maxRetryAttempts: 0,
                 retryBaseDelay: 0
             )

@@ -18,7 +18,7 @@ struct GLMClientConfiguration: Hashable {
         baseURL: URL = URL(string: "https://api.z.ai/api/paas/v4")!,
         model: String = "glm-4.5-flash",
         temperature: Double = 0.2,
-        requestTimeout: TimeInterval = 180,
+        requestTimeout: TimeInterval = 300,
         protocolKind: ProtocolKind = .openAICompatible,
         usesJSONResponseFormat: Bool = true,
         maxRetryAttempts: Int = 2,
@@ -38,7 +38,7 @@ struct GLMClientConfiguration: Hashable {
         endpoint: URL,
         model: String = "glm-4.5-flash",
         temperature: Double = 0.2,
-        requestTimeout: TimeInterval = 180,
+        requestTimeout: TimeInterval = 300,
         protocolKind: ProtocolKind = .openAICompatible,
         usesJSONResponseFormat: Bool = true,
         maxRetryAttempts: Int = 2,
@@ -76,6 +76,12 @@ struct GLMClientConfiguration: Hashable {
                 "/completions"
             ]
             let absolute = url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if absolute == "https://open.bigmodel.cn/api/anthropic" {
+                return URL(string: "https://open.bigmodel.cn/api/coding/paas/v4") ?? url
+            }
+            if absolute == "https://api.z.ai/api/anthropic" {
+                return URL(string: "https://api.z.ai/api/coding/paas/v4") ?? url
+            }
             for suffix in suffixes where absolute.hasSuffix(suffix) {
                 let base = String(absolute.dropLast(suffix.count))
                 return URL(string: base) ?? url
