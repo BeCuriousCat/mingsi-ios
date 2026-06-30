@@ -9499,6 +9499,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.answerDiagnosisToggle, "today.answer.diagnosis-toggle")
         XCTAssertEqual(TodayAutomationID.questionCoachBasisToggle, "today.question.coach-basis-toggle")
         XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
+        XCTAssertEqual(TodayAutomationID.loopBoundaryToggle, "today.loop-boundary-toggle")
         XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
         XCTAssertEqual(TodayAutomationID.questTrainingPrinciplePicker, "today.quest.training-principle-picker")
         XCTAssertEqual(TodayAutomationID.lensGenerateAction, "today.lens.generate-action")

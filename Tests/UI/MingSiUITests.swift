@@ -112,6 +112,10 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["行动验证闭环"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["明日验证 → 结果校准"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].exists)
+        let boundaryToggle = app.buttons["today.loop-boundary-toggle"]
+        XCTAssertTrue(boundaryToggle.waitForExistence(timeout: 4))
+        boundaryToggle.tap()
         XCTAssertTrue(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["今天内容"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["本页只写今天内容"].exists)

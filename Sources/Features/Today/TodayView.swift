@@ -23,6 +23,7 @@ enum TodayAutomationID {
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
     static let captureRawTextField = "today.capture.raw-text-field"
+    static let loopBoundaryToggle = "today.loop-boundary-toggle"
     static let captureGuidanceToggle = "today.capture.guidance-toggle"
     static let reviewQuestsGuidanceToggle = "today.review-quests.guidance-toggle"
     static func questionAnswerField(questionId: String) -> String {
@@ -141,20 +142,27 @@ struct TodayView: View {
 
     private var loopBoundaryHint: some View {
         let boundary = currentLoopBoundary
-        return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: boundary.icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(boundary.tint)
-                .frame(width: 18, height: 18)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(boundary.title)
-                    .font(.caption.weight(.bold))
+        return DisclosureGroup {
+            Text(boundary.body)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: boundary.icon)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(boundary.tint)
-                Text(boundary.body)
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 18, height: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(boundary.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(boundary.tint)
+                    Text("查看阶段边界")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
             }
         }
         .padding(10)
@@ -164,6 +172,7 @@ struct TodayView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(boundary.tint.opacity(0.12), lineWidth: 1)
         )
+        .accessibilityIdentifier(TodayAutomationID.loopBoundaryToggle)
     }
 
     private var currentLoopBoundary: LoopBoundaryCopy {
