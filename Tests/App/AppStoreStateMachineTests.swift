@@ -1386,6 +1386,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("事实和解释分开"))
     }
 
+    func testCaptureMaterialObservationChallengesMissingObjectAsDescriptionTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("今天需求评审后，我打算先重写方案，后来方案没有通过。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("沟通力中的描述力"))
+        XCTAssertTrue(line.contains("还没说清服务对象"))
+        XCTAssertTrue(line.contains("影响谁"))
+        XCTAssertTrue(line.contains("谁的什么问题"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,

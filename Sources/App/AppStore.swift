@@ -1563,6 +1563,9 @@ final class AppStore: ObservableObject {
         if observation.primaryGap == .observation {
             return "思考力中的观察力：判断不能先当结论。请补一个可观察事实，把事实和解释分开。"
         }
+        if observation.primaryGap == .object {
+            return "沟通力中的描述力：还没说清服务对象。请补：这件事影响谁，或你要服务谁的什么问题？"
+        }
         if observation.primaryGap == .execution {
             return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
         }
