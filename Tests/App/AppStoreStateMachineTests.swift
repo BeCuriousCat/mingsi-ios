@@ -1283,18 +1283,20 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(observation.primaryGap, .counterexample)
         XCTAssertTrue(observation.experienceReplayPrompt.contains("忽略反例"))
         XCTAssertTrue(observation.experienceReplayPrompt.contains("过早收敛"))
-        XCTAssertTrue(observation.experienceReplayPrompt.contains("复现哪条反证检查"))
+        XCTAssertTrue(observation.experienceReplayPrompt.contains("反证检查"))
+        XCTAssertTrue(observation.experienceReplayPrompt.contains("先判断：复现、调整，还是否定"))
+        XCTAssertTrue(observation.experienceReplayPrompt.contains("再写一句条件差异"))
     }
 
     func testCoachObservationPolicy_experienceReplayPromptMatchesEachTrainingGap() {
         let cases: [(gap: CoachObservationGap, requiredFragments: [String])] = [
-            (.narrative, ["讲述不清", "复现哪条讲述顺序"]),
-            (.object, ["没有说清服务对象", "复现哪条对象检查"]),
-            (.constraint, ["忽略限制条件", "复现哪条边界检查"]),
-            (.causal, ["误把相关当原因", "复现哪条因果检查"]),
-            (.judgment, ["判断标准不清", "复现哪条取舍检查"]),
-            (.execution, ["行动不可检查", "复现哪条执行检查"]),
-            (.calibration, ["没有预设校准信号", "复现哪条结果检查"])
+            (.narrative, ["讲述不清", "讲述顺序"]),
+            (.object, ["没有说清服务对象", "对象检查"]),
+            (.constraint, ["忽略限制条件", "边界检查"]),
+            (.causal, ["误把相关当原因", "因果检查"]),
+            (.judgment, ["判断标准不清", "取舍检查"]),
+            (.execution, ["行动不可检查", "执行检查"]),
+            (.calibration, ["没有预设校准信号", "结果检查"])
         ]
 
         for testCase in cases {
@@ -1302,6 +1304,14 @@ final class AppStoreStateMachineTests: XCTestCase {
             XCTAssertFalse(
                 prompt.contains("回想一次相似经验"),
                 "\(testCase.gap) should not fall back to a generic replay prompt."
+            )
+            XCTAssertTrue(
+                prompt.contains("先判断：复现、调整，还是否定"),
+                "\(testCase.gap) replay prompt should force a replay decision, got: \(prompt)"
+            )
+            XCTAssertTrue(
+                prompt.contains("再写一句条件差异"),
+                "\(testCase.gap) replay prompt should force condition comparison, got: \(prompt)"
             )
             for fragment in testCase.requiredFragments {
                 XCTAssertTrue(
@@ -1549,7 +1559,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(plan.repairQuestion.contains("刚才的回答"))
         XCTAssertTrue(plan.repairQuestion.contains("事实"))
         XCTAssertTrue(plan.experienceReplayPrompt.contains("过往"))
-        XCTAssertTrue(plan.experienceReplayPrompt.contains("复现"))
+        XCTAssertTrue(plan.experienceReplayPrompt.contains("先判断：复现、调整，还是否定"))
+        XCTAssertTrue(plan.experienceReplayPrompt.contains("再写一句条件差异"))
     }
 
     func testCoachTeachingPolicy_readyRouteFormsTomorrowValidation() {
@@ -1637,6 +1648,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("先判断：复现、调整，还是否定"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("再写一句条件差异"))
         XCTAssertEqual(feedback.experienceReplayDecisionLine, ExperienceReplayTraining.line)
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.reproduceLine))
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.adaptLine))
@@ -1814,7 +1827,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.nextRepairQuestion.contains("成功标准"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("可观察信号"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("没有先定义服务对象或成功标准"))
-        XCTAssertTrue(feedback.experienceReplayPrompt.contains("复现哪条目标检查"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("目标检查"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("先判断：复现、调整，还是否定"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("再写一句条件差异"))
         XCTAssertFalse(feedback.experienceReplayPrompt.contains("缺少事实或验收标准"))
     }
 

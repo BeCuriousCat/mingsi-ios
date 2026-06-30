@@ -517,6 +517,12 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "否定：这条经验为什么不适用")
         ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "先判断：复现、调整，还是否定")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "再写一句条件差异")
+        ).firstMatch.waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["判断句训练"].exists)
 
         dismissKeyboardIfPresent(in: app)

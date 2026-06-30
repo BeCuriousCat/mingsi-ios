@@ -2213,30 +2213,32 @@ struct CoachObservationPolicy {
     }
 
     private func experienceReplayPrompt(for gap: CoachObservationGap) -> String {
+        let prompt: String
         switch gap {
         case .experience:
-            return "请检查过往经验和本次条件：哪些条件相同可以复现，哪些不同需要调整，哪些会让旧经验失效？"
+            prompt = "请检查过往经验和本次条件：哪些条件相同可以复现，哪些不同需要调整，哪些会让旧经验失效？"
         case .narrative:
-            return "回想过往一次因为讲述不清导致别人无法复盘的经验：这次要复现哪条讲述顺序？"
+            prompt = "回想过往一次因为讲述不清导致别人无法复盘的经验：这次要用哪条讲述顺序？"
         case .observation:
-            return "回想过往一次因为事实和解释混在一起而误判的经验：这次要复现哪条事实检查？"
+            prompt = "回想过往一次因为事实和解释混在一起而误判的经验：这次要用哪条事实检查？"
         case .object:
-            return "回想过往一次因为没有说清服务对象或受影响的人而判断跑偏的经验：这次要复现哪条对象检查？"
+            prompt = "回想过往一次因为没有说清服务对象或受影响的人而判断跑偏的经验：这次要用哪条对象检查？"
         case .goal:
-            return "回想过往一次因为没有先定义服务对象或成功标准而返工的经验：这次要复现哪条目标检查？"
+            prompt = "回想过往一次因为没有先定义服务对象或成功标准而返工的经验：这次要用哪条目标检查？"
         case .constraint:
-            return "回想过往一次忽略限制条件而推进受阻的经验：这次要复现哪条边界检查？"
+            prompt = "回想过往一次忽略限制条件而推进受阻的经验：这次要用哪条边界检查？"
         case .causal:
-            return "回想过往一次误把相关当原因而判断跑偏的经验：这次要复现哪条因果检查？"
+            prompt = "回想过往一次误把相关当原因而判断跑偏的经验：这次要用哪条因果检查？"
         case .counterexample:
-            return "回想过往一次忽略反例而判断过早收敛的经验：这次要复现哪条反证检查？"
+            prompt = "回想过往一次忽略反例而判断过早收敛的经验：这次要用哪条反证检查？"
         case .judgment:
-            return "回想过往一次判断标准不清而取舍摇摆的经验：这次要复现哪条取舍检查？"
+            prompt = "回想过往一次判断标准不清而取舍摇摆的经验：这次要用哪条取舍检查？"
         case .execution:
-            return "回想过往一次行动不可检查而无法复盘结果的经验：这次要复现哪条执行检查？"
+            prompt = "回想过往一次行动不可检查而无法复盘结果的经验：这次要用哪条执行检查？"
         case .calibration:
-            return "回想过往一次没有预设校准信号而事后无法更新判断的经验：这次要复现哪条结果检查？"
+            prompt = "回想过往一次没有预设校准信号而事后无法更新判断的经验：这次要用哪条结果检查？"
         }
+        return "\(prompt) 先判断：复现、调整，还是否定；再写一句条件差异。"
     }
 
     private func isThinNarrative(
@@ -2619,7 +2621,9 @@ struct CoachTeachingPolicy {
                 whyNotAnswer: "override 是推进许可，不是缺口已经消失；后续任务仍要留下校准证据。",
                 proceedStandard: "任务必须留下可回看证据，方便明天校准。",
                 repairQuestion: "如果明天结果和当前判断相反，你要回看哪条证据来校准这次 override？",
-                experienceReplayPrompt: "回想过往一次先推进后校准的经验：这次应该复现、调整，还是避免那个做法？",
+                experienceReplayPrompt: experienceReplayPrompt(
+                    "回想过往一次先推进后校准的经验：这次要校验哪条做法？"
+                ),
                 routeSteps: ["记录用户主动推进", "保留未关闭缺口", "明天重点验证这个缺口是否造成偏差"],
                 auditNote: "用户 override 不是缺口已经消失的证明。"
             )
@@ -2633,7 +2637,9 @@ struct CoachTeachingPolicy {
                 whyNotAnswer: "当前证据已经足够形成验证行动，继续追问的收益低于行动校准。",
                 proceedStandard: "明日行动能留下负责人、验收标准和可观察结果。",
                 repairQuestion: "明天这个行动会留下什么结果证据，让你回看今天的判断是否成立？",
-                experienceReplayPrompt: "回想过往一次验证行动有效的经验：这次应该复现哪条做法，哪些条件不同？",
+                experienceReplayPrompt: experienceReplayPrompt(
+                    "回想过往一次验证行动有效的经验：这次要校验哪条做法？"
+                ),
                 routeSteps: ["固定当前判断", "设计一个明日验证行动", "明天用结果校准判断"],
                 auditNote: nil
             )
@@ -2728,21 +2734,25 @@ struct CoachTeachingPolicy {
 
     private func experienceReplayPrompt(for turn: CoachTurnState) -> String {
         if turn.openEvidenceGaps.contains(.missingObservation) || turn.openEvidenceGaps.contains(.missingBaseline) {
-            return "回想过往一次因为缺少事实或验收标准导致返工的经验：这次要复现哪条防错做法？"
+            return experienceReplayPrompt("回想过往一次因为缺少事实或验收标准导致返工的经验：这次要校验哪条防错做法？")
         }
         if turn.openEvidenceGaps.contains(.missingCalibrationSignal) {
-            return "回想过往一次任务完成但判断没有更新的经验：这次要复现哪条校准做法？"
+            return experienceReplayPrompt("回想过往一次任务完成但判断没有更新的经验：这次要校验哪条校准做法？")
         }
         if turn.openEvidenceGaps.contains(.missingCausalLink) {
-            return "回想过往一次只处理表面问题、没有看反馈回路的经验：这次要复现哪条结构化检查？"
+            return experienceReplayPrompt("回想过往一次只处理表面问题、没有看反馈回路的经验：这次要校验哪条结构化检查？")
         }
         if turn.openEvidenceGaps.contains(.missingCounterexample) {
-            return "回想过往一次忽略反例而判断过早收敛的经验：这次要复现哪条反证检查？"
+            return experienceReplayPrompt("回想过往一次忽略反例而判断过早收敛的经验：这次要校验哪条反证检查？")
         }
         if turn.openEvidenceGaps.contains(.missingConstraint) {
-            return "回想过往一次忽略约束导致行动失效的经验：这次要复现哪条边界检查？"
+            return experienceReplayPrompt("回想过往一次忽略约束导致行动失效的经验：这次要校验哪条边界检查？")
         }
-        return "回想过往一次判断推进有效的经验：这次应该复现、调整，还是拒绝那条经验？"
+        return experienceReplayPrompt("回想过往一次判断推进有效的经验：这次要校验哪条经验？")
+    }
+
+    private func experienceReplayPrompt(_ prompt: String) -> String {
+        "\(prompt) 先判断：复现、调整，还是否定；再写一句条件差异。"
     }
 
     private func routeSteps(for turn: CoachTurnState) -> [String] {
