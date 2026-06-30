@@ -1143,6 +1143,7 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var missingLine: String
     var proceedLine: String
     var abilityGapLine: String
+    var trainingOutputLine: String
     var trainingTargetLine: String
     var nextRepairQuestion: String
     var experienceReplayDecisionLine: String
@@ -1390,6 +1391,7 @@ struct CoachAnswerFeedbackPolicy {
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
             abilityGapLine: abilityGapLine(plan: plan, observation: observation),
+            trainingOutputLine: trainingOutputLine(plan: plan, observation: observation),
             trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
             nextRepairQuestion: nextRepairQuestion(plan: plan, observation: observation),
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
@@ -1469,6 +1471,22 @@ struct CoachAnswerFeedbackPolicy {
             return "能力缺口：把行动当成答案，少了服务对象、成功标准和可观察信号。"
         }
         return "能力缺口：\(observation.trainingAbility.trainingTitle)还没练到位，\(observation.feedback.diagnosis)"
+    }
+
+    private func trainingOutputLine(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else {
+            return "训练产物：补出一段可复盘材料，能支撑\(plan.proceedStandard)"
+        }
+        if observation.primaryGap == .goal {
+            return "训练产物：一句包含服务对象、成功标准、可观察信号的判断，再决定行动。"
+        }
+        if observation.primaryGap == .narrative {
+            return "训练产物：一段包含背景、对象、触发、行动、结果的完整讲述。"
+        }
+        return "训练产物：补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让下一步可判断、可执行、可复盘。"
     }
 
     private func trainingTargetLine(

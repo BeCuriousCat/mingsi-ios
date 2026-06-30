@@ -502,6 +502,11 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "把行动当成答案")
         ).firstMatch
         XCTAssertTrue(abilityGap.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["训练产物"].waitForExistence(timeout: 4))
+        let trainingOutput = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "服务对象、成功标准、可观察信号")
+        ).firstMatch
+        XCTAssertTrue(trainingOutput.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
         let trainingRepair = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "不是让 AI 替你给答案")

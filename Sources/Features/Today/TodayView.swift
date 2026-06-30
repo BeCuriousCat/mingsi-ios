@@ -896,6 +896,11 @@ struct TodayView: View {
                 accent: DS.accent
             )
             BriefRow(
+                title: "训练产物",
+                body: feedback.trainingOutputLine,
+                accent: DS.success
+            )
+            BriefRow(
                 title: "能力修补",
                 body: feedback.trainingTargetLine,
                 accent: DS.caution
