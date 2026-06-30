@@ -1415,9 +1415,14 @@ struct CoachAnswerFeedbackPolicy {
         let answeredCount = questions.filter {
             !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }.count
-        let repairedPart = repairedGaps.isEmpty
-            ? (answeredCount > 0 ? "这不是合格复盘，只是回答了问题，还没有补上训练材料" : "还没有可批改的新回答")
-            : "刚补上：\(gapLine(for: repairedGaps))"
+        let repairedPart: String
+        if repairedGaps.isEmpty {
+            repairedPart = answeredCount > 0 ? "这不是合格复盘，只是回答了问题，还没有补上训练材料" : "还没有可批改的新回答"
+        } else if canProceed {
+            repairedPart = "已补训练材料：\(gapLine(for: repairedGaps))"
+        } else {
+            repairedPart = "刚补上：\(gapLine(for: repairedGaps))"
+        }
         let nextPart = canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
             : critiqueTrainingFocus(
