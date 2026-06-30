@@ -63,7 +63,7 @@ final class LiveGLMAcceptanceTests: XCTestCase {
     func testHarnessProbeUsesFiveMinuteRequestTimeout() {
         let harness = LiveGLMAcceptanceHarness(environment: [:])
 
-        XCTAssertEqual(harness.requestTimeout, 300)
+        XCTAssertEqual(harness.requestTimeout, GLMClientConfiguration.defaultRequestTimeout)
     }
 
     func testLiveGLMCompleteReturnsJSONWhenExplicitlyEnabled() async throws {

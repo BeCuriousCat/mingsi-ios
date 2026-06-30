@@ -51,7 +51,8 @@ final class DirectGLMClientTests: XCTestCase {
     func testConfiguration_defaultTimeoutAllowsLongGLMResponses() {
         let configuration = GLMClientConfiguration()
 
-        XCTAssertEqual(configuration.requestTimeout, 300)
+        XCTAssertEqual(GLMClientConfiguration.defaultRequestTimeout, 5 * 60)
+        XCTAssertEqual(configuration.requestTimeout, GLMClientConfiguration.defaultRequestTimeout)
     }
 
     func testConfiguration_normalizesBigModelAnthropicCodingPlanURLToOpenAICompatibleEndpoint() {
@@ -197,7 +198,7 @@ final class DirectGLMClientTests: XCTestCase {
 
         for try await _ in client.stream(makeRequest()) {}
 
-        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [300])
+        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts, [GLMClientConfiguration.defaultRequestTimeout])
     }
 
     func testStream_allowsLongTotalDurationWhenTokensKeepArrivingBeforeIdleTimeout() async throws {

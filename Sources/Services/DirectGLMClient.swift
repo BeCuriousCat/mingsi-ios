@@ -5,6 +5,8 @@ struct GLMClientConfiguration: Hashable {
         case openAICompatible
     }
 
+    static let defaultRequestTimeout: TimeInterval = 5 * 60
+
     let baseURL: URL
     let model: String
     let temperature: Double
@@ -18,7 +20,7 @@ struct GLMClientConfiguration: Hashable {
         baseURL: URL = URL(string: "https://api.z.ai/api/paas/v4")!,
         model: String = "glm-4.5-flash",
         temperature: Double = 0.2,
-        requestTimeout: TimeInterval = 300,
+        requestTimeout: TimeInterval = GLMClientConfiguration.defaultRequestTimeout,
         protocolKind: ProtocolKind = .openAICompatible,
         usesJSONResponseFormat: Bool = true,
         maxRetryAttempts: Int = 2,
@@ -38,7 +40,7 @@ struct GLMClientConfiguration: Hashable {
         endpoint: URL,
         model: String = "glm-4.5-flash",
         temperature: Double = 0.2,
-        requestTimeout: TimeInterval = 300,
+        requestTimeout: TimeInterval = GLMClientConfiguration.defaultRequestTimeout,
         protocolKind: ProtocolKind = .openAICompatible,
         usesJSONResponseFormat: Bool = true,
         maxRetryAttempts: Int = 2,
