@@ -120,6 +120,22 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["发生了什么"].waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureShowsCoachObservationFromCurrentDraft() throws {
+        let app = seededTodayApp(stage: "capture", input: "先让 Alex 写清验收标准。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["本句观察"].waitForExistence(timeout: 4))
+        let provided = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "已说清：说明对象、写出做法、成功标准")
+        ).firstMatch
+        XCTAssertTrue(provided.waitForExistence(timeout: 4))
+        let missing = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "下一句先补：目标")
+        ).firstMatch
+        XCTAssertTrue(missing.waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsSeedCanTypeThroughAccessibilityIdentifier() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
@@ -503,12 +519,16 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(recallAudit.label.contains("Owner keyword was a false positive."))
     }
 
-    private func seededTodayApp(stage: String, missingCalibrationTarget: Bool = false) -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = """
+    private func seededTodayApp(
+        stage: String,
+        input: String = """
         事实：会议结束后没有明确负责人。
         风险：验收标准缺失会导致明天返工。
-        """
+        """,
+        missingCalibrationTarget: Bool = false
+    ) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = input
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = stage
         app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"

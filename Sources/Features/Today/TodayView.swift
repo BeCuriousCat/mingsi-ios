@@ -22,6 +22,7 @@ enum TodayAutomationID {
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
+    static let captureRawTextField = "today.capture.raw-text-field"
     static let captureGuidanceToggle = "today.capture.guidance-toggle"
     static let reviewQuestsGuidanceToggle = "today.review-quests.guidance-toggle"
     static func questionAnswerField(questionId: String) -> String {
@@ -408,6 +409,7 @@ struct TodayView: View {
                 get: { store.todayDraft.rawText },
                 set: { store.updateTodayCapture($0) }
             ), isFocused: $isCaptureFocused)
+            .accessibilityIdentifier(TodayAutomationID.captureRawTextField)
             .frame(minHeight: 220)
             .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
             .overlay(
@@ -415,6 +417,14 @@ struct TodayView: View {
                     .stroke(Color.primary.opacity(0.06), lineWidth: 1)
                     .allowsHitTesting(false)
             )
+
+            if let captureMaterialObservation = store.coachCaptureMaterialObservation {
+                BriefRow(
+                    title: "本句观察",
+                    body: captureMaterialObservation,
+                    accent: DS.accent
+                )
+            }
 
             HStack(spacing: 10) {
                 Button {

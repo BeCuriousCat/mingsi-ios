@@ -1539,7 +1539,19 @@ final class AppStore: ObservableObject {
             .first { !$0.isEmpty } ?? ""
         guard !answer.isEmpty else { return nil }
 
-        let observation = CoachObservationPolicy().observe(text: answer)
+        return Self.materialObservationLine(for: answer)
+    }
+
+    var coachCaptureMaterialObservation: String? {
+        guard todayDraft.state == .capture else { return nil }
+        return Self.materialObservationLine(for: todayDraft.rawText)
+    }
+
+    private static func materialObservationLine(for text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let observation = CoachObservationPolicy().observe(text: trimmed)
         let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
         let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
         return "已说清：\(provided)。下一句先补：\(missing)。"

@@ -1331,6 +1331,16 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：目标"))
     }
 
+    func testCaptureMaterialObservationCoachesWhileUserWrites() {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("先让 Alex 写清验收标准。")
+
+        XCTAssertEqual(
+            store.coachCaptureMaterialObservation,
+            "已说清：说明对象、写出做法、成功标准。下一句先补：目标。"
+        )
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
