@@ -500,15 +500,28 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "观察事实")
         ).firstMatch
         XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["判断句训练"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["过往经验复现"].exists)
+        XCTAssertFalse(app.staticTexts["判断句训练"].exists)
+
+        dismissKeyboardIfPresent(in: app)
+        let trainingToolsToggle = app.buttons["today.answer.training-tools-toggle"].firstMatch
+        scrollToElement(trainingToolsToggle, in: app)
+        XCTAssertTrue(trainingToolsToggle.waitForExistence(timeout: 4))
+        trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练工具")).firstMatch.waitForExistence(timeout: 4))
+
+        let replayTitle = app.staticTexts["过往经验复现"].firstMatch
+        scrollDownUntilElementExists(replayTitle, in: app)
+        let judgmentTitle = app.staticTexts["判断句训练"].firstMatch
+        scrollDownUntilElementExists(judgmentTitle, in: app)
         let judgmentTemplate = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "我现在相信 X")
         ).firstMatch
-        XCTAssertTrue(judgmentTemplate.waitForExistence(timeout: 4))
+        scrollDownUntilElementExists(judgmentTemplate, in: app)
         let calibrationTemplate = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "明天用 Y")
         ).firstMatch
-        XCTAssertTrue(calibrationTemplate.waitForExistence(timeout: 4))
+        scrollDownUntilElementExists(calibrationTemplate, in: app)
     }
 
     func testTodayAnswerQuestionsCanNavigateBackToThinkingCardsWhileAnswerFieldIsActive() throws {
@@ -792,28 +805,72 @@ final class MingSiUITests: XCTestCase {
     }
 
     private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication) {
-        let scrollViews = app.scrollViews
-        let scrollView = scrollViews.firstMatch
-        XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
+        let scrollView = primaryScrollView(in: app)
 
         var remainingScrolls = 12
         while (!element.exists || !isElementInTappableScrollArea(element, app: app)) && remainingScrolls > 0 {
+            let beforeMidY = element.exists ? element.frame.midY : nil
             if element.exists, element.frame.midY < app.frame.height * 0.24 {
                 drag(scrollView, fromY: 0.35, toY: 0.62)
             } else {
                 drag(scrollView, fromY: 0.72, toY: 0.45)
             }
+            if let beforeMidY, element.exists, abs(element.frame.midY - beforeMidY) < 1 {
+                if element.frame.midY < app.frame.height * 0.24 {
+                    scrollView.swipeDown()
+                } else {
+                    scrollView.swipeUp()
+                }
+            }
             remainingScrolls -= 1
         }
 
         XCTAssertTrue(element.waitForExistence(timeout: 4))
-        XCTAssertTrue(isElementInTappableScrollArea(element, app: app))
+        XCTAssertTrue(
+            isElementInTappableScrollArea(element, app: app),
+            "Element frame \(element.frame) is outside tappable area for app frame \(app.frame)."
+        )
     }
 
     private func isElementInTappableScrollArea(_ element: XCUIElement, app: XCUIApplication) -> Bool {
         guard element.exists, !element.frame.isEmpty else { return false }
         return element.frame.minY >= app.frame.minY + 44 &&
             element.frame.midY <= app.frame.height * 0.68
+    }
+
+    private func primaryScrollView(in app: XCUIApplication) -> XCUIElement {
+        let scrollViews = app.scrollViews
+        let first = scrollViews.firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 8))
+
+        for index in 0..<scrollViews.count {
+            let candidate = scrollViews.element(boundBy: index)
+            guard candidate.exists else { continue }
+            if candidate.frame.height >= app.frame.height * 0.5 {
+                return candidate
+            }
+        }
+
+        return first
+    }
+
+    private func dismissKeyboardIfPresent(in app: XCUIApplication) {
+        guard app.keyboards.firstMatch.exists else { return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+    }
+
+    private func scrollDownUntilElementExists(_ element: XCUIElement, in app: XCUIApplication) {
+        if element.waitForExistence(timeout: 2) { return }
+
+        let scrollView = primaryScrollView(in: app)
+        var remainingScrolls = 6
+        while !element.exists && remainingScrolls > 0 {
+            scrollView.swipeUp()
+            if element.waitForExistence(timeout: 1) { return }
+            remainingScrolls -= 1
+        }
+
+        XCTAssertTrue(element.waitForExistence(timeout: 4))
     }
 
     private func typeFirstQuestionAnswer(_ text: String, in app: XCUIApplication) {
@@ -828,8 +885,7 @@ final class MingSiUITests: XCTestCase {
     }
 
     private func positionQuestionAnswerFieldForTyping(_ element: XCUIElement, in app: XCUIApplication) {
-        let scrollView = app.scrollViews.firstMatch
-        XCTAssertTrue(scrollView.waitForExistence(timeout: 8))
+        let scrollView = primaryScrollView(in: app)
 
         var remainingAdjustments = 4
         while element.exists, element.frame.minY < app.frame.minY + 96, remainingAdjustments > 0 {

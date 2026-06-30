@@ -20,6 +20,7 @@ enum TodayAutomationID {
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
+    static let answerTrainingToolsToggle = "today.answer.training-tools-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
     static let captureRawTextField = "today.capture.raw-text-field"
@@ -79,6 +80,7 @@ struct TodayView: View {
     @State private var customLensTitle = ""
     @State private var customLensMethodLine = ""
     @State private var customLensQuestion = ""
+    @State private var isAnswerTrainingToolsExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -891,18 +893,46 @@ struct TodayView: View {
                 body: feedback.trainingTargetLine,
                 accent: DS.caution
             )
-            BriefRow(
-                title: "过往经验复现",
-                body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
-                accent: DS.graphite
-            )
-            BriefRow(
-                title: "判断句训练",
-                body: feedback.judgmentSentencePrompt,
-                accent: DS.success
-            )
+            answerTrainingToolsDisclosure(feedback)
             if includesTeachingRoute {
                 teachingRouteView(feedback.teachingPlan)
+            }
+        }
+    }
+
+    private func answerTrainingToolsDisclosure(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isAnswerTrainingToolsExpanded.toggle()
+                }
+            } label: {
+                Label(
+                    isAnswerTrainingToolsExpanded ? "收起训练工具" : "查看训练工具",
+                    systemImage: isAnswerTrainingToolsExpanded ? "chevron.up.circle" : "wrench.and.screwdriver"
+                )
+                .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(DS.graphite)
+            .accessibilityIdentifier(TodayAutomationID.answerTrainingToolsToggle)
+            .accessibilityLabel(isAnswerTrainingToolsExpanded ? "收起训练工具" : "查看训练工具")
+
+            if isAnswerTrainingToolsExpanded {
+                VStack(alignment: .leading, spacing: 9) {
+                    BriefRow(
+                        title: "过往经验复现",
+                        body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
+                        accent: DS.graphite
+                    )
+                    BriefRow(
+                        title: "判断句训练",
+                        body: feedback.judgmentSentencePrompt,
+                        accent: DS.success
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
