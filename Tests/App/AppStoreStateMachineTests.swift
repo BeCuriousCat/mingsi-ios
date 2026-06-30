@@ -1144,8 +1144,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         ]))
 
         XCTAssertTrue(observation.narrativeTrainingLine.contains("讲清楚一件事"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("顺序：背景 → 对象 → 触发 → 行动 → 结果"))
         XCTAssertTrue(observation.narrativeTrainingLine.contains("已说清：感受"))
-        XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("下一句先补：交代背景、说明对象、说清触发、写出做法、补上结果"))
     }
 
     func testCoachObservationFeedback_namesFoundationalCapabilityLane() {
@@ -1384,7 +1385,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.providedMaterials.contains(.standard))
         XCTAssertTrue(observation.missingMaterials.contains(.goal))
         XCTAssertTrue(observation.narrativeTrainingLine.contains("已说清：说明对象、写出做法、成功标准"))
-        XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：目标"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("下一句先补：目标"))
     }
 
     func testCaptureMaterialObservationCoachesWhileUserWrites() {
@@ -1405,6 +1406,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("沟通力"))
         XCTAssertTrue(line.contains("描述力"))
         XCTAssertTrue(line.contains("还不是可复述事件"))
+        XCTAssertTrue(line.contains("顺序：背景 → 对象 → 触发 → 行动 → 结果"))
         XCTAssertTrue(line.contains("下一句先补"))
         XCTAssertTrue(line.contains("什么背景下，谁做了什么，触发点是什么，后来发生了什么"))
     }

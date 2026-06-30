@@ -130,14 +130,14 @@ final class MingSiUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["本句观察"].waitForExistence(timeout: 4))
-        let provided = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "已说清：说明对象、写出做法、成功标准")
+        let goalGap = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "行动不能先替代目标")
         ).firstMatch
-        XCTAssertTrue(provided.waitForExistence(timeout: 4))
-        let missing = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "下一句先补：目标")
+        XCTAssertTrue(goalGap.waitForExistence(timeout: 4))
+        let serviceObjectAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
         ).firstMatch
-        XCTAssertTrue(missing.waitForExistence(timeout: 4))
+        XCTAssertTrue(serviceObjectAsk.waitForExistence(timeout: 4))
     }
 
     func testTodayCaptureChallengesVagueStoryAsDescriptionTraining() throws {
@@ -153,6 +153,10 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "沟通力中的描述力")
         ).firstMatch
         XCTAssertTrue(descriptionTraining.waitForExistence(timeout: 4))
+        let narrativeOrder = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "顺序：背景 → 对象 → 触发 → 行动 → 结果")
+        ).firstMatch
+        XCTAssertTrue(narrativeOrder.waitForExistence(timeout: 4))
         let concreteAsk = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "什么背景下，谁做了什么，触发点是什么，后来发生了什么")
         ).firstMatch

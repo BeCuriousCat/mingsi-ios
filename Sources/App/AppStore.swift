@@ -1565,7 +1565,7 @@ final class AppStore: ObservableObject {
         let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
         let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
         if observation.primaryGap == .narrative {
-            return "\(observation.trainingAbility.trainingTitle)：现在还不是可复述事件。已说清：\(provided)。下一句先补：\(missing)。请补：什么背景下，谁做了什么，触发点是什么，后来发生了什么。"
+            return "\(observation.trainingAbility.trainingTitle)：现在还不是可复述事件。顺序：背景 → 对象 → 触发 → 行动 → 结果。已说清：\(provided)。下一句先补：\(missing)。请补：什么背景下，谁做了什么，触发点是什么，后来发生了什么。"
         }
         if observation.primaryGap == .experience {
             return "过往经验复现训练：旧经验不能直接当成答案。请判断这次是复现、调整，还是否定；下一句先补：条件差异。"
