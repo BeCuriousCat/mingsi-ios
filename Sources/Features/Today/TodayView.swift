@@ -725,6 +725,7 @@ struct TodayView: View {
                     )
 
                     if let feedback = store.coachAnswerTrainingFeedback {
+                        answerFeedbackDetailView(feedback)
                         teachingRouteView(feedback.teachingPlan)
                     } else if let teachingPlan = store.coachTurnState.map({
                         CoachTeachingPolicy().makePlan(
@@ -849,23 +850,16 @@ struct TodayView: View {
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
-            BriefRow(title: "已修补", body: feedback.repairedLine, accent: DS.success)
             BriefRow(
                 title: "当前仍缺",
                 body: feedback.missingLine,
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
-                title: "能否进入明日验证",
-                body: feedback.proceedLine,
-                accent: feedback.canProceedToValidation ? DS.success : DS.caution
-            )
-            BriefRow(
                 title: "能力修补",
                 body: feedback.trainingTargetLine,
                 accent: DS.caution
             )
-            BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
             BriefRow(
                 title: "过往经验复现",
                 body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
@@ -879,6 +873,18 @@ struct TodayView: View {
             if includesTeachingRoute {
                 teachingRouteView(feedback.teachingPlan)
             }
+        }
+    }
+
+    private func answerFeedbackDetailView(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            BriefRow(title: "已修补", body: feedback.repairedLine, accent: DS.success)
+            BriefRow(
+                title: "能否进入明日验证",
+                body: feedback.proceedLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.caution
+            )
+            BriefRow(title: "下一句修补", body: feedback.nextRepairQuestion, accent: DS.brick)
         }
     }
 
