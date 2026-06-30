@@ -1583,10 +1583,11 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(feedback.readiness, .notReady)
         XCTAssertFalse(feedback.canProceedToValidation)
         XCTAssertTrue(feedback.coachCritiqueLine.contains("教练批改"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("补上了缺观察事实"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("下一句要补缺因果链"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("这不是合格复盘"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("刚补上：缺观察事实"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("还要训练：缺因果链"))
         XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
-        XCTAssertTrue(feedback.repairedLine.contains("补上"))
+        XCTAssertTrue(feedback.repairedLine.contains("已补训练材料"))
         XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
@@ -1596,6 +1597,48 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.rejectLine))
         XCTAssertTrue(feedback.proceedLine.contains("不能进入明日验证"))
         XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
+    }
+
+    func testCoachAnswerFeedbackPolicyFramesUnresolvedAnswerAsTrainingCorrection() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "先补观察事实和因果链。",
+            openEvidenceGaps: [.missingObservation, .missingCausalLink],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先把判断拆开。"
+        )
+        let question = ReflectionQuestion(
+            question: "哪一句是可观察事实，哪一句是解释？",
+            whyItMatters: "它防止把解释当事实。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "事实是客户代表在评审里提出三处流程问题；我的解释是这些问题让验收标准变模糊。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("这不是合格复盘"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("不是普通待办"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("刚补上：缺观察事实"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("还要训练：缺因果链"))
+        XCTAssertTrue(feedback.repairedLine.contains("已补训练材料：缺观察事实"))
+        XCTAssertTrue(feedback.missingLine.contains("还没练到位：缺因果链"))
+        XCTAssertTrue(feedback.proceedLine.contains("先修补训练缺口"))
     }
 
     func testCoachAnswerFeedbackPolicyCarriesObservedFoundationalAbilityTraining() {
@@ -2228,7 +2271,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
         XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
-        XCTAssertTrue(store.todayLoopMessage.contains("还缺"))
+        XCTAssertTrue(store.todayLoopMessage.contains("还没练到位"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
         XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
         XCTAssertTrue(store.todayLoopMessage.contains("能力训练"))

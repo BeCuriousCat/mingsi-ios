@@ -1408,12 +1408,18 @@ struct CoachAnswerFeedbackPolicy {
             !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }.count
         let repairedPart = repairedGaps.isEmpty
-            ? (answeredCount > 0 ? "这次回答还没有补上关键缺口" : "还没有可批改的新回答")
-            : "补上了\(gapLine(for: repairedGaps))"
+            ? (answeredCount > 0 ? "这不是合格复盘，只是回答了问题，还没有补上训练材料" : "还没有可批改的新回答")
+            : "刚补上：\(gapLine(for: repairedGaps))"
         let nextPart = canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "下一句要补\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
-        return "教练批改：\(repairedPart)；\(nextPart)。"
+            : "还要训练：\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
+        let critiqueParts = canProceed || repairedGaps.isEmpty
+            ? [repairedPart, nextPart]
+            : ["这不是合格复盘", repairedPart, nextPart]
+        let suffix = canProceed
+            ? "这不是普通待办，下一步要用明日结果校准判断。"
+            : "这不是普通待办，要先把思考训练缺口补齐。"
+        return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
@@ -1429,16 +1435,16 @@ struct CoachAnswerFeedbackPolicy {
         }.count
         guard !repairedGaps.isEmpty else {
             return answeredCount > 0
-                ? "你已经回答，但还没有补上本轮关键缺口。"
+                ? "你已经回答，但还没有形成可复盘的训练材料。"
                 : "还没有新的回答材料。"
         }
-        return "你补上了\(gapLine(for: repairedGaps))。"
+        return "已补训练材料：\(gapLine(for: repairedGaps))。"
     }
 
     private func missingLine(remainingGaps: [EvidenceGapType]) -> String {
         remainingGaps.isEmpty
             ? "关键缺口已关闭。"
-            : "还缺\(gapLine(for: remainingGaps))。"
+            : "还没练到位：\(gapLine(for: remainingGaps))。"
     }
 
     private func proceedLine(
@@ -1447,7 +1453,7 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "现在不能进入明日验证：\(plan.proceedStandard)"
+            : "现在不能进入明日验证：先修补训练缺口，\(plan.proceedStandard)"
     }
 
     private func trainingTargetLine(
