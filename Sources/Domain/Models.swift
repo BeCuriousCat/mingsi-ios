@@ -1658,6 +1658,12 @@ extension CoachObservationMaterial {
 struct CoachObservationPolicy {
     static let policyVersion = "coach-observation.local-v7"
 
+    func observe(text: String) -> CoachObservation {
+        observe(cards: [
+            ThinkingCard(type: .idea, title: "", body: text)
+        ])
+    }
+
     func observe(cards: [ThinkingCard]) -> CoachObservation {
         let consideredCards = consideredCards(from: cards)
         let text = consideredCards
@@ -1718,7 +1724,7 @@ struct CoachObservationPolicy {
         }
 
         if cards.contains(where: { $0.type == .task }) ||
-            containsAny(text, ["打算", "计划", "明天", "先拉会", "行动", "推进", "调整", "暂停", "action", "tomorrow"]) {
+            containsAny(text, ["打算", "计划", "明天", "先拉会", "先让", "写清", "行动", "推进", "调整", "暂停", "action", "tomorrow"]) {
             materials.append(.action)
         }
 
@@ -2260,7 +2266,7 @@ struct CoachObservationPolicy {
     private func hasProvidedStandard(_ text: String) -> Bool {
         containsAny(text, [
             "判断标准", "标准是", "成功标准是", "验收标准是", "取舍标准", "依据是",
-            "优先级依据", "衡量", "判定标准", "重要性在于", "criteria", "criterion"
+            "验收标准", "优先级依据", "衡量", "判定标准", "重要性在于", "criteria", "criterion"
         ])
     }
 

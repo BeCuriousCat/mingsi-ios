@@ -1320,6 +1320,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(observation.feedback.ask.filter { $0 == "？" }.count, 1)
     }
 
+    func testCoachObservationPolicyObservesAnswerTextAsTrainingMaterials() {
+        let observation = CoachObservationPolicy().observe(text: "先让 Alex 写清验收标准。")
+
+        XCTAssertTrue(observation.providedMaterials.contains(.object))
+        XCTAssertTrue(observation.providedMaterials.contains(.action))
+        XCTAssertTrue(observation.providedMaterials.contains(.standard))
+        XCTAssertTrue(observation.missingMaterials.contains(.goal))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("已说清：说明对象、写出做法、成功标准"))
+        XCTAssertTrue(observation.narrativeTrainingLine.contains("先补：目标"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,

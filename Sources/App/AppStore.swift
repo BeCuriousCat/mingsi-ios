@@ -1532,6 +1532,19 @@ final class AppStore: ObservableObject {
         )
     }
 
+    var coachAnswerMaterialObservation: String? {
+        guard todayDraft.state == .answerQuestions else { return nil }
+        let answer = questions
+            .map { $0.answer.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+        guard !answer.isEmpty else { return nil }
+
+        let observation = CoachObservationPolicy().observe(text: answer)
+        let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
+        let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
+        return "已说清：\(provided)。下一句先补：\(missing)。"
+    }
+
     var mainQuest: Quest? {
         quests.first { $0.type == .main }
     }

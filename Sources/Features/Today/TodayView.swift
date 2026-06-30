@@ -710,7 +710,11 @@ struct TodayView: View {
             }
 
             if let feedback = store.coachAnswerTrainingFeedback {
-                answerFeedbackPreviewView(feedback, includesTeachingRoute: false)
+                answerFeedbackPreviewView(
+                    feedback,
+                    answerMaterialObservation: store.coachAnswerMaterialObservation,
+                    includesTeachingRoute: false
+                )
             }
 
             DisclosureGroup {
@@ -842,6 +846,7 @@ struct TodayView: View {
 
     private func answerFeedbackPreviewView(
         _ feedback: CoachAnswerTrainingFeedback,
+        answerMaterialObservation: String? = nil,
         includesTeachingRoute: Bool = true
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -850,6 +855,13 @@ struct TodayView: View {
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
+            if let answerMaterialObservation {
+                BriefRow(
+                    title: "本句观察",
+                    body: answerMaterialObservation,
+                    accent: DS.accent
+                )
+            }
             BriefRow(
                 title: "当前仍缺",
                 body: feedback.missingLine,
