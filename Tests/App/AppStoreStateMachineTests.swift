@@ -1716,6 +1716,46 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
     }
 
+    func testCoachAnswerFeedbackPolicyTurnsActionOnlyAnswerIntoJudgmentSentencePractice() {
+        let turn = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "行动已经出现，但目标和判断标准还没有说清楚。",
+            openEvidenceGaps: [.missingObservation],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先把行动背后的服务对象和成功标准说清楚。"
+        )
+        let question = ReflectionQuestion(
+            question: "你准备怎么推进？",
+            whyItMatters: "行动前要先校准目标。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "先让 Alex 写清验收标准。"
+        )
+        let observation = CoachObservationPolicy().observe(text: question.answer)
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: turn,
+            previous: nil,
+            questions: [question],
+            prescription: nil,
+            observation: observation
+        )
+
+        XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的判断力"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("服务对象"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("成功标准"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("可观察信号"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("下一句"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("谁"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("成功标准"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("可观察信号"))
+    }
+
     func testCoachAnswerFeedbackPolicyAllowsValidationWhenAnswerClosesGaps() {
         let previous = CoachTurnState(
             phase: .clarifyJudgment,

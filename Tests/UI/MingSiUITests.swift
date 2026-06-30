@@ -834,8 +834,15 @@ final class MingSiUITests: XCTestCase {
 
     private func isElementInTappableScrollArea(_ element: XCUIElement, app: XCUIApplication) -> Bool {
         guard element.exists, !element.frame.isEmpty else { return false }
+        let bottomOverlayTop = app.buttons["today.primary-action"].firstMatch.exists
+            ? app.buttons["today.primary-action"].firstMatch.frame.minY
+            : app.frame.height * 0.46
+        let keyboardTop = app.keyboards.firstMatch.exists
+            ? app.keyboards.firstMatch.frame.minY
+            : app.frame.height
+        let tappableBottom = min(bottomOverlayTop, keyboardTop) - 12
         return element.frame.minY >= app.frame.minY + 44 &&
-            element.frame.midY <= app.frame.height * 0.68
+            element.frame.maxY <= tappableBottom
     }
 
     private func primaryScrollView(in app: XCUIApplication) -> XCUIElement {

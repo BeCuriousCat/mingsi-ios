@@ -121,9 +121,10 @@ struct TodayView: View {
                     }
                     .padding(.horizontal, DS.pagePadding)
                     .padding(.top, DS.primaryScrollTopPadding)
-                    .padding(.bottom, DS.todayScrollBottomReserve)
+                    .padding(.bottom, todayScrollBottomReserve)
                 }
                 .scrollIndicators(.hidden)
+                .scrollDismissesKeyboard(.interactively)
                 .pageBackground()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     actionRow
@@ -1382,6 +1383,13 @@ struct TodayView: View {
     }
 
     // MARK: - Helpers
+
+    private var todayScrollBottomReserve: CGFloat {
+        if store.todayDraft.state == .answerQuestions {
+            return DS.primaryScrollBottomReserve
+        }
+        return DS.todayScrollBottomReserve
+    }
 
     private func stepLabel(_ title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {

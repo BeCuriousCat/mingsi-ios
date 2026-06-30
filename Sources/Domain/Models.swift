@@ -1389,7 +1389,7 @@ struct CoachAnswerFeedbackPolicy {
             missingLine: missingLine(remainingGaps: remainingGaps),
             proceedLine: proceedLine(canProceed: canProceed, plan: plan),
             trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
-            nextRepairQuestion: plan.repairQuestion,
+            nextRepairQuestion: nextRepairQuestion(plan: plan, observation: observation),
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
             experienceReplayPrompt: plan.experienceReplayPrompt,
             judgmentSentencePrompt: Self.judgmentSentencePrompt,
@@ -1463,7 +1463,21 @@ struct CoachAnswerFeedbackPolicy {
         guard let observation else {
             return "本轮正在练\(plan.trainingTargetLine)。"
         }
+        if observation.primaryGap == .goal {
+            return "本轮正在练\(observation.trainingAbility.trainingTitle)：先说清服务对象、成功标准和可观察信号，再安排行动。不是让 AI 替你给答案。"
+        }
         return "本轮正在练\(observation.trainingAbility.trainingTitle)：\(observation.trainingAbility.coachingMeaning) 不是让 AI 替你给答案。"
+    }
+
+    private func nextRepairQuestion(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        guard let observation else { return plan.repairQuestion }
+        if observation.primaryGap == .goal {
+            return "下一句请写成：如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
+        }
+        return plan.repairQuestion
     }
 
     private func gapLine(for gaps: [EvidenceGapType]) -> String {
