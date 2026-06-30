@@ -155,6 +155,25 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(concreteAsk.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesExperienceReplayWithoutFitCheck() throws {
+        let app = seededTodayApp(stage: "capture", input: "之前这样做有效，所以这次我也打算照着做。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let replayTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "过往经验复现训练")
+        ).firstMatch
+        XCTAssertTrue(replayTraining.waitForExistence(timeout: 4))
+        let fitCheck = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "复现、调整，还是否定")
+        ).firstMatch
+        XCTAssertTrue(fitCheck.waitForExistence(timeout: 4))
+        let conditionGap = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "条件差异")
+        ).firstMatch
+        XCTAssertTrue(conditionGap.waitForExistence(timeout: 4))
+    }
+
     func testTodayAnswerQuestionsSeedCanTypeThroughAccessibilityIdentifier() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()

@@ -1353,6 +1353,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("什么背景下，谁做了什么，触发点是什么，后来发生了什么"))
     }
 
+    func testCaptureMaterialObservationChallengesExperienceReplayWithoutFitCheck() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("之前这样做有效，所以这次我也打算照着做。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("过往经验复现训练"))
+        XCTAssertTrue(line.contains("旧经验不能直接当成答案"))
+        XCTAssertTrue(line.contains("复现、调整，还是否定"))
+        XCTAssertTrue(line.contains("条件差异"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
