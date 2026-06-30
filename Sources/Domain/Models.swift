@@ -1477,6 +1477,9 @@ struct CoachAnswerFeedbackPolicy {
         if observation.primaryGap == .goal {
             return "下一句请写成：如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
         }
+        if observation.primaryGap == .narrative {
+            return "下一句请按讲清楚一件事来写：什么背景下，谁或哪个对象遇到什么触发；你做了什么；后来发生了什么结果？"
+        }
         return plan.repairQuestion
     }
 

@@ -1716,6 +1716,48 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
     }
 
+    func testCoachAnswerFeedbackPolicyTurnsThinStoryIntoNarrativeSequencePractice() {
+        let turn = CoachTurnState(
+            phase: .exploreProblem,
+            readiness: .notReady,
+            recommendedMove: .askClarifyingQuestion,
+            reason: "当前材料还不能让别人复盘发生了什么。",
+            openEvidenceGaps: [.missingObservation],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先把事件讲清楚。"
+        )
+        let question = ReflectionQuestion(
+            question: "今天发生了什么？",
+            whyItMatters: "讲清楚事件是后续分析的材料。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "今天太乱了，我很焦虑，感觉这事推进不下去。"
+        )
+        let observation = CoachObservationPolicy().observe(text: question.answer)
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: turn,
+            previous: nil,
+            questions: [question],
+            prescription: nil,
+            observation: observation
+        )
+
+        XCTAssertEqual(observation.primaryGap, .narrative)
+        XCTAssertTrue(feedback.trainingTargetLine.contains("沟通力中的描述力"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("讲清楚一件事"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("背景"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("谁"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("触发"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("做了什么"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("后来"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("结果"))
+    }
+
     func testCoachAnswerFeedbackPolicyTurnsActionOnlyAnswerIntoJudgmentSentencePractice() {
         let turn = CoachTurnState(
             phase: .clarifyJudgment,
