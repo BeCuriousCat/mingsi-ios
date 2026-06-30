@@ -1528,18 +1528,28 @@ final class AppStore: ObservableObject {
             previous: coachTurnState,
             questions: questions,
             prescription: trainingPrescription,
-            observation: CoachObservationPolicy().observe(cards: confirmedCardsForAI)
+            observation: coachAnswerObservation
         )
     }
 
     var coachAnswerMaterialObservation: String? {
         guard todayDraft.state == .answerQuestions else { return nil }
-        let answer = questions
-            .map { $0.answer.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? ""
-        guard !answer.isEmpty else { return nil }
+        guard let answer = firstNonEmptyAnswerText else { return nil }
 
         return Self.materialObservationLine(for: answer)
+    }
+
+    private var coachAnswerObservation: CoachObservation {
+        if let answer = firstNonEmptyAnswerText, !answer.isEmpty {
+            return CoachObservationPolicy().observe(text: answer)
+        }
+        return CoachObservationPolicy().observe(cards: confirmedCardsForAI)
+    }
+
+    private var firstNonEmptyAnswerText: String? {
+        questions
+            .map { $0.answer.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     var coachCaptureMaterialObservation: String? {
@@ -4219,7 +4229,7 @@ final class AppStore: ObservableObject {
             previous: coachTurnState,
             questions: questions,
             prescription: trainingPrescription,
-            observation: CoachObservationPolicy().observe(cards: confirmedCardsForAI)
+            observation: coachAnswerObservation
         )
         return "\(feedback.coachCritiqueLine) \(feedback.missingLine) \(feedback.proceedLine) 能力训练：\(feedback.trainingTargetLine) 教练追问：\(feedback.nextRepairQuestion) 过往经验：\(feedback.experienceReplayDecisionLine) \(feedback.experienceReplayPrompt)"
     }
