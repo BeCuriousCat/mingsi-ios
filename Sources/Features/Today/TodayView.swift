@@ -430,12 +430,8 @@ struct TodayView: View {
                     .allowsHitTesting(false)
             )
 
-            if let captureMaterialObservation = store.coachCaptureMaterialObservation {
-                BriefRow(
-                    title: "本句观察",
-                    body: captureMaterialObservation,
-                    accent: DS.accent
-                )
+            if let captureTrainingFeedback = store.coachCaptureMaterialTrainingFeedback {
+                captureTrainingFeedbackView(captureTrainingFeedback)
             }
 
             HStack(spacing: 10) {
@@ -860,6 +856,31 @@ struct TodayView: View {
             .map(\.displayTitle)
             .filter { !$0.isEmpty }
         return titles.isEmpty ? fallback : titles.joined(separator: "、")
+    }
+
+    private func captureTrainingFeedbackView(_ feedback: CoachMaterialTrainingFeedback) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            BriefRow(
+                title: "本句观察",
+                body: feedback.observationLine,
+                accent: DS.accent
+            )
+            BriefRow(
+                title: "训练目标",
+                body: feedback.trainingTargetLine,
+                accent: DS.caution
+            )
+            BriefRow(
+                title: "下一句训练",
+                body: feedback.nextSentenceLine,
+                accent: DS.brick
+            )
+            BriefRow(
+                title: "自检标准",
+                body: feedback.selfCheckLine,
+                accent: DS.success
+            )
+        }
     }
 
     private func answerFeedbackPreviewView(

@@ -1557,6 +1557,11 @@ final class AppStore: ObservableObject {
         return Self.materialObservationLine(for: todayDraft.rawText)
     }
 
+    var coachCaptureMaterialTrainingFeedback: CoachMaterialTrainingFeedback? {
+        guard todayDraft.state == .capture else { return nil }
+        return Self.materialTrainingFeedback(for: todayDraft.rawText)
+    }
+
     private static func materialObservationLine(for text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -1598,6 +1603,74 @@ final class AppStore: ObservableObject {
             return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
         }
         return "已说清：\(provided)。下一句先补：\(missing)。"
+    }
+
+    private static func materialTrainingFeedback(for text: String) -> CoachMaterialTrainingFeedback? {
+        guard let observationLine = materialObservationLine(for: text) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let observation = CoachObservationPolicy().observe(text: trimmed)
+        return CoachMaterialTrainingFeedback(
+            observationLine: observationLine,
+            trainingTargetLine: "本轮训练：\(observation.trainingAbility.trainingTitle)。\(observation.trainingAbility.coachingMeaning)",
+            nextSentenceLine: nextSentenceTrainingLine(for: observation),
+            selfCheckLine: selfCheckLine(for: observation)
+        )
+    }
+
+    private static func nextSentenceTrainingLine(for observation: CoachObservation) -> String {
+        switch observation.primaryGap {
+        case .narrative:
+            return "下一句训练：按背景、对象、触发、行动、结果补全，让别人能复述这件事。"
+        case .experience:
+            return "下一句训练：先判断复现、调整，还是否定；再写一句这次和旧经验的条件差异。"
+        case .observation:
+            return "下一句训练：补一个可观察事实，把事实和解释分开。"
+        case .object:
+            return "下一句训练：写清这件事影响谁，或你要服务谁的什么问题。"
+        case .goal:
+            return "下一句训练：写清谁的什么问题会变少、成功标准是什么，再决定行动。"
+        case .constraint:
+            return "下一句训练：写清当前限制来自时间、资源、权限、信息、关系还是系统边界。"
+        case .causal:
+            return "下一句训练：补出 A 到 B 中间的关键环节，别直接跳到结论。"
+        case .counterexample:
+            return "下一句训练：写出会推翻、替代或削弱当前解释的事实。"
+        case .judgment:
+            return "下一句训练：写出判断标准、重要性和取舍依据。"
+        case .execution:
+            return "下一句训练：写出明天最小一步，以及完成后会留下什么证据。"
+        case .calibration:
+            return "下一句训练：写出哪个未来信号会证明判断要更新，以及如何更新。"
+        }
+    }
+
+    private static func selfCheckLine(for observation: CoachObservation) -> String {
+        switch observation.primaryGap {
+        case .narrative:
+            return "自检标准：别人不追问你，也能复述背景、对象、触发、行动和结果。"
+        case .experience:
+            return "自检标准：你已经明确这次是复现、调整还是否定，并写出条件差异。"
+        case .observation:
+            return "自检标准：一句话里能分清可观察事实和你的解释。"
+        case .object:
+            return "自检标准：别人能看出服务对象是谁，以及这个对象的什么问题被影响。"
+        case .goal:
+            return "自检标准：这句话能回答服务对象、成功标准和可观察信号。"
+        case .constraint:
+            return "自检标准：别人能指出真正限制是哪一类，以及它如何影响下一步。"
+        case .causal:
+            return "自检标准：A 到 B 的中间链条可被复述，关键环节清楚。"
+        case .counterexample:
+            return "自检标准：至少有一个事实能推翻、替代或削弱当前解释。"
+        case .judgment:
+            return "自检标准：别人能看出你的判断标准、重要性和取舍依据。"
+        case .execution:
+            return "自检标准：明天动作足够小，且完成后有可检查证据。"
+        case .calibration:
+            return "自检标准：未来信号明确，且你写清了出现什么就更新判断。"
+        }
     }
 
     var mainQuest: Quest? {

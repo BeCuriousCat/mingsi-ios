@@ -138,6 +138,13 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
         ).firstMatch
         XCTAssertTrue(serviceObjectAsk.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["训练目标"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["下一句训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["自检标准"].waitForExistence(timeout: 4))
+        let selfCheck = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "服务对象、成功标准和可观察信号")
+        ).firstMatch
+        XCTAssertTrue(selfCheck.waitForExistence(timeout: 4))
     }
 
     func testTodayCaptureChallengesVagueStoryAsDescriptionTraining() throws {

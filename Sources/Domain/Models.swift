@@ -1720,6 +1720,13 @@ struct CoachObservation: Codable, Hashable {
     }
 }
 
+struct CoachMaterialTrainingFeedback: Codable, Hashable {
+    var observationLine: String
+    var trainingTargetLine: String
+    var nextSentenceLine: String
+    var selfCheckLine: String
+}
+
 extension CoachObservationMaterial {
     var trainingCue: String {
         switch self {

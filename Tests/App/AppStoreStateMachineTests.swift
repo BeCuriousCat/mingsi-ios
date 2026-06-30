@@ -1398,6 +1398,22 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
+    func testCaptureMaterialTrainingFeedbackShowsTargetRepairAndSelfCheck() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("先让 Alex 写清验收标准。")
+
+        let feedback = try XCTUnwrap(store.coachCaptureMaterialTrainingFeedback)
+        XCTAssertTrue(feedback.observationLine.contains("行动不能先替代目标"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("本轮训练"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的判断力"))
+        XCTAssertTrue(feedback.nextSentenceLine.contains("下一句训练"))
+        XCTAssertTrue(feedback.nextSentenceLine.contains("谁的什么问题会变少"))
+        XCTAssertTrue(feedback.nextSentenceLine.contains("成功标准"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("自检标准"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("服务对象"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("成功标准"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueStoryAsDescriptionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("今天有点乱，感觉推进不下去。")
