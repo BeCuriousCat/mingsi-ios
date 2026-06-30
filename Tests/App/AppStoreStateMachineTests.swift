@@ -1364,6 +1364,16 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("条件差异"))
     }
 
+    func testCaptureMaterialObservationChallengesBlockedProgressAsConstraintTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("今天在项目沟通中，我和产品团队讨论接口方案，但推进不下去，后来决定先暂停方案调整。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的分析力"))
+        XCTAssertTrue(line.contains("还没说清具体限制"))
+        XCTAssertTrue(line.contains("时间、资源、权限、信息、关系还是系统边界"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueActionAsExecutionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("为了让 Alex 减少返工，明天推进方案处理一下。")

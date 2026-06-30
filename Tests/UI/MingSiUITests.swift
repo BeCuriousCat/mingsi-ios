@@ -174,6 +174,25 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(conditionGap.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesBlockedProgressAsConstraintTraining() throws {
+        let app = seededTodayApp(stage: "capture", input: "今天在项目沟通中，我和产品团队讨论接口方案，但推进不下去，后来决定先暂停方案调整。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let analysisTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的分析力")
+        ).firstMatch
+        XCTAssertTrue(analysisTraining.waitForExistence(timeout: 4))
+        let missingConstraint = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "还没说清具体限制")
+        ).firstMatch
+        XCTAssertTrue(missingConstraint.waitForExistence(timeout: 4))
+        let constraintAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "时间、资源、权限、信息、关系还是系统边界")
+        ).firstMatch
+        XCTAssertTrue(constraintAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayCaptureChallengesVagueActionAsExecutionTraining() throws {
         let app = seededTodayApp(stage: "capture", input: "为了让 Alex 减少返工，明天推进方案处理一下。")
         app.launch()
