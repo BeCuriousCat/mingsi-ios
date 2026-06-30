@@ -388,7 +388,6 @@ final class MingSiUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
 
         let questionText = app.staticTexts.matching(
@@ -438,6 +437,13 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "本轮主练：思考力中的判断力")
         ).firstMatch
         XCTAssertTrue(abilityDiagnosis.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["材料分离训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["讲述训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["已说清"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["我观察到"].exists)
+        XCTAssertFalse(app.staticTexts["当前主要缺口"].exists)
+        XCTAssertFalse(app.staticTexts["请你补充"].exists)
     }
 
     func testTodaySelectLensShowsObservationInventoryBeforeLensChoice() throws {
