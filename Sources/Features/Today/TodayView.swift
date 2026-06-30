@@ -891,26 +891,6 @@ struct TodayView: View {
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
-                title: "能力缺口",
-                body: feedback.abilityGapLine,
-                accent: DS.accent
-            )
-            BriefRow(
-                title: "训练产物",
-                body: feedback.trainingOutputLine,
-                accent: DS.success
-            )
-            BriefRow(
-                title: "自检标准",
-                body: feedback.selfCheckLine,
-                accent: DS.accent
-            )
-            BriefRow(
-                title: "能力修补",
-                body: feedback.trainingTargetLine,
-                accent: DS.caution
-            )
-            BriefRow(
                 title: "过往经验复现",
                 body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
                 accent: DS.graphite
@@ -930,7 +910,7 @@ struct TodayView: View {
                 }
             } label: {
                 Label(
-                    isAnswerTrainingToolsExpanded ? "收起训练工具" : "查看训练工具",
+                    isAnswerTrainingToolsExpanded ? "收起训练标准" : "查看训练标准",
                     systemImage: isAnswerTrainingToolsExpanded ? "chevron.up.circle" : "wrench.and.screwdriver"
                 )
                 .font(.caption.weight(.semibold))
@@ -939,10 +919,30 @@ struct TodayView: View {
             .controlSize(.small)
             .tint(DS.graphite)
             .accessibilityIdentifier(TodayAutomationID.answerTrainingToolsToggle)
-            .accessibilityLabel(isAnswerTrainingToolsExpanded ? "收起训练工具" : "查看训练工具")
+            .accessibilityLabel(isAnswerTrainingToolsExpanded ? "收起训练标准" : "查看训练标准")
 
             if isAnswerTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
+                    BriefRow(
+                        title: "能力缺口",
+                        body: feedback.abilityGapLine,
+                        accent: DS.accent
+                    )
+                    BriefRow(
+                        title: "训练产物",
+                        body: feedback.trainingOutputLine,
+                        accent: DS.success
+                    )
+                    BriefRow(
+                        title: "自检标准",
+                        body: feedback.selfCheckLine,
+                        accent: DS.accent
+                    )
+                    BriefRow(
+                        title: "能力修补",
+                        body: feedback.trainingTargetLine,
+                        accent: DS.caution
+                    )
                     BriefRow(
                         title: "判断句训练",
                         body: feedback.judgmentSentencePrompt,

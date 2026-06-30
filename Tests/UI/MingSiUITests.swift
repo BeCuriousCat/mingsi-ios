@@ -498,6 +498,34 @@ final class MingSiUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(nextRepairQuestion.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["能力缺口"].exists)
+        XCTAssertFalse(app.staticTexts["训练产物"].exists)
+        XCTAssertFalse(app.staticTexts["自检标准"].exists)
+        XCTAssertFalse(app.staticTexts["能力修补"].exists)
+        let gapPreview = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "观察事实")
+        ).firstMatch
+        XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
+        let replayDecision = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
+        ).firstMatch
+        XCTAssertTrue(replayDecision.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "调整：条件不同")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "否定：这条经验为什么不适用")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["判断句训练"].exists)
+
+        dismissKeyboardIfPresent(in: app)
+        let trainingToolsToggle = app.buttons["today.answer.training-tools-toggle"].firstMatch
+        scrollToElement(trainingToolsToggle, in: app)
+        XCTAssertTrue(trainingToolsToggle.waitForExistence(timeout: 4))
+        trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练标准")).firstMatch.waitForExistence(timeout: 4))
+
         XCTAssertTrue(app.staticTexts["能力缺口"].waitForExistence(timeout: 4))
         let abilityGap = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "把行动当成答案")
@@ -522,29 +550,6 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "思考力")
         ).firstMatch
         XCTAssertTrue(foundationalAbility.waitForExistence(timeout: 4))
-        let gapPreview = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "观察事实")
-        ).firstMatch
-        XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
-        let replayDecision = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
-        ).firstMatch
-        XCTAssertTrue(replayDecision.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "调整：条件不同")
-        ).firstMatch.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "否定：这条经验为什么不适用")
-        ).firstMatch.waitForExistence(timeout: 4))
-        XCTAssertFalse(app.staticTexts["判断句训练"].exists)
-
-        dismissKeyboardIfPresent(in: app)
-        let trainingToolsToggle = app.buttons["today.answer.training-tools-toggle"].firstMatch
-        scrollToElement(trainingToolsToggle, in: app)
-        XCTAssertTrue(trainingToolsToggle.waitForExistence(timeout: 4))
-        trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练工具")).firstMatch.waitForExistence(timeout: 4))
 
         let judgmentTitle = app.staticTexts["判断句训练"].firstMatch
         scrollDownUntilElementExists(judgmentTitle, in: app)
