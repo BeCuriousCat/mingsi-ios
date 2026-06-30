@@ -521,6 +521,204 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(issues.contains { $0.reason == .missingFunctionalCoachField })
     }
 
+    func testPromptCoachingQualityPolicy_flagsQuestionThatDoesNotTargetMissingThinkingMaterial() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次会议返工里，哪条事实最重要？",
+                whyItMatters: "它帮助你排序事实。",
+                whyNow: "现在需要先看事实。",
+                expectedUpdate: "答案会改变你对会议返工原因的判断。",
+                proceedWhen: "当你选出一个事实时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertTrue(issues.map(\.reason.rawValue).contains("missingThinkingMaterialTarget"))
+    }
+
+    func testPromptCoachingQualityPolicy_allowsQuestionThatTargetsMissingThinkingMaterial() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次返工里还缺哪条可观察证据，能支撑“验收口径不清是主因”的判断？",
+                whyItMatters: "它要求先补上判断所需的证据，再决定原因是否成立。",
+                whyNow: "现在你的记录已经有结论，但还缺少能被他人复核的事实材料。",
+                expectedUpdate: "答案会让你知道这个判断是否有足够证据，还是需要改成其他解释。",
+                proceedWhen: "当你写出一条可观察证据，或承认当前证据不足时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingThinkingMaterialTarget })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestionThatIgnoresRelevantPrincipleReplay() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次返工里还缺哪条可观察证据，能支撑“验收口径不清是主因”的判断？",
+                whyItMatters: "它要求先补上判断所需的证据，再决定原因是否成立。",
+                whyNow: "现在你的记录已经有结论，但还缺少能被他人复核的事实材料。",
+                expectedUpdate: "答案会让你知道这个判断是否有足够证据，还是需要改成其他解释。",
+                proceedWhen: "当你写出一条可观察证据，或承认当前证据不足时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+        let principles = [
+            PromptContextPayload.PrincipleContext(
+                id: UUID().uuidString,
+                title: "会议结束前写清负责人和验收口径",
+                summary: "类似协作问题里，先把负责人、验收口径和完成标准写出来。",
+                triggerContext: "跨角色会议或返工复盘",
+                successCriteria: "他人能复述负责人和验收口径。",
+                exceptions: "低风险同步会可以简化。",
+                status: .active
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            relevantPrinciples: principles
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingPrincipleReplay })
+    }
+
+    func testPromptCoachingQualityPolicy_allowsQuestionThatReplaysRelevantPrinciple() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "过往“会议结束前写清负责人和验收口径”这条经验，今天应该复用、调整还是拒绝？还缺哪条证据来判断？",
+                whyItMatters: "它训练你把旧经验迁移到今天，而不是机械套用原则。",
+                whyNow: "现在有相似的会议返工场景，但还缺少判断这条经验是否适用的证据。",
+                expectedUpdate: "答案会更新今天是否复用这条经验，或需要把它调整成更具体的做法。",
+                proceedWhen: "当你说明复用、调整或拒绝，并写出一条支撑证据时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "验收口径不清是本次会议返工的主要原因"
+            )
+        ]
+        let principles = [
+            PromptContextPayload.PrincipleContext(
+                id: UUID().uuidString,
+                title: "会议结束前写清负责人和验收口径",
+                summary: "类似协作问题里，先把负责人、验收口径和完成标准写出来。",
+                triggerContext: "跨角色会议或返工复盘",
+                successCriteria: "他人能复述负责人和验收口径。",
+                exceptions: "低风险同步会可以简化。",
+                status: .active
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            relevantPrinciples: principles
+        )
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingPrincipleReplay })
+    }
+
+    func testPromptCoachingQualityPolicy_flagsQuestionThatIgnoresNarrativeObservationGap() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "这次方案推进不下去，还缺哪条可观察证据？",
+                whyItMatters: "它要求先补上判断所需的证据。",
+                whyNow: "现在材料还缺少事实支撑。",
+                expectedUpdate: "答案会让你知道这个判断是否成立。",
+                proceedWhen: "当你写出一条可观察事实时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["今天很乱"],
+                calibrationTarget: "方案推进不下去"
+            )
+        ]
+        let observation = PromptContextPayload.CoachObservationContext(
+            CoachObservation(
+                policyVersion: CoachObservationPolicy.policyVersion,
+                providedMaterials: [.feeling],
+                missingMaterials: [.background, .object, .trigger, .action, .result],
+                thinkingProcessObservation: "当前讲述只有感受，别人还不能复盘前因后果。",
+                primaryGap: .narrative,
+                secondaryGaps: [],
+                trainingAbility: .description,
+                feedback: CoachObservationFeedback(
+                    observed: "你说出了感受。",
+                    diagnosis: "当前是讲述 gap。",
+                    training: "本轮训练沟通力中的描述力。",
+                    ask: "请补充背景、对象、触发点、行动和结果。",
+                    proceedWhen: "当背景、触发点、行动和结果说清楚时推进。"
+                ),
+                experienceReplayPrompt: ""
+            )
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            coachObservation: observation
+        )
+
+        XCTAssertTrue(issues.contains { $0.reason == .missingNarrativeRepair })
+    }
+
+    func testPromptCoachingQualityPolicy_allowsQuestionThatRepairsNarrativeObservationGap() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "请把这件事的背景、涉及对象、触发点、你当时怎么做，以及后来结果补完整。",
+                whyItMatters: "它训练你先把事情讲清楚，让别人能复盘前因后果。",
+                whyNow: "当前材料只有感受，缺少背景、对象、触发、行动和结果。",
+                expectedUpdate: "答案会让这件事从情绪描述变成可复盘的事件描述。",
+                proceedWhen: "当背景、对象、触发点、行动和结果都说清楚时就可以继续。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                sourceCardTitles: ["今天很乱"],
+                calibrationTarget: "方案推进不下去"
+            )
+        ]
+        let observation = PromptContextPayload.CoachObservationContext(
+            CoachObservation(
+                policyVersion: CoachObservationPolicy.policyVersion,
+                providedMaterials: [.feeling],
+                missingMaterials: [.background, .object, .trigger, .action, .result],
+                thinkingProcessObservation: "当前讲述只有感受，别人还不能复盘前因后果。",
+                primaryGap: .narrative,
+                secondaryGaps: [],
+                trainingAbility: .description,
+                feedback: CoachObservationFeedback(
+                    observed: "你说出了感受。",
+                    diagnosis: "当前是讲述 gap。",
+                    training: "本轮训练沟通力中的描述力。",
+                    ask: "请补充背景、对象、触发点、行动和结果。",
+                    proceedWhen: "当背景、触发点、行动和结果说清楚时推进。"
+                ),
+                experienceReplayPrompt: ""
+            )
+        )
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            coachObservation: observation
+        )
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingNarrativeRepair })
+    }
+
     func testPromptCoachingQualityPolicy_flagsAppeasingQuestionsWithoutCorrection() throws {
         let questions = [
             ReflectionQuestion(

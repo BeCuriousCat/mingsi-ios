@@ -695,7 +695,11 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("教练追问", subtitle: "至少回答一个，训练不是让 AI 替你下结论。")
+            stepLabel("教练追问", subtitle: "回答一个关键问题。")
+
+            answerTrainingFocusStrip(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
@@ -751,6 +755,35 @@ struct TodayView: View {
             }
             .accessibilityIdentifier(TodayAutomationID.answerDiagnosisToggle)
         }
+    }
+
+    private func answerTrainingFocusStrip(_ observation: CoachObservation) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("本轮训练")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(DS.accent)
+            Text("主练：\(observation.trainingAbility.trainingTitle)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("先补")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.brick)
+                Text(materialLine(for: observation.missingMaterials, fallback: observation.feedback.ask))
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
     }
 
     private func observationTrainingFrame(_ observation: CoachObservation) -> some View {
@@ -2978,11 +3011,19 @@ private struct QuestionCardView: View {
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(compactCoachCue)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 4) {
+                if let trainingCue = compactTrainingCue {
+                    Text(trainingCue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(compactRepairCue)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -3033,12 +3074,22 @@ private struct QuestionCardView: View {
             trimmed(question.calibrationTarget) != nil
     }
 
-    private var compactCoachCue: String {
-        if let proceedWhen = trimmed(question.proceedWhen) {
-            return "先写到可以推进：\(proceedWhen)"
+    private var compactTrainingCue: String? {
+        if let lensMove = question.lensMove {
+            return "本题练：\(lensMove.displayTitle)"
         }
+        if let answerUse = question.answerUse {
+            return "本题练：\(answerUse.displayTitle)"
+        }
+        return nil
+    }
+
+    private var compactRepairCue: String {
         if let gapTitle = teachingGapTitle {
             return "先补：\(gapTitle)"
+        }
+        if let proceedWhen = trimmed(question.proceedWhen) {
+            return "先写到可以推进：\(proceedWhen)"
         }
         return trimmed(question.whyItMatters) ?? question.answerTrainingPrompt
     }

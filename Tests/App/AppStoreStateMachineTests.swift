@@ -1861,12 +1861,17 @@ final class AppStoreStateMachineTests: XCTestCase {
             ),
             refreshesAIServiceFromKeychain: false
         )
-        try await advanceTo(.reviewCards)
+        store.todayDraft = DailyEntryDraft(
+            rawText: "Today the meeting ended without a written owner.",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .reviewCards
+        )
         store.thinkingCards = coachPrescriptionEvidenceCards()
         store.submitTodayStep()
         try await waitForState(.selectLens)
-
         store.acceptTrainingPrescription()
+
         store.submitTodayStep()
         try await waitForState(.answerQuestions)
 
@@ -1902,6 +1907,32 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(store.todayLoopMessage.contains("未完成"))
         XCTAssertFalse(store.todayLoopMessage.contains("请求超时"))
         XCTAssertFalse(store.todayLoopMessage.contains("网络请求失败"))
+    }
+
+    func testSelectLens_streamingQuestionFailureFallsBackWithDiagnosticRetry() async throws {
+        let client = QuestionFailingStreamingLLMClient()
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        XCTAssertFalse(store.questions.isEmpty)
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        XCTAssertTrue(store.canRetryCurrentAI)
+        XCTAssertTrue(store.todayLoopMessage.contains("教练追问训练未完成"))
+        XCTAssertTrue(store.todayLoopMessage.contains("网络请求失败"))
+        XCTAssertFalse(store.isAIRunning)
     }
 
     func testSelectLens_slowDownCoachDiagnosisPassesToQuestionsContext() async throws {
@@ -10468,6 +10499,32 @@ private final class StreamingRecordingLLMClient: LLMClient, StreamingLLMClient {
             }
             continuation.yield(.completed)
             continuation.finish()
+        }
+    }
+}
+
+private final class QuestionFailingStreamingLLMClient: LLMClient, StreamingLLMClient {
+    func complete(_ request: LLMRequest) async throws -> Data {
+        throw LLMClientError.invalidResponse
+    }
+
+    func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            switch request.prompt.id {
+            case .organizeCards:
+                continuation.yield(
+                    .token(
+                        "<MINGSI_STREAM version=\"1\"><CARD><TYPE>fact</TYPE><TITLE>Meeting ownership unclear</TITLE><BODY>The meeting ended without a written owner.</BODY><IMPORTANCE>high</IMPORTANCE><SENSITIVITY>normal</SENSITIVITY><CONFIDENCE>high</CONFIDENCE><REASON>Confirmed source material</REASON></CARD></MINGSI_STREAM>"
+                    )
+                )
+                continuation.yield(.completed)
+                continuation.finish()
+            case .generateQuestions:
+                continuation.yield(.token(#"{"questions":[{"question":"先补上一个可观察事实"}]}"#))
+                continuation.finish(throwing: LLMClientError.transport(URLError(.networkConnectionLost)))
+            default:
+                continuation.finish(throwing: LLMClientError.invalidResponse)
+            }
         }
     }
 }

@@ -145,6 +145,19 @@ final class MingSiUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(questionText.waitForExistence(timeout: 4))
 
+        XCTAssertTrue(app.staticTexts["本轮训练"].waitForExistence(timeout: 4))
+        let primaryTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "主练")
+        ).firstMatch
+        XCTAssertTrue(primaryTraining.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本题练：分离事实解释"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先补：缺观察事实"].waitForExistence(timeout: 4))
+        let notAnswer = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "不是让 AI 替你给答案")
+        ).firstMatch
+        XCTAssertFalse(notAnswer.exists)
+        XCTAssertTrue(app.staticTexts["先补"].waitForExistence(timeout: 4))
+
         let answerField = app.textFields.matching(identifier: "today.question.answer-field").firstMatch
         XCTAssertTrue(answerField.waitForExistence(timeout: 4))
         scrollToElement(answerField, in: app)

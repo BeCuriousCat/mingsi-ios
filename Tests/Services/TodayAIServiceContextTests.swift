@@ -2516,11 +2516,11 @@ final class TodayAIServiceContextTests: XCTestCase {
         {
           "questions": [
             {
-              "question": "Which parts of the ownership issue are observed facts, and which parts are interpretation?",
-              "why_this_matters": "It separates facts from assumptions before choosing the next action.",
-              "why_now": "The coach turn needs observable facts before converging on an action.",
-              "expected_update": "The answer will update the evidence plan for the ownership issue.",
-              "proceed_when": "Proceed when the answer separates at least one observed fact from one interpretation.",
+              "question": "Should the previous principle about clarifying meeting ownership be reused, adapted, or rejected here, and which observed fact supports that choice?",
+              "why_this_matters": "It separates facts from assumptions while training experience replay instead of mechanically applying an old principle.",
+              "why_now": "The coach turn has a relevant prior principle, but today's ownership issue still needs observable evidence before converging on an action.",
+              "expected_update": "The answer will update whether the prior ownership principle should be reused, adapted, or rejected for this case.",
+              "proceed_when": "Proceed when the answer names reuse, adapt, or reject and separates at least one observed fact from one interpretation.",
               "evidence_gap_type": "missing_observation",
               "answer_use": "collect_evidence",
               "lens_move": "fact_interpretation_split",
@@ -2582,11 +2582,11 @@ final class TodayAIServiceContextTests: XCTestCase {
         {
           "questions": [
             {
-              "question": "这个临时修复不断制造返工的反馈回路是什么？",
-              "why_this_matters": "它把单次返工放回系统回路里，找出可被打断的循环。",
-              "why_now": "当前教练轮次需要先识别反馈回路而不是只修单点症状。",
+              "question": "这个临时修复不断制造返工的反馈回路里，还缺哪条因果链证据？",
+              "why_this_matters": "它把单次返工放回系统回路里，同时补上判断回路是否成立的因果证据。",
+              "why_now": "当前教练轮次需要先识别反馈回路并补因果链，而不是只修单点症状。",
               "expected_update": "答案会更新对返工结构的系统判断。",
-              "proceed_when": "当答案能说出一个可观察的回路节点时推进。",
+              "proceed_when": "当答案能说出一个可观察的回路节点和一条因果链证据时推进。",
               "evidence_gap_type": "missing_causal_link",
               "answer_use": "update_judgment",
               "lens_move": "feedback_loop",

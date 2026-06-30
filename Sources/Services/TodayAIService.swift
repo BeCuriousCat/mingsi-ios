@@ -116,7 +116,9 @@ final class TodayAIService {
                 lensFeedback: visiblePayload?.lensFeedback ?? [],
                 primaryTrainingDimension: visiblePayload?.trainingPrescription?.primaryTrainingDimension,
                 baselineTrainingDimensions: visiblePayload?.trainingPrescription?.baselineTrainingDimensions ?? [],
-                coachTurnState: coachTurnState(from: visiblePayload)
+                coachTurnState: coachTurnState(from: visiblePayload),
+                relevantPrinciples: visiblePayload?.principles ?? [],
+                coachObservation: visiblePayload?.coachObservation
             )
         )
         return questions

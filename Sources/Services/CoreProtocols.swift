@@ -1368,6 +1368,9 @@ enum PromptCoachingQualityIssueReason: String, Codable, CaseIterable, Identifiab
     case missingPrimaryTrainingDimensionFocus
     case missingCoachTurnAlignment
     case missingFunctionalCoachField
+    case missingThinkingMaterialTarget
+    case missingPrincipleReplay
+    case missingNarrativeRepair
     case appeasingWithoutCorrection
     case repeatedAvoidedLensMove
     case unadjustedLensMove
@@ -1397,7 +1400,9 @@ enum PromptCoachingQualityPolicy {
         lensFeedback: [PromptContextPayload.LensFeedbackContext] = [],
         primaryTrainingDimension: ThinkingTrainingDimension? = nil,
         baselineTrainingDimensions: [ThinkingTrainingDimension] = [],
-        coachTurnState: CoachTurnState? = nil
+        coachTurnState: CoachTurnState? = nil,
+        relevantPrinciples: [PromptContextPayload.PrincipleContext] = [],
+        coachObservation: PromptContextPayload.CoachObservationContext? = nil
     ) -> [PromptCoachingQualityIssue] {
         let trainingDimensions = normalizedTrainingDimensions(
             primaryTrainingDimension: primaryTrainingDimension,
@@ -1433,6 +1438,9 @@ enum PromptCoachingQualityPolicy {
             }
             if !hasFunctionalCoachFields(question) {
                 issues.append(issue(.missingFunctionalCoachField, subject: subject))
+            }
+            if !targetsMissingThinkingMaterial(question) {
+                issues.append(issue(.missingThinkingMaterialTarget, subject: subject))
             }
             if isAppeasingWithoutCorrection(question) {
                 issues.append(issue(.appeasingWithoutCorrection, subject: subject))
@@ -1496,6 +1504,20 @@ enum PromptCoachingQualityPolicy {
                     allIssues.append(issue(.missingSelectedLensMove, subject: selectedLens.rawValue))
                 }
             }
+        }
+        if !relevantPrinciples.isEmpty,
+           !questions.contains(where: { targetsPrincipleReplay($0, relevantPrinciples: relevantPrinciples) }) {
+            allIssues.append(
+                issue(
+                    .missingPrincipleReplay,
+                    subject: relevantPrinciples.map(\.title).joined(separator: ",")
+                )
+            )
+        }
+        if let coachObservation,
+           coachObservation.trainingAbility == .description,
+           !questions.contains(where: { repairsNarrativeGap($0, observation: coachObservation) }) {
+            allIssues.append(issue(.missingNarrativeRepair, subject: coachObservation.primaryGap.rawValue))
         }
         return allIssues
     }
@@ -1605,6 +1627,175 @@ enum PromptCoachingQualityPolicy {
             question.proceedWhen
         ].allSatisfy { field in
             !(field?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+    }
+
+    private static func targetsMissingThinkingMaterial(_ question: ReflectionQuestion) -> Bool {
+        if question.evidenceGapType == EvidenceGapType.none,
+           question.answerUse == .chooseAction,
+           question.lensMove == .leverageTradeoff {
+            return true
+        }
+
+        let combined = [
+            question.question,
+            question.whyItMatters,
+            question.whyNow ?? "",
+            question.expectedUpdate ?? "",
+            question.proceedWhen ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        let missingMaterialSignals = [
+            "缺",
+            "补",
+            "没有",
+            "未明确",
+            "不清",
+            "不足",
+            "证据",
+            "基线",
+            "因果",
+            "反例",
+            "约束",
+            "假设",
+            "解释",
+            "信号",
+            "校准",
+            "missing",
+            "gap",
+            "evidence",
+            "baseline",
+            "causal",
+            "counterexample",
+            "constraint",
+            "assumption",
+            "signal",
+            "calibration"
+        ]
+        return missingMaterialSignals.contains { combined.contains($0) }
+    }
+
+    private static func targetsPrincipleReplay(
+        _ question: ReflectionQuestion,
+        relevantPrinciples: [PromptContextPayload.PrincipleContext]
+    ) -> Bool {
+        let combined = [
+            question.question,
+            question.whyItMatters,
+            question.whyNow ?? "",
+            question.expectedUpdate ?? "",
+            question.proceedWhen ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        let replayContextSignals = [
+            "原则",
+            "经验",
+            "过往",
+            "过去",
+            "之前",
+            "上次",
+            "prior",
+            "previous",
+            "principle",
+            "experience",
+            "replay"
+        ]
+        let replayDecisionSignals = [
+            "复用",
+            "沿用",
+            "借鉴",
+            "迁移",
+            "调整",
+            "改写",
+            "拒绝",
+            "不适用",
+            "reproduce",
+            "reuse",
+            "apply",
+            "adapt",
+            "reject"
+        ]
+
+        let mentionsReplayContext = replayContextSignals.contains { combined.contains($0) }
+            || mentionsAnyPrinciple(relevantPrinciples, in: combined)
+        let mentionsReplayDecision = replayDecisionSignals.contains { combined.contains($0) }
+        return mentionsReplayContext && mentionsReplayDecision
+    }
+
+    private static func mentionsAnyPrinciple(
+        _ principles: [PromptContextPayload.PrincipleContext],
+        in text: String
+    ) -> Bool {
+        principles.contains { principle in
+            let fields = [
+                principle.title,
+                principle.summary,
+                principle.triggerContext,
+                principle.successCriteria
+            ]
+            return fields.contains { field in
+                let normalized = field.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.count >= 4 && text.contains(normalized)
+            }
+        }
+    }
+
+    private static func repairsNarrativeGap(
+        _ question: ReflectionQuestion,
+        observation: PromptContextPayload.CoachObservationContext
+    ) -> Bool {
+        let combined = [
+            question.question,
+            question.whyItMatters,
+            question.whyNow ?? "",
+            question.expectedUpdate ?? "",
+            question.proceedWhen ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        let missingNarrativeMaterials = Set(observation.missingMaterials).intersection(Self.narrativeMaterials)
+        guard !missingNarrativeMaterials.isEmpty else {
+            return containsAnyNarrativeCue(in: combined)
+        }
+        return missingNarrativeMaterials.contains { material in
+            narrativeSignals(for: material).contains { combined.contains($0) }
+        }
+    }
+
+    private static let narrativeMaterials: Set<CoachObservationMaterial> = [
+        .background,
+        .object,
+        .trigger,
+        .action,
+        .result
+    ]
+
+    private static func containsAnyNarrativeCue(in text: String) -> Bool {
+        narrativeMaterials.contains { material in
+            narrativeSignals(for: material).contains { text.contains($0) }
+        }
+    }
+
+    private static func narrativeSignals(for material: CoachObservationMaterial) -> [String] {
+        switch material {
+        case .background:
+            return ["背景", "前因", "场景", "context", "background"]
+        case .object:
+            return ["对象", "谁", "服务于谁", "影响谁", "stakeholder", "user", "object"]
+        case .trigger:
+            return ["触发", "起因", "因为什么", "trigger"]
+        case .action:
+            return ["做法", "动作", "你怎么做", "采取了什么", "action"]
+        case .result:
+            return ["结果", "后来", "造成什么", "影响", "result", "outcome"]
+        case .feeling, .fact, .interpretation, .judgment, .assumption, .constraint,
+             .goal, .standard, .openQuestion, .experience, .calibrationSignal:
+            return []
         }
     }
 
