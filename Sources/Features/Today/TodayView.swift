@@ -895,6 +895,11 @@ struct TodayView: View {
                 body: feedback.trainingTargetLine,
                 accent: DS.caution
             )
+            BriefRow(
+                title: "过往经验复现",
+                body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
+                accent: DS.graphite
+            )
             answerTrainingToolsDisclosure(feedback)
             if includesTeachingRoute {
                 teachingRouteView(feedback.teachingPlan)
@@ -923,11 +928,6 @@ struct TodayView: View {
 
             if isAnswerTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
-                    BriefRow(
-                        title: "过往经验复现",
-                        body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
-                        accent: DS.graphite
-                    )
                     BriefRow(
                         title: "判断句训练",
                         body: feedback.judgmentSentencePrompt,

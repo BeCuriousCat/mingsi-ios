@@ -510,7 +510,17 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "观察事实")
         ).firstMatch
         XCTAssertTrue(gapPreview.waitForExistence(timeout: 4))
-        XCTAssertFalse(app.staticTexts["过往经验复现"].exists)
+        XCTAssertTrue(app.staticTexts["过往经验复现"].waitForExistence(timeout: 4))
+        let replayDecision = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "复现：条件相同")
+        ).firstMatch
+        XCTAssertTrue(replayDecision.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "调整：条件不同")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "否定：这条经验为什么不适用")
+        ).firstMatch.waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["判断句训练"].exists)
 
         dismissKeyboardIfPresent(in: app)
@@ -520,8 +530,6 @@ final class MingSiUITests: XCTestCase {
         trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练工具")).firstMatch.waitForExistence(timeout: 4))
 
-        let replayTitle = app.staticTexts["过往经验复现"].firstMatch
-        scrollDownUntilElementExists(replayTitle, in: app)
         let judgmentTitle = app.staticTexts["判断句训练"].firstMatch
         scrollDownUntilElementExists(judgmentTitle, in: app)
         let judgmentTemplate = app.staticTexts.matching(
