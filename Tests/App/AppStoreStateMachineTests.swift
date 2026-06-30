@@ -1813,6 +1813,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.nextRepairQuestion.contains("谁"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("成功标准"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("可观察信号"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("没有先定义服务对象或成功标准"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("复现哪条目标检查"))
+        XCTAssertFalse(feedback.experienceReplayPrompt.contains("缺少事实或验收标准"))
     }
 
     func testCoachAnswerFeedbackPolicyAllowsValidationWhenAnswerClosesGaps() {

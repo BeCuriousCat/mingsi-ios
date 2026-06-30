@@ -1398,7 +1398,7 @@ struct CoachAnswerFeedbackPolicy {
             trainingTargetLine: trainingTargetLine(plan: plan, observation: observation),
             nextRepairQuestion: nextRepairQuestion(plan: plan, observation: observation),
             experienceReplayDecisionLine: ExperienceReplayTraining.line,
-            experienceReplayPrompt: plan.experienceReplayPrompt,
+            experienceReplayPrompt: experienceReplayPrompt(plan: plan, observation: observation),
             judgmentSentencePrompt: Self.judgmentSentencePrompt,
             teachingPlan: plan
         )
@@ -1560,6 +1560,13 @@ struct CoachAnswerFeedbackPolicy {
             return "下一句请按讲清楚一件事来写：什么背景下，谁或哪个对象遇到什么触发；你做了什么；后来发生了什么结果？"
         }
         return plan.repairQuestion
+    }
+
+    private func experienceReplayPrompt(
+        plan: CoachTeachingPlan,
+        observation: CoachObservation?
+    ) -> String {
+        observation?.experienceReplayPrompt ?? plan.experienceReplayPrompt
     }
 
     private func gapLine(for gaps: [EvidenceGapType]) -> String {
