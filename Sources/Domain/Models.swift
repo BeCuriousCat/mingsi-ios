@@ -2117,6 +2117,8 @@ struct CoachObservationPolicy {
             return "回想过往一次因为事实和解释混在一起而误判的经验：这次要复现哪条事实检查？"
         case .goal:
             return "回想过往一次因为没有先定义服务对象或成功标准而返工的经验：这次要复现哪条目标检查？"
+        case .counterexample:
+            return "回想过往一次忽略反例而判断过早收敛的经验：这次要复现哪条反证检查？"
         default:
             return "回想一次相似经验：这次应该复现、调整，还是否定那条经验？"
         }
