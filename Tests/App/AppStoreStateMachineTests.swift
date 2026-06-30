@@ -1375,6 +1375,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("完成后留下什么证据"))
     }
 
+    func testCaptureMaterialObservationChallengesJudgmentWithoutEvidenceAsObservationTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我觉得这个方案大概率会返工。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("观察力"))
+        XCTAssertTrue(line.contains("判断不能先当结论"))
+        XCTAssertTrue(line.contains("可观察事实"))
+        XCTAssertTrue(line.contains("事实和解释分开"))
+    }
+
     func testCoachTeachingPolicy_notReadyEvidenceRouteStartsWithEvidenceCollection() {
         let turn = CoachTurnState(
             phase: .fillEvidenceGap,
