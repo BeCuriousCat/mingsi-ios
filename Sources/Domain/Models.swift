@@ -2113,14 +2113,26 @@ struct CoachObservationPolicy {
         switch gap {
         case .experience:
             return "请检查过往经验和本次条件：哪些条件相同可以复现，哪些不同需要调整，哪些会让旧经验失效？"
+        case .narrative:
+            return "回想过往一次因为讲述不清导致别人无法复盘的经验：这次要复现哪条讲述顺序？"
         case .observation:
             return "回想过往一次因为事实和解释混在一起而误判的经验：这次要复现哪条事实检查？"
+        case .object:
+            return "回想过往一次因为没有说清服务对象或受影响的人而判断跑偏的经验：这次要复现哪条对象检查？"
         case .goal:
             return "回想过往一次因为没有先定义服务对象或成功标准而返工的经验：这次要复现哪条目标检查？"
+        case .constraint:
+            return "回想过往一次忽略限制条件而推进受阻的经验：这次要复现哪条边界检查？"
+        case .causal:
+            return "回想过往一次误把相关当原因而判断跑偏的经验：这次要复现哪条因果检查？"
         case .counterexample:
             return "回想过往一次忽略反例而判断过早收敛的经验：这次要复现哪条反证检查？"
-        default:
-            return "回想一次相似经验：这次应该复现、调整，还是否定那条经验？"
+        case .judgment:
+            return "回想过往一次判断标准不清而取舍摇摆的经验：这次要复现哪条取舍检查？"
+        case .execution:
+            return "回想过往一次行动不可检查而无法复盘结果的经验：这次要复现哪条执行检查？"
+        case .calibration:
+            return "回想过往一次没有预设校准信号而事后无法更新判断的经验：这次要复现哪条结果检查？"
         }
     }
 

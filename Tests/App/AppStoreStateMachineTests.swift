@@ -1286,6 +1286,32 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.experienceReplayPrompt.contains("复现哪条反证检查"))
     }
 
+    func testCoachObservationPolicy_experienceReplayPromptMatchesEachTrainingGap() {
+        let cases: [(gap: CoachObservationGap, requiredFragments: [String])] = [
+            (.narrative, ["讲述不清", "复现哪条讲述顺序"]),
+            (.object, ["没有说清服务对象", "复现哪条对象检查"]),
+            (.constraint, ["忽略限制条件", "复现哪条边界检查"]),
+            (.causal, ["误把相关当原因", "复现哪条因果检查"]),
+            (.judgment, ["判断标准不清", "复现哪条取舍检查"]),
+            (.execution, ["行动不可检查", "复现哪条执行检查"]),
+            (.calibration, ["没有预设校准信号", "复现哪条结果检查"])
+        ]
+
+        for testCase in cases {
+            let prompt = observationPrompt(for: testCase.gap)
+            XCTAssertFalse(
+                prompt.contains("回想一次相似经验"),
+                "\(testCase.gap) should not fall back to a generic replay prompt."
+            )
+            for fragment in testCase.requiredFragments {
+                XCTAssertTrue(
+                    prompt.contains(fragment),
+                    "\(testCase.gap) replay prompt should contain \(fragment), got: \(prompt)"
+                )
+            }
+        }
+    }
+
     func testCoachObservationPolicy_trainsDescriptionBeforeGoalWhenActionCannotBeReplayed() {
         let observation = CoachObservationPolicy().observe(cards: confirmedCards([
             ThinkingCard(type: .task, title: "我今天推进了方案", body: "我今天推进了一下方案，感觉还是卡住了。")
@@ -8536,6 +8562,85 @@ final class AppStoreStateMachineTests: XCTestCase {
             confirmed.isConfirmed = true
             return confirmed
         }
+    }
+
+    private func observationPrompt(for gap: CoachObservationGap) -> String {
+        let cards: [ThinkingCard]
+        switch gap {
+        case .narrative:
+            cards = [
+                ThinkingCard(type: .idea, title: "今天很乱", body: "我只有很乱和焦虑的感受。")
+            ]
+        case .object:
+            cards = [
+                ThinkingCard(
+                    type: .task,
+                    title: "方案推进卡住",
+                    body: "今天需求评审后，我打算先重写方案。因为会上大家提出很多意见，后来方案没有通过。"
+                )
+            ]
+        case .constraint:
+            cards = [
+                ThinkingCard(
+                    type: .problem,
+                    title: "跨团队推进卡住",
+                    body: "今天在项目沟通中，我和产品团队讨论接口方案，但推进不下去，后来决定先暂停方案调整。"
+                )
+            ]
+        case .causal:
+            cards = [
+                ThinkingCard(
+                    type: .fact,
+                    title: "会议结果",
+                    body: "事实是会议结束后没有明确负责人，后来接口方案返工。"
+                ),
+                ThinkingCard(
+                    type: .idea,
+                    title: "我的解释",
+                    body: "我认为返工是因为大家都不想负责，所以方案没有通过。"
+                )
+            ]
+        case .judgment:
+            cards = [
+                ThinkingCard(
+                    type: .fact,
+                    title: "注册反馈",
+                    body: "事实是上线后客服收到 12 条用户反馈，3 个用户卡在注册步骤。"
+                ),
+                ThinkingCard(
+                    type: .decision,
+                    title: "优先改注册流程",
+                    body: "我判断注册流程需要优先改。"
+                )
+            ]
+        case .execution:
+            cards = [
+                ThinkingCard(
+                    type: .task,
+                    title: "明天推进方案",
+                    body: "为了让 Alex 减少返工，明天推进方案处理一下。"
+                )
+            ]
+        case .calibration:
+            cards = [
+                ThinkingCard(
+                    type: .fact,
+                    title: "注册反馈",
+                    body: "事实是客服记录了 12 条用户反馈，3 个用户卡在注册步骤。"
+                ),
+                ThinkingCard(
+                    type: .decision,
+                    title: "优先改注册流程",
+                    body: "我判断应该优先改注册流程，判断标准是影响新用户完成首次使用。"
+                )
+            ]
+        case .observation, .goal, .counterexample, .experience:
+            cards = []
+        }
+
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards(cards))
+        XCTAssertEqual(observation.primaryGap, gap)
+        return observation.experienceReplayPrompt
     }
 
     private func waitForState(
