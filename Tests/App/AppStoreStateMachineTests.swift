@@ -1374,6 +1374,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(line.contains("时间、资源、权限、信息、关系还是系统边界"))
     }
 
+    func testCaptureMaterialObservationChallengesCausalShortcutAsAnalysisTraining() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我看到会议结束后没有明确负责人，后来接口方案实际返工。因为大家都不想负责，所以方案没有通过。")
+
+        let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
+        XCTAssertTrue(line.contains("思考力中的分析力"))
+        XCTAssertTrue(line.contains("因果解释"))
+        XCTAssertTrue(line.contains("A 到 B 中间发生了什么"))
+        XCTAssertTrue(line.contains("哪个环节最关键"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueActionAsExecutionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("为了让 Alex 减少返工，明天推进方案处理一下。")

@@ -1569,6 +1569,9 @@ final class AppStore: ObservableObject {
         if observation.primaryGap == .constraint {
             return "思考力中的分析力：还没说清具体限制。请补：现在卡住来自时间、资源、权限、信息、关系还是系统边界？"
         }
+        if observation.primaryGap == .causal {
+            return "思考力中的分析力：这还是跳步的因果解释。请补：A 到 B 中间发生了什么，哪个环节最关键？"
+        }
         if observation.primaryGap == .execution {
             return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
         }

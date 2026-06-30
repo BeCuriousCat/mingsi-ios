@@ -193,6 +193,25 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(constraintAsk.waitForExistence(timeout: 4))
     }
 
+    func testTodayCaptureChallengesCausalShortcutAsAnalysisTraining() throws {
+        let app = seededTodayApp(stage: "capture", input: "我看到会议结束后没有明确负责人，后来接口方案实际返工。因为大家都不想负责，所以方案没有通过。")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
+        let analysisTraining = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "思考力中的分析力")
+        ).firstMatch
+        XCTAssertTrue(analysisTraining.waitForExistence(timeout: 4))
+        let causalShortcut = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "跳步的因果解释")
+        ).firstMatch
+        XCTAssertTrue(causalShortcut.waitForExistence(timeout: 4))
+        let mechanismAsk = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "A 到 B 中间发生了什么")
+        ).firstMatch
+        XCTAssertTrue(mechanismAsk.waitForExistence(timeout: 4))
+    }
+
     func testTodayCaptureChallengesVagueActionAsExecutionTraining() throws {
         let app = seededTodayApp(stage: "capture", input: "为了让 Alex 减少返工，明天推进方案处理一下。")
         app.launch()
