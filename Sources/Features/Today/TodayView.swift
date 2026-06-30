@@ -719,10 +719,6 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("教练追问", subtitle: "回答一个关键问题。")
 
-            answerTrainingFocusStrip(
-                CoachObservationPolicy().observe(cards: store.thinkingCards)
-            )
-
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
                     question: question,
@@ -730,6 +726,10 @@ struct TodayView: View {
                     isPrimaryAnswerField: index == 0
                 )
             }
+
+            answerTrainingFocusStrip(
+                CoachObservationPolicy().observe(cards: store.thinkingCards)
+            )
 
             if let feedback = store.coachAnswerTrainingFeedback {
                 answerFeedbackPreviewView(

@@ -410,6 +410,7 @@ final class MingSiUITests: XCTestCase {
 
         let answerField = app.textFields.matching(identifier: "today.question.answer-field").firstMatch
         XCTAssertTrue(answerField.waitForExistence(timeout: 4))
+        XCTAssertLessThan(answerField.frame.minY, primaryTraining.frame.minY)
         scrollToElement(answerField, in: app)
         XCTAssertTrue(isElementInTappableScrollArea(answerField, app: app))
 
