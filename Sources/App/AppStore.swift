@@ -4738,6 +4738,7 @@ final class AppStore: ObservableObject {
             sourceDailyEntryId: sourceDailyEntryId,
             completion: completion,
             valueRating: rating,
+            judgmentUpdate: judgmentUpdate,
             calibrationNote: calibrationNote,
             likelyIssue: likelyIssue,
             recommendation: recommendation

@@ -5199,6 +5199,7 @@ struct Verification: Identifiable, Hashable {
     var sourceDailyEntryId: UUID
     var completion: YesterdayCompletion
     var valueRating: YesterdayValueRating
+    var judgmentUpdate: YesterdayJudgmentUpdate
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -5212,6 +5213,7 @@ struct Verification: Identifiable, Hashable {
         sourceDailyEntryId: UUID,
         completion: YesterdayCompletion,
         valueRating: YesterdayValueRating,
+        judgmentUpdate: YesterdayJudgmentUpdate = .confirmed,
         calibrationNote: String,
         likelyIssue: String? = nil,
         recommendation: String? = nil,
@@ -5224,6 +5226,7 @@ struct Verification: Identifiable, Hashable {
         self.sourceDailyEntryId = sourceDailyEntryId
         self.completion = completion
         self.valueRating = valueRating
+        self.judgmentUpdate = judgmentUpdate
         self.calibrationNote = calibrationNote
         self.likelyIssue = likelyIssue
         self.recommendation = recommendation

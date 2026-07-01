@@ -232,12 +232,22 @@ final class AppStoreStateMachineTests: XCTestCase {
     }
 
     func testVerifyYesterday_withQuestAndBothSelections_advancesToCapture() async throws {
-        store.quests = [activeMainQuest()]
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let verificationRepo = SQLiteVerificationRepository(database: database)
+        let quest = activeMainQuest()
+        store = AppStore(
+            quests: [quest],
+            verificationRepository: verificationRepo,
+            refreshesAIServiceFromKeychain: false
+        )
         store.selectYesterdayCompletion(.partial)
         store.selectYesterdayValueRating(.medium)
         store.selectYesterdayJudgmentUpdate(.adjusted)
         store.submitTodayStep()
         try await waitForState(.capture)
+
+        let verification = try await verificationRepo.verification(forQuestId: quest.id)
+        XCTAssertEqual(verification?.judgmentUpdate, .adjusted)
     }
 
     func testVerifyYesterday_withQuestRequiresJudgmentUpdate() {

@@ -733,6 +733,7 @@ final class PersistenceCoreTests: XCTestCase {
             sourceDailyEntryId: entryId,
             completion: .partial,
             valueRating: .medium,
+            judgmentUpdate: .adjusted,
             calibrationNote: "Criteria were partly met.",
             likelyIssue: "unclear_criteria",
             recommendation: "Make completion evidence visible."
@@ -744,9 +745,11 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(byEntry?.questTitle, "Verify ownership")
         XCTAssertEqual(byEntry?.completion, .partial)
         XCTAssertEqual(byEntry?.likelyIssue, "unclear_criteria")
+        XCTAssertEqual(byEntry?.judgmentUpdate, .adjusted)
 
         let byQuest = try await repo.verification(forQuestId: questId)
         XCTAssertEqual(byQuest?.id, verification.id)
+        XCTAssertEqual(byQuest?.judgmentUpdate, .adjusted)
     }
 
     // MARK: - LensSessionRepository
@@ -4442,6 +4445,13 @@ final class PersistenceCoreTests: XCTestCase {
             let columns = try db.columns(in: "daily_entries")
             let columnNames = Set(columns.map(\.name))
             XCTAssertTrue(columnNames.contains("yesterday_judgment_update"))
+        }
+    }
+
+    func testMigration_v31_addsVerificationJudgmentUpdate() throws {
+        try dbQueue.read { db in
+            let columnNames = Set(try db.columns(in: "verifications").map(\.name))
+            XCTAssertTrue(columnNames.contains("judgment_update"))
         }
     }
 

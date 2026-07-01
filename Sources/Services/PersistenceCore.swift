@@ -405,6 +405,7 @@ final class AppDatabase {
                 table.column("source_daily_entry_id", .text).notNull()
                 table.column("completion", .text).notNull()
                 table.column("value_rating", .text).notNull()
+                table.column("judgment_update", .text).notNull().defaults(to: YesterdayJudgmentUpdate.confirmed.rawValue)
                 table.column("calibration_note", .text).notNull()
                 table.column("likely_issue", .text)
                 table.column("recommendation", .text)
@@ -1072,6 +1073,18 @@ final class AppDatabase {
 
             try db.alter(table: "daily_entries") { table in
                 table.add(column: "yesterday_judgment_update", .text)
+            }
+        }
+
+        migrator.registerMigration("v31_verification_judgment_update") { db in
+            guard try db.tableExists("verifications") else { return }
+            let columns = Set(try db.columns(in: "verifications").map(\.name))
+            guard !columns.contains("judgment_update") else { return }
+
+            try db.alter(table: "verifications") { table in
+                table.add(column: "judgment_update", .text)
+                    .notNull()
+                    .defaults(to: YesterdayJudgmentUpdate.confirmed.rawValue)
             }
         }
 
@@ -2390,6 +2403,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
     var sourceDailyEntryId: String
     var completion: String
     var valueRating: String
+    var judgmentUpdate: String
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -2405,6 +2419,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
         sourceDailyEntryId = verification.sourceDailyEntryId.uuidString
         completion = verification.completion.rawValue
         valueRating = verification.valueRating.rawValue
+        judgmentUpdate = verification.judgmentUpdate.rawValue
         calibrationNote = verification.calibrationNote
         likelyIssue = verification.likelyIssue
         recommendation = verification.recommendation
@@ -2429,6 +2444,9 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
         guard let rating = YesterdayValueRating(rawValue: valueRating) else {
             throw PersistenceError.invalidStoredValue("verifications.value_rating")
         }
+        guard let judgmentUpdate = YesterdayJudgmentUpdate(rawValue: judgmentUpdate) else {
+            throw PersistenceError.invalidStoredValue("verifications.judgment_update")
+        }
         return Verification(
             id: uuid,
             questId: questUUID,
@@ -2436,6 +2454,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
             sourceDailyEntryId: entryUUID,
             completion: completion,
             valueRating: rating,
+            judgmentUpdate: judgmentUpdate,
             calibrationNote: calibrationNote,
             likelyIssue: likelyIssue,
             recommendation: recommendation,
