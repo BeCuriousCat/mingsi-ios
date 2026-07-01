@@ -331,18 +331,6 @@ struct TodayView: View {
     // Design: Warm, reflective - not a form, a moment of honesty
     private var verifyYesterdaySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            phaseBoundaryCard(
-                title: "结果校准",
-                body: "先校准昨天的明日验证，再开始收集今天的新材料。",
-                icon: "scope",
-                tint: DS.caution
-            )
-            BriefRow(
-                title: "本页只校准昨天结果",
-                body: "只检查做没做、有没有实际价值、昨天判断要不要更新；新的今日内容在下一段填写。",
-                accent: DS.caution
-            )
-
             stepLabel("校准昨日验证", subtitle: "用一个真实结果校准昨天的判断。")
 
             if let quest = store.mainQuest ?? store.quests.first {
