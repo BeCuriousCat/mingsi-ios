@@ -1414,8 +1414,11 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         let feedback = try XCTUnwrap(store.coachCaptureMaterialTrainingFeedback)
         XCTAssertTrue(feedback.observationLine.contains("行动不能先替代目标"))
-        XCTAssertTrue(feedback.trainingTargetLine.contains("本轮训练"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("本轮训练契约"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的判断力"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("先补到可复盘"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("再进入行动"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("下一句训练"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("谁的什么问题会变少"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("成功标准"))
