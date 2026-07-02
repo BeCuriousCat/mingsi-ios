@@ -1488,7 +1488,7 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "教练建议：先修补训练缺口，\(plan.proceedStandard)；你也可以带着缺口继续。"
+            : "教练建议：先修补训练缺口，\(plan.proceedStandard)；你也可以带着缺口继续，明日验证会把它当校准点。"
     }
 
     private func abilityGapLine(

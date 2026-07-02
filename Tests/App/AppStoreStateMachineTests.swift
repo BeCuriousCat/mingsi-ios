@@ -1768,6 +1768,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.missingLine.contains("我还没听懂：缺因果链"))
         XCTAssertFalse(feedback.missingLine.contains("还没练到位"))
         XCTAssertTrue(feedback.proceedLine.contains("先修补训练缺口"))
+        XCTAssertFalse(feedback.proceedLine.contains("先补齐训练缺口"))
+        XCTAssertTrue(feedback.proceedLine.contains("明日验证会把它当校准点"))
     }
 
     func testCoachAnswerFeedbackPolicyCarriesObservedFoundationalAbilityTraining() {
@@ -2591,7 +2593,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以带着缺口继续") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先补齐训练缺口") == true)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先修补训练缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会把它当校准点") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -2627,7 +2631,9 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先修补训练缺口") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会把它当校准点") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
 

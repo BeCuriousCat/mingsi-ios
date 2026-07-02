@@ -1802,7 +1802,7 @@ final class AppStore: ObservableObject {
                     .map(\.displayTitle)
                 let gapLine = gaps.isEmpty ? "本轮训练缺口" : gaps.joined(separator: "、")
                 return todayCoachSuggestion(
-                    recommendation: "建议先补齐训练缺口：\(gapLine)；也可以带着缺口继续。",
+                    recommendation: "建议先修补训练缺口：\(gapLine)；也可以带着缺口继续，明日验证会把它当校准点。",
                     reason: feedback.reason
                 )
             }
