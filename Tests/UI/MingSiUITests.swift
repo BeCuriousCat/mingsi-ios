@@ -498,10 +498,19 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "这不是合格复盘")
         ).firstMatch
         XCTAssertTrue(coachCritique.waitForExistence(timeout: 4))
-        let trainingGap = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "还要训练")
+        let listenerReplay = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "听众回放")
         ).firstMatch
-        XCTAssertTrue(trainingGap.waitForExistence(timeout: 4))
+        XCTAssertTrue(listenerReplay.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "我听到的是行动安排")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "还没听到")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "还要训练")
+        ).firstMatch.exists)
         XCTAssertTrue(app.staticTexts["本句观察"].waitForExistence(timeout: 4))
         let answerMaterialObservation = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "行动不能先替代目标")

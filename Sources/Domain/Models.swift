@@ -1445,15 +1445,16 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "还要训练：\(remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps))"
+            let target = remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps)
+            return "听众回放：我还没听到能关闭\(target)的材料，下一句先补这部分"
         }
         if observation.primaryGap == .goal {
-            return "还要训练：把行动当成答案，先补服务对象、成功标准和可观察信号"
+            return "听众回放：我听到的是行动安排，但这是把行动当成答案；还没听到服务对象、成功标准和可观察信号"
         }
         if observation.primaryGap == .narrative {
-            return "还要训练：讲清楚一件事，先补背景、对象、触发、行动和结果"
+            return "听众回放：我听到你想讲清楚这件事，但还没听到背景、对象、触发、行动和结果"
         }
-        return "还要训练：\(observation.trainingAbility.trainingTitle)，\(observation.feedback.diagnosis)"
+        return "听众回放：我听到你在练\(observation.trainingAbility.trainingTitle)，但还没听到\(observation.feedback.diagnosis)"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
