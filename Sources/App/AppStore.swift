@@ -1797,8 +1797,8 @@ final class AppStore: ObservableObject {
                     .filter { $0 != .none }
                     .map(\.displayTitle)
                 let gapLine = gaps.isEmpty ? "本轮训练缺口" : gaps.joined(separator: "、")
-                return todayEntryCondition(
-                    requirement: "先补齐训练缺口：\(gapLine)。",
+                return todayCoachSuggestion(
+                    recommendation: "建议先补齐训练缺口：\(gapLine)；也可以带着缺口继续。",
                     reason: feedback.reason
                 )
             }
@@ -1830,6 +1830,10 @@ final class AppStore: ObservableObject {
 
     private func todayEntryCondition(requirement: String, reason: String) -> String {
         "进入条件：\(requirement) 训练理由：\(reason)"
+    }
+
+    private func todayCoachSuggestion(recommendation: String, reason: String) -> String {
+        "教练建议：\(recommendation) 训练理由：\(reason)"
     }
 
     private var coachBusyMessage: String {

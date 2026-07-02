@@ -1716,6 +1716,14 @@ struct CoachObservation: Codable, Hashable {
         "讲清楚一件事：顺序：背景 → 对象 → 触发 → 行动 → 结果；已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；下一句先补：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
     }
 
+    var secondaryTrainingLine: String {
+        let titles = secondaryGaps
+            .filter { $0 != primaryGap }
+            .map(\.displayTitle)
+            .filter { !$0.isEmpty }
+        return titles.isEmpty ? "" : "同时留意：\(titles.joined(separator: "、"))。"
+    }
+
     var experienceReplayTrainingLine: String {
         ExperienceReplayTraining.line
     }

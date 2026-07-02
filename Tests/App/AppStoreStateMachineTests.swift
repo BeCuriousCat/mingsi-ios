@@ -1387,6 +1387,21 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(observation.feedback.ask.filter { $0 == "？" }.count, 1)
     }
 
+    func testCoachObservationSecondaryTrainingLineKeepsWholeThinkingVisible() {
+        let observation = CoachObservationPolicy().observe(cards: confirmedCards([
+            ThinkingCard(type: .task, title: "先照以前方式推进", body: "我打算先拉会处理，沿用以前有效的做法。"),
+            ThinkingCard(type: .decision, title: "这次应该也有效", body: "我觉得可以先推进，但还没说清目标，也没判断这次条件是否一样。")
+        ]))
+
+        XCTAssertEqual(observation.primaryGap, .experience)
+        XCTAssertTrue(observation.secondaryGaps.contains(.goal))
+        XCTAssertTrue(observation.secondaryGaps.contains(.counterexample))
+        XCTAssertTrue(observation.secondaryTrainingLine.contains("同时留意"))
+        XCTAssertTrue(observation.secondaryTrainingLine.contains("目标缺口"))
+        XCTAssertTrue(observation.secondaryTrainingLine.contains("反例缺口"))
+        XCTAssertFalse(observation.secondaryTrainingLine.contains("经验复现"))
+    }
+
     func testCoachObservationPolicyObservesAnswerTextAsTrainingMaterials() {
         let observation = CoachObservationPolicy().observe(text: "先让 Alex 写清验收标准。")
 
@@ -2568,9 +2583,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(feedback.abilityGapLine.contains("能力缺口"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("没有先定义服务对象或成功标准"))
         XCTAssertTrue(try XCTUnwrap(store.coachAnswerMaterialObservation).contains("行动不能先替代目标"))
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练理由") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以带着缺口继续") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先补齐训练缺口") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })

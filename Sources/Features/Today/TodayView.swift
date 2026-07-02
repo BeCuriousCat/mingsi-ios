@@ -788,6 +788,17 @@ struct TodayView: View {
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if !observation.secondaryTrainingLine.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("同时")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.graphite)
+                    Text(observation.secondaryTrainingLine)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
@@ -812,6 +823,9 @@ struct TodayView: View {
                 accent: DS.caution
             )
             BriefRow(title: "讲述训练", body: observation.narrativeTrainingLine, accent: DS.accent)
+            if !observation.secondaryTrainingLine.isEmpty {
+                BriefRow(title: "旁路留意", body: observation.secondaryTrainingLine, accent: DS.graphite)
+            }
             materialInventoryRows(for: observation)
             BriefRow(title: "推进标准", body: observation.feedback.proceedWhen, accent: DS.success)
         }
