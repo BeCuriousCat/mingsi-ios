@@ -1435,7 +1435,7 @@ struct CoachAnswerFeedbackPolicy {
             : ["这不是合格复盘", repairedPart, nextPart]
         let suffix = canProceed
             ? "这不是普通待办，下一步要用明日结果校准判断。"
-            : "这不是普通待办，要先把思考训练缺口补齐。"
+            : "这不是普通待办，建议先把思考训练缺口补齐；如果继续推进，这个缺口会保留为校准点。"
         return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
     }
 
