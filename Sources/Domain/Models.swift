@@ -1540,12 +1540,12 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "本轮正在练\(plan.trainingTargetLine)。"
+            return "复盘训练契约：本轮正在练\(plan.trainingTargetLine)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。"
         }
         if observation.primaryGap == .goal {
-            return "本轮正在练\(observation.trainingAbility.trainingTitle)：先说清服务对象、成功标准和可观察信号，再安排行动。不是让 AI 替你给答案。"
+            return "复盘训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。先说清服务对象、成功标准和可观察信号，再安排行动。"
         }
-        return "本轮正在练\(observation.trainingAbility.trainingTitle)：\(observation.trainingAbility.coachingMeaning) 不是让 AI 替你给答案。"
+        return "复盘训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。\(observation.trainingAbility.coachingMeaning)"
     }
 
     private func nextRepairQuestion(

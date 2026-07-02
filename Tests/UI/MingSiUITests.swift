@@ -521,6 +521,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["训练产物"].exists)
         XCTAssertFalse(app.staticTexts["自检标准"].exists)
         XCTAssertFalse(app.staticTexts["能力修补"].exists)
+        XCTAssertFalse(app.staticTexts["复盘训练契约"].exists)
         let gapPreview = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "观察事实")
         ).firstMatch
@@ -566,11 +567,16 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
         ).firstMatch
         XCTAssertTrue(selfCheck.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["能力修补"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["能力修补"].exists)
+        XCTAssertTrue(app.staticTexts["复盘训练契约"].waitForExistence(timeout: 4))
         let trainingRepair = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "不是让 AI 替你给答案")
         ).firstMatch
         XCTAssertTrue(trainingRepair.waitForExistence(timeout: 4))
+        let replayContract = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "先补到可复盘")
+        ).firstMatch
+        XCTAssertTrue(replayContract.waitForExistence(timeout: 4))
         let foundationalAbility = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "思考力")
         ).firstMatch

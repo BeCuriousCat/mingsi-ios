@@ -959,7 +959,7 @@ struct TodayView: View {
                         accent: DS.accent
                     )
                     BriefRow(
-                        title: "能力修补",
+                        title: "复盘训练契约",
                         body: feedback.trainingTargetLine,
                         accent: DS.caution
                     )
