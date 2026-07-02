@@ -3582,15 +3582,36 @@ struct QuestTrainingTarget: Identifiable, Hashable {
 
 enum PrincipleRecallFeedbackValue: String, CaseIterable, Identifiable, Codable {
     case helpful
+    case adapted
     case notApplicable = "not_applicable"
     case misrecalled
 
     var id: String { rawValue }
 
+    var isConstructiveUse: Bool {
+        switch self {
+        case .helpful, .adapted:
+            return true
+        case .notApplicable, .misrecalled:
+            return false
+        }
+    }
+
+    var isNegativeRecall: Bool {
+        switch self {
+        case .helpful, .adapted:
+            return false
+        case .notApplicable, .misrecalled:
+            return true
+        }
+    }
+
     var displayTitle: String {
         switch self {
         case .helpful:
             return "有帮助"
+        case .adapted:
+            return "调整使用"
         case .notApplicable:
             return "不适用"
         case .misrecalled:
@@ -3796,10 +3817,8 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
         recallFeedback: [PrincipleRecallFeedback],
         disputedPracticeEvidence: [PrinciplePracticeEvidence] = []
     ) -> PrincipleTrainingSummary {
-        let helpfulCount = recallFeedback.filter { $0.feedback == .helpful }.count
-        let negativeCount = recallFeedback.filter {
-            $0.feedback == .notApplicable || $0.feedback == .misrecalled
-        }.count
+        let helpfulCount = recallFeedback.filter { $0.feedback.isConstructiveUse }.count
+        let negativeCount = recallFeedback.filter { $0.feedback.isNegativeRecall }.count
         let intentionalPracticeCount = practiceEvidence.filter {
             $0.strength == .intentionalPractice || $0.strength == .internalized
         }.count
@@ -3812,7 +3831,7 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
             lhs.updatedAt < rhs.updatedAt
         }
         let latestNegativeRecallFeedback = recallFeedback
-            .filter { $0.feedback == .notApplicable || $0.feedback == .misrecalled }
+            .filter { $0.feedback.isNegativeRecall }
             .max { lhs, rhs in
                 lhs.createdAt < rhs.createdAt
             }

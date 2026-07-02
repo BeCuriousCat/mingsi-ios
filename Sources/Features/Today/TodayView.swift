@@ -34,6 +34,7 @@ enum TodayAutomationID {
     static let questTrainingPrinciplePicker = "today.quest.training-principle-picker"
     static let principleFeedbackNoteField = "today.principle.feedback.note-field"
     static let principleFeedbackHelpfulAction = "today.principle.feedback.helpful-action"
+    static let principleFeedbackAdaptedAction = "today.principle.feedback.adapted-action"
     static let principleFeedbackNotApplicableAction = "today.principle.feedback.not-applicable-action"
     static let principleFeedbackMisrecalledAction = "today.principle.feedback.misrecalled-action"
     static let lensGenerateAction = "today.lens.generate-action"
@@ -723,6 +724,15 @@ struct TodayView: View {
                 )
             }
 
+            if !store.referencedPrinciples.isEmpty {
+                ReferencedPrinciplesView(
+                    principles: store.referencedPrinciples,
+                    retrievalReason: store.referencedPrincipleRetrievalReason,
+                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
+                    onFeedback: recordReferencedPrincipleFeedback
+                )
+            }
+
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 12) {
                     BriefRow(
@@ -744,15 +754,6 @@ struct TodayView: View {
                         )
                     }) {
                         teachingRouteView(teachingPlan)
-                    }
-
-                    if !store.referencedPrinciples.isEmpty {
-                        ReferencedPrinciplesView(
-                            principles: store.referencedPrinciples,
-                            retrievalReason: store.referencedPrincipleRetrievalReason,
-                            retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
-                            onFeedback: recordReferencedPrincipleFeedback
-                        )
                     }
                 }
                 .padding(.top, 8)
@@ -3516,7 +3517,7 @@ private struct ReferencedPrinciplesView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
-                    Text("先判断是否适用")
+                    Text("先判断如何迁移")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                         .padding(.horizontal, 8)
@@ -3524,7 +3525,7 @@ private struct ReferencedPrinciplesView: View {
                         .background(DS.surface, in: Capsule())
                 }
 
-                Text("这次先判断：这些经验是否应该复现；如果不适用，就把原因标出来。")
+                Text("这次先判断：复现、调整，还是否定；旧经验不能直接当成答案，先写出条件差异。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3538,26 +3539,8 @@ private struct ReferencedPrinciplesView: View {
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                             .lineLimit(2)
-                        if let reason = retrievalReason(principle.id) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("召回依据")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(DS.accent)
-                                if let signalText = retrievalSignalText(principle.id) {
-                                    Text("命中信号：\(signalText)")
-                                        .font(.caption)
-                                        .foregroundStyle(DS.mutedInk)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                Text(reason)
-                                    .font(.caption)
-                                    .foregroundStyle(DS.mutedInk)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(.top, 2)
-                        }
                         TextField(
-                            "可选：为什么复现或不复现？",
+                            "可选：为什么复现、调整或不复现？",
                             text: Binding(
                                 get: { feedbackNotes[principle.id, default: ""] },
                                 set: { feedbackNotes[principle.id] = $0 }
@@ -3568,7 +3551,11 @@ private struct ReferencedPrinciplesView: View {
                         .submitLabel(.done)
                         .accessibilityIdentifier(TodayAutomationID.principleFeedbackNoteField)
 
-                        HStack(spacing: 8) {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 118), spacing: 8)],
+                            alignment: .leading,
+                            spacing: 8
+                        ) {
                             Button {
                                 endEditing()
                                 onFeedback(principle, .helpful, feedbackNotes[principle.id, default: ""])
@@ -3576,6 +3563,14 @@ private struct ReferencedPrinciplesView: View {
                                 Label("适用，今天要复现", systemImage: "hand.thumbsup")
                             }
                             .accessibilityIdentifier(TodayAutomationID.principleFeedbackHelpfulAction)
+
+                            Button {
+                                endEditing()
+                                onFeedback(principle, .adapted, feedbackNotes[principle.id, default: ""])
+                            } label: {
+                                Label("适用，但要调整", systemImage: "slider.horizontal.3")
+                            }
+                            .accessibilityIdentifier(TodayAutomationID.principleFeedbackAdaptedAction)
 
                             Button {
                                 endEditing()
@@ -3596,6 +3591,25 @@ private struct ReferencedPrinciplesView: View {
                         .font(.caption2.weight(.semibold))
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
+
+                        if let reason = retrievalReason(principle.id) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("召回依据")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(DS.accent)
+                                if let signalText = retrievalSignalText(principle.id) {
+                                    Text("命中信号：\(signalText)")
+                                        .font(.caption)
+                                        .foregroundStyle(DS.mutedInk)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Text(reason)
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.top, 2)
+                        }
                     }
                     .padding(.vertical, 2)
                 }

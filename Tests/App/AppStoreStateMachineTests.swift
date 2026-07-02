@@ -4903,6 +4903,80 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.referencedPrinciples.isEmpty)
     }
 
+    func testReferencedPrincipleFeedback_persistsAdaptedRecallAndKeepsReferenceAvailable() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let principleRepo = SQLitePrincipleRepository(database: database)
+        let feedbackRepo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let promptRunRepo = SQLitePromptRunRepository(database: database)
+        let recalledPrinciple = PrincipleAsset(
+            title: "Meeting ownership alignment",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync",
+            status: .active
+        )
+        try await principleRepo.savePrinciple(recalledPrinciple, sourceDailyEntryId: UUID())
+
+        let client = RecordingLLMClient(response: Self.questionsResponse)
+        store = AppStore(
+            principleRepository: principleRepo,
+            promptRunRepository: promptRunRepo,
+            principleRecallFeedbackRepository: feedbackRepo,
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.selectLens)
+        var card = ThinkingCard(
+            type: .problem,
+            title: "Meeting ownership unclear",
+            body: "No owner was named."
+        )
+        card.isConfirmed = true
+        store.thinkingCards = [card]
+
+        store.selectThinkingLens(.evidenceCheck)
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let promptRun = PromptRun(
+            promptId: PromptID.generateQuestions.rawValue,
+            promptVersion: "1.0.0",
+            inputSchemaVersion: 1,
+            outputSchemaVersion: 1,
+            modelProvider: "GLM",
+            modelName: "glm-test",
+            sessionMode: SessionMode.standard.rawValue,
+            sourceRecordIds: [store.todayDraft.id.uuidString],
+            requestSummary: "question generation with recalled principle",
+            responseJSON: #"{"questions":[{"question":"What owner evidence is missing?"}]}"#,
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+        try await promptRunRepo.savePromptRun(promptRun)
+
+        let adapted = try XCTUnwrap(PrincipleRecallFeedbackValue(rawValue: "adapted"))
+        await store.recordReferencedPrincipleFeedback(
+            for: recalledPrinciple.id,
+            feedback: adapted,
+            note: "条件不同：这次只需要调整负责人确认方式。"
+        )
+
+        let savedFeedback = try await feedbackRepo.feedback(for: recalledPrinciple.id, limit: 5)
+        XCTAssertEqual(savedFeedback.map(\.feedback), [adapted])
+        XCTAssertEqual(savedFeedback.first?.promptRunId, promptRun.id)
+        XCTAssertEqual(savedFeedback.first?.retrievalSignal, "meeting ownership")
+        XCTAssertEqual(savedFeedback.first?.note, "条件不同：这次只需要调整负责人确认方式。")
+        XCTAssertEqual(store.referencedPrinciples.map(\.id), [recalledPrinciple.id])
+
+        await store.loadRecentPromptRuns(limit: 5)
+
+        XCTAssertEqual(store.promptRunStats?.userDeniedCount, 0)
+    }
+
     func testReferencedPrincipleFeedback_marksLinkedPromptRunDeniedForRejectedRecall() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let principleRepo = SQLitePrincipleRepository(database: database)
@@ -9796,6 +9870,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.lensCustomAction, "today.lens.custom-action")
         XCTAssertEqual(TodayAutomationID.principleFeedbackNoteField, "today.principle.feedback.note-field")
         XCTAssertEqual(TodayAutomationID.principleFeedbackHelpfulAction, "today.principle.feedback.helpful-action")
+        XCTAssertEqual(TodayAutomationID.principleFeedbackAdaptedAction, "today.principle.feedback.adapted-action")
         XCTAssertEqual(TodayAutomationID.principleFeedbackNotApplicableAction, "today.principle.feedback.not-applicable-action")
         XCTAssertEqual(TodayAutomationID.principleFeedbackMisrecalledAction, "today.principle.feedback.misrecalled-action")
         XCTAssertEqual(TodayAutomationID.customLensSheet, "today.custom-lens.sheet")
@@ -11713,6 +11788,39 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(summary.latestNegativeRecallFeedbackReason, "Matched cross-team meeting and owner.")
         XCTAssertEqual(summary.latestNegativeRecallFeedbackSignal, "meeting ownership")
         XCTAssertEqual(summary.latestNegativeRecallFeedbackNote, "模型把例外场景当成规则。")
+    }
+
+    func testPrincipleTrainingSummary_treatsAdaptedRecallAsConstructivePractice() throws {
+        let adapted = try XCTUnwrap(PrincipleRecallFeedbackValue(rawValue: "adapted"))
+        let principle = PrincipleAsset(
+            id: UUID(),
+            title: "先确认负责人",
+            summary: "行动前先确认唯一负责人。",
+            triggerContext: "协作任务",
+            actions: ["说清负责人"],
+            successCriteria: "没有职责空白",
+            exceptions: ""
+        )
+        let feedback = PrincipleRecallFeedback(
+            principleId: principle.id,
+            promptId: .generateQuestions,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword-feedback.v3",
+            retrievalReason: "Matched meeting ownership.",
+            retrievalSignal: "meeting ownership",
+            feedback: adapted,
+            note: "旧经验相关，但需要调整到当前协作关系。"
+        )
+
+        let summary = PrincipleTrainingSummary.summary(
+            for: principle,
+            practiceEvidence: [],
+            recallFeedback: [feedback]
+        )
+
+        XCTAssertEqual(summary.state, .consciouslyPracticed)
+        XCTAssertEqual(summary.helpfulRecallFeedbackCount, 1)
+        XCTAssertEqual(summary.negativeRecallFeedbackCount, 0)
+        XCTAssertNil(summary.latestNegativeRecallFeedbackId)
     }
 
     func testLoadPersistedState_keepsNeedsReviewPrinciplesVisibleInTrainingSummaries() async throws {

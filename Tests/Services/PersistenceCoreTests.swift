@@ -609,6 +609,36 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(loaded.first?.note, "关键词撞上了，但场景不是会议。")
     }
 
+    func testPrincipleRecallFeedback_persistsAdaptedEvents() async throws {
+        let repo = SQLitePrincipleRecallFeedbackRepository(database: database)
+        let principleID = UUID()
+        let promptRunID = UUID()
+        let entryID = UUID()
+        let adapted = try XCTUnwrap(PrincipleRecallFeedbackValue(rawValue: "adapted"))
+
+        let feedback = PrincipleRecallFeedback(
+            principleId: principleID,
+            promptRunId: promptRunID,
+            sourceDailyEntryId: entryID,
+            promptId: .generateQuestions,
+            retrievalPolicyVersion: "principle-retrieval.local-keyword.v1",
+            retrievalReason: "Matched meeting ownership with 会前明确负责人 using local keyword policy; score=4.",
+            retrievalSignal: "meeting ownership",
+            feedback: adapted,
+            note: "旧经验相关，但这次只调整负责人确认方式。",
+            createdAt: Date(timeIntervalSince1970: 300)
+        )
+
+        try await repo.saveFeedback(feedback)
+
+        let loaded = try await repo.feedback(for: principleID, limit: 10)
+        XCTAssertEqual(loaded.map(\.feedback), [adapted])
+        XCTAssertEqual(loaded.first?.promptRunId, promptRunID)
+        XCTAssertEqual(loaded.first?.sourceDailyEntryId, entryID)
+        XCTAssertEqual(loaded.first?.retrievalSignal, "meeting ownership")
+        XCTAssertEqual(loaded.first?.note, "旧经验相关，但这次只调整负责人确认方式。")
+    }
+
     func testPrinciplePracticeEvidence_persistsPracticeEvidenceForPrinciple() async throws {
         let repo = SQLitePrinciplePracticeEvidenceRepository(database: database)
         let principleID = UUID()

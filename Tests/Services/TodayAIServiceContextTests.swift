@@ -2477,6 +2477,46 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertFalse(differentSignal.retrievalReason.contains("negative recall feedback penalty"))
     }
 
+    func testRelevantPrinciples_adaptedRecallFeedbackDoesNotPenalizeRetrievalSignal() async throws {
+        let adapted = try XCTUnwrap(PrincipleRecallFeedbackValue(rawValue: "adapted"))
+        let principle = PrincipleAsset(
+            title: "Meeting ownership alignment",
+            summary: "Clarify meeting ownership before execution.",
+            triggerContext: "meeting ownership",
+            actions: ["Write owner"],
+            successCriteria: "Owner is known.",
+            exceptions: "Low-stakes sync"
+        )
+        let context = TodayAIContext(
+            draft: DailyEntryDraft(rawText: "The meeting ownership owner was unclear.", selectedLens: .evidenceCheck),
+            confirmedCards: [
+                ThinkingCard(type: .problem, title: "Meeting ownership unclear", body: "No owner was named for meeting ownership.")
+            ],
+            principles: [principle],
+            principleRecallFeedback: [
+                PrincipleRecallFeedback(
+                    principleId: principle.id,
+                    promptId: .generateQuestions,
+                    retrievalPolicyVersion: LocalPrincipleRetriever.policyVersion,
+                    retrievalReason: "Earlier recall needed adaptation, not rejection.",
+                    retrievalSignal: "meeting ownership",
+                    feedback: adapted,
+                    createdAt: Date(timeIntervalSince1970: 100)
+                )
+            ]
+        )
+
+        let retrieved = try XCTUnwrap(
+            LocalPrincipleRetriever()
+                .retrievePrinciples(for: context, promptID: .generateQuestions, limit: 1)
+                .first
+        )
+
+        XCTAssertEqual(retrieved.principle.id, principle.id)
+        XCTAssertEqual(retrieved.retrievalSignal, "meeting ownership")
+        XCTAssertFalse(retrieved.retrievalReason.contains("negative recall feedback penalty"))
+    }
+
     private static let cardsResponse = Data(
         """
         {

@@ -6478,9 +6478,7 @@ final class AppStore: ObservableObject {
                     for: principle.id,
                     limit: principleNeedsReviewNegativeFeedbackThreshold
                 )
-                let negativeCount = feedback.filter {
-                    $0.feedback == .notApplicable || $0.feedback == .misrecalled
-                }.count
+                let negativeCount = feedback.filter { $0.feedback.isNegativeRecall }.count
                 guard negativeCount >= principleNeedsReviewNegativeFeedbackThreshold else { continue }
 
                 try await principleRepository.updatePrincipleStatus(.needsReview, principleId: principle.id)
@@ -6657,7 +6655,7 @@ final class AppStore: ObservableObject {
 
         do {
             try await principleRecallFeedbackRepository.saveFeedback(event)
-            if feedback == .notApplicable || feedback == .misrecalled {
+            if feedback.isNegativeRecall {
                 if let linkedPromptRun {
                     try? await promptRunRepository?.updatePromptRunFeedback(.denied, runId: linkedPromptRun.id)
                 }

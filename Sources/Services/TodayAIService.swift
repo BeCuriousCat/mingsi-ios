@@ -411,16 +411,14 @@ struct LocalPrincipleRetriever: PrincipleRetriever {
         return feedback
             .filter { $0.principleId == principleId }
             .reduce(0) { partial, event in
-                switch event.feedback {
-                case .helpful:
+                guard event.feedback.isNegativeRecall else {
                     return partial
-                case .notApplicable, .misrecalled:
-                    let eventSignal = normalizedSignal(event.retrievalSignal)
-                    guard eventSignal.isEmpty || eventSignal == normalizedRetrievalSignal else {
-                        return partial
-                    }
-                    return partial + 1
                 }
+                let eventSignal = normalizedSignal(event.retrievalSignal)
+                guard eventSignal.isEmpty || eventSignal == normalizedRetrievalSignal else {
+                    return partial
+                }
+                return partial + 1
             }
     }
 

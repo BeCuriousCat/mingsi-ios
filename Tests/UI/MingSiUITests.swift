@@ -640,9 +640,15 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "这次先判断")
         ).firstMatch
         XCTAssertTrue(replayPrompt.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.buttons["today.principle.feedback.helpful-action"].label.contains("适用"))
-        XCTAssertTrue(app.buttons["today.principle.feedback.not-applicable-action"].label.contains("不复现"))
-        XCTAssertTrue(app.buttons["today.principle.feedback.misrecalled-action"].label.contains("召回错了"))
+        XCTAssertTrue(replayPrompt.label.contains("复现、调整"))
+        let helpfulAction = app.buttons["today.principle.feedback.helpful-action"].firstMatch
+        scrollToElement(helpfulAction, in: app)
+        XCTAssertTrue(helpfulAction.label.contains("适用"))
+        let adaptedAction = app.buttons["today.principle.feedback.adapted-action"].firstMatch
+        XCTAssertTrue(adaptedAction.waitForExistence(timeout: 4))
+        XCTAssertTrue(adaptedAction.label.contains("调整"))
+        XCTAssertTrue(app.buttons["today.principle.feedback.not-applicable-action"].firstMatch.label.contains("不复现"))
+        XCTAssertTrue(app.buttons["today.principle.feedback.misrecalled-action"].firstMatch.label.contains("召回错了"))
     }
 
     func testTodayReviewQuestsSeedShowsQuestCalibrationTarget() throws {
