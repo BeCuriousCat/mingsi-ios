@@ -524,6 +524,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(nextRepairQuestion.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前仍缺"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
+        XCTAssertFalse(app.staticTexts["听众卡点"].exists)
         XCTAssertFalse(app.staticTexts["训练产物"].exists)
         XCTAssertFalse(app.staticTexts["自检标准"].exists)
         XCTAssertFalse(app.staticTexts["能力修补"].exists)
@@ -558,11 +559,16 @@ final class MingSiUITests: XCTestCase {
         trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练标准")).firstMatch.waitForExistence(timeout: 4))
 
-        XCTAssertTrue(app.staticTexts["能力缺口"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["听众卡点"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         let abilityGap = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "把行动当成答案")
+            NSPredicate(format: "label CONTAINS %@", "我能听到你想行动")
         ).firstMatch
         XCTAssertTrue(abilityGap.waitForExistence(timeout: 4))
+        let listenerGap = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "听不懂")
+        ).firstMatch
+        XCTAssertTrue(listenerGap.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["训练产物"].waitForExistence(timeout: 4))
         let trainingOutput = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "服务对象、成功标准、可观察信号")

@@ -1495,12 +1495,12 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "能力缺口：\(plan.trainingTargetLine)还没有补成可复盘材料。"
+            return "听众卡点：我还听不出\(plan.trainingTargetLine)已经补成可复盘材料。"
         }
         if observation.primaryGap == .goal {
-            return "能力缺口：把行动当成答案，少了服务对象、成功标准和可观察信号。"
+            return "听众卡点：我能听到你想行动，但听不懂服务对象、成功标准和可观察信号。"
         }
-        return "能力缺口：\(observation.trainingAbility.trainingTitle)还没练到位，\(observation.feedback.diagnosis)"
+        return "听众卡点：我能听到你在练\(observation.trainingAbility.trainingTitle)，但听不懂\(observation.feedback.diagnosis)"
     }
 
     private func trainingOutputLine(

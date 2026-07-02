@@ -944,7 +944,7 @@ struct TodayView: View {
             if isAnswerTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
                     BriefRow(
-                        title: "能力缺口",
+                        title: "听众卡点",
                         body: feedback.abilityGapLine,
                         accent: DS.accent
                     )
