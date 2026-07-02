@@ -511,17 +511,9 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "还要训练")
         ).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts["本句观察"].waitForExistence(timeout: 4))
-        let answerMaterialObservation = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "行动不能先替代目标")
-        ).firstMatch
-        XCTAssertTrue(answerMaterialObservation.waitForExistence(timeout: 4))
-        let answerMaterialGap = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
-        ).firstMatch
-        XCTAssertTrue(answerMaterialGap.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["你刚补上"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["能否进入明日验证"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["本句观察"].exists)
+        XCTAssertFalse(app.staticTexts["你刚补上"].exists)
+        XCTAssertFalse(app.staticTexts["能否进入明日验证"].exists)
         let validationGate = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "不能进入明日验证")
         ).firstMatch
@@ -571,6 +563,15 @@ final class MingSiUITests: XCTestCase {
         trainingToolsToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "收起训练标准")).firstMatch.waitForExistence(timeout: 4))
 
+        XCTAssertTrue(app.staticTexts["本句观察"].waitForExistence(timeout: 4))
+        let answerMaterialObservation = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "行动不能先替代目标")
+        ).firstMatch
+        XCTAssertTrue(answerMaterialObservation.waitForExistence(timeout: 4))
+        let answerMaterialGap = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
+        ).firstMatch
+        XCTAssertTrue(answerMaterialGap.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["听众卡点"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         let abilityGap = app.staticTexts.matching(

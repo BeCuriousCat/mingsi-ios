@@ -880,35 +880,18 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: "你刚补上",
-                body: feedback.repairedLine,
-                accent: feedback.canProceedToValidation ? DS.success : DS.caution
-            )
-            BriefRow(
-                title: "能否进入明日验证",
-                body: feedback.proceedLine,
-                accent: feedback.canProceedToValidation ? DS.success : DS.brick
-            )
-            BriefRow(
-                title: "下一句修补",
-                body: feedback.nextRepairQuestion,
-                accent: DS.brick
-            )
-            BriefRow(
                 title: "教练批改",
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
-            if let answerMaterialObservation {
-                BriefRow(
-                    title: "本句观察",
-                    body: answerMaterialObservation,
-                    accent: DS.accent
-                )
-            }
             BriefRow(
                 title: "我还没听懂",
                 body: feedback.missingLine,
+                accent: feedback.canProceedToValidation ? DS.success : DS.brick
+            )
+            BriefRow(
+                title: "下一句修补",
+                body: "\(feedback.proceedLine)\n\(feedback.nextRepairQuestion)",
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
@@ -916,14 +899,17 @@ struct TodayView: View {
                 body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
                 accent: DS.graphite
             )
-            answerTrainingToolsDisclosure(feedback)
+            answerTrainingToolsDisclosure(feedback, answerMaterialObservation: answerMaterialObservation)
             if includesTeachingRoute {
                 teachingRouteView(feedback.teachingPlan)
             }
         }
     }
 
-    private func answerTrainingToolsDisclosure(_ feedback: CoachAnswerTrainingFeedback) -> some View {
+    private func answerTrainingToolsDisclosure(
+        _ feedback: CoachAnswerTrainingFeedback,
+        answerMaterialObservation: String? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
@@ -944,6 +930,18 @@ struct TodayView: View {
 
             if isAnswerTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
+                    BriefRow(
+                        title: "你刚补上",
+                        body: feedback.repairedLine,
+                        accent: feedback.canProceedToValidation ? DS.success : DS.caution
+                    )
+                    if let answerMaterialObservation {
+                        BriefRow(
+                            title: "本句观察",
+                            body: answerMaterialObservation,
+                            accent: DS.accent
+                        )
+                    }
                     BriefRow(
                         title: "听众卡点",
                         body: feedback.abilityGapLine,
