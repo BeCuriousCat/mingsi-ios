@@ -1290,7 +1290,7 @@ struct TodayView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(DS.accent)
-            .disabled(store.todayPrimaryActionBlocker != nil)
+            .disabled(store.isTodayPrimaryActionDisabled)
             .accessibilityIdentifier(TodayAutomationID.primaryAction)
 
             if let blocker = store.todayPrimaryActionBlocker {

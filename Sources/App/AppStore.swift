@@ -1540,6 +1540,10 @@ final class AppStore: ObservableObject {
         return feedback.readiness != .ready
     }
 
+    var isTodayPrimaryActionDisabled: Bool {
+        canContinueAnswerQuestionsWithCoachGapOverride ? false : todayPrimaryActionBlocker != nil
+    }
+
     var coachAnswerMaterialObservation: String? {
         guard todayDraft.state == .answerQuestions else { return nil }
         guard let answer = firstNonEmptyAnswerText else { return nil }
@@ -3921,7 +3925,11 @@ final class AppStore: ObservableObject {
         case .selectLens:
             confirmSelectedLens()
         case .answerQuestions:
-            generateQuestsFromAnswers()
+            if canContinueAnswerQuestionsWithCoachGapOverride {
+                continueAnswerQuestionsWithCoachGapOverride()
+            } else {
+                generateQuestsFromAnswers()
+            }
         case .reviewQuests:
             saveReviewedQuests()
         case .extractPrinciple:

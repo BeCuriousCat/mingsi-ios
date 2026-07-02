@@ -1715,7 +1715,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.reproduceLine))
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.adaptLine))
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.rejectLine))
-        XCTAssertTrue(feedback.proceedLine.contains("不能进入明日验证"))
+        XCTAssertFalse(feedback.proceedLine.contains("不能进入明日验证"))
+        XCTAssertTrue(feedback.proceedLine.contains("教练建议"))
+        XCTAssertTrue(feedback.proceedLine.contains("也可以带着缺口继续"))
         XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
     }
 
@@ -2486,7 +2488,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(request.contextPayload?.legacyKeyValues["coachTurnRecommendedMove"], NextCoachMove.generateQuest.rawValue)
     }
 
-    func testAnswerQuestions_unresolvedCoachGapStaysInQuestionStageWithTrainingFeedback() async throws {
+    func testAnswerQuestions_unresolvedCoachGapShowsOptionalTrainingFeedback() async throws {
         let client = SequencedLLMClient(results: [
             .success(Self.questionsResponse),
             .success(Self.questsResponse)
@@ -2512,24 +2514,24 @@ final class AppStoreStateMachineTests: XCTestCase {
             questionID: question.id,
             answer: "先让 Alex 写清验收标准。"
         )
-        store.submitTodayStep()
-        try await waitForState(.answerQuestions)
 
-        XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
-        XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
-        XCTAssertTrue(store.todayLoopMessage.contains("我还没听懂"))
-        XCTAssertFalse(store.todayLoopMessage.contains("还没练到位"))
-        XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
-        XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
-        XCTAssertTrue(store.todayLoopMessage.contains("复盘训练契约"))
-        XCTAssertFalse(store.todayLoopMessage.contains("能力训练："))
-        XCTAssertTrue(store.todayLoopMessage.contains("不是让 AI 替你给答案"))
-        XCTAssertTrue(store.todayLoopMessage.contains("行动当成答案"))
-        XCTAssertTrue(store.todayLoopMessage.contains("服务对象"))
-        XCTAssertTrue(store.todayLoopMessage.contains("成功标准"))
-        XCTAssertTrue(store.todayLoopMessage.contains("教练追问"))
-        XCTAssertTrue(store.todayLoopMessage.contains("过往经验"))
-        XCTAssertTrue(store.todayLoopMessage.contains("没有先定义服务对象或成功标准"))
+        let feedback = try XCTUnwrap(store.coachAnswerTrainingFeedback)
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
+        XCTAssertTrue(feedback.missingLine.contains("我还没听懂"))
+        XCTAssertFalse(feedback.missingLine.contains("还没练到位"))
+        XCTAssertTrue(feedback.missingLine.contains("观察事实"))
+        XCTAssertFalse(feedback.proceedLine.contains("不能进入明日验证"))
+        XCTAssertTrue(feedback.proceedLine.contains("教练建议"))
+        XCTAssertTrue(feedback.proceedLine.contains("也可以带着缺口继续"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("复盘训练契约"))
+        XCTAssertFalse(feedback.trainingTargetLine.contains("能力训练："))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("行动当成答案"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("服务对象"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("成功标准"))
+        XCTAssertTrue(feedback.nextRepairQuestion.contains("谁的什么问题会变少"))
+        XCTAssertTrue(feedback.experienceReplayPrompt.contains("没有先定义服务对象或成功标准"))
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
     }
 
@@ -2636,6 +2638,47 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(turn.readiness, .ready)
         XCTAssertFalse(turn.openEvidenceGaps.isEmpty)
         XCTAssertTrue(turn.reason.contains("override"))
+    }
+
+    func testAnswerQuestions_primarySubmitRecordsCoachGapOverrideWhenSuggestionIsOptional() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.opposingViewQuestionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        store.updateQuestionAnswer(
+            questionID: question.id,
+            answer: "先让 Alex 写清验收标准。"
+        )
+
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
+
+        store.submitTodayStep()
+        try await waitForState(.reviewQuests)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuests })
+        XCTAssertEqual(request.contextPayload?.coachDiagnosis?.source, .userOverrideProgress)
+        let turn = try XCTUnwrap(request.contextPayload?.coachTurnState)
+        XCTAssertEqual(turn.decisionSource, .userOverrideProgress)
+        XCTAssertEqual(turn.readiness, .ready)
+        XCTAssertFalse(turn.openEvidenceGaps.isEmpty)
     }
 
     func testSelectLens_recordsUserOverrideSeparatelyFromCoachRecommendation() async throws {

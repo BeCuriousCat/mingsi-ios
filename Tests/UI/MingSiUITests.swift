@@ -514,10 +514,10 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["本句观察"].exists)
         XCTAssertFalse(app.staticTexts["你刚补上"].exists)
         XCTAssertFalse(app.staticTexts["能否进入明日验证"].exists)
-        let validationGate = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "不能进入明日验证")
+        let optionalCoachSuggestion = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "也可以带着缺口继续")
         ).firstMatch
-        XCTAssertTrue(validationGate.waitForExistence(timeout: 4))
+        XCTAssertTrue(optionalCoachSuggestion.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["下一句修补"].waitForExistence(timeout: 4))
         let nextRepairQuestion = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "下一句请写成")
@@ -526,6 +526,9 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["我还没听懂"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["当前仍缺"].exists)
         XCTAssertTrue(app.buttons["带着缺口继续"].waitForExistence(timeout: 4))
+        let primaryAction = app.buttons["today.primary-action"]
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 4))
+        XCTAssertTrue(primaryAction.isEnabled)
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         XCTAssertFalse(app.staticTexts["听众卡点"].exists)
         XCTAssertFalse(app.staticTexts["训练产物"].exists)
