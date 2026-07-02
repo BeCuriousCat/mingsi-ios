@@ -535,6 +535,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         XCTAssertFalse(app.staticTexts["听众卡点"].exists)
         XCTAssertFalse(app.staticTexts["训练产物"].exists)
+        XCTAssertFalse(app.staticTexts["可复述材料"].exists)
         XCTAssertFalse(app.staticTexts["自检标准"].exists)
         XCTAssertFalse(app.staticTexts["能力修补"].exists)
         XCTAssertFalse(app.staticTexts["复盘训练契约"].exists)
@@ -578,9 +579,10 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "听不懂")
         ).firstMatch
         XCTAssertTrue(listenerGap.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["训练产物"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["可复述材料"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["训练产物"].exists)
         let trainingOutput = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "服务对象、成功标准、可观察信号")
+            NSPredicate(format: "label CONTAINS %@", "别人能复述")
         ).firstMatch
         XCTAssertTrue(trainingOutput.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["自检标准"].waitForExistence(timeout: 4))

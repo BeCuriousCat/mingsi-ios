@@ -1509,15 +1509,15 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "训练产物：补出一段可复盘材料，能支撑\(plan.proceedStandard)"
+            return "可复述材料：补出一段别人能复述的可复盘材料，能支撑\(plan.proceedStandard)"
         }
         if observation.primaryGap == .goal {
-            return "训练产物：一句包含服务对象、成功标准、可观察信号的判断，再决定行动。"
+            return "可复述材料：一句让别人能复述服务对象、成功标准、可观察信号的判断，再决定行动。"
         }
         if observation.primaryGap == .narrative {
-            return "训练产物：一段包含背景、对象、触发、行动、结果的完整讲述。"
+            return "可复述材料：一段让别人能复述背景、对象、触发、行动、结果的完整讲述。"
         }
-        return "训练产物：补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让下一步可判断、可执行、可复盘。"
+        return "可复述材料：补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让别人能复述并判断下一步。"
     }
 
     private func selfCheckLine(
