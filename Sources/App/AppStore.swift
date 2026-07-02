@@ -1567,42 +1567,92 @@ final class AppStore: ObservableObject {
         guard !trimmed.isEmpty else { return nil }
 
         let observation = CoachObservationPolicy().observe(text: trimmed)
-        let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
-        let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
         if observation.primaryGap == .narrative {
-            return "\(observation.trainingAbility.trainingTitle)：我作为听众现在只能听懂：\(provided)。我听不懂的是：\(missing)。下一句请先补：什么背景下，谁做了什么，触发点是什么，后来发生了什么。"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "讲述还不能被听众复述",
+                ask: "什么背景下，谁做了什么，触发点是什么，后来发生了什么。"
+            )
         }
         if observation.primaryGap == .experience {
             return "过往经验复现训练：旧经验不能直接当成答案。请判断这次是复现、调整，还是否定；下一句先补：条件差异。"
         }
         if observation.primaryGap == .observation {
-            return "思考力中的观察力：判断不能先当结论。请补一个可观察事实，把事实和解释分开。"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "判断不能先当结论",
+                ask: "一个可观察事实，把事实和解释分开。"
+            )
         }
         if observation.primaryGap == .object {
-            return "沟通力中的描述力：还没说清服务对象。请补：这件事影响谁，或你要服务谁的什么问题？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "还没说清服务对象",
+                ask: "这件事影响谁，或你要服务谁的什么问题？"
+            )
         }
         if observation.primaryGap == .goal {
-            return "思考力中的判断力：行动不能先替代目标。请补：如果这件事做对了，谁的什么问题会变少，成功标准是什么？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "行动不能先替代目标",
+                ask: "如果这件事做对了，谁的什么问题会变少，成功标准是什么？"
+            )
         }
         if observation.primaryGap == .constraint {
-            return "思考力中的分析力：还没说清具体限制。请补：现在卡住来自时间、资源、权限、信息、关系还是系统边界？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "还没说清具体限制",
+                ask: "现在卡住来自时间、资源、权限、信息、关系还是系统边界？"
+            )
         }
         if observation.primaryGap == .causal {
-            return "思考力中的分析力：这还是跳步的因果解释。请补：A 到 B 中间发生了什么，哪个环节最关键？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "这还是跳步的因果解释",
+                ask: "A 到 B 中间发生了什么，哪个环节最关键？"
+            )
         }
         if observation.primaryGap == .counterexample {
-            return "思考力中的分析力：这条解释还没有被反例挑战。请补：什么事实会推翻、替代解释或削弱当前解释？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "这条解释还没有被反例挑战",
+                ask: "什么事实会推翻、替代解释或削弱当前解释？"
+            )
         }
         if observation.primaryGap == .judgment {
-            return "思考力中的判断力：判断不能只停在结论。请补：你的判断标准是什么，为什么这件事比其他问题更重要，取舍依据是什么？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "判断不能只停在结论",
+                ask: "你的判断标准是什么，为什么这件事比其他问题更重要，取舍依据是什么？"
+            )
         }
         if observation.primaryGap == .calibration {
-            return "思考力中的校准力：判断需要未来信号。请补：明天或近期哪个信号会证明今天判断需要更新，你要如何更新判断？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "判断需要未来信号",
+                ask: "明天或近期哪个信号会证明今天判断需要更新，你要如何更新判断？"
+            )
         }
         if observation.primaryGap == .execution {
-            return "执行力训练：这还不是可检查结果。请补：明天最小的一步是什么，完成后留下什么证据？"
+            return listenerReplayObservationLine(
+                for: observation,
+                diagnosis: "这还不是可检查结果",
+                ask: "明天最小的一步是什么，完成后留下什么证据？"
+            )
         }
+        let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
+        let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
         return "已说清：\(provided)。下一句先补：\(missing)。"
+    }
+
+    private static func listenerReplayObservationLine(
+        for observation: CoachObservation,
+        diagnosis: String,
+        ask: String
+    ) -> String {
+        let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
+        let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
+        return "\(observation.trainingAbility.trainingTitle)：\(diagnosis)。我作为听众现在只能听懂：\(provided)。我听不懂的是：\(missing)。下一句请先补：\(ask)"
     }
 
     private static func materialTrainingFeedback(for text: String) -> CoachMaterialTrainingFeedback? {

@@ -1402,10 +1402,14 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.todayDraft.state = .capture
         store.updateTodayCapture("先让 Alex 写清验收标准。")
 
-        XCTAssertEqual(
-            store.coachCaptureMaterialObservation,
-            "思考力中的判断力：行动不能先替代目标。请补：如果这件事做对了，谁的什么问题会变少，成功标准是什么？"
-        )
+        let line = store.coachCaptureMaterialObservation ?? ""
+        XCTAssertTrue(line.contains("思考力中的判断力"))
+        XCTAssertTrue(line.contains("行动不能先替代目标"))
+        XCTAssertTrue(line.contains("我作为听众现在只能听懂"))
+        XCTAssertTrue(line.contains("我听不懂的是"))
+        XCTAssertTrue(line.contains("下一句请先补"))
+        XCTAssertTrue(line.contains("谁的什么问题会变少"))
+        XCTAssertTrue(line.contains("成功标准"))
     }
 
     func testCaptureMaterialTrainingFeedbackShowsTargetRepairAndSelfCheck() throws {
@@ -1490,6 +1494,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
         XCTAssertTrue(line.contains("思考力中的判断力"))
         XCTAssertTrue(line.contains("行动不能先替代目标"))
+        XCTAssertTrue(line.contains("我作为听众现在只能听懂"))
+        XCTAssertTrue(line.contains("我听不懂的是"))
+        XCTAssertTrue(line.contains("下一句请先补"))
         XCTAssertTrue(line.contains("谁的什么问题会变少"))
         XCTAssertTrue(line.contains("成功标准"))
     }
@@ -1545,6 +1552,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
         XCTAssertTrue(line.contains("沟通力中的描述力"))
         XCTAssertTrue(line.contains("还没说清服务对象"))
+        XCTAssertTrue(line.contains("我作为听众现在只能听懂"))
+        XCTAssertTrue(line.contains("我听不懂的是"))
+        XCTAssertTrue(line.contains("下一句请先补"))
         XCTAssertTrue(line.contains("影响谁"))
         XCTAssertTrue(line.contains("谁的什么问题"))
     }
