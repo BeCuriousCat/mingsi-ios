@@ -1478,8 +1478,8 @@ struct CoachAnswerFeedbackPolicy {
 
     private func missingLine(remainingGaps: [EvidenceGapType]) -> String {
         remainingGaps.isEmpty
-            ? "关键缺口已关闭。"
-            : "还没练到位：\(gapLine(for: remainingGaps))。"
+            ? "我已经能复述关键材料。"
+            : "我还没听懂：\(gapLine(for: remainingGaps))。"
     }
 
     private func proceedLine(

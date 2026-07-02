@@ -1532,6 +1532,14 @@ final class AppStore: ObservableObject {
         )
     }
 
+    var canContinueAnswerQuestionsWithCoachGapOverride: Bool {
+        guard !isAIRunning else { return false }
+        guard todayDraft.state == .answerQuestions else { return false }
+        guard hasAnsweredReflectionQuestion, hasAnsweredCalibrationTarget else { return false }
+        guard let feedback = coachAnswerFeedbackPreview else { return false }
+        return feedback.readiness != .ready
+    }
+
     var coachAnswerMaterialObservation: String? {
         guard todayDraft.state == .answerQuestions else { return nil }
         guard let answer = firstNonEmptyAnswerText else { return nil }
@@ -4213,6 +4221,41 @@ final class AppStore: ObservableObject {
         coachDiagnosis = diagnosis
         syncCoachTurnState(with: diagnosis)
         todayLoopMessage = "已记录为用户主动推进；后续仍保留证据缺口提示。"
+    }
+
+    func continueAnswerQuestionsWithCoachGapOverride() {
+        guard !isAIRunning else {
+            todayLoopMessage = coachBusyMessage
+            return
+        }
+        guard todayDraft.state == .answerQuestions else { return }
+        guard hasAnsweredReflectionQuestion else {
+            todayLoopMessage = todayEntryCondition(
+                requirement: "先回答一个教练问题。",
+                reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
+            )
+            return
+        }
+        guard hasAnsweredCalibrationTarget else {
+            todayLoopMessage = todayEntryCondition(
+                requirement: "先在今日复盘中形成一个待验证判断。",
+                reason: "验证行动要验证今天的判断，不是普通待办。"
+            )
+            return
+        }
+
+        refreshCoachTurnStateAfterAnswers()
+        if let coachTurnState, coachTurnState.readiness != .ready {
+            var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+            diagnosis.source = .userOverrideProgress
+            diagnosis.readiness = .ready
+            diagnosis.recommendedMove = .generateQuest
+            diagnosis.reason = "用户选择带着教练缺口继续；后续仍保留证据缺口提示。"
+            coachDiagnosis = diagnosis
+            self.coachTurnState = CoachTurnPolicy().applyingUserDecision(.userOverrideProgress, to: coachTurnState)
+            todayLoopMessage = "已记录为用户主动带着缺口继续；后续仍保留证据缺口提示。"
+        }
+        generateQuestsFromAnswers()
     }
 
     @discardableResult

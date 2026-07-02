@@ -19,6 +19,7 @@ enum TodayAutomationID {
     static let coachDiagnosisAcceptAction = "today.coach-diagnosis.accept-action"
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
+    static let answerQuestionsOverrideGapAction = "today.answer.override-gap-action"
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
     static let answerTrainingToolsToggle = "today.answer.training-tools-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
@@ -906,7 +907,7 @@ struct TodayView: View {
                 )
             }
             BriefRow(
-                title: "当前仍缺",
+                title: "我还没听懂",
                 body: feedback.missingLine,
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
@@ -1286,6 +1287,19 @@ struct TodayView: View {
                     .foregroundStyle(DS.mutedInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier(TodayAutomationID.primaryActionHint)
+            }
+
+            if store.canContinueAnswerQuestionsWithCoachGapOverride {
+                Button {
+                    store.continueAnswerQuestionsWithCoachGapOverride()
+                } label: {
+                    Label("带着缺口继续", systemImage: "arrow.right.circle")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.accent)
+                .accessibilityIdentifier(TodayAutomationID.answerQuestionsOverrideGapAction)
             }
 
             HStack(spacing: 18) {

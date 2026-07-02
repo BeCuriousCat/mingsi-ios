@@ -1689,7 +1689,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
         XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
         XCTAssertTrue(feedback.repairedLine.contains("已补训练材料"))
+        XCTAssertTrue(feedback.missingLine.contains("我还没听懂"))
         XCTAssertTrue(feedback.missingLine.contains("缺因果链"))
+        XCTAssertFalse(feedback.missingLine.contains("还没练到位"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("因果链"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("过往"))
         XCTAssertTrue(feedback.experienceReplayPrompt.contains("先判断：复现、调整，还是否定"))
@@ -1743,7 +1745,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.coachCritiqueLine.contains("缺因果链"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
         XCTAssertTrue(feedback.repairedLine.contains("已补训练材料：缺观察事实"))
-        XCTAssertTrue(feedback.missingLine.contains("还没练到位：缺因果链"))
+        XCTAssertTrue(feedback.missingLine.contains("我还没听懂：缺因果链"))
+        XCTAssertFalse(feedback.missingLine.contains("还没练到位"))
         XCTAssertTrue(feedback.proceedLine.contains("先修补训练缺口"))
     }
 
@@ -1929,7 +1932,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.coachCritiqueLine.contains("可以进入明日验证"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("用明日结果校准判断"))
         XCTAssertTrue(feedback.repairedLine.contains("缺校准信号"))
-        XCTAssertTrue(feedback.missingLine.contains("关键缺口已关闭"))
+        XCTAssertTrue(feedback.missingLine.contains("我已经能复述关键材料"))
+        XCTAssertFalse(feedback.missingLine.contains("关键缺口已关闭"))
         XCTAssertTrue(feedback.proceedLine.contains("可以进入明日验证"))
         XCTAssertTrue(feedback.nextRepairQuestion.contains("明天"))
     }
@@ -2217,6 +2221,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.submitTodayStep()
 
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertFalse(store.canContinueAnswerQuestionsWithCoachGapOverride)
         XCTAssertEqual(
             store.todayLoopMessage,
             "进入条件：先回答一个教练问题。 训练理由：明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
@@ -2236,6 +2241,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.submitTodayStep()
 
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertFalse(store.canContinueAnswerQuestionsWithCoachGapOverride)
         XCTAssertEqual(
             store.todayLoopMessage,
             "进入条件：先在今日复盘中形成一个待验证判断。 训练理由：验证行动要验证今天的判断，不是普通待办。"
@@ -2496,7 +2502,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachTurnState?.readiness, .notReady)
         XCTAssertEqual(store.coachTurnState?.openEvidenceGaps, [.missingObservation])
-        XCTAssertTrue(store.todayLoopMessage.contains("还没练到位"))
+        XCTAssertTrue(store.todayLoopMessage.contains("我还没听懂"))
+        XCTAssertFalse(store.todayLoopMessage.contains("还没练到位"))
         XCTAssertTrue(store.todayLoopMessage.contains("观察事实"))
         XCTAssertTrue(store.todayLoopMessage.contains("现在不能进入明日验证"))
         XCTAssertTrue(store.todayLoopMessage.contains("复盘训练契约"))
@@ -2567,6 +2574,52 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
+    }
+
+    func testAnswerQuestions_canExplicitlyContinueWithCoachGapOverride() async throws {
+        let client = SequencedLLMClient(results: [
+            .success(Self.opposingViewQuestionsResponse),
+            .success(Self.questsResponse)
+        ])
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        try await advanceTo(.reviewCards)
+        store.thinkingCards = coachPrescriptionEvidenceCards()
+
+        store.submitTodayStep()
+        try await waitForState(.selectLens)
+        store.acceptTrainingPrescription()
+        store.submitTodayStep()
+        try await waitForState(.answerQuestions)
+
+        let question = try XCTUnwrap(store.questions.first)
+        XCTAssertFalse((question.calibrationTarget ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        store.updateQuestionAnswer(
+            questionID: question.id,
+            answer: "先让 Alex 写清验收标准。"
+        )
+
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
+        XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
+
+        store.continueAnswerQuestionsWithCoachGapOverride()
+        try await waitForState(.reviewQuests)
+
+        let request = try XCTUnwrap(client.requests.first { $0.prompt.id == .generateQuests })
+        XCTAssertEqual(request.contextPayload?.coachDiagnosis?.source, .userOverrideProgress)
+        let turn = try XCTUnwrap(request.contextPayload?.coachTurnState)
+        XCTAssertEqual(turn.decisionSource, .userOverrideProgress)
+        XCTAssertEqual(turn.readiness, .ready)
+        XCTAssertFalse(turn.openEvidenceGaps.isEmpty)
+        XCTAssertTrue(turn.reason.contains("override"))
     }
 
     func testSelectLens_recordsUserOverrideSeparatelyFromCoachRecommendation() async throws {
