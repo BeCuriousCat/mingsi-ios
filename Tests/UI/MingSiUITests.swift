@@ -163,7 +163,7 @@ final class MingSiUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
         let challenge = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "还不是可复述事件")
+            NSPredicate(format: "label CONTAINS %@", "我作为听众现在只能听懂")
         ).firstMatch
         XCTAssertTrue(challenge.waitForExistence(timeout: 4))
         let descriptionTraining = app.staticTexts.matching(
@@ -171,7 +171,7 @@ final class MingSiUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(descriptionTraining.waitForExistence(timeout: 4))
         let narrativeOrder = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "顺序：背景 → 对象 → 触发 → 行动 → 结果")
+            NSPredicate(format: "label CONTAINS %@", "我听不懂的是")
         ).firstMatch
         XCTAssertTrue(narrativeOrder.waitForExistence(timeout: 4))
         let concreteAsk = app.staticTexts.matching(

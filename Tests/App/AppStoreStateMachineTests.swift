@@ -1434,9 +1434,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
         XCTAssertTrue(line.contains("沟通力"))
         XCTAssertTrue(line.contains("描述力"))
-        XCTAssertTrue(line.contains("还不是可复述事件"))
-        XCTAssertTrue(line.contains("顺序：背景 → 对象 → 触发 → 行动 → 结果"))
-        XCTAssertTrue(line.contains("下一句先补"))
+        XCTAssertTrue(line.contains("我作为听众现在只能听懂"))
+        XCTAssertTrue(line.contains("我听不懂的是"))
+        XCTAssertTrue(line.contains("下一句请先补"))
         XCTAssertTrue(line.contains("什么背景下，谁做了什么，触发点是什么，后来发生了什么"))
     }
 
