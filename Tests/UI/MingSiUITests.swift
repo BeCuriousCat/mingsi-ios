@@ -551,6 +551,8 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.buttons["带着缺口继续"].waitForExistence(timeout: 4))
         let primaryAction = app.buttons["today.primary-action"]
         XCTAssertTrue(primaryAction.waitForExistence(timeout: 4))
+        XCTAssertTrue(primaryAction.label.contains("先修补追问"))
+        XCTAssertFalse(primaryAction.label.contains("设计明日验证"))
         XCTAssertFalse(primaryAction.isEnabled)
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         XCTAssertFalse(app.staticTexts["听众卡点"].exists)

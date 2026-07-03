@@ -1410,7 +1410,8 @@ struct TodayView: View {
         case .reviewCards: return "确认卡片"
         case .selectMode: return "确认模式"
         case .selectLens: return "进入今日复盘"
-        case .answerQuestions: return "设计明日验证"
+        case .answerQuestions:
+            return store.canContinueAnswerQuestionsWithCoachGapOverride ? "先修补追问" : "设计明日验证"
         case .reviewQuests: return "保存明日验证"
         case .extractPrinciple: return "保存原则"
         case .sessionComplete: return "开始新一天"
