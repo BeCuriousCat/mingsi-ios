@@ -3256,7 +3256,7 @@ private struct QuestionCardView: View {
                 BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
             }
             if let expectedUpdate = trimmed(question.expectedUpdate) {
-                BriefRow(title: "答案会改变", body: expectedUpdate, accent: DS.accent)
+                BriefRow(title: "作答要更新", body: trainingUpdateCopy(expectedUpdate), accent: DS.accent)
             }
             if let proceedWhen = trimmed(question.proceedWhen) {
                 BriefRow(title: "推进标准", body: proceedWhen, accent: DS.success)
@@ -3277,6 +3277,12 @@ private struct QuestionCardView: View {
             return "取舍或框架问题"
         }
         return evidenceGapType.displayTitle
+    }
+
+    private func trainingUpdateCopy(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "答案会", with: "这次作答会")
+            .replacingOccurrences(of: "答案应", with: "这次作答应")
     }
 
     private func trimmed(_ value: String?) -> String? {

@@ -444,7 +444,12 @@ final class MingSiUITests: XCTestCase {
         coachBasisToggle.tap()
         XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["答案会改变"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["答案会改变"].exists)
+        XCTAssertTrue(app.staticTexts["作答要更新"].waitForExistence(timeout: 4))
+        let answerUpdateCopy = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "这次作答会")
+        ).firstMatch
+        XCTAssertTrue(answerUpdateCopy.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["作答方式"].waitForExistence(timeout: 4))
 
