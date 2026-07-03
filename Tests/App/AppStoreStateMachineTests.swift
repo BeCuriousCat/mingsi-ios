@@ -1446,6 +1446,21 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.selfCheckLine.contains("成功标准"))
     }
 
+    func testCaptureMaterialTrainingFeedbackSurfacesSecondaryThinkingChecksLightly() throws {
+        store.todayDraft.state = .capture
+        store.updateTodayCapture("我打算先拉会处理，沿用以前有效的做法。我觉得这次应该也有效，但还没说清目标，也没判断这次条件是否一样。")
+
+        let feedback = try XCTUnwrap(store.coachCaptureMaterialTrainingFeedback)
+        XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的校准力"))
+        XCTAssertTrue(feedback.nextSentenceLine.contains("复现、调整，还是否定"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("自检标准"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("条件差异"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("同时留意"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("目标缺口"))
+        XCTAssertTrue(feedback.selfCheckLine.contains("反例缺口"))
+        XCTAssertFalse(feedback.selfCheckLine.contains("经验复现"))
+    }
+
     func testCaptureMaterialObservationChallengesVagueStoryAsDescriptionTraining() throws {
         store.todayDraft.state = .capture
         store.updateTodayCapture("今天有点乱，感觉推进不下去。")

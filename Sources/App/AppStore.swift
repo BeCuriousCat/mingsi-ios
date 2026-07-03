@@ -1687,7 +1687,7 @@ final class AppStore: ObservableObject {
             observationLine: observationLine,
             trainingTargetLine: "本轮训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入行动。\(observation.trainingAbility.coachingMeaning)",
             nextSentenceLine: nextSentenceTrainingLine(for: observation),
-            selfCheckLine: selfCheckLine(for: observation)
+            selfCheckLine: selfCheckLine(for: observation) + secondarySelfCheckLine(for: observation)
         )
     }
 
@@ -1743,6 +1743,11 @@ final class AppStore: ObservableObject {
         case .calibration:
             return "自检标准：未来信号明确，且你写清了出现什么就更新判断。"
         }
+    }
+
+    private static func secondarySelfCheckLine(for observation: CoachObservation) -> String {
+        guard !observation.secondaryTrainingLine.isEmpty else { return "" }
+        return " \(observation.secondaryTrainingLine)"
     }
 
     var mainQuest: Quest? {
