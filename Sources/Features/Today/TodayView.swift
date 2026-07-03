@@ -22,6 +22,7 @@ enum TodayAutomationID {
     static let answerQuestionsOverrideGapAction = "today.answer.override-gap-action"
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
     static let answerTrainingToolsToggle = "today.answer.training-tools-toggle"
+    static let captureTrainingToolsToggle = "today.capture.training-tools-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
     static let captureRawTextField = "today.capture.raw-text-field"
@@ -83,6 +84,7 @@ struct TodayView: View {
     @State private var customLensMethodLine = ""
     @State private var customLensQuestion = ""
     @State private var isAnswerTrainingToolsExpanded = false
+    @State private var isCaptureTrainingToolsExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -870,20 +872,42 @@ struct TodayView: View {
                 accent: DS.accent
             )
             BriefRow(
-                title: "本轮训练契约",
-                body: feedback.trainingTargetLine,
-                accent: DS.caution
-            )
-            BriefRow(
                 title: "下一句训练",
                 body: feedback.nextSentenceLine,
                 accent: DS.brick
             )
-            BriefRow(
-                title: "自检标准",
-                body: feedback.selfCheckLine,
-                accent: DS.success
-            )
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isCaptureTrainingToolsExpanded.toggle()
+                }
+            } label: {
+                Label(
+                    isCaptureTrainingToolsExpanded ? "收起训练标准" : "查看训练标准",
+                    systemImage: isCaptureTrainingToolsExpanded ? "chevron.up.circle" : "wrench.and.screwdriver"
+                )
+                .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(DS.graphite)
+            .accessibilityIdentifier(TodayAutomationID.captureTrainingToolsToggle)
+            .accessibilityLabel(isCaptureTrainingToolsExpanded ? "收起训练标准" : "查看训练标准")
+
+            if isCaptureTrainingToolsExpanded {
+                VStack(alignment: .leading, spacing: 9) {
+                    BriefRow(
+                        title: "本轮训练契约",
+                        body: feedback.trainingTargetLine,
+                        accent: DS.caution
+                    )
+                    BriefRow(
+                        title: "自检标准",
+                        body: feedback.selfCheckLine,
+                        accent: DS.success
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
     }
 
