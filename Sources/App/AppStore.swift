@@ -1499,6 +1499,15 @@ final class AppStore: ObservableObject {
         questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    var availableCalibrationTarget: String? {
+        if let answeredCalibrationTarget {
+            return answeredCalibrationTarget
+        }
+        return questions
+            .compactMap { $0.calibrationTarget?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
     var answeredCalibrationTarget: String? {
         questions.first { question in
             !question.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -1535,7 +1544,8 @@ final class AppStore: ObservableObject {
     var canContinueAnswerQuestionsWithCoachGapOverride: Bool {
         guard !isAIRunning else { return false }
         guard todayDraft.state == .answerQuestions else { return false }
-        guard hasAnsweredReflectionQuestion, hasAnsweredCalibrationTarget else { return false }
+        guard availableCalibrationTarget != nil else { return false }
+        guard hasAnsweredReflectionQuestion else { return true }
         guard let feedback = coachAnswerFeedbackPreview else { return false }
         return feedback.readiness != .ready
     }
@@ -1784,16 +1794,16 @@ final class AppStore: ObservableObject {
                     reason: "透镜应服务于本轮缺口，不是随手挑一个 Prompt。"
                 )
         case .answerQuestions:
-            guard hasAnsweredReflectionQuestion else {
-                return todayEntryCondition(
-                    requirement: "先回答一个教练问题。",
-                    reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
-                )
-            }
-            guard hasAnsweredCalibrationTarget else {
+            guard availableCalibrationTarget != nil else {
                 return todayEntryCondition(
                     requirement: "先在今日复盘中形成一个待验证判断。",
                     reason: "验证行动要验证今天的判断，不是普通待办。"
+                )
+            }
+            guard hasAnsweredReflectionQuestion else {
+                return todayCoachSuggestion(
+                    recommendation: "建议先补一段教练追问材料；也可以跳过追问继续，明日验证会把未补缺口当校准点。",
+                    reason: "追问是训练材料，不是必须反复循环的门槛。"
                 )
             }
             if let feedback = coachAnswerFeedbackPreview, feedback.readiness != .ready {
@@ -4241,33 +4251,48 @@ final class AppStore: ObservableObject {
             return
         }
         guard todayDraft.state == .answerQuestions else { return }
-        guard hasAnsweredReflectionQuestion else {
-            todayLoopMessage = todayEntryCondition(
-                requirement: "先回答一个教练问题。",
-                reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
-            )
-            return
-        }
-        guard hasAnsweredCalibrationTarget else {
+        guard availableCalibrationTarget != nil else {
             todayLoopMessage = todayEntryCondition(
                 requirement: "先在今日复盘中形成一个待验证判断。",
                 reason: "验证行动要验证今天的判断，不是普通待办。"
             )
             return
         }
+        guard hasAnsweredReflectionQuestion else {
+            recordCoachGapOverrideForProgress(
+                reason: "用户选择跳过教练追问继续；未补追问作为明日校准点保留。"
+            )
+            todayLoopMessage = "已记录为用户主动带着未补追问继续；后续仍保留证据缺口提示。"
+            generateQuestsFromAnswers()
+            return
+        }
 
         refreshCoachTurnStateAfterAnswers()
         if let coachTurnState, coachTurnState.readiness != .ready {
-            var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
-            diagnosis.source = .userOverrideProgress
-            diagnosis.readiness = .ready
-            diagnosis.recommendedMove = .generateQuest
-            diagnosis.reason = "用户选择带着教练缺口继续；后续仍保留证据缺口提示。"
-            coachDiagnosis = diagnosis
-            self.coachTurnState = CoachTurnPolicy().applyingUserDecision(.userOverrideProgress, to: coachTurnState)
+            recordCoachGapOverrideForProgress(
+                from: coachTurnState,
+                reason: "用户选择带着教练缺口继续；后续仍保留证据缺口提示。"
+            )
             todayLoopMessage = "已记录为用户主动带着缺口继续；后续仍保留证据缺口提示。"
         }
         generateQuestsFromAnswers()
+    }
+
+    private func recordCoachGapOverrideForProgress(
+        from turn: CoachTurnState? = nil,
+        reason: String
+    ) {
+        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        diagnosis.source = .userOverrideProgress
+        diagnosis.readiness = .ready
+        diagnosis.recommendedMove = .generateQuest
+        diagnosis.reason = reason
+        coachDiagnosis = diagnosis
+        let baseTurn = turn ?? coachTurnState ?? CoachTurnPolicy().makeInitialTurn(
+            cards: confirmedCardsForAI,
+            diagnosis: diagnosis
+        )
+        coachTurnState = CoachTurnPolicy().applyingUserDecision(.userOverrideProgress, to: baseTurn)
     }
 
     @discardableResult
@@ -5173,27 +5198,28 @@ final class AppStore: ObservableObject {
     }
 
     private func generateQuestsFromAnswers() {
-        guard hasAnsweredReflectionQuestion else {
-            todayLoopMessage = todayEntryCondition(
-                requirement: "先回答一个教练问题。",
-                reason: "明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
-            )
-            return
-        }
-        guard hasAnsweredCalibrationTarget else {
+        guard availableCalibrationTarget != nil else {
             todayLoopMessage = todayEntryCondition(
                 requirement: "先在今日复盘中形成一个待验证判断。",
                 reason: "验证行动要验证今天的判断，不是普通待办。"
             )
             return
         }
-        refreshCoachTurnStateAfterAnswers()
-        if let coachTurnState, coachTurnState.readiness != .ready {
-            todayLoopMessage = coachAnswerTrainingFeedbackMessage(for: coachTurnState)
-            return
+        if hasAnsweredReflectionQuestion {
+            refreshCoachTurnStateAfterAnswers()
+            if let coachTurnState, coachTurnState.readiness != .ready {
+                todayLoopMessage = coachAnswerTrainingFeedbackMessage(for: coachTurnState)
+                return
+            }
+        } else if coachTurnState?.decisionSource != .userOverrideProgress {
+            recordCoachGapOverrideForProgress(
+                reason: "用户选择跳过教练追问继续；未补追问作为明日校准点保留。"
+            )
         }
         let draftID = todayDraft.id
-        todayLoopMessage = "正在设计明日验证。"
+        if hasAnsweredReflectionQuestion {
+            todayLoopMessage = "正在设计明日验证。"
+        }
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         guard canUseTodayAIServiceForTodayFlow else {

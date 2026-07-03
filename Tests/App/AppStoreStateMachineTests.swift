@@ -2230,24 +2230,22 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .selectLens)
     }
 
-    func testAnswerQuestionsGuard_withoutAnswerExplainsTrainingEntryCondition() {
+    func testAnswerQuestions_withoutAnswerShowsOptionalCoachGapGuidanceWhenCalibrationTargetExists() {
         store.todayDraft.state = .answerQuestions
         store.questions = [
             ReflectionQuestion(
                 question: "今天的判断依据是什么？",
                 whyItMatters: "先补上证据缺口。",
+                calibrationTarget: "书面验收能减少接口返工",
                 answer: "   "
             )
         ]
 
-        store.submitTodayStep()
-
-        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
-        XCTAssertFalse(store.canContinueAnswerQuestionsWithCoachGapOverride)
-        XCTAssertEqual(
-            store.todayLoopMessage,
-            "进入条件：先回答一个教练问题。 训练理由：明日验证必须来自你补过的思考材料，不是 AI 直接生成任务。"
-        )
+        XCTAssertFalse(store.isTodayPrimaryActionDisabled)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("补一段教练追问材料") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以跳过追问继续") == true)
     }
 
     func testAnswerQuestionsGuard_withoutCalibrationTargetExplainsTrainingEntryCondition() {
@@ -2268,6 +2266,28 @@ final class AppStoreStateMachineTests: XCTestCase {
             store.todayLoopMessage,
             "进入条件：先在今日复盘中形成一个待验证判断。 训练理由：验证行动要验证今天的判断，不是普通待办。"
         )
+    }
+
+    func testAnswerQuestions_withoutAnswerCanContinueToReviewQuestsWhenCalibrationTargetExists() async throws {
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.rawText = "今天接口返工，因为验收标准没有先写清楚。"
+        store.todayDraft.selectedLens = .evidenceCheck
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                calibrationTarget: "书面验收能减少接口返工",
+                answer: "   "
+            )
+        ]
+
+        store.submitTodayStep()
+
+        try await waitForState(.reviewQuests)
+        XCTAssertEqual(store.mainQuest?.calibrationTarget, "书面验收能减少接口返工")
+        XCTAssertEqual(store.coachDiagnosis?.source, .userOverrideProgress)
+        XCTAssertEqual(store.coachTurnState?.decisionSource, .userOverrideProgress)
+        XCTAssertTrue(store.coachDiagnosis?.reason.contains("跳过教练追问") == true)
     }
 
     // MARK: - SelectLens -> AnswerQuestions
@@ -6699,8 +6719,10 @@ final class AppStoreStateMachineTests: XCTestCase {
             )
         ]
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("回答一个教练问题") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是 AI 直接生成任务") == true)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("回答一个教练问题") == true)
+        XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("补一段教练追问材料") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("待验证判断") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("不是普通待办") == true)
 
         store.todayDraft.state = .reviewQuests
         store.questions[0].answer = "会议目标没有对齐。"

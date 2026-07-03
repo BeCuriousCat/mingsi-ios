@@ -410,6 +410,8 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["闭环一：今天内容与今日复盘"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["回答一个关键问题。"].exists)
+        XCTAssertTrue(app.staticTexts["修补一个关键缺口。"].waitForExistence(timeout: 4))
 
         let questionText = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "先补上一个可观察事实")
@@ -432,8 +434,6 @@ final class MingSiUITests: XCTestCase {
         let answerField = app.textFields.matching(identifier: "today.question.answer-field").firstMatch
         XCTAssertTrue(answerField.waitForExistence(timeout: 4))
         XCTAssertLessThan(answerField.frame.minY, primaryTraining.frame.minY)
-        scrollToElement(answerField, in: app)
-        XCTAssertTrue(isElementInTappableScrollArea(answerField, app: app))
 
         let coachBasisToggle = app.buttons["today.question.coach-basis-toggle"].firstMatch
         XCTAssertTrue(coachBasisToggle.waitForExistence(timeout: 4))

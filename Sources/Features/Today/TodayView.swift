@@ -703,7 +703,7 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("教练追问", subtitle: "回答一个关键问题。")
+            stepLabel("教练追问", subtitle: "修补一个关键缺口。")
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
