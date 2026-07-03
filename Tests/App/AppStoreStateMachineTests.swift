@@ -2263,6 +2263,25 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以跳过追问继续") == true)
     }
 
+    func testAnswerQuestions_optionalCoachSuggestionUsesContinueFramingInsteadOfEntryCondition() {
+        store.todayDraft.state = .answerQuestions
+        store.questions = [
+            ReflectionQuestion(
+                question: "今天的判断依据是什么？",
+                whyItMatters: "先补上证据缺口。",
+                calibrationTarget: "书面验收能减少接口返工",
+                answer: "   "
+            )
+        ]
+
+        let blocker = store.todayPrimaryActionBlocker ?? ""
+        XCTAssertTrue(blocker.contains("教练建议"))
+        XCTAssertTrue(blocker.contains("可继续"))
+        XCTAssertFalse(blocker.contains("进入条件"))
+        XCTAssertFalse(blocker.contains("训练理由"))
+        XCTAssertFalse(blocker.contains("必须"))
+    }
+
     func testAnswerQuestionsGuard_withoutCalibrationTargetExplainsTrainingEntryCondition() {
         store.todayDraft.state = .answerQuestions
         store.questions = [

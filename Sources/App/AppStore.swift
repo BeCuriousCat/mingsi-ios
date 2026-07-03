@@ -1808,7 +1808,7 @@ final class AppStore: ObservableObject {
             guard hasAnsweredReflectionQuestion else {
                 return todayCoachSuggestion(
                     recommendation: "建议先补一段教练追问材料；也可以跳过追问继续，明日验证会把未补缺口当校准点。",
-                    reason: "追问是训练材料，不是必须反复循环的门槛。"
+                    reason: "追问是训练材料，不是反复循环的门槛。"
                 )
             }
             if let feedback = coachAnswerFeedbackPreview, feedback.readiness != .ready {
@@ -1852,7 +1852,7 @@ final class AppStore: ObservableObject {
     }
 
     private func todayCoachSuggestion(recommendation: String, reason: String) -> String {
-        "教练建议：\(recommendation) 训练理由：\(reason)"
+        "教练建议：\(recommendation) 可继续：这是训练建议，不是流程门槛。教练依据：\(reason)"
     }
 
     private var coachBusyMessage: String {
