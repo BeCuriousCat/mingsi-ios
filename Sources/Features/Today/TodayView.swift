@@ -16,6 +16,7 @@ enum TodayAutomationID {
     static let trainingPrescriptionSkipAction = "today.training-prescription.skip-action"
     static let trainingPrescriptionOverrideAudit = "today.training-prescription.override-audit"
     static let trainingPrescriptionDecisionOverrideAudit = "today.training-prescription.decision-override-audit"
+    static let trainingPrescriptionTeachingToggle = "today.training-prescription.teaching-toggle"
     static let coachDiagnosisAcceptAction = "today.coach-diagnosis.accept-action"
     static let coachDiagnosisSlowDownAction = "today.coach-diagnosis.slow-down-action"
     static let coachDiagnosisOverrideProgressAction = "today.coach-diagnosis.override-progress-action"
@@ -85,6 +86,7 @@ struct TodayView: View {
     @State private var customLensQuestion = ""
     @State private var isAnswerTrainingToolsExpanded = false
     @State private var isCaptureTrainingToolsExpanded = false
+    @State private var isTrainingPrescriptionTeachingExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -1654,7 +1656,27 @@ struct TodayView: View {
                 .background(lensTint(for: item).opacity(0.10), in: Capsule())
 
             if let teachingPlan {
-                teachingRouteView(teachingPlan)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isTrainingPrescriptionTeachingExpanded.toggle()
+                    }
+                } label: {
+                    Label(
+                        isTrainingPrescriptionTeachingExpanded ? "收起训练路线" : "查看训练路线",
+                        systemImage: isTrainingPrescriptionTeachingExpanded ? "chevron.up.circle" : "map"
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(DS.graphite)
+                .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionTeachingToggle)
+                .accessibilityLabel(isTrainingPrescriptionTeachingExpanded ? "收起训练路线" : "查看训练路线")
+
+                if isTrainingPrescriptionTeachingExpanded {
+                    teachingRouteView(teachingPlan)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
 
             if !prescription.baselineChecks.isEmpty {
