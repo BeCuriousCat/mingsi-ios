@@ -551,7 +551,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.buttons["带着缺口继续"].waitForExistence(timeout: 4))
         let primaryAction = app.buttons["today.primary-action"]
         XCTAssertTrue(primaryAction.waitForExistence(timeout: 4))
-        XCTAssertTrue(primaryAction.isEnabled)
+        XCTAssertFalse(primaryAction.isEnabled)
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         XCTAssertFalse(app.staticTexts["听众卡点"].exists)
         XCTAssertFalse(app.staticTexts["训练产物"].exists)
@@ -1016,11 +1016,13 @@ final class MingSiUITests: XCTestCase {
         let answerFields = app.textFields.matching(identifier: "today.question.answer-field")
         let answerField = answerFields.element(boundBy: 0)
         XCTAssertTrue(answerField.waitForExistence(timeout: 8))
-        scrollToElement(answerField, in: app)
-        positionQuestionAnswerFieldForTyping(answerField, in: app)
+        if !answerField.isHittable {
+            scrollToElement(answerField, in: app)
+            positionQuestionAnswerFieldForTyping(answerField, in: app)
+        }
 
-        answerField.tap()
-        answerField.typeText(text)
+        answerField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        app.typeText(text)
     }
 
     private func positionQuestionAnswerFieldForTyping(_ element: XCUIElement, in app: XCUIApplication) {

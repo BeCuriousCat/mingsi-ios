@@ -1551,7 +1551,7 @@ final class AppStore: ObservableObject {
     }
 
     var isTodayPrimaryActionDisabled: Bool {
-        canContinueAnswerQuestionsWithCoachGapOverride ? false : todayPrimaryActionBlocker != nil
+        todayPrimaryActionBlocker != nil
     }
 
     var coachAnswerMaterialObservation: String? {
@@ -3940,11 +3940,7 @@ final class AppStore: ObservableObject {
         case .selectLens:
             confirmSelectedLens()
         case .answerQuestions:
-            if canContinueAnswerQuestionsWithCoachGapOverride {
-                continueAnswerQuestionsWithCoachGapOverride()
-            } else {
-                generateQuestsFromAnswers()
-            }
+            generateQuestsFromAnswers()
         case .reviewQuests:
             saveReviewedQuests()
         case .extractPrinciple:
@@ -5217,9 +5213,12 @@ final class AppStore: ObservableObject {
                 return
             }
         } else if coachTurnState?.decisionSource != .userOverrideProgress {
-            recordCoachGapOverrideForProgress(
-                reason: "用户选择跳过教练追问继续；未补追问作为明日校准点保留。"
-            )
+            todayLoopMessage = todayPrimaryActionBlocker
+                ?? todayCoachSuggestion(
+                    recommendation: "建议先补一段教练追问材料；也可以跳过追问继续，明日验证会把未补缺口当校准点。",
+                    reason: "追问是训练材料，不是反复循环的门槛。"
+                )
+            return
         }
         let draftID = todayDraft.id
         if hasAnsweredReflectionQuestion {

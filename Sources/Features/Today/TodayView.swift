@@ -1319,7 +1319,8 @@ struct TodayView: View {
             .disabled(store.isTodayPrimaryActionDisabled)
             .accessibilityIdentifier(TodayAutomationID.primaryAction)
 
-            if let blocker = store.todayPrimaryActionBlocker {
+            if let blocker = store.todayPrimaryActionBlocker,
+               !store.canContinueAnswerQuestionsWithCoachGapOverride {
                 Text(blocker)
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)

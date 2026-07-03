@@ -2256,7 +2256,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             )
         ]
 
-        XCTAssertFalse(store.isTodayPrimaryActionDisabled)
+        XCTAssertTrue(store.isTodayPrimaryActionDisabled)
+        XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("补一段教练追问材料") == true)
@@ -2302,7 +2303,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
     }
 
-    func testAnswerQuestions_withoutAnswerCanContinueToReviewQuestsWhenCalibrationTargetExists() async throws {
+    func testAnswerQuestions_withoutAnswerRequiresExplicitCoachGapOverrideToReviewQuests() async throws {
         store.todayDraft.state = .answerQuestions
         store.todayDraft.rawText = "今天接口返工，因为验收标准没有先写清楚。"
         store.todayDraft.selectedLens = .evidenceCheck
@@ -2316,6 +2317,14 @@ final class AppStoreStateMachineTests: XCTestCase {
         ]
 
         store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(store.isTodayPrimaryActionDisabled)
+        XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
+        XCTAssertNil(store.coachDiagnosis)
+        XCTAssertNil(store.coachTurnState)
+
+        store.continueAnswerQuestionsWithCoachGapOverride()
 
         try await waitForState(.reviewQuests)
         XCTAssertEqual(store.mainQuest?.calibrationTarget, "书面验收能减少接口返工")
@@ -2685,6 +2694,7 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.readiness, .notReady)
         XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
+        XCTAssertTrue(store.isTodayPrimaryActionDisabled)
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先修补训练缺口") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会把它当校准点") == true)
