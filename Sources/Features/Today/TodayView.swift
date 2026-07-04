@@ -925,12 +925,12 @@ struct TodayView: View {
                 accent: DS.success
             )
             BriefRow(
-                title: "我还没听懂",
+                title: "需要补充",
                 body: feedback.missingLine,
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
-                title: "下一句修补",
+                title: "建议补充",
                 body: "\(feedback.proceedLine)\n\(feedback.nextRepairQuestion)",
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )

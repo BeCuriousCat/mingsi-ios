@@ -1817,7 +1817,7 @@ final class AppStore: ObservableObject {
             }
             guard hasAnsweredReflectionQuestion else {
                 return todayCoachSuggestion(
-                    recommendation: "建议先补一句回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
+                    recommendation: "建议补充回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
                     reason: "追问是训练材料，不是反复循环的门槛。"
                 )
             }
@@ -1827,7 +1827,7 @@ final class AppStore: ObservableObject {
                     .map(\.displayTitle)
                 let gapLine = gaps.isEmpty ? "没讲清的地方" : gaps.joined(separator: "、")
                 return todayCoachSuggestion(
-                    recommendation: "建议先补一句：\(gapLine)；也可以带着没讲清的地方继续，明日验证会提醒你回看。",
+                    recommendation: "建议补充：\(gapLine)；也可以带着没讲清的地方继续，明日验证会提醒你回看。",
                     reason: feedback.reason
                 )
             }
@@ -1862,7 +1862,7 @@ final class AppStore: ObservableObject {
     }
 
     private func todayCoachSuggestion(recommendation: String, reason: String) -> String {
-        "教练建议：\(recommendation) 可继续：这是训练建议，不是流程门槛。教练依据：\(reason)"
+        "建议：\(recommendation) 可继续：这是训练建议，不是流程门槛。依据：\(reason)"
     }
 
     private var coachBusyMessage: String {
@@ -5225,7 +5225,7 @@ final class AppStore: ObservableObject {
         } else if coachTurnState?.decisionSource != .userOverrideProgress {
             todayLoopMessage = todayPrimaryActionBlocker
                 ?? todayCoachSuggestion(
-                    recommendation: "建议先补一句回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
+                    recommendation: "建议补充回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
                     reason: "追问是训练材料，不是反复循环的门槛。"
                 )
             return

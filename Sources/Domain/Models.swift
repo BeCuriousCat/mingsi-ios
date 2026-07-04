@@ -1435,7 +1435,7 @@ struct CoachAnswerFeedbackPolicy {
             : ["这不是合格复盘", repairedPart, nextPart]
         let suffix = canProceed
             ? "这不是普通待办，下一步要用明日结果校准判断。"
-            : "这不是普通待办，建议先补一句；如果现在继续，这个没讲清的地方会保留下来，明天回看。"
+            : "这不是普通待办；如果现在继续，这个没讲清的地方会保留下来，明天回看。"
         return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
     }
 
@@ -1446,7 +1446,7 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         guard let observation else {
             let target = remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps)
-            return "听众回放：我没听懂的是：\(target)。请补一句能让别人复述的材料"
+            return "听众回放：我没听懂的是：\(target)。这里需要补到别人能复述"
         }
         if observation.primaryGap == .goal {
             return "听众回放：我听到的是行动安排，但这是把行动当成答案；我没听懂的是：服务对象、成功标准和可观察信号"
@@ -1480,8 +1480,8 @@ struct CoachAnswerFeedbackPolicy {
 
     private func missingLine(remainingGaps: [EvidenceGapType]) -> String {
         remainingGaps.isEmpty
-            ? "我已经能复述关键材料。"
-            : "我还没听懂：\(gapLine(for: remainingGaps))。"
+            ? "关键材料已经能复述。"
+            : "\(gapLine(for: remainingGaps))。"
     }
 
     private func proceedLine(
@@ -1490,7 +1490,7 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "教练建议：请先补一句，\(plan.proceedStandard)；你也可以带着没讲清的地方继续，明日验证会提醒你回看。"
+            : "补到这个标准后再继续：\(plan.proceedStandard)；也可以带着没讲清的地方继续，明日验证会提醒你回看。"
     }
 
     private func abilityGapLine(
@@ -1498,12 +1498,12 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "我没听懂：\(plan.trainingTargetLine)还没有补到别人能复述。"
+            return "\(plan.trainingTargetLine)还没有补到别人能复述。"
         }
         if observation.primaryGap == .goal {
-            return "我没听懂：你想行动，但服务对象、成功标准和可观察信号还不清楚。"
+            return "你想行动，但服务对象、成功标准和可观察信号还不清楚。"
         }
-        return "我没听懂：你在练\(observation.trainingAbility.trainingTitle)，但\(observation.feedback.diagnosis)还不清楚。"
+        return "你在练\(observation.trainingAbility.trainingTitle)，但\(observation.feedback.diagnosis)还不清楚。"
     }
 
     private func trainingOutputLine(
@@ -1555,14 +1555,14 @@ struct CoachAnswerFeedbackPolicy {
         plan: CoachTeachingPlan,
         observation: CoachObservation?
     ) -> String {
-        guard let observation else { return plan.repairQuestion }
+        guard let observation else { return plainRepairQuestion(plan.repairQuestion) }
         if observation.primaryGap == .goal {
-            return "请补一句：如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
+            return "如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
         }
         if observation.primaryGap == .narrative {
-            return "请补一句：\(narrativeMissingQuestionLine(for: observation))"
+            return narrativeMissingQuestionLine(for: observation)
         }
-        return plan.repairQuestion
+        return plainRepairQuestion(plan.repairQuestion)
     }
 
     private func experienceReplayPrompt(
@@ -1574,6 +1574,13 @@ struct CoachAnswerFeedbackPolicy {
 
     private func gapLine(for gaps: [EvidenceGapType]) -> String {
         gaps.map(\.displayTitle).joined(separator: "、")
+    }
+
+    private func plainRepairQuestion(_ question: String) -> String {
+        question
+            .replacingOccurrences(of: "请先", with: "")
+            .replacingOccurrences(of: "请补一句：", with: "")
+            .replacingOccurrences(of: "请补充", with: "补充")
     }
 
     private func narrativeUnderstoodLine(for observation: CoachObservation) -> String {
