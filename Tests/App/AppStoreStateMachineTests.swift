@@ -1433,10 +1433,10 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         let feedback = try XCTUnwrap(store.coachCaptureMaterialTrainingFeedback)
         XCTAssertTrue(feedback.observationLine.contains("行动不能先替代目标"))
-        XCTAssertTrue(feedback.trainingTargetLine.contains("本轮训练契约"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("本次练习"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的判断力"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
-        XCTAssertTrue(feedback.trainingTargetLine.contains("先补到可复盘"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("先补到别人能复述"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("再进入行动"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("下一句训练"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("谁的什么问题会变少"))
@@ -1714,7 +1714,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.coachCritiqueLine.contains("这不是合格复盘"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("刚补上：缺观察事实"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("听众回放"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("还没听到"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("我没听懂"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("缺因果链"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
         XCTAssertTrue(feedback.repairedLine.contains("缺观察事实"))
@@ -1732,7 +1732,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.experienceReplayDecisionLine.contains(ExperienceReplayTraining.rejectLine))
         XCTAssertFalse(feedback.proceedLine.contains("不能进入明日验证"))
         XCTAssertTrue(feedback.proceedLine.contains("教练建议"))
-        XCTAssertTrue(feedback.proceedLine.contains("也可以带着缺口继续"))
+        XCTAssertTrue(feedback.proceedLine.contains("也可以带着没讲清的地方继续"))
         XCTAssertTrue(feedback.judgmentSentencePrompt.contains("我现在相信 X"))
     }
 
@@ -1773,18 +1773,89 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.coachCritiqueLine.contains("不是普通待办"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("刚补上：缺观察事实"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("听众回放"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("还没听到"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("我没听懂"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("缺因果链"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("要先把思考训练缺口补齐"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("建议先把思考训练缺口补齐"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("缺口会保留为校准点"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("建议先补一句"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("没讲清的地方会保留下来"))
         XCTAssertTrue(feedback.repairedLine.contains("已补训练材料：缺观察事实"))
         XCTAssertTrue(feedback.missingLine.contains("我还没听懂：缺因果链"))
         XCTAssertFalse(feedback.missingLine.contains("还没练到位"))
-        XCTAssertTrue(feedback.proceedLine.contains("先修补训练缺口"))
+        XCTAssertTrue(feedback.proceedLine.contains("请先补一句"))
         XCTAssertFalse(feedback.proceedLine.contains("先补齐训练缺口"))
-        XCTAssertTrue(feedback.proceedLine.contains("明日验证会把它当校准点"))
+        XCTAssertTrue(feedback.proceedLine.contains("明日验证会提醒你回看"))
+    }
+
+    func testCoachAnswerFeedbackPolicyUsesPlainListenerLanguageForUnresolvedAnswer() {
+        let previous = CoachTurnState(
+            phase: .clarifyJudgment,
+            readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap,
+            reason: "先补观察事实和因果链。",
+            openEvidenceGaps: [.missingObservation, .missingCausalLink],
+            baselineChecks: [.factInterpretationSplit, .evidenceGap],
+            decisionSource: .coachRecommended,
+            policyVersion: CoachTurnPolicy.policyVersion,
+            turnSummary: "先把判断拆开。"
+        )
+        let question = ReflectionQuestion(
+            question: "哪一句是可观察事实，哪一句是解释？",
+            whyItMatters: "它防止把解释当事实。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            answer: "事实是客户代表在评审里提出三处流程问题；我的解释是这些问题让验收标准变模糊。"
+        )
+        let updated = CoachTurnPolicy().updateAfterAnswers(
+            cards: [],
+            questions: [question],
+            previous: previous
+        )
+
+        let feedback = CoachAnswerFeedbackPolicy().makeFeedback(
+            turn: updated,
+            previous: previous,
+            questions: [question],
+            prescription: nil
+        )
+
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("我没听懂"))
+        XCTAssertTrue(feedback.proceedLine.contains("请先补一句"))
+        XCTAssertTrue(feedback.proceedLine.contains("也可以带着没讲清的地方继续"))
+        XCTAssertFalse(feedback.coachCritiqueLine.contains("训练缺口"))
+        XCTAssertFalse(feedback.coachCritiqueLine.contains("校准点"))
+        XCTAssertFalse(feedback.proceedLine.contains("训练缺口"))
+        XCTAssertFalse(feedback.proceedLine.contains("校准点"))
+        XCTAssertFalse(feedback.trainingTargetLine.contains("复盘训练契约"))
+    }
+
+    func testAnswerQuestionsListenerFeedbackDoesNotReaskEstablishedContext() {
+        store.todayDraft.state = .answerQuestions
+        store.thinkingCards = confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "需求评审背景",
+                body: "在需求评审中，客户提出三处验收问题，Alex 是接口负责人。"
+            )
+        ])
+        store.questions = [
+            ReflectionQuestion(
+                question: "你当时怎么处理？",
+                whyItMatters: "讲清楚动作和结果。",
+                evidenceGapType: .missingObservation,
+                answerUse: .collectEvidence,
+                lensMove: .factInterpretationSplit,
+                answer: "这件事让我很焦虑。"
+            )
+        ]
+        let feedback = store.coachAnswerTrainingFeedback
+
+        XCTAssertTrue(feedback?.coachCritiqueLine.contains("我能听懂的背景") == true)
+        XCTAssertFalse(feedback?.coachCritiqueLine.contains("还没听到背景、对象") == true)
+        XCTAssertTrue(feedback?.nextRepairQuestion.contains("请补一句") == true)
+        XCTAssertTrue(feedback?.nextRepairQuestion.contains("你做了什么") == true)
+        XCTAssertTrue(feedback?.nextRepairQuestion.contains("后来结果") == true)
     }
 
     func testCoachAnswerFeedbackPolicyCarriesObservedFoundationalAbilityTraining() {
@@ -1895,14 +1966,14 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.coachCritiqueLine.contains("听众回放"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("我听到的是行动安排"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("行动当成答案"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("还没听到"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("我没听懂的是"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("服务对象"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("成功标准"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("可观察信号"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("听众卡点"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("我能听到你想行动"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("听不懂"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("我没听懂"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("你想行动"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("还不清楚"))
         XCTAssertTrue(feedback.abilityGapLine.contains("服务对象"))
         XCTAssertTrue(feedback.abilityGapLine.contains("成功标准"))
         XCTAssertTrue(feedback.abilityGapLine.contains("可观察信号"))
@@ -2591,8 +2662,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.missingLine.contains("观察事实"))
         XCTAssertFalse(feedback.proceedLine.contains("不能进入明日验证"))
         XCTAssertTrue(feedback.proceedLine.contains("教练建议"))
-        XCTAssertTrue(feedback.proceedLine.contains("也可以带着缺口继续"))
-        XCTAssertTrue(feedback.trainingTargetLine.contains("复盘训练契约"))
+        XCTAssertTrue(feedback.proceedLine.contains("也可以带着没讲清的地方继续"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("本次练习"))
         XCTAssertFalse(feedback.trainingTargetLine.contains("能力训练："))
         XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("行动当成答案"))
@@ -2634,19 +2705,19 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
         XCTAssertTrue(store.coachAnswerFeedbackPreview?.reason.contains("观察事实") ?? false)
         let feedback = try XCTUnwrap(store.coachAnswerTrainingFeedback)
-        XCTAssertTrue(feedback.trainingTargetLine.contains("复盘训练契约"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("本次练习"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的判断力"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("不是让 AI 替你给答案"))
-        XCTAssertTrue(feedback.trainingTargetLine.contains("先补到可复盘"))
+        XCTAssertTrue(feedback.trainingTargetLine.contains("先补到别人能复述"))
         XCTAssertTrue(feedback.trainingTargetLine.contains("再进入明日验证"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("听众回放"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("我听到的是行动安排"))
         XCTAssertTrue(feedback.coachCritiqueLine.contains("行动当成答案"))
-        XCTAssertTrue(feedback.coachCritiqueLine.contains("还没听到"))
+        XCTAssertTrue(feedback.coachCritiqueLine.contains("我没听懂的是"))
         XCTAssertFalse(feedback.coachCritiqueLine.contains("还要训练"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("听众卡点"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("我能听到你想行动"))
-        XCTAssertTrue(feedback.abilityGapLine.contains("听不懂"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("我没听懂"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("你想行动"))
+        XCTAssertTrue(feedback.abilityGapLine.contains("还不清楚"))
         XCTAssertTrue(feedback.abilityGapLine.contains("服务对象"))
         XCTAssertTrue(feedback.abilityGapLine.contains("成功标准"))
         XCTAssertTrue(feedback.abilityGapLine.contains("可观察信号"))
@@ -2655,10 +2726,10 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(store.coachAnswerMaterialObservation).contains("行动不能先替代目标"))
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("教练建议") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以带着缺口继续") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("也可以带着没讲清的地方继续") == true)
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先修补训练缺口") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会把它当校准点") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先补一句") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会提醒你回看") == true)
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("缺观察事实") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
@@ -2696,8 +2767,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.canContinueAnswerQuestionsWithCoachGapOverride)
         XCTAssertTrue(store.isTodayPrimaryActionDisabled)
         XCTAssertFalse(store.todayPrimaryActionBlocker?.contains("先补齐训练缺口") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先修补训练缺口") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会把它当校准点") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("建议先补一句") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("明日验证会提醒你回看") == true)
         XCTAssertEqual(store.todayDraft.state, .answerQuestions)
         XCTAssertFalse(client.requests.contains { $0.prompt.id == .generateQuests })
 

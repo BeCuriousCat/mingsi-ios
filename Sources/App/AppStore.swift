@@ -1563,6 +1563,16 @@ final class AppStore: ObservableObject {
 
     private var coachAnswerObservation: CoachObservation {
         if let answer = firstNonEmptyAnswerText, !answer.isEmpty {
+            let answerCard = ThinkingCard(
+                type: .idea,
+                title: "当前回答",
+                body: answer,
+                isConfirmed: true
+            )
+            let contextCards = confirmedCardsForAI + [answerCard]
+            guard confirmedCardsForAI.isEmpty else {
+                return CoachObservationPolicy().observe(cards: contextCards)
+            }
             return CoachObservationPolicy().observe(text: answer)
         }
         return CoachObservationPolicy().observe(cards: confirmedCardsForAI)
@@ -1685,7 +1695,7 @@ final class AppStore: ObservableObject {
         let observation = CoachObservationPolicy().observe(text: trimmed)
         return CoachMaterialTrainingFeedback(
             observationLine: observationLine,
-            trainingTargetLine: "本轮训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入行动。\(observation.trainingAbility.coachingMeaning)",
+            trainingTargetLine: "本次练习：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到别人能复述，再进入行动。\(observation.trainingAbility.coachingMeaning)",
             nextSentenceLine: nextSentenceTrainingLine(for: observation),
             selfCheckLine: selfCheckLine(for: observation) + secondarySelfCheckLine(for: observation)
         )
@@ -1807,7 +1817,7 @@ final class AppStore: ObservableObject {
             }
             guard hasAnsweredReflectionQuestion else {
                 return todayCoachSuggestion(
-                    recommendation: "建议先补一段教练追问材料；也可以跳过追问继续，明日验证会把未补缺口当校准点。",
+                    recommendation: "建议先补一句回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
                     reason: "追问是训练材料，不是反复循环的门槛。"
                 )
             }
@@ -1815,9 +1825,9 @@ final class AppStore: ObservableObject {
                 let gaps = feedback.openEvidenceGaps
                     .filter { $0 != .none }
                     .map(\.displayTitle)
-                let gapLine = gaps.isEmpty ? "本轮训练缺口" : gaps.joined(separator: "、")
+                let gapLine = gaps.isEmpty ? "没讲清的地方" : gaps.joined(separator: "、")
                 return todayCoachSuggestion(
-                    recommendation: "建议先修补训练缺口：\(gapLine)；也可以带着缺口继续，明日验证会把它当校准点。",
+                    recommendation: "建议先补一句：\(gapLine)；也可以带着没讲清的地方继续，明日验证会提醒你回看。",
                     reason: feedback.reason
                 )
             }
@@ -4261,7 +4271,7 @@ final class AppStore: ObservableObject {
         }
         guard hasAnsweredReflectionQuestion else {
             recordCoachGapOverrideForProgress(
-                reason: "用户选择跳过教练追问继续；未补追问作为明日校准点保留。"
+                reason: "用户选择跳过教练追问继续；未补追问会在明日回看时提醒。"
             )
             todayLoopMessage = "已记录为用户主动带着未补追问继续；后续仍保留证据缺口提示。"
             generateQuestsFromAnswers()
@@ -5215,7 +5225,7 @@ final class AppStore: ObservableObject {
         } else if coachTurnState?.decisionSource != .userOverrideProgress {
             todayLoopMessage = todayPrimaryActionBlocker
                 ?? todayCoachSuggestion(
-                    recommendation: "建议先补一段教练追问材料；也可以跳过追问继续，明日验证会把未补缺口当校准点。",
+                    recommendation: "建议先补一句回答；也可以跳过追问继续，明日验证会提醒你回看这块没讲清的地方。",
                     reason: "追问是训练材料，不是反复循环的门槛。"
                 )
             return

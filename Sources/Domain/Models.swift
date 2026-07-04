@@ -1213,7 +1213,7 @@ struct CoachTurnPolicy {
                 baselineChecks: base.baselineChecks,
                 decisionSource: base.decisionSource,
                 policyVersion: Self.policyVersion,
-                turnSummary: "回答补足了本轮训练缺口，教练轮次从追问推进到形成可验证行动。"
+                turnSummary: "回答补足了刚才没讲清的地方，教练轮次从追问推进到形成可验证行动。"
             )
         }
 
@@ -1358,7 +1358,7 @@ struct CoachTurnPolicy {
         if gaps.contains(.missingConstraint) {
             return "用户已有回答，但还没有说清关键约束或边界。"
         }
-        return "用户已有回答，但本轮训练缺口还没有关闭。"
+        return "用户已有回答，但刚才没讲清的地方还没有补上。"
     }
 }
 
@@ -1435,7 +1435,7 @@ struct CoachAnswerFeedbackPolicy {
             : ["这不是合格复盘", repairedPart, nextPart]
         let suffix = canProceed
             ? "这不是普通待办，下一步要用明日结果校准判断。"
-            : "这不是普通待办，建议先把思考训练缺口补齐；如果继续推进，这个缺口会保留为校准点。"
+            : "这不是普通待办，建议先补一句；如果现在继续，这个没讲清的地方会保留下来，明天回看。"
         return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
     }
 
@@ -1446,15 +1446,17 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         guard let observation else {
             let target = remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps)
-            return "听众回放：我还没听到能关闭\(target)的材料，下一句先补这部分"
+            return "听众回放：我没听懂的是：\(target)。请补一句能让别人复述的材料"
         }
         if observation.primaryGap == .goal {
-            return "听众回放：我听到的是行动安排，但这是把行动当成答案；还没听到服务对象、成功标准和可观察信号"
+            return "听众回放：我听到的是行动安排，但这是把行动当成答案；我没听懂的是：服务对象、成功标准和可观察信号"
         }
         if observation.primaryGap == .narrative {
-            return "听众回放：我听到你想讲清楚这件事，但还没听到背景、对象、触发、行动和结果"
+            let understood = narrativeUnderstoodLine(for: observation)
+            let missing = narrativeMissingLine(for: observation)
+            return "听众回放：\(understood)，但我没听懂的是：\(missing)"
         }
-        return "听众回放：我听到你在练\(observation.trainingAbility.trainingTitle)，但还没听到\(observation.feedback.diagnosis)"
+        return "听众回放：我听到你在练\(observation.trainingAbility.trainingTitle)，但我没听懂的是：\(observation.feedback.diagnosis)"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {
@@ -1488,7 +1490,7 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         canProceed
             ? "可以进入明日验证：\(plan.proceedStandard)"
-            : "教练建议：先修补训练缺口，\(plan.proceedStandard)；你也可以带着缺口继续，明日验证会把它当校准点。"
+            : "教练建议：请先补一句，\(plan.proceedStandard)；你也可以带着没讲清的地方继续，明日验证会提醒你回看。"
     }
 
     private func abilityGapLine(
@@ -1496,12 +1498,12 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "听众卡点：我还听不出\(plan.trainingTargetLine)已经补成可复盘材料。"
+            return "我没听懂：\(plan.trainingTargetLine)还没有补到别人能复述。"
         }
         if observation.primaryGap == .goal {
-            return "听众卡点：我能听到你想行动，但听不懂服务对象、成功标准和可观察信号。"
+            return "我没听懂：你想行动，但服务对象、成功标准和可观察信号还不清楚。"
         }
-        return "听众卡点：我能听到你在练\(observation.trainingAbility.trainingTitle)，但听不懂\(observation.feedback.diagnosis)"
+        return "我没听懂：你在练\(observation.trainingAbility.trainingTitle)，但\(observation.feedback.diagnosis)还不清楚。"
     }
 
     private func trainingOutputLine(
@@ -1541,12 +1543,12 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "复盘训练契约：本轮正在练\(plan.trainingTargetLine)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。"
+            return "本次练习：\(plan.trainingTargetLine)。不是让 AI 替你给答案；先补到别人能复述，再进入明日验证。"
         }
         if observation.primaryGap == .goal {
-            return "复盘训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。先说清服务对象、成功标准和可观察信号，再安排行动。"
+            return "本次练习：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到别人能复述，再进入明日验证。先说清服务对象、成功标准和可观察信号，再安排行动。"
         }
-        return "复盘训练契约：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到可复盘，再进入明日验证。\(observation.trainingAbility.coachingMeaning)"
+        return "本次练习：\(observation.trainingAbility.trainingTitle)。不是让 AI 替你给答案；先补到别人能复述，再进入明日验证。\(observation.trainingAbility.coachingMeaning)"
     }
 
     private func nextRepairQuestion(
@@ -1555,10 +1557,10 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         guard let observation else { return plan.repairQuestion }
         if observation.primaryGap == .goal {
-            return "下一句请写成：如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
+            return "请补一句：如果这件事做对了，谁的什么问题会变少；成功标准是什么；明天能看到哪个可观察信号？"
         }
         if observation.primaryGap == .narrative {
-            return "下一句请按讲清楚一件事来写：什么背景下，谁或哪个对象遇到什么触发；你做了什么；后来发生了什么结果？"
+            return "请补一句：\(narrativeMissingQuestionLine(for: observation))"
         }
         return plan.repairQuestion
     }
@@ -1572,6 +1574,53 @@ struct CoachAnswerFeedbackPolicy {
 
     private func gapLine(for gaps: [EvidenceGapType]) -> String {
         gaps.map(\.displayTitle).joined(separator: "、")
+    }
+
+    private func narrativeUnderstoodLine(for observation: CoachObservation) -> String {
+        let provided = narrativeCoreMaterials.filter { observation.providedMaterials.contains($0) }
+        guard !provided.isEmpty else {
+            return "我只能听出你想讲这件事"
+        }
+        return "我能听懂的背景：\(plainMaterialLine(for: provided))"
+    }
+
+    private func narrativeMissingLine(for observation: CoachObservation) -> String {
+        plainMaterialLine(for: narrativeMissingMaterials(for: observation))
+    }
+
+    private func narrativeMissingQuestionLine(for observation: CoachObservation) -> String {
+        narrativeMissingMaterials(for: observation)
+            .map { material in
+                switch material {
+                case .background:
+                    return "背景是什么"
+                case .object:
+                    return "谁或哪个对象受影响"
+                case .trigger:
+                    return "触发点是什么"
+                case .action:
+                    return "你做了什么"
+                case .result:
+                    return "后来结果是什么"
+                default:
+                    return material.trainingCue
+                }
+            }
+            .joined(separator: "；")
+    }
+
+    private func narrativeMissingMaterials(for observation: CoachObservation) -> [CoachObservationMaterial] {
+        let missing = narrativeCoreMaterials.filter { !observation.providedMaterials.contains($0) }
+        return missing.isEmpty ? observation.missingMaterials : missing
+    }
+
+    private var narrativeCoreMaterials: [CoachObservationMaterial] {
+        [.background, .object, .trigger, .action, .result]
+    }
+
+    private func plainMaterialLine(for materials: [CoachObservationMaterial]) -> String {
+        let line = materials.map(\.trainingCue).joined(separator: "、")
+        return line.isEmpty ? "暂无" : line
     }
 }
 

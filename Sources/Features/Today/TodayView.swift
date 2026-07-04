@@ -898,7 +898,7 @@ struct TodayView: View {
             if isCaptureTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
                     BriefRow(
-                        title: "本轮训练契约",
+                        title: "本次练什么",
                         body: feedback.trainingTargetLine,
                         accent: DS.caution
                     )
@@ -983,7 +983,7 @@ struct TodayView: View {
                         )
                     }
                     BriefRow(
-                        title: "听众卡点",
+                        title: "哪里没听懂",
                         body: feedback.abilityGapLine,
                         accent: DS.accent
                     )
@@ -998,7 +998,7 @@ struct TodayView: View {
                         accent: DS.accent
                     )
                     BriefRow(
-                        title: "复盘训练契约",
+                        title: "本次练什么",
                         body: feedback.trainingTargetLine,
                         accent: DS.caution
                     )
