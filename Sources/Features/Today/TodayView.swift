@@ -3281,35 +3281,11 @@ private struct QuestionCardView: View {
 
     private var coachBasisView: some View {
         VStack(alignment: .leading, spacing: 7) {
-            if let whyItMatters = trimmed(question.whyItMatters) {
-                BriefRow(title: "为什么问", body: whyItMatters, accent: DS.accent)
+            BriefRow(title: "教练判断", body: coachDecisionLine, accent: DS.accent)
+            BriefRow(title: "先补一句", body: coachRepairLine, accent: DS.brick)
+            if let coachPracticeReason {
+                BriefRow(title: "为什么这样练", body: coachPracticeReason, accent: DS.success)
             }
-            if !question.sourceCardTitles.isEmpty {
-                BriefRow(
-                    title: "来源",
-                    body: question.sourceCardTitles.prefix(2).joined(separator: " / "),
-                    accent: DS.graphite
-                )
-            }
-            if let calibrationTarget = trimmed(question.calibrationTarget) {
-                BriefRow(title: "校准对象", body: calibrationTarget, accent: DS.success)
-            }
-            if let lensMove = question.lensMove {
-                BriefRow(title: "这一题练什么", body: lensMove.displayTitle, accent: DS.accent)
-            }
-            if let gapTitle = teachingGapTitle {
-                BriefRow(title: "具体还缺", body: gapTitle, accent: DS.brick)
-            }
-            if let whyNow = trimmed(question.whyNow) {
-                BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
-            }
-            if let expectedUpdate = trimmed(question.expectedUpdate) {
-                BriefRow(title: "答完要更清楚", body: trainingUpdateCopy(expectedUpdate), accent: DS.accent)
-            }
-            if let proceedWhen = trimmed(question.proceedWhen) {
-                BriefRow(title: "什么时候继续", body: proceedWhen, accent: DS.success)
-            }
-            BriefRow(title: "怎么回答", body: question.answerTrainingPrompt, accent: DS.accent)
         }
         .padding(10)
         .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -3317,6 +3293,39 @@ private struct QuestionCardView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
+    }
+
+    private var coachDecisionLine: String {
+        if let gapTitle = teachingGapTitle {
+            return "你现在先补\(gapTitle)，否则后面的回答容易变成泛泛判断。"
+        }
+        if let whyItMatters = trimmed(question.whyItMatters) {
+            return whyItMatters
+        }
+        if let calibrationTarget = trimmed(question.calibrationTarget) {
+            return "这题用来校准：\(calibrationTarget)"
+        }
+        return "这题不是让 AI 替你给答案，而是帮你把当前讲述补清楚。"
+    }
+
+    private var coachRepairLine: String {
+        if let lensMove = question.lensMove {
+            return "用\(lensMove.displayTitle)来回答：\(question.answerTrainingPrompt)"
+        }
+        return question.answerTrainingPrompt
+    }
+
+    private var coachPracticeReason: String? {
+        if let whyNow = trimmed(question.whyNow) {
+            return whyNow
+        }
+        if let expectedUpdate = trimmed(question.expectedUpdate) {
+            return trainingUpdateCopy(expectedUpdate)
+        }
+        if let proceedWhen = trimmed(question.proceedWhen) {
+            return "答到这里再继续：\(proceedWhen)"
+        }
+        return nil
     }
 
     private var teachingGapTitle: String? {
