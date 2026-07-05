@@ -159,7 +159,8 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "不是让 AI 替你给答案")
         ).firstMatch
         XCTAssertFalse(trainingContract.exists)
-        XCTAssertTrue(app.staticTexts["下一句训练"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["建议补充"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["下一句训练"].exists)
         XCTAssertFalse(app.staticTexts["自检标准"].exists)
 
         let trainingToolsToggle = app.buttons["today.capture.training-tools-toggle"]
@@ -180,18 +181,24 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 8))
-        let challenge = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "我作为听众现在只能听懂")
+        let provided = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "已说清")
         ).firstMatch
-        XCTAssertTrue(challenge.waitForExistence(timeout: 4))
+        XCTAssertTrue(provided.waitForExistence(timeout: 4))
         let descriptionTraining = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "沟通力中的描述力")
         ).firstMatch
         XCTAssertTrue(descriptionTraining.waitForExistence(timeout: 4))
         let narrativeOrder = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "我听不懂的是")
+            NSPredicate(format: "label CONTAINS %@", "还缺")
         ).firstMatch
         XCTAssertTrue(narrativeOrder.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "我作为听众现在只能听懂")
+        ).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "我听不懂的是")
+        ).firstMatch.exists)
         let concreteAsk = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "什么背景下，谁做了什么，触发点是什么，后来发生了什么")
         ).firstMatch

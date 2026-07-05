@@ -1769,7 +1769,7 @@ struct CoachObservation: Codable, Hashable {
     var experienceReplayPrompt: String
 
     var narrativeTrainingLine: String {
-        "讲清楚一件事：顺序：背景 → 对象 → 触发 → 行动 → 结果；已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；下一句先补：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
+        "讲清楚一件事：顺序：背景 → 对象 → 触发 → 行动 → 结果；已说清：\(CoachObservationMaterial.trainingLine(for: providedMaterials))；还缺：\(CoachObservationMaterial.trainingLine(for: missingMaterials))。"
     }
 
     var secondaryTrainingLine: String {

@@ -1607,7 +1607,7 @@ final class AppStore: ObservableObject {
             )
         }
         if observation.primaryGap == .experience {
-            return "过往经验复现训练：旧经验不能直接当成答案。请判断这次是复现、调整，还是否定；下一句先补：条件差异。"
+            return "过往经验复现训练：旧经验不能直接当成答案。先判断这次是复现、调整，还是否定；再补：条件差异。"
         }
         if observation.primaryGap == .observation {
             return listenerReplayObservationLine(
@@ -1674,7 +1674,7 @@ final class AppStore: ObservableObject {
         }
         let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
         let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
-        return "已说清：\(provided)。下一句先补：\(missing)。"
+        return "已说清：\(provided)。还缺：\(missing)。可以补：\(missing)。"
     }
 
     private static func listenerReplayObservationLine(
@@ -1684,7 +1684,7 @@ final class AppStore: ObservableObject {
     ) -> String {
         let provided = CoachObservationMaterial.trainingLine(for: observation.providedMaterials)
         let missing = CoachObservationMaterial.trainingLine(for: observation.missingMaterials)
-        return "\(observation.trainingAbility.trainingTitle)：\(diagnosis)。我作为听众现在只能听懂：\(provided)。我听不懂的是：\(missing)。下一句请先补：\(ask)"
+        return "\(observation.trainingAbility.trainingTitle)：\(diagnosis)。已说清：\(provided)。还缺：\(missing)。可以补：\(ask)"
     }
 
     private static func materialTrainingFeedback(for text: String) -> CoachMaterialTrainingFeedback? {
@@ -1704,27 +1704,27 @@ final class AppStore: ObservableObject {
     private static func nextSentenceTrainingLine(for observation: CoachObservation) -> String {
         switch observation.primaryGap {
         case .narrative:
-            return "下一句训练：按背景、对象、触发、行动、结果补全，让别人能复述这件事。"
+            return "按背景、对象、触发、行动、结果补全，让别人能复述这件事。"
         case .experience:
-            return "下一句训练：先判断复现、调整，还是否定；再写一句这次和旧经验的条件差异。"
+            return "先判断复现、调整，还是否定；再写一句这次和旧经验的条件差异。"
         case .observation:
-            return "下一句训练：补一个可观察事实，把事实和解释分开。"
+            return "补一个可观察事实，把事实和解释分开。"
         case .object:
-            return "下一句训练：写清这件事影响谁，或你要服务谁的什么问题。"
+            return "写清这件事影响谁，或你要服务谁的什么问题。"
         case .goal:
-            return "下一句训练：写清谁的什么问题会变少、成功标准是什么，再决定行动。"
+            return "写清谁的什么问题会变少、成功标准是什么，再决定行动。"
         case .constraint:
-            return "下一句训练：写清当前限制来自时间、资源、权限、信息、关系还是系统边界。"
+            return "写清当前限制来自时间、资源、权限、信息、关系还是系统边界。"
         case .causal:
-            return "下一句训练：补出 A 到 B 中间的关键环节，别直接跳到结论。"
+            return "补出 A 到 B 中间的关键环节，别直接跳到结论。"
         case .counterexample:
-            return "下一句训练：写出会推翻、替代或削弱当前解释的事实。"
+            return "写出会推翻、替代或削弱当前解释的事实。"
         case .judgment:
-            return "下一句训练：写出判断标准、重要性和取舍依据。"
+            return "写出判断标准、重要性和取舍依据。"
         case .execution:
-            return "下一句训练：写出明天最小一步，以及完成后会留下什么证据。"
+            return "写出明天最小一步，以及完成后会留下什么证据。"
         case .calibration:
-            return "下一句训练：写出哪个未来信号会证明判断要更新，以及如何更新。"
+            return "写出哪个未来信号会证明判断要更新，以及如何更新。"
         }
     }
 

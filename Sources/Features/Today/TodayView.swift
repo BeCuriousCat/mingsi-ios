@@ -874,7 +874,7 @@ struct TodayView: View {
                 accent: DS.accent
             )
             BriefRow(
-                title: "下一句训练",
+                title: "建议补充",
                 body: feedback.nextSentenceLine,
                 accent: DS.brick
             )
