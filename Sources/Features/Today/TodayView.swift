@@ -983,7 +983,7 @@ struct TodayView: View {
                         )
                     }
                     BriefRow(
-                        title: "哪里没听懂",
+                        title: "具体还缺",
                         body: feedback.abilityGapLine,
                         accent: DS.accent
                     )

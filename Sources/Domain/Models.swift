@@ -1436,7 +1436,7 @@ struct CoachAnswerFeedbackPolicy {
         let suffix = canProceed
             ? "这不是普通待办，下一步要用明日结果校准判断。"
             : "这不是普通待办；如果现在继续，这个没讲清的地方会保留下来，明天回看。"
-        return "教练批改：\(critiqueParts.joined(separator: "；"))。\(suffix)"
+        return "\(critiqueParts.joined(separator: "；"))。\(suffix)"
     }
 
     private func critiqueTrainingFocus(
@@ -1446,17 +1446,17 @@ struct CoachAnswerFeedbackPolicy {
     ) -> String {
         guard let observation else {
             let target = remainingGaps.isEmpty ? plan.missingMoveTitle : gapLine(for: remainingGaps)
-            return "听众回放：我没听懂的是：\(target)。这里需要补到别人能复述"
+            return "还缺：\(target)。这里需要补到别人能复述"
         }
         if observation.primaryGap == .goal {
-            return "听众回放：我听到的是行动安排，但这是把行动当成答案；我没听懂的是：服务对象、成功标准和可观察信号"
+            return "我听到的是行动安排，但这是把行动当成答案；还缺：服务对象、成功标准和可观察信号"
         }
         if observation.primaryGap == .narrative {
             let understood = narrativeUnderstoodLine(for: observation)
             let missing = narrativeMissingLine(for: observation)
-            return "听众回放：\(understood)，但我没听懂的是：\(missing)"
+            return "\(understood)，但还缺：\(missing)"
         }
-        return "听众回放：我听到你在练\(observation.trainingAbility.trainingTitle)，但我没听懂的是：\(observation.feedback.diagnosis)"
+        return "你在练\(observation.trainingAbility.trainingTitle)，但还缺：\(observation.feedback.diagnosis)"
     }
 
     private func activeGaps(from gaps: [EvidenceGapType]) -> [EvidenceGapType] {

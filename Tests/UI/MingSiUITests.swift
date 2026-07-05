@@ -521,16 +521,18 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "这不是合格复盘")
         ).firstMatch
         XCTAssertTrue(coachCritique.waitForExistence(timeout: 4))
-        let listenerReplay = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "听众回放")
-        ).firstMatch
-        XCTAssertTrue(listenerReplay.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "我听到的是行动安排")
         ).firstMatch.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "我没听懂的是")
+            NSPredicate(format: "label CONTAINS %@", "还缺：服务对象、成功标准和可观察信号")
         ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "听众回放")
+        ).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "我没听懂的是")
+        ).firstMatch.exists)
         XCTAssertFalse(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "还要训练")
         ).firstMatch.exists)
@@ -602,7 +604,8 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "谁的什么问题会变少")
         ).firstMatch
         XCTAssertTrue(answerMaterialGap.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["哪里没听懂"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["具体还缺"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["哪里没听懂"].exists)
         XCTAssertFalse(app.staticTexts["能力缺口"].exists)
         let abilityGap = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "你想行动")
