@@ -1485,7 +1485,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.updateTodayCapture("之前这样做有效，所以这次我也打算照着做。")
 
         let line = try XCTUnwrap(store.coachCaptureMaterialObservation)
-        XCTAssertTrue(line.contains("过往经验复现训练"))
+        XCTAssertTrue(line.contains("想想以前类似情况"))
         XCTAssertTrue(line.contains("旧经验不能直接当成答案"))
         XCTAssertTrue(line.contains("复现、调整，还是否定"))
         XCTAssertTrue(line.contains("条件差异"))
@@ -5940,6 +5940,9 @@ final class AppStoreStateMachineTests: XCTestCase {
         ]
         store.submitTodayStep()
         try await waitForState(.sessionComplete)
+        XCTAssertTrue(store.loopResumeText.contains("今天复盘已完成"))
+        XCTAssertTrue(store.todayLoopMessage.contains("原则已保存，今天复盘已完成。"))
+        XCTAssertFalse(store.todayLoopMessage.contains("今日闭环"))
     }
 
     func testEditPrinciple_updatesCandidateBeforeSave() async throws {
@@ -5974,6 +5977,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.skipPrinciple()
         XCTAssertEqual(store.todayDraft.state, .sessionComplete)
         XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertTrue(store.todayLoopMessage.contains("已跳过原则沉淀，今天复盘已完成。"))
+        XCTAssertFalse(store.todayLoopMessage.contains("今日闭环"))
     }
 
     // MARK: - SessionComplete -> Reset
@@ -6840,7 +6845,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.todayDraft.state = .selectLens
         store.todayDraft.selectedLens = nil
         XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("进入条件") == true)
-        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("训练处方") == true)
+        XCTAssertTrue(store.todayPrimaryActionBlocker?.contains("等待明思看完材料") == true)
 
         store.todayDraft.state = .answerQuestions
         store.todayDraft.selectedLens = .firstPrinciples

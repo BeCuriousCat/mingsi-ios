@@ -262,7 +262,7 @@ struct HistoryView: View {
 
                 HistoryDayHeader(
                     date: visibleRecord.draft.date,
-                    title: visibleRecord.draft.state == .sessionComplete ? "闭环完成" : "复盘记录",
+                    title: visibleRecord.draft.state == .sessionComplete ? "复盘完成" : "复盘记录",
                     subtitle: evidenceCounts
                 )
 
@@ -2009,7 +2009,7 @@ private struct GrowthReportReviewPanel: View {
             }
 
             if !snapshot.canDisplayScores {
-                Text("证据还在积累中。完成至少 3 次闭环并保留验证结果后，这里会展示报告依据。")
+                Text("证据还在积累中。完成至少 3 次完整复盘，并保留验证结果后，这里会展示报告依据。")
                     .font(.subheadline)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2055,7 +2055,7 @@ private struct GrowthReportReviewPanel: View {
 
     private var reportLedger: some View {
         HStack(spacing: 10) {
-            GrowthReportLedgerChip(title: "闭环", value: "\(snapshot.completeLoopCount)")
+            GrowthReportLedgerChip(title: "复盘", value: "\(snapshot.completeLoopCount)")
             GrowthReportLedgerChip(title: "正向", value: "\(positiveCount)")
             GrowthReportLedgerChip(title: "负向", value: "\(negativeCount)")
         }

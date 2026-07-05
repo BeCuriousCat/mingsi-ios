@@ -640,7 +640,7 @@ struct TodayView: View {
             .map(\.catalogItem)
 
         return VStack(alignment: .leading, spacing: 14) {
-            stepLabel("训练处方", subtitle: "先由明思判断主训练焦点，再接受、改选或跳过。")
+            stepLabel("教练先看一眼", subtitle: "明思先看你哪里没讲清，再推荐一个练法。")
 
             todayLensCoreCard(confirmedCount: confirmedCards.count)
 
@@ -764,7 +764,7 @@ struct TodayView: View {
                 .padding(.top, 8)
             } label: {
                 Label(
-                    "查看教练诊断",
+                    "看明思为什么这样问",
                     systemImage: "list.bullet.clipboard"
                 )
                 .font(.caption.weight(.semibold))
@@ -817,21 +817,21 @@ struct TodayView: View {
     private func observationTrainingFrame(_ observation: CoachObservation) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: "能力训练诊断",
+                title: "这次主要练",
                 body: "本轮主练：\(observation.trainingAbility.trainingTitle)。\(observation.trainingAbility.coachingMeaning)",
                 accent: DS.accent
             )
             BriefRow(
-                title: "材料分离训练",
+                title: "先把材料分开",
                 body: "事实、感受、解释、判断、行动",
                 accent: DS.caution
             )
-            BriefRow(title: "讲述训练", body: observation.narrativeTrainingLine, accent: DS.accent)
+            BriefRow(title: "讲清楚训练", body: observation.narrativeTrainingLine, accent: DS.accent)
             if !observation.secondaryTrainingLine.isEmpty {
-                BriefRow(title: "旁路留意", body: observation.secondaryTrainingLine, accent: DS.graphite)
+                BriefRow(title: "顺手留意", body: observation.secondaryTrainingLine, accent: DS.graphite)
             }
             materialInventoryRows(for: observation)
-            BriefRow(title: "推进标准", body: observation.feedback.proceedWhen, accent: DS.success)
+            BriefRow(title: "什么时候继续", body: observation.feedback.proceedWhen, accent: DS.success)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -935,7 +935,7 @@ struct TodayView: View {
                 accent: feedback.canProceedToValidation ? DS.success : DS.brick
             )
             BriefRow(
-                title: "过往经验复现",
+                title: "想想以前类似情况",
                 body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
                 accent: DS.graphite
             )
@@ -1445,7 +1445,7 @@ struct TodayView: View {
         case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
         case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
         case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
-        case .selectLens: return "当前：训练处方。由明思判断本轮主训练焦点。"
+        case .selectLens: return "当前：教练先看一眼。明思先看哪里没讲清，再推荐练法。"
         case .answerQuestions: return "当前：复盘今天。把没讲清、证据不足、判断跳跃的地方补一下。"
         case .reviewQuests: return "当前：写明天要验证的一步。"
         case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
@@ -1576,10 +1576,9 @@ struct TodayView: View {
     private func todayLensCoreCard(confirmedCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Coach Observation")
+                Text("教练观察")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
-                    .textCase(.uppercase)
                 Spacer()
                 Text("\(store.todayDraft.sessionMode.title) · \(confirmedCount) 已确认")
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -1597,9 +1596,9 @@ struct TodayView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 7) {
-                BriefRow(title: "明思观察了你的材料", body: "先从已确认卡片里看事实、判断、目标、约束和行动是否齐全。", accent: DS.accent)
-                BriefRow(title: "诊断主要缺口", body: "只抓一个当前最该补的漏想点，避免把训练变成泛泛提问。", accent: DS.brick)
-                BriefRow(title: "推荐训练处方", body: "透镜只是训练方式；主线是补上没想清的部分，并保留你的改选权。", accent: DS.success)
+                BriefRow(title: "你已经说了什么", body: "先从已确认卡片里看事实、判断、目标、约束和行动是否齐全。", accent: DS.accent)
+                BriefRow(title: "先补哪里", body: "只抓一个当前最该补的漏想点，避免把训练变成泛泛提问。", accent: DS.brick)
+                BriefRow(title: "推荐怎么练", body: "透镜只是练法；主线是补上没想清的部分，并保留你的改选权。", accent: DS.success)
             }
 
             observationTrainingFrame(
@@ -1683,7 +1682,7 @@ struct TodayView: View {
 
             if !prescription.baselineChecks.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("底盘检查")
+                    Text("基础检查")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                         .textCase(.uppercase)
@@ -1760,12 +1759,12 @@ struct TodayView: View {
 
     private func teachingRouteView(_ plan: CoachTeachingPlan) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            BriefRow(title: "本轮漏想点", body: plan.missingMoveTitle, accent: DS.brick)
-            BriefRow(title: "本轮练什么", body: plan.trainingTargetLine, accent: DS.accent)
-            BriefRow(title: "为什么不能直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
-            BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
+            BriefRow(title: "哪里没想全", body: plan.missingMoveTitle, accent: DS.brick)
+            BriefRow(title: "这次练什么", body: plan.trainingTargetLine, accent: DS.accent)
+            BriefRow(title: "为什么先不直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
+            BriefRow(title: "什么时候继续", body: plan.proceedStandard, accent: DS.success)
             BriefRow(title: "建议补充", body: plan.repairQuestion, accent: DS.brick)
-            BriefRow(title: "过往经验复现", body: plan.experienceReplayPrompt, accent: DS.graphite)
+            BriefRow(title: "想想以前类似情况", body: plan.experienceReplayPrompt, accent: DS.graphite)
             experienceReplayDecisionView()
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1806,7 +1805,7 @@ struct TodayView: View {
 
     private func experienceReplayDecisionView() -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("经验判断")
+            Text("以前有没有类似情况")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(DS.mutedInk)
                 .textCase(.uppercase)
@@ -2342,7 +2341,7 @@ struct TodayView: View {
 
         let finalTitle = lensItem(for: prescription.finalLensId)?.title ?? prescription.finalLensId
         let recommendedTitle = lensItem(for: prescription.recommendedLensId)?.title ?? prescription.recommendedLensId
-        return "你已改选为「\(finalTitle)」；教练推荐「\(recommendedTitle)」仍保留为审计，后续问题以改选透镜为主，同时继续执行底盘检查。"
+        return "你已改选为「\(finalTitle)」；教练推荐「\(recommendedTitle)」仍保留记录，后续问题以改选透镜为主，同时继续做基础检查。"
     }
 
     private func baselineCheckTitle(_ check: BaselineThinkingCheck) -> String {
@@ -3420,7 +3419,7 @@ private struct QuestCardView: View {
                     BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                     BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
                     BriefRow(title: "结果校准信号", body: executionFeedback.calibrationLine, accent: DS.success)
-                    BriefRow(title: "本轮练什么", body: executionFeedback.trainingLine, accent: DS.graphite)
+                    BriefRow(title: "这次练什么", body: executionFeedback.trainingLine, accent: DS.graphite)
                     if let trainingTarget {
                         BriefRow(
                             title: "复现哪条原则",
@@ -3602,7 +3601,7 @@ private struct ReferencedPrinciplesView: View {
                     Image(systemName: "quote.bubble")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.accent)
-                    Text("过往经验复现")
+                    Text("想想以前类似情况")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()

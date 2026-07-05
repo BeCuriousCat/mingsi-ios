@@ -1488,7 +1488,7 @@ final class AppStore: ObservableObject {
     }
 
     var loopResumeText: String {
-        todayDraft.state == .sessionComplete ? "今日闭环已完成" : "今日复盘未完成"
+        todayDraft.state == .sessionComplete ? "今天复盘已完成" : "今日复盘未完成"
     }
 
     var hasResumeableLoop: Bool {
@@ -1607,7 +1607,7 @@ final class AppStore: ObservableObject {
             )
         }
         if observation.primaryGap == .experience {
-            return "过往经验复现训练：旧经验不能直接当成答案。先判断这次是复现、调整，还是否定；再补：条件差异。"
+            return "想想以前类似情况：旧经验不能直接当成答案。先判断这次是复现、调整，还是否定；再补：条件差异。"
         }
         if observation.primaryGap == .observation {
             return listenerReplayObservationLine(
@@ -1801,12 +1801,12 @@ final class AppStore: ObservableObject {
             }
             return trainingPrescription == nil
                 ? todayEntryCondition(
-                    requirement: "等待教练生成思考透镜训练处方。",
-                    reason: "先由明思观察材料，再决定本轮训练焦点。"
+                    requirement: "等待明思看完材料。",
+                    reason: "先看你哪里没讲清，再决定这次主要练什么。"
                 )
                 : todayEntryCondition(
-                    requirement: "先接受教练训练处方、改选训练焦点或跳过。",
-                    reason: "透镜应服务于本轮缺口，不是随手挑一个 Prompt。"
+                    requirement: "先接受教练推荐、改选练法或跳过。",
+                    reason: "透镜只是练法，重点是补上这次没想清的部分。"
                 )
         case .answerQuestions:
             guard availableCalibrationTarget != nil else {
@@ -3436,7 +3436,7 @@ final class AppStore: ObservableObject {
                 executionReliability: 3.0,
                 calibration: 3.0,
                 reflectionDepth: 3.0,
-                summary: "已有 \(completedRecords.count) 次闭环，但缺少结果校准，暂不生成成长趋势。",
+                summary: "已有 \(completedRecords.count) 次完整复盘，但缺少结果校准，暂不生成成长趋势。",
                 status: .insufficientEvidence,
                 completeLoopCount: completedRecords.count,
                 nextTrainingFocus: "优先补齐结果校准，让成长判断有结果证据。"
@@ -4768,7 +4768,7 @@ final class AppStore: ObservableObject {
     func skipPrinciple() {
         principles = []
         persistPrinciples()
-        completeTodayLoop(message: "已跳过原则沉淀，今日闭环完成。")
+        completeTodayLoop(message: "已跳过原则沉淀，今天复盘已完成。")
     }
 
     func resetTodayLoop() {
@@ -5181,7 +5181,7 @@ final class AppStore: ObservableObject {
 
     private func confirmSelectedLens() {
         guard todayDraft.selectedLens != nil || todayDraft.selectedCustomLensId != nil else {
-            todayLoopMessage = trainingPrescription == nil ? "正在等待教练训练处方。" : "请先接受教练推荐、改选训练焦点或跳过。"
+            todayLoopMessage = trainingPrescription == nil ? "正在等明思看完材料。" : "请先接受教练推荐、改选练法或跳过。"
             return
         }
         if questions.isEmpty {
@@ -5278,9 +5278,9 @@ final class AppStore: ObservableObject {
     private func savePrinciple() {
         persistPrinciples()
         if principles.isEmpty {
-            completeTodayLoop(message: "没有保存原则候选，今日闭环完成。")
+            completeTodayLoop(message: "没有保存原则候选，今天复盘已完成。")
         } else {
-            completeTodayLoop(message: "原则已保存，今日闭环完成。")
+            completeTodayLoop(message: "原则已保存，今天复盘已完成。")
         }
     }
 
@@ -6227,8 +6227,8 @@ final class AppStore: ObservableObject {
                 ReflectionQuestion(
                     question: localTeachingQuestion(for: teachingPlan, gap: teachingGap),
                     whyItMatters: "这是明思本轮训练焦点：\(teachingPlan.whyNotAnswer)",
-                    whyNow: "本轮漏想点：\(teachingPlan.missingMoveTitle)",
-                    expectedUpdate: "答案会补上\(teachingPlan.trainingTargetTitle)，并决定是否满足推进标准。",
+                    whyNow: "这次还没想全：\(teachingPlan.missingMoveTitle)",
+                    expectedUpdate: "答案会补上\(teachingPlan.trainingTargetTitle)，并决定是否可以继续。",
                     proceedWhen: teachingPlan.proceedStandard,
                     evidenceGapType: teachingGap,
                     answerUse: localAnswerUse(for: teachingGap),
@@ -6301,7 +6301,7 @@ final class AppStore: ObservableObject {
         case .missingCalibrationSignal:
             return "明天用什么实际结果信号校准这个判断？"
         case .none:
-            return "先说清本轮判断如何满足推进标准：\(plan.proceedStandard)"
+            return "先说清为什么现在可以继续：\(plan.proceedStandard)"
         }
     }
 
