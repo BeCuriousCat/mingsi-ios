@@ -168,7 +168,7 @@ struct TodayView: View {
                     Text(boundary.title)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(boundary.tint)
-                    Text("查看阶段边界")
+                    Text("看这一步做什么")
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
                 }
@@ -188,22 +188,22 @@ struct TodayView: View {
         switch store.todayDraft.state {
         case .verifyYesterday:
             return LoopBoundaryCopy(
-                title: "闭环二：结果校准",
-                body: "只回看昨天设计的验证行动：做没做、有没有价值、判断如何更新；完成后才进入今天内容。",
+                title: "先看昨天结果",
+                body: "只看昨天那一步：做没做、有没有用、判断要不要改。看完再开始写今天。",
                 icon: "scope",
                 tint: DS.caution
             )
         case .reviewQuests, .extractPrinciple, .sessionComplete:
             return LoopBoundaryCopy(
-                title: "闭环二：明日验证与结果校准",
-                body: "把今日复盘后的一个判断变成明天的验证行动；明天回来只校准结果，不继续写今天复盘。",
+                title: "明天验证一下",
+                body: "把今天的一个判断，写成明天能做、能检查的一步。",
                 icon: "flag.checkered",
                 tint: DS.success
             )
         case .capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions:
             return LoopBoundaryCopy(
-                title: "闭环一：今天内容与今日复盘",
-                body: "先把今天发生了什么、你怎么做、你怎么想讲清楚；这里只完成理解，不设计明天行动。",
+                title: "今天先讲清楚",
+                body: "先说发生了什么、你做了什么、你怎么想；这一步不写明天计划。",
                 icon: "person.text.rectangle",
                 tint: DS.brick
             )
@@ -261,16 +261,16 @@ struct TodayView: View {
     private func loopProgress(scrollToTop: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             loopProgressGroup(
-                title: "今日理解闭环",
-                route: "今天内容 → 今日复盘",
+                title: "今天先讲清楚",
+                route: "记录今天 -> 复盘一下",
                 states: [.capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions],
                 tint: DS.brick,
                 scrollToTop: scrollToTop
             )
 
             loopProgressGroup(
-                title: "行动验证闭环",
-                route: "明日验证 → 结果校准",
+                title: "明天验证一下",
+                route: "做一步 -> 回来看结果",
                 states: [.reviewQuests, .extractPrinciple, .sessionComplete, .verifyYesterday],
                 tint: DS.success,
                 scrollToTop: scrollToTop
@@ -1440,16 +1440,16 @@ struct TodayView: View {
 
     private var progressCaption: String {
         switch store.todayDraft.state {
-        case .verifyYesterday: return "当前：结果校准。只校准昨天验证行动，不补写今天复盘。"
+        case .verifyYesterday: return "当前：先看昨天结果。看完再开始写今天。"
         case .capture: return "当前：今天内容。先讲清发生了什么、怎么做、怎么想。"
         case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
         case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
         case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
         case .selectLens: return "当前：训练处方。由明思判断本轮主训练焦点。"
-        case .answerQuestions: return "当前：今日复盘。只修补理解、证据、判断和经验缺口。"
-        case .reviewQuests: return "当前：明日验证。把今天一个判断变成明天可验证动作。"
+        case .answerQuestions: return "当前：复盘今天。把没讲清、证据不足、判断跳跃的地方补一下。"
+        case .reviewQuests: return "当前：写明天要验证的一步。"
         case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
-        case .sessionComplete: return "当前：今日闭环完成。明天回来先做结果校准。"
+        case .sessionComplete: return "今天完成了。明天先回来看结果。"
         }
     }
 
