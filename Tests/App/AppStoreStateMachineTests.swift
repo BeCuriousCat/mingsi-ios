@@ -2078,7 +2078,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let feedback = QuestExecutionTrainingPolicy().makeFeedback(for: quest)
 
         XCTAssertEqual(feedback.trainingDimension, .testableActionDesign)
-        XCTAssertTrue(feedback.contractLine.contains("执行训练契约"))
+        XCTAssertFalse(feedback.contractLine.contains("执行训练契约"))
         XCTAssertTrue(feedback.contractLine.contains("不是普通待办"))
         XCTAssertTrue(feedback.contractLine.contains("完成证据"))
         XCTAssertTrue(feedback.contractLine.contains("结果校准信号"))
@@ -2086,6 +2086,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.evidenceLine.contains("会议记录"))
         XCTAssertTrue(feedback.resistanceLine.contains("直接开会"))
         XCTAssertTrue(feedback.calibrationLine.contains("结果校准"))
+        XCTAssertFalse(feedback.trainingLine.contains("执行力训练："))
         XCTAssertTrue(feedback.trainingLine.contains("执行力"))
         XCTAssertTrue(feedback.trainingLine.contains("可验证行动"))
     }

@@ -3406,15 +3406,15 @@ private struct QuestCardView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    BriefRow(title: "执行训练契约", body: executionFeedback.contractLine, accent: DS.success)
+                    BriefRow(title: "为什么不是普通待办", body: executionFeedback.contractLine, accent: DS.success)
                     BriefRow(title: "验证判断", body: executionFeedback.judgmentLine, accent: DS.accent)
                     BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                     BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
                     BriefRow(title: "结果校准信号", body: executionFeedback.calibrationLine, accent: DS.success)
-                    BriefRow(title: "执行力训练", body: executionFeedback.trainingLine, accent: DS.graphite)
+                    BriefRow(title: "本轮练什么", body: executionFeedback.trainingLine, accent: DS.graphite)
                     if let trainingTarget {
                         BriefRow(
-                            title: "训练原则",
+                            title: "复现哪条原则",
                             body: trainingTarget.principleTitle,
                             accent: DS.accent
                         )
@@ -3434,11 +3434,11 @@ private struct QuestCardView: View {
 
     private var questTrainingPrinciplePicker: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text("校准训练")
+            Text("选择复现原则")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(DS.mutedInk)
             Picker(
-                "训练原则",
+                "复现原则",
                 selection: Binding<PrincipleAsset.ID?>(
                     get: { quest.trainingPrincipleId },
                     set: { selectTrainingPrinciple($0) }

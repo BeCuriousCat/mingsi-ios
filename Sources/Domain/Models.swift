@@ -3573,12 +3573,12 @@ struct QuestExecutionTrainingPolicy {
     }
 
     private func contractLine() -> String {
-        "执行训练契约：这不是普通待办；明天必须留下完成证据，并用结果校准信号更新今天的判断。"
+        "这不是普通待办；明天必须留下完成证据，并用结果校准信号更新今天的判断。"
     }
 
     private func trainingLine(for quest: Quest) -> String {
         let move = quest.lensMove?.displayTitle ?? ThinkingTrainingDimension.testableActionDesign.displayTitle
-        return "执行力训练：把今天的判断转成一个可验证行动，并用\(move)检查它是否真的改变结果。"
+        return "执行力：把今天的判断转成一个可验证行动，并用\(move)检查它是否真的改变结果。"
     }
 
     private func trimmed(_ text: String?) -> String? {
