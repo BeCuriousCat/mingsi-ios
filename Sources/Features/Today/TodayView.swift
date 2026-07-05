@@ -3295,21 +3295,21 @@ private struct QuestionCardView: View {
                 BriefRow(title: "校准对象", body: calibrationTarget, accent: DS.success)
             }
             if let lensMove = question.lensMove {
-                BriefRow(title: "训练动作", body: lensMove.displayTitle, accent: DS.accent)
+                BriefRow(title: "这一题练什么", body: lensMove.displayTitle, accent: DS.accent)
             }
             if let gapTitle = teachingGapTitle {
-                BriefRow(title: "补的缺口", body: gapTitle, accent: DS.brick)
+                BriefRow(title: "具体还缺", body: gapTitle, accent: DS.brick)
             }
             if let whyNow = trimmed(question.whyNow) {
                 BriefRow(title: "为什么现在问", body: whyNow, accent: DS.caution)
             }
             if let expectedUpdate = trimmed(question.expectedUpdate) {
-                BriefRow(title: "作答要更新", body: trainingUpdateCopy(expectedUpdate), accent: DS.accent)
+                BriefRow(title: "答完要更清楚", body: trainingUpdateCopy(expectedUpdate), accent: DS.accent)
             }
             if let proceedWhen = trimmed(question.proceedWhen) {
-                BriefRow(title: "推进标准", body: proceedWhen, accent: DS.success)
+                BriefRow(title: "什么时候继续", body: proceedWhen, accent: DS.success)
             }
-            BriefRow(title: "作答方式", body: question.answerTrainingPrompt, accent: DS.accent)
+            BriefRow(title: "怎么回答", body: question.answerTrainingPrompt, accent: DS.accent)
         }
         .padding(10)
         .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))

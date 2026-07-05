@@ -473,16 +473,20 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["作答方式"].exists)
 
         coachBasisToggle.tap()
-        XCTAssertTrue(app.staticTexts["训练动作"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["这一题练什么"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["为什么现在问"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["答案会改变"].exists)
-        XCTAssertTrue(app.staticTexts["作答要更新"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["答完要更清楚"].waitForExistence(timeout: 4))
         let answerUpdateCopy = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "这次作答会")
         ).firstMatch
         XCTAssertTrue(answerUpdateCopy.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["推进标准"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["作答方式"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["什么时候继续"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["怎么回答"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["训练动作"].exists)
+        XCTAssertFalse(app.staticTexts["补的缺口"].exists)
+        XCTAssertFalse(app.staticTexts["作答要更新"].exists)
+        XCTAssertFalse(app.staticTexts["作答方式"].exists)
 
         let diagnosisToggle = app.buttons["today.answer.diagnosis-toggle"].firstMatch
         scrollToElement(diagnosisToggle, in: app)
