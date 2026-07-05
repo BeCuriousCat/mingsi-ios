@@ -50,23 +50,29 @@ final class MingSiUITests: XCTestCase {
         tapPrimaryAction(in: app, expectingState: "select_lens")
 
         XCTAssertFalse(app.staticTexts["本轮漏想点"].exists)
+        XCTAssertFalse(app.staticTexts["本轮练什么"].exists)
+        XCTAssertFalse(app.staticTexts["为什么不能直接给答案"].exists)
+        XCTAssertFalse(app.staticTexts["补缺动作"].exists)
+        XCTAssertFalse(app.staticTexts["怎么练"].exists)
+        XCTAssertFalse(app.staticTexts["训练目标"].exists)
+        XCTAssertFalse(app.staticTexts["教练追问"].exists)
         XCTAssertFalse(app.staticTexts["训练契约"].exists)
         XCTAssertFalse(app.staticTexts["训练边界"].exists)
-        XCTAssertFalse(app.staticTexts["补缺动作"].exists)
         XCTAssertFalse(app.staticTexts["训练路线"].exists)
-        XCTAssertFalse(app.staticTexts["训练目标"].exists)
-        XCTAssertFalse(app.staticTexts["为什么不是直接给答案"].exists)
-        XCTAssertFalse(app.staticTexts["教练追问"].exists)
 
         let routeToggle = app.buttons["today.training-prescription.teaching-toggle"]
         XCTAssertTrue(routeToggle.waitForExistence(timeout: 4))
         routeToggle.tap()
 
         XCTAssertTrue(app.staticTexts["本轮漏想点"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["训练契约"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["训练边界"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["补缺动作"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["训练路线"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["本轮练什么"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["为什么不能直接给答案"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["建议补充"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["怎么练"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["训练契约"].exists)
+        XCTAssertFalse(app.staticTexts["训练边界"].exists)
+        XCTAssertFalse(app.staticTexts["训练路线"].exists)
+        XCTAssertFalse(app.staticTexts["补缺动作"].exists)
         let missingMove = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "可观察证据")
         ).firstMatch

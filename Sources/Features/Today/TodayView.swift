@@ -1664,7 +1664,7 @@ struct TodayView: View {
                     }
                 } label: {
                     Label(
-                        isTrainingPrescriptionTeachingExpanded ? "收起训练路线" : "查看训练路线",
+                        isTrainingPrescriptionTeachingExpanded ? "收起怎么练" : "查看怎么练",
                         systemImage: isTrainingPrescriptionTeachingExpanded ? "chevron.up.circle" : "map"
                     )
                     .font(.caption.weight(.semibold))
@@ -1673,7 +1673,7 @@ struct TodayView: View {
                 .controlSize(.small)
                 .tint(DS.graphite)
                 .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionTeachingToggle)
-                .accessibilityLabel(isTrainingPrescriptionTeachingExpanded ? "收起训练路线" : "查看训练路线")
+                .accessibilityLabel(isTrainingPrescriptionTeachingExpanded ? "收起怎么练" : "查看怎么练")
 
                 if isTrainingPrescriptionTeachingExpanded {
                     teachingRouteView(teachingPlan)
@@ -1761,15 +1761,15 @@ struct TodayView: View {
     private func teachingRouteView(_ plan: CoachTeachingPlan) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(title: "本轮漏想点", body: plan.missingMoveTitle, accent: DS.brick)
-            BriefRow(title: "训练契约", body: plan.trainingTargetLine, accent: DS.accent)
-            BriefRow(title: "训练边界", body: plan.whyNotAnswer, accent: DS.caution)
+            BriefRow(title: "本轮练什么", body: plan.trainingTargetLine, accent: DS.accent)
+            BriefRow(title: "为什么不能直接给答案", body: plan.whyNotAnswer, accent: DS.caution)
             BriefRow(title: "推进标准", body: plan.proceedStandard, accent: DS.success)
-            BriefRow(title: "补缺动作", body: plan.repairQuestion, accent: DS.brick)
+            BriefRow(title: "建议补充", body: plan.repairQuestion, accent: DS.brick)
             BriefRow(title: "过往经验复现", body: plan.experienceReplayPrompt, accent: DS.graphite)
             experienceReplayDecisionView()
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("训练路线")
+                Text("怎么练")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
                     .textCase(.uppercase)
