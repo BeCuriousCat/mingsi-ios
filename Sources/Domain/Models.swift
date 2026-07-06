@@ -1052,7 +1052,7 @@ struct LocalTrainingPrescriptionPolicy {
 
     private func overrideBoundary(userSelectedLensId: String?, recommendedLensId: String) -> String {
         guard let userSelectedLensId, userSelectedLensId != recommendedLensId else { return "" }
-        return "用户改选为 \(userSelectedLensId)，保留教练推荐 \(recommendedLensId) 作为审计；后续问题和任务以最终选择为主，同时保留基础思维检查。"
+        return "用户改选为 \(userSelectedLensId)，保留教练推荐 \(recommendedLensId) 作为记录；后续问题和任务以最终选择为主，同时保留基础思维检查。"
     }
 }
 
@@ -1192,8 +1192,8 @@ struct CoachTurnPolicy {
             overrideTurn.phase = .formAction
             overrideTurn.readiness = .ready
             overrideTurn.recommendedMove = .generateQuest
-            overrideTurn.reason = "用户选择 override 推进；回答会进入行动生成，但未关闭缺口继续作为审计边界。"
-            overrideTurn.turnSummary = "用户 override 后继续推进；未关闭缺口仍保留，明天用行动证据校准。"
+            overrideTurn.reason = "用户选择先推进；回答会进入行动生成，但未关闭缺口会继续保留。"
+            overrideTurn.turnSummary = "用户主动推进后继续行动；未关闭缺口仍保留，明天用行动证据校准。"
             overrideTurn.policyVersion = Self.policyVersion
             return overrideTurn
         }
@@ -1245,7 +1245,7 @@ struct CoachTurnPolicy {
             updated.phase = .formAction
             updated.readiness = .ready
             updated.recommendedMove = .generateQuest
-            updated.turnSummary = "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留审计边界。"
+            updated.turnSummary = "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留提醒。"
         }
         return updated
     }
@@ -1511,15 +1511,15 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "可复述材料：补出一段别人能复述的可复盘材料，能支撑\(plan.proceedStandard)"
+            return "补出一段别人能复述的复盘材料，能支撑\(plan.proceedStandard)"
         }
         if observation.primaryGap == .goal {
-            return "可复述材料：一句让别人能复述服务对象、成功标准、可观察信号的判断，再决定行动。"
+            return "一句让别人能复述服务对象、成功标准、可观察信号的判断，再决定行动。"
         }
         if observation.primaryGap == .narrative {
-            return "可复述材料：一段让别人能复述背景、对象、触发、行动、结果的完整讲述。"
+            return "一段让别人能复述背景、对象、触发、行动、结果的完整讲述。"
         }
-        return "可复述材料：补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让别人能复述并判断下一步。"
+        return "补出\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，让别人能复述并判断下一步。"
     }
 
     private func selfCheckLine(
@@ -1527,15 +1527,15 @@ struct CoachAnswerFeedbackPolicy {
         observation: CoachObservation?
     ) -> String {
         guard let observation else {
-            return "自检标准：别人能根据你的材料判断\(plan.proceedStandard)"
+            return "别人能根据你的材料判断\(plan.proceedStandard)"
         }
         if observation.primaryGap == .goal {
-            return "自检标准：这句话要能回答谁的什么问题会变少、成功标准是什么、明天看哪个可观察信号。"
+            return "这句话要能回答谁的什么问题会变少、成功标准是什么、明天看哪个可观察信号。"
         }
         if observation.primaryGap == .narrative {
-            return "自检标准：别人不追问你，也能复述背景、对象、触发、行动和结果。"
+            return "别人不追问你，也能复述背景、对象、触发、行动和结果。"
         }
-        return "自检标准：补完后别人能指出已补\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，并知道下一步怎么判断。"
+        return "补完后别人能指出已补\(CoachObservationMaterial.trainingLine(for: observation.missingMaterials))，并知道下一步怎么判断。"
     }
 
     private func trainingTargetLine(
@@ -2689,15 +2689,15 @@ struct CoachTeachingPolicy {
             return CoachTeachingPlan(
                 policyVersion: Self.policyVersion,
                 missingMoveTitle: "证据缺口仍然存在，但你选择先推进。",
-                trainingTargetTitle: "带着审计边界行动",
-                whyNotAnswer: "override 是推进许可，不是缺口已经消失；后续任务仍要留下校准证据。",
+                trainingTargetTitle: "带着提醒行动",
+                whyNotAnswer: "先推进只是允许继续，不是缺口已经消失；后续任务仍要留下校准证据。",
                 proceedStandard: "任务必须留下可回看证据，方便明天校准。",
-                repairQuestion: "如果明天结果和当前判断相反，你要回看哪条证据来校准这次 override？",
+                repairQuestion: "如果明天结果和当前判断相反，你要回看哪条证据来校准这次主动推进？",
                 experienceReplayPrompt: experienceReplayPrompt(
                     "回想过往一次先推进后校准的经验：这次要校验哪条做法？"
                 ),
                 routeSteps: ["记录用户主动推进", "保留未关闭缺口", "明天重点验证这个缺口是否造成偏差"],
-                auditNote: "用户 override 不是缺口已经消失的证明。"
+                auditNote: "用户主动推进不是缺口已经消失的证明。"
             )
         }
 

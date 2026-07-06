@@ -1731,27 +1731,27 @@ final class AppStore: ObservableObject {
     private static func selfCheckLine(for observation: CoachObservation) -> String {
         switch observation.primaryGap {
         case .narrative:
-            return "自检标准：别人不追问你，也能复述背景、对象、触发、行动和结果。"
+            return "别人不追问你，也能复述背景、对象、触发、行动和结果。"
         case .experience:
-            return "自检标准：你已经明确这次是复现、调整还是否定，并写出条件差异。"
+            return "你已经明确这次是复现、调整还是否定，并写出条件差异。"
         case .observation:
-            return "自检标准：一句话里能分清可观察事实和你的解释。"
+            return "一句话里能分清可观察事实和你的解释。"
         case .object:
-            return "自检标准：别人能看出服务对象是谁，以及这个对象的什么问题被影响。"
+            return "别人能看出服务对象是谁，以及这个对象的什么问题被影响。"
         case .goal:
-            return "自检标准：这句话能回答服务对象、成功标准和可观察信号。"
+            return "这句话能回答服务对象、成功标准和可观察信号。"
         case .constraint:
-            return "自检标准：别人能指出真正限制是哪一类，以及它如何影响下一步。"
+            return "别人能指出真正限制是哪一类，以及它如何影响下一步。"
         case .causal:
-            return "自检标准：A 到 B 的中间链条可被复述，关键环节清楚。"
+            return "A 到 B 的中间链条可被复述，关键环节清楚。"
         case .counterexample:
-            return "自检标准：至少有一个事实能推翻、替代或削弱当前解释。"
+            return "至少有一个事实能推翻、替代或削弱当前解释。"
         case .judgment:
-            return "自检标准：别人能看出你的判断标准、重要性和取舍依据。"
+            return "别人能看出你的判断标准、重要性和取舍依据。"
         case .execution:
-            return "自检标准：明天动作足够小，且完成后有可检查证据。"
+            return "明天动作足够小，且完成后有可检查证据。"
         case .calibration:
-            return "自检标准：未来信号明确，且你写清了出现什么就更新判断。"
+            return "未来信号明确，且你写清了出现什么就更新判断。"
         }
     }
 
@@ -4515,7 +4515,7 @@ final class AppStore: ObservableObject {
         source: TrainingPrescriptionSource
     ) -> String {
         guard source == .userOverride, finalLensId != recommendedLensId else { return "" }
-        return "用户改选为 \(finalLensId)，保留教练推荐 \(recommendedLensId) 作为审计；后续问题和任务以最终选择为主，同时保留基础思维检查。"
+        return "用户改选为 \(finalLensId)，保留教练推荐 \(recommendedLensId) 作为记录；后续问题和任务以最终选择为主，同时保留基础思维检查。"
     }
 
     func updateQuestionAnswer(questionID: ReflectionQuestion.ID, answer: String) {
@@ -6226,7 +6226,7 @@ final class AppStore: ObservableObject {
             questions = [
                 ReflectionQuestion(
                     question: localTeachingQuestion(for: teachingPlan, gap: teachingGap),
-                    whyItMatters: "这是明思本轮训练焦点：\(teachingPlan.whyNotAnswer)",
+                    whyItMatters: "这是明思这次主要想训练的地方：\(teachingPlan.whyNotAnswer)",
                     whyNow: "这次还没想全：\(teachingPlan.missingMoveTitle)",
                     expectedUpdate: "答案会补上\(teachingPlan.trainingTargetTitle)，并决定是否可以继续。",
                     proceedWhen: teachingPlan.proceedStandard,

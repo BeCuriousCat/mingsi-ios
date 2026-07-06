@@ -1444,7 +1444,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertFalse(feedback.nextSentenceLine.contains("下一句训练"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("谁的什么问题会变少"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("成功标准"))
-        XCTAssertTrue(feedback.selfCheckLine.contains("自检标准"))
+        XCTAssertFalse(feedback.selfCheckLine.contains("自检标准"))
         XCTAssertTrue(feedback.selfCheckLine.contains("服务对象"))
         XCTAssertTrue(feedback.selfCheckLine.contains("成功标准"))
     }
@@ -1456,7 +1456,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         let feedback = try XCTUnwrap(store.coachCaptureMaterialTrainingFeedback)
         XCTAssertTrue(feedback.trainingTargetLine.contains("思考力中的校准力"))
         XCTAssertTrue(feedback.nextSentenceLine.contains("复现、调整，还是否定"))
-        XCTAssertTrue(feedback.selfCheckLine.contains("自检标准"))
+        XCTAssertFalse(feedback.selfCheckLine.contains("自检标准"))
         XCTAssertTrue(feedback.selfCheckLine.contains("条件差异"))
         XCTAssertTrue(feedback.selfCheckLine.contains("同时留意"))
         XCTAssertTrue(feedback.selfCheckLine.contains("目标缺口"))
@@ -1994,13 +1994,13 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback.abilityGapLine.contains("成功标准"))
         XCTAssertTrue(feedback.abilityGapLine.contains("可观察信号"))
         XCTAssertFalse(feedback.abilityGapLine.contains("能力缺口"))
-        XCTAssertTrue(feedback.trainingOutputLine.contains("可复述材料"))
+        XCTAssertFalse(feedback.trainingOutputLine.contains("可复述材料"))
         XCTAssertTrue(feedback.trainingOutputLine.contains("别人能复述"))
         XCTAssertTrue(feedback.trainingOutputLine.contains("服务对象"))
         XCTAssertTrue(feedback.trainingOutputLine.contains("成功标准"))
         XCTAssertTrue(feedback.trainingOutputLine.contains("可观察信号"))
         XCTAssertFalse(feedback.trainingOutputLine.contains("训练产物"))
-        XCTAssertTrue(feedback.selfCheckLine.contains("自检标准"))
+        XCTAssertFalse(feedback.selfCheckLine.contains("自检标准"))
         XCTAssertTrue(feedback.selfCheckLine.contains("谁的什么问题"))
         XCTAssertTrue(feedback.selfCheckLine.contains("成功标准"))
         XCTAssertTrue(feedback.selfCheckLine.contains("可观察信号"))
@@ -2101,14 +2101,14 @@ final class AppStoreStateMachineTests: XCTestCase {
             baselineChecks: [.evidenceGap, .testableAction],
             decisionSource: .userOverrideProgress,
             policyVersion: CoachTurnPolicy.policyVersion,
-            turnSummary: "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留审计边界。"
+            turnSummary: "用户主动推进到行动生成；这不是证据缺口已消失的证明，后续仍保留提醒。"
         )
 
         let plan = CoachTeachingPolicy().makePlan(turn: turn, prescription: nil)
 
         XCTAssertTrue(plan.missingMoveTitle.contains("证据缺口仍然存在"))
-        XCTAssertTrue(plan.trainingTargetTitle.contains("审计边界"))
-        XCTAssertTrue(plan.whyNotAnswer.contains("override 是推进许可"))
+        XCTAssertTrue(plan.trainingTargetTitle.contains("提醒"))
+        XCTAssertTrue(plan.whyNotAnswer.contains("先推进只是允许继续"))
         XCTAssertTrue(plan.proceedStandard.contains("可回看证据"))
         XCTAssertEqual(plan.routeSteps.first, "记录用户主动推进")
         XCTAssertTrue(plan.auditNote?.contains("不是缺口已经消失") ?? false)
@@ -2799,7 +2799,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(turn.decisionSource, .userOverrideProgress)
         XCTAssertEqual(turn.readiness, .ready)
         XCTAssertFalse(turn.openEvidenceGaps.isEmpty)
-        XCTAssertTrue(turn.reason.contains("override"))
+        XCTAssertTrue(turn.reason.contains("先推进"))
     }
 
     func testAnswerQuestions_primarySubmitRecordsCoachGapOverrideWhenSuggestionIsOptional() async throws {

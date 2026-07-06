@@ -707,7 +707,7 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("教练追问", subtitle: "修补一个关键缺口。")
+            stepLabel("教练追问", subtitle: "先补一处没讲清的地方。")
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
@@ -776,7 +776,7 @@ struct TodayView: View {
 
     private func answerTrainingFocusStrip(_ observation: CoachObservation) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("本轮训练")
+            Text("这次先练")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(DS.accent)
             Text("主练：\(observation.trainingAbility.trainingTitle)")
@@ -898,12 +898,12 @@ struct TodayView: View {
             if isCaptureTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
                     BriefRow(
-                        title: "本次练什么",
+                        title: "这次练什么",
                         body: feedback.trainingTargetLine,
                         accent: DS.caution
                     )
                     BriefRow(
-                        title: "自检标准",
+                        title: "怎么算讲清楚",
                         body: feedback.selfCheckLine,
                         accent: DS.success
                     )
@@ -920,7 +920,7 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(
-                title: "教练批改",
+                title: "明思听完以后",
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
@@ -983,27 +983,27 @@ struct TodayView: View {
                         )
                     }
                     BriefRow(
-                        title: "具体还缺",
+                        title: "还缺什么",
                         body: feedback.abilityGapLine,
                         accent: DS.accent
                     )
                     BriefRow(
-                        title: "可复述材料",
+                        title: "别人能不能复述",
                         body: feedback.trainingOutputLine,
                         accent: DS.success
                     )
                     BriefRow(
-                        title: "自检标准",
+                        title: "怎么算讲清楚",
                         body: feedback.selfCheckLine,
                         accent: DS.accent
                     )
                     BriefRow(
-                        title: "本次练什么",
+                        title: "这次练什么",
                         body: feedback.trainingTargetLine,
                         accent: DS.caution
                     )
                     BriefRow(
-                        title: "判断句训练",
+                        title: "把判断说完整",
                         body: feedback.judgmentSentencePrompt,
                         accent: DS.success
                     )
@@ -1017,7 +1017,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 9) {
             BriefRow(title: "已修补", body: feedback.repairedLine, accent: DS.success)
             BriefRow(
-                title: "能否进入明日验证",
+                title: "现在能继续吗",
                 body: feedback.proceedLine,
                 accent: feedback.canProceedToValidation ? DS.success : DS.caution
             )
@@ -1702,7 +1702,7 @@ struct TodayView: View {
 
             if let overrideAuditText = trainingOverrideAuditText(prescription) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("改选审计")
+                    Text("改选记录")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(lensTint(for: item))
                         .textCase(.uppercase)
@@ -2106,7 +2106,7 @@ struct TodayView: View {
                             .stroke(lensTint(for: item).opacity(0.18), lineWidth: 1)
                     )
                     .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionDecisionOverrideAudit)
-                    .accessibilityLabel("改选审计：\(overrideAuditText)")
+                    .accessibilityLabel("改选记录：\(overrideAuditText)")
             }
         }
     }
