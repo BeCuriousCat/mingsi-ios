@@ -77,6 +77,16 @@ Today 流程必须稳定支持：
 - 摘要只能作为弱提示：先看今天材料，如果同一模式复现，再选择一个最小训练动作。
 - 当前阶段不做复杂画像系统，不展示复杂报表，不把用户贴永久标签。
 
+## Stop-Gate Command
+
+阶段停止前运行：
+
+```bash
+scripts/run_coach_quality_baseline_gate.sh
+```
+
+这个脚本会检查黄金案例、核心教练测试、StateMachine、UI、build，以及真实手机试用证据。真实手机试用证据记录在 `docs/coach-quality-phone-trial.md`；状态不是 `PASSED` 时，阶段不能关闭。
+
 ## High-Cost Terms Guardrail
 
 Today 主路径不应出现这些面向用户的高成本词：训练处方、审计、闭环、校验依据、能力诊断、推进标准、训练契约、底盘检查、过往经验复现。
