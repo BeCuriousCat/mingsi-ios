@@ -1691,6 +1691,57 @@ enum CoachObservationGap: String, Codable, CaseIterable, Hashable {
     }
 }
 
+enum CoachQualityGap: String, Codable, CaseIterable, Hashable {
+    case narrativeUnclear = "narrative_unclear"
+    case evidenceGap = "evidence_gap"
+    case judgmentJump = "judgment_jump"
+    case unverifiableAction = "unverifiable_action"
+    case experienceMisuse = "experience_misuse"
+
+    var displayTitle: String {
+        switch self {
+        case .narrativeUnclear:
+            return "讲不清"
+        case .evidenceGap:
+            return "证据不足"
+        case .judgmentJump:
+            return "判断跳跃"
+        case .unverifiableAction:
+            return "行动不可验证"
+        case .experienceMisuse:
+            return "旧经验误用"
+        }
+    }
+}
+
+enum CoachFoundationalAbility: String, Codable, CaseIterable, Hashable {
+    case communication
+    case thinking
+    case execution
+    case calibration
+
+    var displayTitle: String {
+        switch self {
+        case .communication:
+            return "沟通力"
+        case .thinking:
+            return "思考力"
+        case .execution:
+            return "执行力"
+        case .calibration:
+            return "校准力"
+        }
+    }
+}
+
+struct CoachQualityBaselineDecision: Codable, Hashable {
+    var policyVersion: String
+    var primaryGap: CoachQualityGap
+    var foundationalAbility: CoachFoundationalAbility
+    var minimalTrainingAction: String
+    var reason: String
+}
+
 enum CoreTrainingAbility: String, Codable, CaseIterable, Hashable {
     case description
     case observation
@@ -1783,6 +1834,37 @@ struct CoachObservation: Codable, Hashable {
     var experienceReplayTrainingLine: String {
         ExperienceReplayTraining.line
     }
+
+    var qualityBaselineGap: CoachQualityGap {
+        switch primaryGap {
+        case .narrative, .object:
+            return .narrativeUnclear
+        case .observation:
+            return .evidenceGap
+        case .constraint, .causal, .counterexample, .judgment:
+            return .judgmentJump
+        case .goal, .execution, .calibration:
+            return .unverifiableAction
+        case .experience:
+            return .experienceMisuse
+        }
+    }
+
+    var foundationalAbility: CoachFoundationalAbility {
+        if primaryGap == .experience {
+            return .thinking
+        }
+        switch trainingAbility {
+        case .description:
+            return .communication
+        case .observation, .analysis, .judgment:
+            return .thinking
+        case .execution:
+            return .execution
+        case .calibration:
+            return .calibration
+        }
+    }
 }
 
 struct CoachMaterialTrainingFeedback: Codable, Hashable {
@@ -1838,6 +1920,87 @@ extension CoachObservationMaterial {
 
 struct CoachObservationPolicy {
     static let policyVersion = "coach-observation.local-v7"
+
+    func diagnoseBaseline(text: String) -> CoachQualityBaselineDecision {
+        let normalizedText = text.lowercased()
+
+        if mentionsExperience(normalizedText), lacksExperienceFitCheck(normalizedText) {
+            return baselineDecision(
+                gap: .experienceMisuse,
+                ability: .thinking,
+                action: "先判断这条经验在本次是复现、调整还是否定，并写出一个条件差异。",
+                reason: "用户在调用旧经验，但还没有检查这次条件是否相同。"
+            )
+        }
+
+        if asksForDirectAnswer(normalizedText) || hasUnverifiableTomorrowAction(normalizedText) {
+            let ability: CoachFoundationalAbility = asksForFutureSignal(normalizedText) ? .calibration : .execution
+            return baselineDecision(
+                gap: .unverifiableAction,
+                ability: ability,
+                action: ability == .calibration
+                    ? "写出明天看到什么结果就确认、调整或推翻今天判断。"
+                    : "把明天动作缩成一步，并写出完成后留下什么证据。",
+                reason: "用户已经跳到明天动作，但动作还不能被检查。"
+            )
+        }
+
+        if reportsFinishedWithoutValueSignal(normalizedText) {
+            return baselineDecision(
+                gap: .judgmentJump,
+                ability: .calibration,
+                action: "分开完成情况和实际价值：做了什么，产生了什么结果。",
+                reason: "用户把完成和有效混在一起，还没有用结果更新判断。"
+            )
+        }
+
+        if needsUnderstandingEvidence(normalizedText) {
+            return baselineDecision(
+                gap: .evidenceGap,
+                ability: .calibration,
+                action: "补一个对方真正理解的外部信号。",
+                reason: "用户把自己解释清楚当成对方理解，还缺外部结果信号。"
+            )
+        }
+
+        if statesFeelingAsConclusion(normalizedText) || attributesMotiveWithoutEvidence(normalizedText) {
+            return baselineDecision(
+                gap: .evidenceGap,
+                ability: .thinking,
+                action: "补一个可观察事实：谁说了什么，或哪个结果支持这个判断。",
+                reason: "用户已经给出判断或感受，但还没有给出可观察事实。"
+            )
+        }
+
+        if makesJudgmentLeap(normalizedText) {
+            let ability: CoachFoundationalAbility = mentionsYesterdayResult(normalizedText) ? .calibration : .thinking
+            return baselineDecision(
+                gap: .judgmentJump,
+                ability: ability,
+                action: ability == .calibration
+                    ? "写清昨天结果让今天判断确认、调整还是推翻。"
+                    : "补出事实到结论之间的中间原因，或写出一个能推翻它的结果信号。",
+                reason: "用户从现象直接跳到结论，中间依据还没有展开。"
+            )
+        }
+
+        if needsListenerContext(normalizedText) {
+            return baselineDecision(
+                gap: .narrativeUnclear,
+                ability: .communication,
+                action: "补清楚这件事是什么、涉及谁、卡住或变化的表现是什么。",
+                reason: "当前描述省略了关键上下文，别人还不能复述。"
+            )
+        }
+
+        let observation = observe(text: text)
+        return baselineDecision(
+            gap: observation.qualityBaselineGap,
+            ability: observation.foundationalAbility,
+            action: observation.feedback.ask,
+            reason: observation.thinkingProcessObservation
+        )
+    }
 
     func observe(text: String) -> CoachObservation {
         observe(cards: [
@@ -1904,8 +2067,7 @@ struct CoachObservationPolicy {
             materials.append(.trigger)
         }
 
-        if cards.contains(where: { $0.type == .task }) ||
-            containsAny(text, ["打算", "计划", "明天", "先拉会", "先让", "写清", "行动", "推进", "调整", "暂停", "action", "tomorrow"]) {
+        if cards.contains(where: { $0.type == .task }) || hasProvidedActionIntent(text) {
             materials.append(.action)
         }
 
@@ -2475,6 +2637,17 @@ struct CoachObservationPolicy {
         ])
     }
 
+    private func hasProvidedActionIntent(_ text: String) -> Bool {
+        let explicitActionTerms = [
+            "打算", "计划", "明天", "先拉会", "先让", "写清", "行动", "调整", "暂停",
+            "action", "tomorrow"
+        ]
+        if containsAny(text, ["推进不下去", "推不动", "难推进"]) {
+            return containsAny(text, explicitActionTerms)
+        }
+        return containsAny(text, explicitActionTerms + ["推进"])
+    }
+
     private func hasExplicitGoalGapSignal(_ text: String) -> Bool {
         containsAny(text, ["不知道到底服务于谁", "没说清目标", "目标不清", "不知道目标", "没有目标"])
     }
@@ -2505,6 +2678,82 @@ struct CoachObservationPolicy {
             "反例", "推翻", "削弱", "相反证据", "替代解释", "不成立", "证伪",
             "如果不是", "还有可能", "counterexample", "disconfirm", "falsify"
         ])
+    }
+
+    private func baselineDecision(
+        gap: CoachQualityGap,
+        ability: CoachFoundationalAbility,
+        action: String,
+        reason: String
+    ) -> CoachQualityBaselineDecision {
+        CoachQualityBaselineDecision(
+            policyVersion: Self.policyVersion,
+            primaryGap: gap,
+            foundationalAbility: ability,
+            minimalTrainingAction: action,
+            reason: reason
+        )
+    }
+
+    private func mentionsExperience(_ text: String) -> Bool {
+        containsAny(text, ["以前", "之前", "过往", "经验", "复用", "沿用", "照着做", "上次", "previous", "experience"])
+    }
+
+    private func asksForDirectAnswer(_ text: String) -> Bool {
+        containsAny(text, ["直接告诉我", "应该怎么做就行", "给答案", "tell me what to do"])
+    }
+
+    private func hasUnverifiableTomorrowAction(_ text: String) -> Bool {
+        guard containsAny(text, ["明天", "tomorrow"]) else { return false }
+        return containsAny(text, [
+            "先拉", "拉个会", "推进", "优化", "要求大家", "看看", "看能不能",
+            "会要求", "会推进", "我要把", "我会", "先让", "先找"
+        ])
+    }
+
+    private func asksForFutureSignal(_ text: String) -> Bool {
+        containsAny(text, ["看看", "是不是更好", "方向是不是", "是否更好"])
+    }
+
+    private func reportsFinishedWithoutValueSignal(_ text: String) -> Bool {
+        containsAny(text, ["昨天", "做完"]) &&
+            containsAny(text, ["没有什么用", "结果一般", "好像没用", "继续按原计划"])
+    }
+
+    private func mentionsYesterdayResult(_ text: String) -> Bool {
+        containsAny(text, ["昨天", "结果一般", "做完了", "继续按原计划"])
+    }
+
+    private func needsListenerContext(_ text: String) -> Bool {
+        if containsAny(text, ["这个事情", "这个事", "这个不行", "他说", "他们", "对方", "这个"]) &&
+            !containsAny(text, ["事实", "记录", "用户", "客户", "团队", "会议", "评审"]) {
+            return true
+        }
+        if containsAny(text, ["重新设计", "流程重新", "更顺"]) &&
+            !containsAny(text, ["用户", "客户", "服务对象", "影响谁"]) {
+            return true
+        }
+        return false
+    }
+
+    private func needsUnderstandingEvidence(_ text: String) -> Bool {
+        containsAny(text, ["解释清楚", "沟通应该有效", "真正理解"])
+    }
+
+    private func statesFeelingAsConclusion(_ text: String) -> Bool {
+        containsAny(text, ["不靠谱", "大家都在绕", "只是感觉", "让我感觉"]) &&
+            !containsAny(text, ["谁说", "事实", "看到", "听到", "记录"])
+    }
+
+    private func attributesMotiveWithoutEvidence(_ text: String) -> Bool {
+        containsAny(text, ["就是不重视", "都不想负责", "故意"])
+    }
+
+    private func makesJudgmentLeap(_ text: String) -> Bool {
+        if containsAny(text, ["肯定", "一定", "所以", "不适合", "会提升", "应该有效"]) {
+            return true
+        }
+        return containsAny(text, ["没有按时交付", "机制", "推翻这个判断", "继续按原计划"])
     }
 
     private func lacksExperienceFitCheck(_ text: String) -> Bool {

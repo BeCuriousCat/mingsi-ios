@@ -1413,6 +1413,30 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(observation.narrativeTrainingLine.contains("还缺：目标"))
     }
 
+    func testCoachObservationPolicyCoversCoachQualityGoldenCases() throws {
+        let goldenCases = try readCoachQualityGoldenCases()
+
+        for goldenCase in goldenCases {
+            let decision = CoachObservationPolicy().diagnoseBaseline(text: goldenCase.input)
+
+            XCTAssertEqual(
+                decision.primaryGap.rawValue,
+                goldenCase.expectedPrimaryGap,
+                "\(goldenCase.id) should map to the documented primary gap."
+            )
+            XCTAssertEqual(
+                decision.foundationalAbility.rawValue,
+                goldenCase.expectedAbility,
+                "\(goldenCase.id) should map to the documented foundational ability."
+            )
+            XCTAssertLessThanOrEqual(
+                decision.minimalTrainingAction.filter { $0 == "？" || $0 == "?" }.count,
+                1,
+                "\(goldenCase.id) should not ask multiple questions at once."
+            )
+        }
+    }
+
     func testCaptureMaterialObservationCoachesWhileUserWrites() {
         store.todayDraft.state = .capture
         store.updateTodayCapture("先让 Alex 写清验收标准。")
@@ -9120,6 +9144,25 @@ final class AppStoreStateMachineTests: XCTestCase {
             confirmed.isConfirmed = true
             return confirmed
         }
+    }
+
+    private func readCoachQualityGoldenCases() throws -> [CoachQualityGoldenCase] {
+        let sourceFilePath = String(#filePath)
+        guard let testsRange = sourceFilePath.range(of: "/Tests/") else {
+            throw NSError(domain: "AppStoreStateMachineTests", code: 1)
+        }
+        let repositoryRoot = String(sourceFilePath[..<testsRange.lowerBound])
+        let fileURL = URL(fileURLWithPath: repositoryRoot)
+            .appendingPathComponent("docs/coach-quality-golden-cases.json")
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([CoachQualityGoldenCase].self, from: data)
+    }
+
+    private struct CoachQualityGoldenCase: Decodable {
+        var id: String
+        var input: String
+        var expectedPrimaryGap: String
+        var expectedAbility: String
     }
 
     private func observationPrompt(for gap: CoachObservationGap) -> String {
