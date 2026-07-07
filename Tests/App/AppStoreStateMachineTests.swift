@@ -6759,7 +6759,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(fallbackQuestion.answerUse, .collectEvidence)
         XCTAssertEqual(fallbackQuestion.lensMove, .factInterpretationSplit)
         XCTAssertTrue(fallbackQuestion.question.contains("可观察事实"))
-        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.whyNow).contains("本轮漏想点"))
+        XCTAssertTrue(try XCTUnwrap(fallbackQuestion.whyNow).contains("这次还没想全"))
         XCTAssertTrue(try XCTUnwrap(fallbackQuestion.expectedUpdate).contains("补上"))
         XCTAssertTrue(try XCTUnwrap(fallbackQuestion.proceedWhen).contains("可观察事实"))
         XCTAssertTrue(try XCTUnwrap(fallbackQuestion.calibrationTarget).contains("可观察事实"))

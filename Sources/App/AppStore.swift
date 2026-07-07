@@ -5219,8 +5219,10 @@ final class AppStore: ObservableObject {
         if hasAnsweredReflectionQuestion {
             refreshCoachTurnStateAfterAnswers()
             if let coachTurnState, coachTurnState.readiness != .ready {
-                todayLoopMessage = coachAnswerTrainingFeedbackMessage(for: coachTurnState)
-                return
+                recordCoachGapOverrideForProgress(
+                    from: coachTurnState,
+                    reason: "用户选择先推进明日验证；当前回答仍保留没讲清的地方。"
+                )
             }
         } else if coachTurnState?.decisionSource != .userOverrideProgress {
             todayLoopMessage = todayPrimaryActionBlocker
