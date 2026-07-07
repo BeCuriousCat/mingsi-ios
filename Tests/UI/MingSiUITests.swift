@@ -793,7 +793,8 @@ final class MingSiUITests: XCTestCase {
         repairAction.tap()
 
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["本页只复盘今天"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先补一处没讲清的地方。"].waitForExistence(timeout: 4))
     }
 
     func testTodayVerifyYesterdayFramesResultCalibration() throws {
@@ -1023,7 +1024,7 @@ final class MingSiUITests: XCTestCase {
         guard element.exists, !element.frame.isEmpty else { return false }
         let bottomOverlayTop = app.buttons["today.primary-action"].firstMatch.exists
             ? app.buttons["today.primary-action"].firstMatch.frame.minY
-            : app.frame.height * 0.46
+            : app.frame.height
         let keyboardTop = app.keyboards.firstMatch.exists
             ? app.keyboards.firstMatch.frame.minY
             : app.frame.height
