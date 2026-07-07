@@ -1437,6 +1437,55 @@ final class AppStoreStateMachineTests: XCTestCase {
         }
     }
 
+    func testCoachPatternSummaryPolicyKeepsOnlyRecentGapPatternSummary() throws {
+        let currentID = UUID()
+        let olderEvidenceGap = HistoryRecord(
+            draft: DailyEntryDraft(
+                date: Date(timeIntervalSince1970: 100),
+                rawText: "今天这个评审让我感觉很不靠谱，大家都在绕。",
+                state: .sessionComplete
+            )
+        )
+        let latestEvidenceGap = HistoryRecord(
+            draft: DailyEntryDraft(
+                date: Date(timeIntervalSince1970: 300),
+                rawText: "他就是不重视这个项目，所以一直没有反馈。",
+                state: .sessionComplete
+            )
+        )
+        let experienceGap = HistoryRecord(
+            draft: DailyEntryDraft(
+                date: Date(timeIntervalSince1970: 200),
+                rawText: "之前这样推进有效，所以这次也照着做，还没比较条件差异。",
+                state: .sessionComplete
+            )
+        )
+        let currentRecord = HistoryRecord(
+            draft: DailyEntryDraft(
+                id: currentID,
+                date: Date(timeIntervalSince1970: 400),
+                rawText: "今天当前材料不应该进入历史画像。",
+                state: .sessionComplete
+            )
+        )
+
+        let summary = try XCTUnwrap(
+            CoachPatternSummaryPolicy().summarize(
+                records: [olderEvidenceGap, latestEvidenceGap, experienceGap, currentRecord],
+                excluding: currentID
+            )
+        )
+
+        XCTAssertEqual(summary.policyVersion, CoachPatternSummaryPolicy.policyVersion)
+        XCTAssertEqual(summary.analyzedRecordCount, 3)
+        XCTAssertEqual(summary.topPatterns.first?.primaryGap, .evidenceGap)
+        XCTAssertEqual(summary.topPatterns.first?.foundationalAbility, .thinking)
+        XCTAssertEqual(summary.topPatterns.first?.count, 2)
+        XCTAssertFalse(summary.sourceDailyEntryIds.contains(currentID.uuidString))
+        XCTAssertFalse(summary.guidanceLine.contains("大家都在绕"))
+        XCTAssertTrue(summary.guidanceLine.contains("历史只作为提示"))
+    }
+
     func testCaptureMaterialObservationCoachesWhileUserWrites() {
         store.todayDraft.state = .capture
         store.updateTodayCapture("先让 Alex 写清验收标准。")

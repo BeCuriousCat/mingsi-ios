@@ -1742,6 +1742,93 @@ struct CoachQualityBaselineDecision: Codable, Hashable {
     var reason: String
 }
 
+struct CoachPatternSignal: Codable, Hashable {
+    var primaryGap: CoachQualityGap
+    var foundationalAbility: CoachFoundationalAbility
+    var count: Int
+    var latestDate: Date
+    var minimalTrainingAction: String
+}
+
+struct CoachPatternSummary: Codable, Hashable {
+    var policyVersion: String
+    var analyzedRecordCount: Int
+    var totalSignalCount: Int
+    var sourceDailyEntryIds: [String]
+    var topPatterns: [CoachPatternSignal]
+    var guidanceLine: String
+}
+
+struct CoachPatternSummaryPolicy {
+    static let policyVersion = "coach-pattern-summary.local-v1"
+
+    var recordLimit = 14
+    var patternLimit = 2
+
+    func summarize(
+        records: [HistoryRecord],
+        excluding excludedDailyEntryId: DailyEntryDraft.ID? = nil
+    ) -> CoachPatternSummary? {
+        let completedRecords = records
+            .filter { record in
+                record.draft.state == .sessionComplete &&
+                    record.draft.id != excludedDailyEntryId &&
+                    !record.coachPatternText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            .sorted { $0.draft.date > $1.draft.date }
+            .prefix(recordLimit)
+
+        guard !completedRecords.isEmpty else { return nil }
+
+        let decisions = completedRecords.map { record in
+            (
+                record: record,
+                decision: CoachObservationPolicy().diagnoseBaseline(text: record.coachPatternText)
+            )
+        }
+        let grouped = Dictionary(grouping: decisions) { item in
+            CoachPatternKey(
+                gap: item.decision.primaryGap,
+                ability: item.decision.foundationalAbility
+            )
+        }
+
+        let patterns = grouped.map { key, items in
+            let latest = items.max { lhs, rhs in lhs.record.draft.date < rhs.record.draft.date }
+            return CoachPatternSignal(
+                primaryGap: key.gap,
+                foundationalAbility: key.ability,
+                count: items.count,
+                latestDate: latest?.record.draft.date ?? .distantPast,
+                minimalTrainingAction: latest?.decision.minimalTrainingAction ?? ""
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.count == rhs.count {
+                return lhs.latestDate > rhs.latestDate
+            }
+            return lhs.count > rhs.count
+        }
+        .prefix(patternLimit)
+
+        guard !patterns.isEmpty else { return nil }
+        let topPattern = patterns[0]
+        return CoachPatternSummary(
+            policyVersion: Self.policyVersion,
+            analyzedRecordCount: completedRecords.count,
+            totalSignalCount: decisions.count,
+            sourceDailyEntryIds: completedRecords.map { $0.draft.id.uuidString },
+            topPatterns: Array(patterns),
+            guidanceLine: "历史只作为提示：最近常见的是\(topPattern.primaryGap.displayTitle)，本次仍要先看今天材料；如果复现，再让用户补一个最小训练动作。"
+        )
+    }
+
+    private struct CoachPatternKey: Hashable {
+        var gap: CoachQualityGap
+        var ability: CoachFoundationalAbility
+    }
+}
+
 enum CoreTrainingAbility: String, Codable, CaseIterable, Hashable {
     case description
     case observation
@@ -5694,6 +5781,38 @@ struct HistoryRecord: Identifiable, Hashable {
         self.lensSession = lensSession
         self.projectLinks = projectLinks
         self.growthContributions = growthContributions
+    }
+}
+
+private extension HistoryRecord {
+    var coachPatternText: String {
+        var parts: [String] = [draft.rawText]
+        parts.append(contentsOf: confirmedCards.map { "\($0.title) \($0.body)" })
+        if let lensSession {
+            parts.append(contentsOf: lensSession.questions.map { question in
+                [question.question, question.answer]
+                    .joined(separator: " ")
+            })
+        }
+        parts.append(contentsOf: quests.map { quest in
+            [
+                quest.title,
+                quest.whyItMatters,
+                quest.completionCriteria,
+                quest.calibrationTarget ?? ""
+            ]
+            .joined(separator: " ")
+        })
+        if let verification {
+            parts.append(verification.calibrationNote)
+            if let likelyIssue = verification.likelyIssue {
+                parts.append(likelyIssue)
+            }
+        }
+        return parts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 }
 

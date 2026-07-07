@@ -31,6 +31,7 @@ struct TodayAIContext: Hashable {
     var trainingPrescription: TrainingPrescription? = nil
     var coachDiagnosis: CoachDiagnosis? = nil
     var coachTurnState: CoachTurnState? = nil
+    var coachPatternSummary: CoachPatternSummary? = nil
 }
 
 final class TodayAIService {
@@ -499,6 +500,7 @@ struct CoachContextMemorySelection: Hashable {
     var coachTurnState: CoachTurnState?
     var coachTeachingPlan: CoachTeachingPlan?
     var coachObservation: CoachObservation?
+    var coachPatternSummary: CoachPatternSummary?
 
     var relevantPrinciples: [PrincipleAsset] {
         retrievedPrinciples.map(\.principle)
@@ -546,7 +548,8 @@ struct CoachContextMemoryPolicy {
             coachObservation: coachObservation(
                 for: promptID,
                 context: context
-            )
+            ),
+            coachPatternSummary: allowsCoachPatternSummary(promptID) ? context.coachPatternSummary : nil
         )
     }
 
@@ -655,6 +658,17 @@ struct CoachContextMemoryPolicy {
             return false
         }
     }
+
+    private func allowsCoachPatternSummary(_ promptID: PromptID) -> Bool {
+        switch promptID {
+        case .generateQuestions, .generateQuests:
+            return true
+        case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
+             .weeklyCalibration, .monthlyGrowth:
+            return false
+        }
+    }
 }
 
 struct DefaultContextAssembler: ContextAssembler {
@@ -694,6 +708,9 @@ struct DefaultContextAssembler: ContextAssembler {
                     : nil,
                 coachObservationRule: memory.coachObservation != nil
                     ? "Use coachObservation before wording questions: cite what was observed, the primary gap, the training ability, the repair ask, and the experience replay prompt. Treat coachObservation as the coach's interpretation of confirmed material, not as new source evidence. Create one primary training contract from trainingAbility, primaryGap, and feedback.ask. The first question must ask the user to produce missing material; it must not provide the missing material or solve the case. why_now must name the observed gap, expected_update must name the user-owned training output, and proceed_when must name a self-checkable standard. If experienceReplayPrompt is relevant, ask whether prior experience should reproduce, adapt, or reject today's move before applying it."
+                    : nil,
+                coachPatternSummaryRule: memory.coachPatternSummary != nil
+                    ? "Use coachPatternSummary only as a weak prior about the user's repeated gaps. Do not quote or infer raw history from it. Confirm today's gap from today's material first; if the pattern repeats, choose one minimal training action that helps the user practice the named foundational ability."
                     : nil
             )
         )
@@ -706,7 +723,8 @@ struct DefaultContextAssembler: ContextAssembler {
             contextRecordIDs: contextRecordIDs(
                 for: context,
                 relevantPrinciples: relevantPrinciples,
-                existingPrinciples: memory.existingPrinciples
+                existingPrinciples: memory.existingPrinciples,
+                coachPatternSummary: memory.coachPatternSummary
             )
         )
     }
@@ -809,7 +827,8 @@ struct DefaultContextAssembler: ContextAssembler {
             coachDiagnosis: memory.coachDiagnosis.map(PromptContextPayload.CoachDiagnosisContext.init),
             coachTurnState: memory.coachTurnState.map(PromptContextPayload.CoachTurnStateContext.init),
             coachTeachingPlan: memory.coachTeachingPlan.map(PromptContextPayload.CoachTeachingPlanContext.init),
-            coachObservation: memory.coachObservation.map(PromptContextPayload.CoachObservationContext.init)
+            coachObservation: memory.coachObservation.map(PromptContextPayload.CoachObservationContext.init),
+            coachPatternSummary: memory.coachPatternSummary.map(PromptContextPayload.CoachPatternSummaryContext.init)
         )
     }
 
@@ -824,11 +843,13 @@ struct DefaultContextAssembler: ContextAssembler {
     private func contextRecordIDs(
         for context: TodayAIContext,
         relevantPrinciples: [PrincipleAsset],
-        existingPrinciples: [PrincipleAsset]
+        existingPrinciples: [PrincipleAsset],
+        coachPatternSummary: CoachPatternSummary?
     ) -> [String] {
         var ids = sourceRecordIDs(for: context)
         ids.append(contentsOf: relevantPrinciples.map { $0.id.uuidString })
         ids.append(contentsOf: existingPrinciples.map { $0.id.uuidString })
+        ids.append(contentsOf: coachPatternSummary?.sourceDailyEntryIds ?? [])
         return Array(Set(ids)).sorted()
     }
 

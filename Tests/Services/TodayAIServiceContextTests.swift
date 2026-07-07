@@ -153,6 +153,43 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertNil(payload.legacyKeyValues["coachObservationRule"])
     }
 
+    func testCoachPatternSummaryIsInjectedOnlyForCoachPrompts() throws {
+        let sourceID = UUID().uuidString
+        let summary = CoachPatternSummary(
+            policyVersion: CoachPatternSummaryPolicy.policyVersion,
+            analyzedRecordCount: 3,
+            totalSignalCount: 3,
+            sourceDailyEntryIds: [sourceID],
+            topPatterns: [
+                CoachPatternSignal(
+                    primaryGap: .evidenceGap,
+                    foundationalAbility: .thinking,
+                    count: 2,
+                    latestDate: Date(timeIntervalSince1970: 300),
+                    minimalTrainingAction: "补一个可观察事实。"
+                )
+            ],
+            guidanceLine: "历史只作为提示：最近常见的是证据不足。"
+        )
+        let context = TodayAIContext(
+            draft: DailyEntryDraft(rawText: "我觉得方案不可行。"),
+            coachPatternSummary: summary
+        )
+        let assembler = DefaultContextAssembler()
+
+        let questionsContext = assembler.assemble(promptID: .generateQuestions, context: context)
+        XCTAssertEqual(questionsContext.contextPayload.coachPatternSummary?.policyVersion, CoachPatternSummaryPolicy.policyVersion)
+        XCTAssertEqual(questionsContext.contextPayload.coachPatternSummary?.topPatterns.first?.primaryGap, .evidenceGap)
+        XCTAssertEqual(questionsContext.contextPayload.legacyKeyValues["coachPatternSummaryTopGaps"], "evidence_gap:thinking:2")
+        XCTAssertTrue(questionsContext.contextRecordIDs.contains(sourceID))
+        XCTAssertTrue(try XCTUnwrap(questionsContext.contextPayload.legacyKeyValues["coachPatternSummaryRule"]).contains("weak prior"))
+
+        let organizeContext = assembler.assemble(promptID: .organizeCards, context: context)
+        XCTAssertNil(organizeContext.contextPayload.coachPatternSummary)
+        XCTAssertNil(organizeContext.contextPayload.legacyKeyValues["coachPatternSummaryRule"])
+        XCTAssertFalse(organizeContext.contextRecordIDs.contains(sourceID))
+    }
+
     func testOrganizeCards_doesNotInjectCoachContextMemory() async throws {
         let client = CapturingLLMClient(response: Self.cardsResponse)
         let service = TodayAIService(

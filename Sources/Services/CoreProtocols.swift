@@ -485,6 +485,38 @@ struct PromptContextPayload: Codable, Hashable {
         }
     }
 
+    struct CoachPatternSummaryContext: Codable, Hashable {
+        struct PatternContext: Codable, Hashable {
+            var primaryGap: CoachQualityGap
+            var foundationalAbility: CoachFoundationalAbility
+            var count: Int
+            var minimalTrainingAction: String
+
+            init(_ signal: CoachPatternSignal) {
+                self.primaryGap = signal.primaryGap
+                self.foundationalAbility = signal.foundationalAbility
+                self.count = signal.count
+                self.minimalTrainingAction = signal.minimalTrainingAction
+            }
+        }
+
+        var policyVersion: String
+        var analyzedRecordCount: Int
+        var totalSignalCount: Int
+        var sourceDailyEntryIds: [String]
+        var topPatterns: [PatternContext]
+        var guidanceLine: String
+
+        init(_ summary: CoachPatternSummary) {
+            self.policyVersion = summary.policyVersion
+            self.analyzedRecordCount = summary.analyzedRecordCount
+            self.totalSignalCount = summary.totalSignalCount
+            self.sourceDailyEntryIds = summary.sourceDailyEntryIds
+            self.topPatterns = summary.topPatterns.map(PatternContext.init)
+            self.guidanceLine = summary.guidanceLine
+        }
+    }
+
     struct Card: Codable, Hashable {
         var id: String
         var type: String
@@ -559,6 +591,7 @@ struct PromptContextPayload: Codable, Hashable {
         var coachTurnRule: String?
         var coachTeachingRule: String?
         var coachObservationRule: String?
+        var coachPatternSummaryRule: String?
     }
 
     struct VerificationContext: Codable, Hashable {
@@ -692,6 +725,7 @@ struct PromptContextPayload: Codable, Hashable {
     var coachTurnState: CoachTurnStateContext?
     var coachTeachingPlan: CoachTeachingPlanContext?
     var coachObservation: CoachObservationContext?
+    var coachPatternSummary: CoachPatternSummaryContext?
     var cards: [Card]
     var answers: [Answer]
     var quests: [QuestContext]
@@ -746,7 +780,8 @@ struct PromptContextPayload: Codable, Hashable {
         coachDiagnosis: CoachDiagnosisContext? = nil,
         coachTurnState: CoachTurnStateContext? = nil,
         coachTeachingPlan: CoachTeachingPlanContext? = nil,
-        coachObservation: CoachObservationContext? = nil
+        coachObservation: CoachObservationContext? = nil,
+        coachPatternSummary: CoachPatternSummaryContext? = nil
     ) {
         self.currentInput = currentInput
         self.userChoice = userChoice
@@ -755,6 +790,7 @@ struct PromptContextPayload: Codable, Hashable {
         self.coachTurnState = coachTurnState
         self.coachTeachingPlan = coachTeachingPlan
         self.coachObservation = coachObservation
+        self.coachPatternSummary = coachPatternSummary
         self.cards = cards
         self.answers = answers
         self.quests = quests
@@ -791,6 +827,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachObservationRule = directives.coachObservationRule {
             copy.directives.coachObservationRule = coachObservationRule
+        }
+        if let coachPatternSummaryRule = directives.coachPatternSummaryRule {
+            copy.directives.coachPatternSummaryRule = coachPatternSummaryRule
         }
         return copy
     }
@@ -946,6 +985,17 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let coachObservationRule = directives.coachObservationRule {
             values["coachObservationRule"] = coachObservationRule
+        }
+        if let coachPatternSummary {
+            values["coachPatternSummaryPolicyVersion"] = coachPatternSummary.policyVersion
+            values["coachPatternSummaryAnalyzedRecordCount"] = "\(coachPatternSummary.analyzedRecordCount)"
+            values["coachPatternSummaryTopGaps"] = coachPatternSummary.topPatterns.map { pattern in
+                "\(pattern.primaryGap.rawValue):\(pattern.foundationalAbility.rawValue):\(pattern.count)"
+            }.joined(separator: ",")
+            values["coachPatternSummaryGuidance"] = coachPatternSummary.guidanceLine
+        }
+        if let coachPatternSummaryRule = directives.coachPatternSummaryRule {
+            values["coachPatternSummaryRule"] = coachPatternSummaryRule
         }
         if let streamProtocol = directives.streamProtocol {
             values["streamProtocol"] = streamProtocol

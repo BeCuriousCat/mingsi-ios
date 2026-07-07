@@ -5899,7 +5899,8 @@ final class AppStore: ObservableObject {
                         lensFeedback: lensFeedback,
                         trainingPrescription: trainingPrescription,
                         coachDiagnosis: coachDiagnosis,
-                        coachTurnState: coachTurnState
+                        coachTurnState: coachTurnState,
+                        coachPatternSummary: coachPatternSummaryForAI()
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
@@ -5955,7 +5956,8 @@ final class AppStore: ObservableObject {
                         lensFeedback: lensFeedback,
                         trainingPrescription: trainingPrescription,
                         coachDiagnosis: coachDiagnosis,
-                        coachTurnState: coachTurnState
+                        coachTurnState: coachTurnState,
+                        coachPatternSummary: coachPatternSummaryForAI()
                     )
                 )
                 refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
@@ -6681,6 +6683,13 @@ final class AppStore: ObservableObject {
             .map { $0 }
     }
 
+    private func coachPatternSummaryForAI() -> CoachPatternSummary? {
+        CoachPatternSummaryPolicy().summarize(
+            records: historyRecords,
+            excluding: todayDraft.id
+        )
+    }
+
     private func lensFeedbackContext(from record: HistoryRecord) -> PromptContextPayload.LensFeedbackContext? {
         guard let lensSession = record.lensSession,
               let verification = record.verification else {
@@ -6754,7 +6763,8 @@ final class AppStore: ObservableObject {
             selectedLensItem: selectedLensItem,
             trainingPrescription: trainingPrescription,
             coachDiagnosis: coachDiagnosis,
-            coachTurnState: coachTurnState
+            coachTurnState: coachTurnState,
+            coachPatternSummary: coachPatternSummaryForAI()
         )
         let retrieved = LocalPrincipleRetriever().retrievePrinciples(
             for: context,
