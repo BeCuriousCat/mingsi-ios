@@ -197,6 +197,6 @@
     "expectedAbility": "execution",
     "minimalTrainingAction": "先让用户补一个待验证判断，再设计明天最小行动。",
     "shouldNotDo": "不要绕过训练直接给完整方案。",
-    "coverageTags": ["行动替代目标", "明日验证不可检查"]
+    "coverageTags": ["行动替代目标", "明日验证不可检查", "用户要求直接给答案"]
   }
 ]

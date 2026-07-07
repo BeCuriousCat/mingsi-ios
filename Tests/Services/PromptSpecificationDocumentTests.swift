@@ -289,7 +289,8 @@ final class PromptSpecificationDocumentTests: XCTestCase {
             "判断跳跃",
             "行动替代目标",
             "旧经验误用",
-            "明日验证不可检查"
+            "明日验证不可检查",
+            "用户要求直接给答案"
         ]))
     }
 
