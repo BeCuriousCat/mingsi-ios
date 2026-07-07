@@ -235,6 +235,96 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(productRisks.contains("复现"))
     }
 
+    func testCoachQualityBaselineDocumentsCurrentStageGuardrails() throws {
+        let baseline = try readRepositoryFile("docs/coach-quality-baseline.md")
+
+        XCTAssertTrue(baseline.contains("教练质量基线"))
+        XCTAssertTrue(baseline.contains("个人思维教练"))
+        XCTAssertTrue(baseline.contains("不是 AI 答案工具"))
+        XCTAssertTrue(baseline.contains("沟通力"))
+        XCTAssertTrue(baseline.contains("思考力"))
+        XCTAssertTrue(baseline.contains("执行力"))
+        XCTAssertTrue(baseline.contains("校准力"))
+        XCTAssertTrue(baseline.contains("讲不清、证据不足、判断跳跃、行动不可验证、旧经验误用"))
+        XCTAssertTrue(baseline.contains("只给一个最小训练动作"))
+        XCTAssertTrue(baseline.contains("不能把全部历史塞进每次 Prompt"))
+        XCTAssertTrue(baseline.contains("至少 20 条典型输入"))
+        XCTAssertTrue(baseline.contains("真实手机试用通过"))
+        XCTAssertTrue(baseline.contains("Allowed Work"))
+        XCTAssertTrue(baseline.contains("Disallowed Work"))
+        XCTAssertTrue(baseline.contains("不做商业化功能"))
+        XCTAssertTrue(baseline.contains("不做同步和账号系统"))
+        XCTAssertTrue(baseline.contains("不无限加 Prompt 规则"))
+        XCTAssertTrue(baseline.contains("不让 AI 直接给结论"))
+        XCTAssertTrue(baseline.contains("docs/coach-quality-golden-cases.json"))
+    }
+
+    func testCoachQualityGoldenCasesCoverStageStopConditions() throws {
+        let cases = try readCoachQualityGoldenCases()
+
+        XCTAssertGreaterThanOrEqual(cases.count, 20)
+        XCTAssertEqual(Set(cases.map(\.id)).count, cases.count)
+        XCTAssertTrue(cases.allSatisfy { !$0.input.isEmpty })
+        XCTAssertTrue(cases.allSatisfy { !$0.minimalTrainingAction.isEmpty })
+        XCTAssertTrue(cases.allSatisfy { !$0.shouldNotDo.isEmpty })
+
+        let abilities = Set(cases.map(\.expectedAbility))
+        XCTAssertTrue(abilities.isSuperset(of: ["communication", "thinking", "execution", "calibration"]))
+
+        let primaryGaps = Set(cases.map(\.expectedPrimaryGap))
+        XCTAssertTrue(primaryGaps.isSuperset(of: [
+            "narrative_unclear",
+            "evidence_gap",
+            "judgment_jump",
+            "unverifiable_action",
+            "experience_misuse"
+        ]))
+
+        let coverageTags = Set(cases.flatMap(\.coverageTags))
+        XCTAssertTrue(coverageTags.isSuperset(of: [
+            "流水账",
+            "背景缺失",
+            "对象不清",
+            "证据不足",
+            "判断跳跃",
+            "行动替代目标",
+            "旧经验误用",
+            "明日验证不可检查"
+        ]))
+    }
+
+    func testTodayCoachMainPathAvoidsHighCostUserTerms() throws {
+        let mainPathSources = [
+            "Sources/Features/Today/TodayView.swift",
+            "Sources/App/AppStore.swift",
+            "Sources/Domain/Models.swift"
+        ]
+        let forbiddenTerms = [
+            "训练处方",
+            "审计",
+            "闭环",
+            "校验依据",
+            "能力诊断",
+            "推进标准",
+            "训练契约",
+            "底盘检查",
+            "过往经验复现",
+            "本轮训练",
+            "自检标准",
+            "教练批改",
+            "具体还缺",
+            "可复述材料",
+            "判断句训练"
+        ]
+
+        for source in mainPathSources {
+            let content = try readRepositoryFile(source)
+            for term in forbiddenTerms {
+                XCTAssertFalse(content.contains(term), "\(source) should not expose high-cost user term: \(term)")
+            }
+        }
+    }
+
     private func readRepositoryFile(_ relativePath: String) throws -> String {
         let sourceFilePath = String(#filePath)
         guard let testsRange = sourceFilePath.range(of: "/Tests/") else {
@@ -244,5 +334,20 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         let repositoryRoot = String(sourceFilePath[..<testsRange.lowerBound])
         let fileURL = URL(fileURLWithPath: repositoryRoot).appendingPathComponent(relativePath)
         return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    private func readCoachQualityGoldenCases() throws -> [CoachQualityGoldenCase] {
+        let data = try Data(readRepositoryFile("docs/coach-quality-golden-cases.json").utf8)
+        return try JSONDecoder().decode([CoachQualityGoldenCase].self, from: data)
+    }
+
+    private struct CoachQualityGoldenCase: Decodable {
+        var id: String
+        var input: String
+        var expectedPrimaryGap: String
+        var expectedAbility: String
+        var minimalTrainingAction: String
+        var shouldNotDo: String
+        var coverageTags: [String]
     }
 }

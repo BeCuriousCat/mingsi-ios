@@ -1,0 +1,202 @@
+[
+  {
+    "id": "G01",
+    "title": "流水账但没有复盘判断",
+    "input": "今天开了两个会，改了一版方案，晚上又处理了一些反馈，感觉很累。",
+    "expectedPrimaryGap": "narrative_unclear",
+    "expectedAbility": "communication",
+    "minimalTrainingAction": "补一句：今天最值得复盘的一件事是什么，为什么是它。",
+    "shouldNotDo": "不要直接总结用户很努力，也不要生成泛泛的时间管理建议。",
+    "coverageTags": ["流水账", "讲不清"]
+  },
+  {
+    "id": "G02",
+    "title": "背景缺失导致别人无法听懂",
+    "input": "这个事情又卡住了，我觉得对方还是没有理解。",
+    "expectedPrimaryGap": "narrative_unclear",
+    "expectedAbility": "communication",
+    "minimalTrainingAction": "补清楚这个事情是什么、对方是谁、卡住的表现是什么。",
+    "shouldNotDo": "不要默认知道上下文，也不要直接评价对方沟通能力。",
+    "coverageTags": ["背景缺失", "讲不清"]
+  },
+  {
+    "id": "G03",
+    "title": "对象不清但已经开始设计方案",
+    "input": "我准备把流程重新设计一下，这样应该会更顺。",
+    "expectedPrimaryGap": "narrative_unclear",
+    "expectedAbility": "communication",
+    "minimalTrainingAction": "先写清楚服务对象是谁，以及这个对象的什么问题会变少。",
+    "shouldNotDo": "不要直接给流程优化方案。",
+    "coverageTags": ["对象不清", "行动替代目标"]
+  },
+  {
+    "id": "G04",
+    "title": "用代词省略关键上下文",
+    "input": "他说这个不行，但我觉得其实可以，只是他们没有想明白。",
+    "expectedPrimaryGap": "narrative_unclear",
+    "expectedAbility": "communication",
+    "minimalTrainingAction": "把他说、这个、他们分别指代谁或什么写清楚。",
+    "shouldNotDo": "不要站队支持用户判断。",
+    "coverageTags": ["背景缺失", "对象不清"]
+  },
+  {
+    "id": "G05",
+    "title": "只有感受没有事实",
+    "input": "今天这个评审让我感觉很不靠谱，大家都在绕。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "补一个可观察事实：谁说了什么或哪个结果说明在绕。",
+    "shouldNotDo": "不要把感受直接升级成结论。",
+    "coverageTags": ["证据不足"]
+  },
+  {
+    "id": "G06",
+    "title": "判断跳跃",
+    "input": "这次没有按时交付，所以这个机制肯定不适合我们。",
+    "expectedPrimaryGap": "judgment_jump",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "补出从没有按时交付到机制不适合之间的中间原因。",
+    "shouldNotDo": "不要直接认同机制不适合。",
+    "coverageTags": ["判断跳跃", "证据不足"]
+  },
+  {
+    "id": "G07",
+    "title": "把解释当事实",
+    "input": "他就是不重视这个项目，所以一直没有反馈。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "分开可观察事实和你的解释：事实是什么，解释是什么。",
+    "shouldNotDo": "不要推断对方动机。",
+    "coverageTags": ["证据不足", "判断跳跃"]
+  },
+  {
+    "id": "G08",
+    "title": "缺少反例",
+    "input": "我觉得这个功能上线后肯定会提升使用率。",
+    "expectedPrimaryGap": "judgment_jump",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "写出一个可能推翻这个判断的结果信号。",
+    "shouldNotDo": "不要直接帮用户写上线计划。",
+    "coverageTags": ["判断跳跃", "明日验证不可检查"]
+  },
+  {
+    "id": "G09",
+    "title": "旧经验未检查条件差异",
+    "input": "之前这样推进有效，所以这次我也打算照着做。",
+    "expectedPrimaryGap": "experience_misuse",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "先判断这次是复现、调整还是否定，并写出一个条件差异。",
+    "shouldNotDo": "不要把旧经验直接当成这次答案。",
+    "coverageTags": ["旧经验误用"]
+  },
+  {
+    "id": "G10",
+    "title": "旧经验可能已经失效",
+    "input": "我以前都是先找负责人拍板，这次应该也一样，虽然现在团队结构变了。",
+    "expectedPrimaryGap": "experience_misuse",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "写清团队结构变化会不会改变旧做法成立的条件。",
+    "shouldNotDo": "不要直接建议继续找负责人拍板。",
+    "coverageTags": ["旧经验误用", "对象不清"]
+  },
+  {
+    "id": "G11",
+    "title": "行动替代目标",
+    "input": "明天我先拉个会，把大家叫到一起说一下。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "execution",
+    "minimalTrainingAction": "先写清这个会要让谁的什么问题变少，会议结束留下什么证据。",
+    "shouldNotDo": "不要把拉会当成有效行动。",
+    "coverageTags": ["行动替代目标", "明日验证不可检查"]
+  },
+  {
+    "id": "G12",
+    "title": "行动太大不可执行",
+    "input": "明天我要把整个协作流程都优化掉。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "execution",
+    "minimalTrainingAction": "缩成明天能完成的一步，并写出完成证据。",
+    "shouldNotDo": "不要生成完整流程改造方案。",
+    "coverageTags": ["行动替代目标", "明日验证不可检查"]
+  },
+  {
+    "id": "G13",
+    "title": "缺少成功标准",
+    "input": "明天我会推进这个方案，看能不能有进展。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "execution",
+    "minimalTrainingAction": "把有进展改成一个可检查的成功标准。",
+    "shouldNotDo": "不要接受模糊的有进展作为完成标准。",
+    "coverageTags": ["明日验证不可检查", "行动替代目标"]
+  },
+  {
+    "id": "G14",
+    "title": "阻力没有被提前处理",
+    "input": "我明天会要求大家按新流程做。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "execution",
+    "minimalTrainingAction": "补一个最可能阻力，以及明天如何用小动作验证阻力是否存在。",
+    "shouldNotDo": "不要只鼓励用户加强推动。",
+    "coverageTags": ["行动替代目标"]
+  },
+  {
+    "id": "G15",
+    "title": "明日验证不可检查",
+    "input": "明天我看看这个方向是不是更好。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "calibration",
+    "minimalTrainingAction": "写出明天看到什么结果就确认、调整或推翻今天判断。",
+    "shouldNotDo": "不要把看看当成验证。",
+    "coverageTags": ["明日验证不可检查"]
+  },
+  {
+    "id": "G16",
+    "title": "完成不等于有效",
+    "input": "昨天我做完了，但好像没有什么用。",
+    "expectedPrimaryGap": "judgment_jump",
+    "expectedAbility": "calibration",
+    "minimalTrainingAction": "分开完成情况和实际价值：做了什么，产生了什么结果。",
+    "shouldNotDo": "不要把完成自动记为正向成长。",
+    "coverageTags": ["明日验证不可检查", "证据不足"]
+  },
+  {
+    "id": "G17",
+    "title": "结果信号缺失",
+    "input": "我觉得这次沟通应该有效，因为我已经解释清楚了。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "calibration",
+    "minimalTrainingAction": "补一个对方真正理解的外部信号。",
+    "shouldNotDo": "不要把解释清楚当成对方理解。",
+    "coverageTags": ["证据不足", "明日验证不可检查"]
+  },
+  {
+    "id": "G18",
+    "title": "复盘缺少判断更新",
+    "input": "昨天的行动做了，结果一般，今天继续按原计划。",
+    "expectedPrimaryGap": "judgment_jump",
+    "expectedAbility": "calibration",
+    "minimalTrainingAction": "写清昨天结果让今天判断确认、调整还是推翻。",
+    "shouldNotDo": "不要直接进入今天的新计划。",
+    "coverageTags": ["明日验证不可检查", "判断跳跃"]
+  },
+  {
+    "id": "G19",
+    "title": "多个问题混在一起",
+    "input": "方案、研发、沟通都有问题，我现在不知道该先处理哪一个。",
+    "expectedPrimaryGap": "narrative_unclear",
+    "expectedAbility": "communication",
+    "minimalTrainingAction": "先选一件最值得复盘的事，并写清它影响谁。",
+    "shouldNotDo": "不要一次追问三个方向。",
+    "coverageTags": ["流水账", "对象不清"]
+  },
+  {
+    "id": "G20",
+    "title": "用户要求直接给答案",
+    "input": "你直接告诉我明天应该怎么做就行。",
+    "expectedPrimaryGap": "unverifiable_action",
+    "expectedAbility": "execution",
+    "minimalTrainingAction": "先让用户补一个待验证判断，再设计明天最小行动。",
+    "shouldNotDo": "不要绕过训练直接给完整方案。",
+    "coverageTags": ["行动替代目标", "明日验证不可检查"]
+  }
+]
