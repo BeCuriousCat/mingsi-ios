@@ -9,6 +9,7 @@ SKIP_UI=0
 SKIP_BUILD=0
 ALLOW_PENDING_PHONE_TRIAL=0
 DRY_RUN=0
+SELF_TEST=0
 
 usage() {
   cat <<'USAGE'
@@ -32,6 +33,7 @@ Options:
   --skip-build                    Skip final build.
   --allow-pending-phone-trial     Exit 0 even if phone trial is pending.
   --dry-run                       Print the gate plan without running tests.
+  --self-test                     Test phone-trial evidence parsing and exit.
   -h, --help                      Show this help.
 USAGE
 }
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --self-test)
+      SELF_TEST=1
       shift
       ;;
     -h|--help)
@@ -200,6 +206,69 @@ missing_phone_trial_fields() {
   done < <(required_phone_trial_fields)
 }
 
+assert_phone_trial_status() {
+  local label="$1"
+  local file="$2"
+  local expected="$3"
+  local actual
+
+  PHONE_TRIAL_FILE="$file"
+  actual="$(phone_trial_status || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'Expected %s phone-trial status to be %s, got %s.\n' "$label" "$expected" "$actual" >&2
+    return 1
+  fi
+}
+
+self_test_phone_trial_status() {
+  local original_file="$PHONE_TRIAL_FILE"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' RETURN
+
+  cat >"$tmp_dir/pending.md" <<'EOF'
+Status: PENDING
+EOF
+
+  cat >"$tmp_dir/incomplete.md" <<'EOF'
+Status: PASSED
+- Trial date: 2026-07-08
+- Device:
+- Starting app commit: abc1234
+- Ending app commit: abc1234
+- Primary gap MingSi identified: missing context
+- Foundational ability MingSi trained: communication
+- Minimal training action: add one context sentence
+- Tomorrow validation action: ask someone to repeat the context
+- Next-day result: completed
+- Judgment update: keep adding context
+- Issues found: None
+- Decision: Passed
+EOF
+
+  cat >"$tmp_dir/passed.md" <<'EOF'
+Status: PASSED
+- Trial date: 2026-07-08
+- Device: iPhone
+- Starting app commit: abc1234
+- Ending app commit: abc1234
+- Primary gap MingSi identified: missing context
+- Foundational ability MingSi trained: communication
+- Minimal training action: add one context sentence
+- Tomorrow validation action: ask someone to repeat the context
+- Next-day result: completed
+- Judgment update: keep adding context
+- Issues found: None
+- Decision: Passed
+EOF
+
+  assert_phone_trial_status "pending fixture" "$tmp_dir/pending.md" "pending"
+  assert_phone_trial_status "incomplete fixture" "$tmp_dir/incomplete.md" "incomplete"
+  assert_phone_trial_status "passed fixture" "$tmp_dir/passed.md" "passed"
+  PHONE_TRIAL_FILE="$original_file"
+  printf 'Phone-trial evidence parsing self-test passed.\n'
+}
+
 check_phone_trial() {
   local status
   status="$(phone_trial_status || true)"
@@ -234,6 +303,11 @@ focused_tests() {
     -only-testing:MingSiTests/PromptSpecificationDocumentTests/testCoachQualityGoldenCasesCoverStageStopConditions \
     -only-testing:MingSiTests/PromptSpecificationDocumentTests/testTodayCoachMainPathAvoidsHighCostUserTerms
 }
+
+if [[ "$SELF_TEST" == "1" ]]; then
+  self_test_phone_trial_status
+  exit 0
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   cat <<PLAN
