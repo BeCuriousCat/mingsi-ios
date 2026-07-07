@@ -103,6 +103,32 @@ extract_device_name() {
   sed -E 's/[[:space:]]*\([0-9.]+\)[[:space:]]*\([0-9A-Fa-f-]{20,}\)[[:space:]]*$//'
 }
 
+warm_coredevice_tunnels() {
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local tmp id
+  tmp="$(mktemp)"
+  if ! xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    return 0
+  fi
+
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    xcrun devicectl device info lockState --device "$id" --timeout 15 >/dev/null 2>&1 || true
+  done < <(
+    jq -r '
+      .result.devices[]
+      | select(.hardwareProperties.reality == "physical")
+      | select((.hardwareProperties.deviceType // "") | test("iPhone|iPad|iPod"))
+      | select((.connectionProperties.pairingState // "") == "paired")
+      | .hardwareProperties.udid // .identifier
+    ' "$tmp" 2>/dev/null
+  )
+
+  rm -f "$tmp"
+}
+
 print_device_diagnostics() {
   printf '== xctrace devices ==\n' >&2
   xcrun xctrace list devices >&2 || true
@@ -143,6 +169,8 @@ if [[ "$ALLOW_DIRTY" == "0" ]] && [[ -n "$(git status --porcelain)" ]]; then
   printf 'Use --allow-dirty only for a local diagnostic install.\n' >&2
   exit 1
 fi
+
+warm_coredevice_tunnels
 
 if [[ -z "$DEVICE_ID" ]]; then
   DEVICE_LINE="$(connected_ios_device_lines | head -n 1 || true)"
