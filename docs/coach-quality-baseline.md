@@ -87,6 +87,14 @@ scripts/run_coach_quality_baseline_gate.sh
 
 这个脚本会检查黄金案例、核心教练测试、StateMachine、UI、build，以及真实手机试用证据。真实手机试用证据记录在 `docs/coach-quality-phone-trial.md`；状态不是 `PASSED` 时，阶段不能关闭。
 
+准备真实手机试用时运行：
+
+```bash
+scripts/prepare_coach_quality_phone_trial.sh
+```
+
+这个脚本会检查工作树、构建真机包、安装到已连接并解锁的 iPhone，并输出需要写入 `docs/coach-quality-phone-trial.md` 的提交和设备信息。它不替代真实使用；只负责把试用前的机械步骤固定下来。
+
 ## High-Cost Terms Guardrail
 
 Today 主路径不应出现这些面向用户的高成本词：训练处方、审计、闭环、校验依据、能力诊断、推进标准、训练契约、底盘检查、过往经验复现。

@@ -165,6 +165,7 @@ check_phone_trial() {
   if xcrun xctrace list devices 2>/dev/null | rg -q 'Devices Offline'; then
     printf 'A real iPhone appears offline. Connect/unlock it before the phone-day trial.\n' >&2
   fi
+  printf 'To prepare the phone build and evidence fields, run: scripts/prepare_coach_quality_phone_trial.sh\n' >&2
   [[ "$ALLOW_PENDING_PHONE_TRIAL" == "1" ]]
 }
 

@@ -8,6 +8,12 @@ This file is the evidence record for the final coach-quality baseline stop condi
 
 Run one real day on the physical iPhone:
 
+Before starting, connect and unlock the iPhone, then run:
+
+```bash
+scripts/prepare_coach_quality_phone_trial.sh
+```
+
 1. Morning or work-session input: write one messy real event.
 2. Today flow: confirm MingSi identifies one primary gap and one foundational ability.
 3. Repair step: add the missing sentence or evidence MingSi asks for.
