@@ -6,8 +6,10 @@ SCHEME="MingSi"
 CONFIGURATION="Debug"
 DERIVED_DATA_PATH="$ROOT_DIR/build/coach-quality-phone-trial"
 PHONE_TRIAL_FILE="$ROOT_DIR/docs/coach-quality-phone-trial.md"
+APP_BUNDLE_ID="com.codex.mingsi"
 DEVICE_ID=""
 SKIP_INSTALL=0
+SKIP_LAUNCH_CHECK=0
 ALLOW_DIRTY=0
 DRY_RUN=0
 
@@ -25,7 +27,9 @@ Options:
   --configuration VALUE      Xcode configuration. Default: Debug.
   --derived-data-path PATH   Build output directory.
   --phone-trial-file PATH    Phone trial evidence file.
+  --app-bundle-id VALUE      App bundle id to launch-check. Default: com.codex.mingsi.
   --skip-install             Build only; do not install to the device.
+  --skip-launch-check        Do not launch-check the installed app.
   --allow-dirty              Allow a dirty worktree.
   --dry-run                  Print the planned commands without running them.
   -h, --help                 Show this help.
@@ -54,8 +58,16 @@ while [[ $# -gt 0 ]]; do
       PHONE_TRIAL_FILE="${2:-}"
       shift 2
       ;;
+    --app-bundle-id)
+      APP_BUNDLE_ID="${2:-}"
+      shift 2
+      ;;
     --skip-install)
       SKIP_INSTALL=1
+      shift
+      ;;
+    --skip-launch-check)
+      SKIP_LAUNCH_CHECK=1
       shift
       ;;
     --allow-dirty)
@@ -214,6 +226,7 @@ Coach quality phone-trial preparation plan:
 - derived data: $DERIVED_DATA_PATH
 - phone trial file: $PHONE_TRIAL_FILE
 - skip install: $SKIP_INSTALL
+- launch check: $([[ "$SKIP_LAUNCH_CHECK" == "0" ]] && printf '%s' "$APP_BUNDLE_ID" || printf 'skipped')
 PLAN
   exit 0
 fi
@@ -236,6 +249,20 @@ if [[ "$SKIP_INSTALL" == "0" ]]; then
   xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
 else
   printf 'Install skipped. Built app: %s\n' "$APP_PATH"
+fi
+
+if [[ "$SKIP_LAUNCH_CHECK" == "0" ]]; then
+  printf 'Launch-checking %s on %s...\n' "$APP_BUNDLE_ID" "$DEVICE_NAME"
+  if ! xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$APP_BUNDLE_ID" --timeout 30; then
+    cat >&2 <<'LAUNCH_HELP'
+
+The app installed, but iOS refused to launch it.
+On the iPhone, trust this developer profile before starting the trial:
+Settings -> General -> VPN & Device Management -> Developer App -> Trust.
+Then rerun this script, or use --skip-launch-check only after confirming the app launches manually.
+LAUNCH_HELP
+    exit 1
+  fi
 fi
 
 cat <<EVIDENCE

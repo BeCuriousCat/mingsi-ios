@@ -19,6 +19,11 @@ still reports `tunnel=disconnected`, the phone is paired but not ready for an
 install. Unlock it, keep it awake, connect by USB if Wi-Fi pairing is stale,
 and rerun the script before starting the trial.
 
+After install, the script launch-checks the app. If iOS refuses to launch
+because the developer profile is not trusted, trust the profile on the iPhone:
+Settings -> General -> VPN & Device Management -> Developer App -> Trust. Then
+rerun the script before starting the trial.
+
 1. Morning or work-session input: write one messy real event.
 2. Today flow: confirm MingSi identifies one primary gap and one foundational ability.
 3. Repair step: add the missing sentence or evidence MingSi asks for.
@@ -50,6 +55,11 @@ Every field below must be filled before `Status: PASSED`. If there were no issue
 - Judgment update:
 - Issues found:
 - Decision:
+
+## Preparation Notes
+
+- 2026-07-08: Installed `bf70d51` on the physical iPhone. First launch check
+  failed because iOS has not explicitly trusted the developer profile yet.
 
 When the trial passes, change the status line to:
 
