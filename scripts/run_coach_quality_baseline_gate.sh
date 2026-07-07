@@ -248,6 +248,14 @@ PLAN
   exit 0
 fi
 
+if [[ "$ALLOW_PENDING_PHONE_TRIAL" == "0" ]]; then
+  if ! run_step "Phone-day trial evidence preflight" check_phone_trial; then
+    write_summary "blocked_by_phone_trial" "$(phone_trial_status || true)"
+    printf '\nCoach quality baseline gate stopped before tests because phone-trial evidence is not complete.\n' >&2
+    exit 1
+  fi
+fi
+
 run_step "Golden cases" check_golden_cases
 run_step "Focused coach baseline tests" focused_tests
 run_step "State machine tests" xcodebuild test -scheme MingSi -destination "$DESTINATION" -parallel-testing-enabled NO -only-testing:MingSiTests/AppStoreStateMachineTests
