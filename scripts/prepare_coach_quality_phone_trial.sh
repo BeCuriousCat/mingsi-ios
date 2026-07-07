@@ -103,6 +103,35 @@ extract_device_name() {
   sed -E 's/[[:space:]]*\([0-9.]+\)[[:space:]]*\([0-9A-Fa-f-]{20,}\)[[:space:]]*$//'
 }
 
+print_device_diagnostics() {
+  printf '== xctrace devices ==\n' >&2
+  xcrun xctrace list devices >&2 || true
+
+  printf '\n== CoreDevice physical iOS devices ==\n' >&2
+  local tmp
+  tmp="$(mktemp)"
+  if xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    jq -r '
+      .result.devices[]
+      | select(.hardwareProperties.reality == "physical")
+      | select((.hardwareProperties.deviceType // "") | test("iPhone|iPad|iPod"))
+      | "- \(.deviceProperties.name) (\(.hardwareProperties.udid), CoreDevice \(.identifier)): pairing=\(.connectionProperties.pairingState // "unknown"), tunnel=\(.connectionProperties.tunnelState // "unknown"), transport=\(.connectionProperties.transportType // "unknown")"
+    ' "$tmp" >&2 || true
+    if jq -e '
+      .result.devices[]
+      | select(.hardwareProperties.reality == "physical")
+      | select((.hardwareProperties.deviceType // "") | test("iPhone|iPad|iPod"))
+      | select((.connectionProperties.tunnelState // "") != "connected")
+    ' "$tmp" >/dev/null 2>&1; then
+      printf '\nCoreDevice knows a paired iPhone/iPad, but its tunnel is not connected.\n' >&2
+      printf 'Unlock the device, keep it awake, connect by USB if Wi-Fi pairing is stale, and trust this Mac if prompted.\n' >&2
+    fi
+  else
+    xcrun devicectl list devices >&2 || true
+  fi
+  rm -f "$tmp"
+}
+
 require_cmd git
 require_cmd xcodebuild
 require_cmd xcrun
@@ -125,7 +154,7 @@ else
   if [[ -z "$DEVICE_LINE" ]]; then
     printf 'Requested physical device is not connected or unlocked: %s\n' "$DEVICE_ID" >&2
     printf 'Connect and unlock the device, then trust this Mac if iOS asks.\n\n' >&2
-    xcrun xctrace list devices >&2 || true
+    print_device_diagnostics
     exit 1
   fi
 fi
@@ -133,7 +162,7 @@ fi
 if [[ -z "$DEVICE_ID" ]]; then
   printf 'No connected physical iPhone/iPad was found.\n' >&2
   printf 'Connect and unlock the device, then trust this Mac if iOS asks.\n\n' >&2
-  xcrun xctrace list devices >&2 || true
+  print_device_diagnostics
   exit 1
 fi
 

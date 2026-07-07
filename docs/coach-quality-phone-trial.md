@@ -14,6 +14,10 @@ Before starting, connect and unlock the iPhone, then run:
 scripts/prepare_coach_quality_phone_trial.sh
 ```
 
+If the script reports `tunnel=disconnected`, the phone is paired but not ready
+for an install. Unlock it, keep it awake, connect by USB if Wi-Fi pairing is
+stale, and rerun the script before starting the trial.
+
 1. Morning or work-session input: write one messy real event.
 2. Today flow: confirm MingSi identifies one primary gap and one foundational ability.
 3. Repair step: add the missing sentence or evidence MingSi asks for.
