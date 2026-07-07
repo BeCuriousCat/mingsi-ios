@@ -22,7 +22,12 @@ and rerun the script before starting the trial.
 After install, the script launch-checks the app. If iOS refuses to launch
 because the developer profile is not trusted, trust the profile on the iPhone:
 Settings -> General -> VPN & Device Management -> Developer App -> Trust. Then
-rerun the script before starting the trial.
+rerun the script before starting the trial. To recheck launch without rebuilding
+or reinstalling, run:
+
+```bash
+scripts/prepare_coach_quality_phone_trial.sh --launch-check-only
+```
 
 1. Morning or work-session input: write one messy real event.
 2. Today flow: confirm MingSi identifies one primary gap and one foundational ability.

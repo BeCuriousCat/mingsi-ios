@@ -10,6 +10,7 @@ APP_BUNDLE_ID="com.codex.mingsi"
 DEVICE_ID=""
 SKIP_INSTALL=0
 SKIP_LAUNCH_CHECK=0
+LAUNCH_CHECK_ONLY=0
 ALLOW_DIRTY=0
 DRY_RUN=0
 
@@ -30,6 +31,7 @@ Options:
   --app-bundle-id VALUE      App bundle id to launch-check. Default: com.codex.mingsi.
   --skip-install             Build only; do not install to the device.
   --skip-launch-check        Do not launch-check the installed app.
+  --launch-check-only        Only verify the installed app can launch; do not build or install.
   --allow-dirty              Allow a dirty worktree.
   --dry-run                  Print the planned commands without running them.
   -h, --help                 Show this help.
@@ -68,6 +70,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-launch-check)
       SKIP_LAUNCH_CHECK=1
+      shift
+      ;;
+    --launch-check-only)
+      LAUNCH_CHECK_ONLY=1
+      SKIP_INSTALL=1
       shift
       ;;
     --allow-dirty)
@@ -170,6 +177,20 @@ print_device_diagnostics() {
   rm -f "$tmp"
 }
 
+launch_check_app() {
+  printf 'Launch-checking %s on %s...\n' "$APP_BUNDLE_ID" "$DEVICE_NAME"
+  if ! xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$APP_BUNDLE_ID" --timeout 30; then
+    cat >&2 <<'LAUNCH_HELP'
+
+The app installed, but iOS refused to launch it.
+On the iPhone, trust this developer profile before starting the trial:
+Settings -> General -> VPN & Device Management -> Developer App -> Trust.
+Then rerun this script, or use --skip-launch-check only after confirming the app launches manually.
+LAUNCH_HELP
+    return 1
+  fi
+}
+
 require_cmd git
 require_cmd xcodebuild
 require_cmd xcrun
@@ -225,9 +246,25 @@ Coach quality phone-trial preparation plan:
 - commit: $COMMIT
 - derived data: $DERIVED_DATA_PATH
 - phone trial file: $PHONE_TRIAL_FILE
+- launch-check only: $LAUNCH_CHECK_ONLY
 - skip install: $SKIP_INSTALL
 - launch check: $([[ "$SKIP_LAUNCH_CHECK" == "0" ]] && printf '%s' "$APP_BUNDLE_ID" || printf 'skipped')
 PLAN
+  exit 0
+fi
+
+if [[ "$LAUNCH_CHECK_ONLY" == "1" ]]; then
+  launch_check_app
+  cat <<EVIDENCE
+
+Phone trial app launch-check passed.
+
+If the installed app is the commit listed in:
+$PHONE_TRIAL_FILE
+
+you can start the real phone-day trial. Keep Status: PENDING until the next-day
+result and judgment update are filled.
+EVIDENCE
   exit 0
 fi
 
@@ -252,17 +289,7 @@ else
 fi
 
 if [[ "$SKIP_LAUNCH_CHECK" == "0" ]]; then
-  printf 'Launch-checking %s on %s...\n' "$APP_BUNDLE_ID" "$DEVICE_NAME"
-  if ! xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$APP_BUNDLE_ID" --timeout 30; then
-    cat >&2 <<'LAUNCH_HELP'
-
-The app installed, but iOS refused to launch it.
-On the iPhone, trust this developer profile before starting the trial:
-Settings -> General -> VPN & Device Management -> Developer App -> Trust.
-Then rerun this script, or use --skip-launch-check only after confirming the app launches manually.
-LAUNCH_HELP
-    exit 1
-  fi
+  launch_check_app
 fi
 
 cat <<EVIDENCE
