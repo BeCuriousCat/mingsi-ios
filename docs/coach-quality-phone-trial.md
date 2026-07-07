@@ -31,6 +31,8 @@ scripts/prepare_coach_quality_phone_trial.sh
 
 ## Evidence
 
+Every field below must be filled before `Status: PASSED`. If there were no issues, write `None` for `Issues found`.
+
 - Trial date:
 - Device:
 - Starting app commit:

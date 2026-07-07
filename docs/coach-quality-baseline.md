@@ -85,7 +85,7 @@ Today 流程必须稳定支持：
 scripts/run_coach_quality_baseline_gate.sh
 ```
 
-这个脚本会检查黄金案例、核心教练测试、StateMachine、UI、build，以及真实手机试用证据。真实手机试用证据记录在 `docs/coach-quality-phone-trial.md`；状态不是 `PASSED` 时，阶段不能关闭。
+这个脚本会检查黄金案例、核心教练测试、StateMachine、UI、build，以及真实手机试用证据。真实手机试用证据记录在 `docs/coach-quality-phone-trial.md`；状态不是 `PASSED`，或证据字段没有填完整时，阶段不能关闭。
 
 准备真实手机试用时运行：
 

@@ -22,7 +22,7 @@ The gate checks:
   3. AppStore state-machine tests pass
   4. UI tests pass unless skipped
   5. xcodebuild build passes unless skipped
-  6. the real-phone trial evidence file says Status: PASSED
+  6. the real-phone trial evidence file says Status: PASSED and has filled evidence
 
 Options:
   --destination VALUE             xcodebuild destination. Default: iPhone 17 simulator.
@@ -145,12 +145,59 @@ check_golden_cases() {
 }
 
 phone_trial_status() {
-  if [[ -f "$PHONE_TRIAL_FILE" ]] && rg -q '^Status:[[:space:]]*PASSED[[:space:]]*$' "$PHONE_TRIAL_FILE"; then
-    printf 'passed'
-    return 0
+  if [[ ! -f "$PHONE_TRIAL_FILE" ]] || ! rg -q '^Status:[[:space:]]*PASSED[[:space:]]*$' "$PHONE_TRIAL_FILE"; then
+    printf 'pending'
+    return 1
   fi
-  printf 'pending'
-  return 1
+
+  if [[ -n "$(missing_phone_trial_fields)" ]]; then
+    printf 'incomplete'
+    return 1
+  fi
+
+  printf 'passed'
+  return 0
+}
+
+required_phone_trial_fields() {
+  cat <<'FIELDS'
+Trial date
+Device
+Starting app commit
+Ending app commit
+Primary gap MingSi identified
+Foundational ability MingSi trained
+Minimal training action
+Tomorrow validation action
+Next-day result
+Judgment update
+Issues found
+Decision
+FIELDS
+}
+
+phone_trial_field_value() {
+  local field="$1"
+  awk -v field="$field" '
+    BEGIN { prefix = "- " field ":" }
+    index($0, prefix) == 1 {
+      value = substr($0, length(prefix) + 1)
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      print value
+      exit
+    }
+  ' "$PHONE_TRIAL_FILE"
+}
+
+missing_phone_trial_fields() {
+  local field value
+  while IFS= read -r field; do
+    value="$(phone_trial_field_value "$field")"
+    if [[ -z "$value" ]]; then
+      printf '%s\n' "$field"
+    fi
+  done < <(required_phone_trial_fields)
 }
 
 check_phone_trial() {
@@ -161,8 +208,14 @@ check_phone_trial() {
     return 0
   fi
 
-  printf 'Phone trial evidence is pending: %s\n' "$PHONE_TRIAL_FILE" >&2
-  if xcrun xctrace list devices 2>/dev/null | rg -q 'Devices Offline'; then
+  if [[ "$status" == "incomplete" ]]; then
+    printf 'Phone trial evidence is marked PASSED but still has blank fields: %s\n' "$PHONE_TRIAL_FILE" >&2
+    missing_phone_trial_fields | sed 's/^/- /' >&2
+  else
+    printf 'Phone trial evidence is pending: %s\n' "$PHONE_TRIAL_FILE" >&2
+  fi
+
+  if [[ "$status" == "pending" ]] && xcrun xctrace list devices 2>/dev/null | rg -q 'Devices Offline'; then
     printf 'A real iPhone appears offline. Connect/unlock it before the phone-day trial.\n' >&2
   fi
   printf 'To prepare the phone build and evidence fields, run: scripts/prepare_coach_quality_phone_trial.sh\n' >&2
