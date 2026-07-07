@@ -139,6 +139,7 @@ check_golden_cases() {
     "行动替代目标"
     "旧经验误用"
     "明日验证不可检查"
+    "用户要求直接给答案"
   )
   local tag
   for tag in "${required_tags[@]}"; do
@@ -148,6 +149,41 @@ check_golden_cases() {
     fi
   done
   printf 'Golden cases: %s entries with required coverage.\n' "$count"
+}
+
+physical_device_diagnostics() {
+  if xcrun xctrace list devices 2>/dev/null | rg -q 'Devices Offline'; then
+    printf 'A real iPhone appears offline in xctrace. Connect/unlock it before the phone-day trial.\n' >&2
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  if ! xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    return 0
+  fi
+
+  if jq -e '
+    .result.devices[]
+    | select(.hardwareProperties.reality == "physical")
+    | select((.hardwareProperties.deviceType // "") | test("iPhone|iPad|iPod"))
+    | select((.connectionProperties.tunnelState // "") != "connected")
+  ' "$tmp" >/dev/null 2>&1; then
+    printf 'CoreDevice sees a paired physical iPhone/iPad, but its tunnel is not connected:\n' >&2
+    jq -r '
+      .result.devices[]
+      | select(.hardwareProperties.reality == "physical")
+      | select((.hardwareProperties.deviceType // "") | test("iPhone|iPad|iPod"))
+      | "- \(.deviceProperties.name) (\(.hardwareProperties.udid)): pairing=\(.connectionProperties.pairingState // "unknown"), tunnel=\(.connectionProperties.tunnelState // "unknown"), transport=\(.connectionProperties.transportType // "unknown")"
+    ' "$tmp" >&2 || true
+    printf 'Unlock the phone, keep it awake, connect by USB if Wi-Fi pairing is stale, and rerun scripts/prepare_coach_quality_phone_trial.sh.\n' >&2
+  fi
+
+  rm -f "$tmp"
 }
 
 phone_trial_status() {
@@ -284,8 +320,8 @@ check_phone_trial() {
     printf 'Phone trial evidence is pending: %s\n' "$PHONE_TRIAL_FILE" >&2
   fi
 
-  if [[ "$status" == "pending" ]] && xcrun xctrace list devices 2>/dev/null | rg -q 'Devices Offline'; then
-    printf 'A real iPhone appears offline. Connect/unlock it before the phone-day trial.\n' >&2
+  if [[ "$status" == "pending" ]]; then
+    physical_device_diagnostics
   fi
   printf 'To prepare the phone build and evidence fields, run: scripts/prepare_coach_quality_phone_trial.sh\n' >&2
   [[ "$ALLOW_PENDING_PHONE_TRIAL" == "1" ]]
