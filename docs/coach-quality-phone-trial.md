@@ -38,10 +38,10 @@ and rerun the script before starting the trial.
 
 Every field below must be filled before `Status: PASSED`. If there were no issues, write `None` for `Issues found`.
 
-- Trial date:
-- Device:
-- Starting app commit:
-- Ending app commit:
+- Trial date: 2026-07-08
+- Device: 陈泽威的 iPhone (00008140-0019242901E8801C)
+- Starting app commit: bf70d51
+- Ending app commit: bf70d51
 - Primary gap MingSi identified:
 - Foundational ability MingSi trained:
 - Minimal training action:
