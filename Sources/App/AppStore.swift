@@ -1839,18 +1839,11 @@ final class AppStore: ObservableObject {
                     reason: "执行力训练需要一个明天真的能做的小行动。"
                 )
             }
-            if mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let validation = QuestValidationPolicy().evaluate(mainQuest)
+            if let missing = validation.firstMissingCheck {
                 return todayEntryCondition(
-                    requirement: "给验证行动补上可验证的完成标准。",
-                    reason: "完成标准要能让明天回看时可检查。"
-                )
-            }
-            let calibrationTarget = mainQuest.calibrationTarget?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if calibrationTarget.isEmpty {
-                return todayEntryCondition(
-                    requirement: "先补上今天待验证判断，再保存明日验证。",
-                    reason: "验证行动要验证今天的判断，不是普通待办。"
+                    requirement: missing.dimension.missingRequirement,
+                    reason: missing.dimension.missingReason
                 )
             }
             return nil
@@ -5251,8 +5244,16 @@ final class AppStore: ObservableObject {
     }
 
     private func saveReviewedQuests() {
-        guard let mainQuest, !mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            todayLoopMessage = "请保留一个带完成标准的验证行动。"
+        guard let mainQuest else {
+            todayLoopMessage = "请保留一个验证行动。"
+            return
+        }
+        let validation = QuestValidationPolicy().evaluate(mainQuest)
+        if let missing = validation.firstMissingCheck {
+            todayLoopMessage = todayEntryCondition(
+                requirement: missing.dimension.missingRequirement,
+                reason: missing.dimension.missingReason
+            )
             return
         }
         quests = quests.map { quest in

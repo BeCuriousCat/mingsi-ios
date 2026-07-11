@@ -169,7 +169,7 @@ extension View {
 
     func questionSurface() -> some View {
         padding(DS.cardInnerPadding)
-            .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+            .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
             .overlay(alignment: .topLeading) {
                 Image(systemName: "questionmark")
                     .font(.caption.weight(.bold))

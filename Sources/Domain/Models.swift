@@ -3876,6 +3876,89 @@ struct Quest: Identifiable, Hashable {
     }
 }
 
+enum QuestValidationDimension: String, CaseIterable, Identifiable {
+    case action
+    case evidence
+    case judgment
+    case calibration
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .action: return "行动清楚"
+        case .evidence: return "完成可查"
+        case .judgment: return "对应判断"
+        case .calibration: return "结果可校准"
+        }
+    }
+
+    var missingRequirement: String {
+        switch self {
+        case .action: return "写清明天具体要做的一步。"
+        case .evidence: return "给验证行动补上可验证的完成标准。"
+        case .judgment: return "先补上今天待验证判断，再保存明日验证。"
+        case .calibration: return "写清明天看到结果后要回答的问题。"
+        }
+    }
+
+    var missingReason: String {
+        switch self {
+        case .action: return "行动必须具体到明天能够直接开始。"
+        case .evidence: return "完成标准要能让明天回看时可检查。"
+        case .judgment: return "验证行动要验证今天的判断，不是普通待办。"
+        case .calibration: return "结果只有能够支持、调整或推翻判断，才算完成验证。"
+        }
+    }
+}
+
+struct QuestValidationCheck: Identifiable, Hashable {
+    let dimension: QuestValidationDimension
+    let isSatisfied: Bool
+
+    var id: QuestValidationDimension { dimension }
+}
+
+struct QuestValidationSummary: Hashable {
+    let checks: [QuestValidationCheck]
+
+    var isReady: Bool {
+        checks.allSatisfy(\.isSatisfied)
+    }
+
+    var firstMissingCheck: QuestValidationCheck? {
+        checks.first { !$0.isSatisfied }
+    }
+}
+
+struct QuestValidationPolicy {
+    func evaluate(_ quest: Quest) -> QuestValidationSummary {
+        QuestValidationSummary(checks: [
+            QuestValidationCheck(
+                dimension: .action,
+                isSatisfied: hasText(quest.title)
+            ),
+            QuestValidationCheck(
+                dimension: .evidence,
+                isSatisfied: hasText(quest.completionCriteria)
+            ),
+            QuestValidationCheck(
+                dimension: .judgment,
+                isSatisfied: hasText(quest.calibrationTarget)
+            ),
+            QuestValidationCheck(
+                dimension: .calibration,
+                isSatisfied: hasText(quest.reflectionQuestion)
+            )
+        ])
+    }
+
+    private func hasText(_ text: String?) -> Bool {
+        guard let text else { return false }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct QuestExecutionTrainingFeedback: Hashable {
     var trainingDimension: ThinkingTrainingDimension
     var contractLine: String

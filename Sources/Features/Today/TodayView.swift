@@ -10,6 +10,7 @@ enum TodayAutomationID {
     static let retryCurrentStepAction = "today.retry-current-step-action"
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
+    static let moreActions = "today.more-actions"
     static let cardConfirmAction = "today.card.confirm-action"
     static let cardExcludeAction = "today.card.exclude-action"
     static let trainingPrescriptionAcceptAction = "today.training-prescription.accept-action"
@@ -34,7 +35,11 @@ enum TodayAutomationID {
         "today.question.answer-field.\(questionId)"
     }
     static let questEditAction = "today.quest.edit-action"
+    static let questDetailsToggle = "today.quest.details-toggle"
     static let questTrainingPrinciplePicker = "today.quest.training-principle-picker"
+    static func questValidationCheck(_ dimension: QuestValidationDimension) -> String {
+        "today.quest.validation.\(dimension.rawValue)"
+    }
     static let principleFeedbackNoteField = "today.principle.feedback.note-field"
     static let principleFeedbackHelpfulAction = "today.principle.feedback.helpful-action"
     static let principleFeedbackAdaptedAction = "today.principle.feedback.adapted-action"
@@ -70,11 +75,88 @@ enum TodayAutomationID {
     }
 }
 
-private struct LoopBoundaryCopy {
-    let title: String
-    let body: String
-    let icon: String
-    let tint: Color
+private enum TodayVisibleStage: Int, CaseIterable, Identifiable {
+    case clarifyToday
+    case examineJudgment
+    case defineValidation
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .clarifyToday: return "讲清今天"
+        case .examineJudgment: return "想透判断"
+        case .defineValidation: return "定下验证"
+        }
+    }
+
+    var states: [DailyLoopState] {
+        switch self {
+        case .clarifyToday:
+            return [.capture, .organizing, .reviewCards, .selectMode]
+        case .examineJudgment:
+            return [.selectLens, .answerQuestions]
+        case .defineValidation:
+            return [.reviewQuests, .extractPrinciple, .sessionComplete]
+        }
+    }
+
+    var entryState: DailyLoopState {
+        switch self {
+        case .clarifyToday: return .capture
+        case .examineJudgment: return .selectLens
+        case .defineValidation: return .reviewQuests
+        }
+    }
+
+    var automationID: String {
+        switch self {
+        case .clarifyToday: return "today.visible-stage.clarify-today"
+        case .examineJudgment: return "today.visible-stage.examine-judgment"
+        case .defineValidation: return "today.visible-stage.define-validation"
+        }
+    }
+}
+
+private enum TodayVisibleStageStatus {
+    case completed
+    case current
+    case upcoming
+
+    var accessibilityLabel: String {
+        switch self {
+        case .completed: return "已完成"
+        case .current: return "进行中"
+        case .upcoming: return "待开始"
+        }
+    }
+}
+
+private struct TodayVisibleStageButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+    }
+}
+
+private struct TodayPrimaryActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? DS.background : DS.mutedInk)
+            .background(
+                isEnabled ? DS.accent : DS.surfaceStrong,
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay {
+                if !isEnabled {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                }
+            }
+            .opacity(configuration.isPressed ? 0.78 : 1)
+    }
 }
 
 struct TodayView: View {
@@ -100,7 +182,6 @@ struct TodayView: View {
                                 proxy.scrollTo(TodayScrollAnchor.top, anchor: .top)
                             }
                         }
-                        loopBoundaryHint
 
                         switch store.todayDraft.state {
                         case .verifyYesterday:
@@ -149,67 +230,6 @@ struct TodayView: View {
         }
     }
 
-    private var loopBoundaryHint: some View {
-        let boundary = currentLoopBoundary
-        return DisclosureGroup {
-            Text(boundary.body)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 5)
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: boundary.icon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(boundary.tint)
-                    .frame(width: 18, height: 18)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(boundary.title)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(boundary.tint)
-                    Text("看这一步做什么")
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(boundary.tint.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(boundary.tint.opacity(0.12), lineWidth: 1)
-        )
-        .accessibilityIdentifier(TodayAutomationID.loopBoundaryToggle)
-    }
-
-    private var currentLoopBoundary: LoopBoundaryCopy {
-        switch store.todayDraft.state {
-        case .verifyYesterday:
-            return LoopBoundaryCopy(
-                title: "先看昨天结果",
-                body: "只看昨天那一步：做没做、有没有用、判断要不要改。看完再开始写今天。",
-                icon: "scope",
-                tint: DS.caution
-            )
-        case .reviewQuests, .extractPrinciple, .sessionComplete:
-            return LoopBoundaryCopy(
-                title: "明天验证一下",
-                body: "把今天的一个判断，写成明天能做、能检查的一步。",
-                icon: "flag.checkered",
-                tint: DS.success
-            )
-        case .capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions:
-            return LoopBoundaryCopy(
-                title: "今天先讲清楚",
-                body: "先说发生了什么、你做了什么、你怎么想；这一步不写明天计划。",
-                icon: "person.text.rectangle",
-                tint: DS.brick
-            )
-        }
-    }
-
     // MARK: - Header
 
     private var header: some View {
@@ -220,10 +240,9 @@ struct TodayView: View {
                 .textCase(.uppercase)
 
             HStack(alignment: .firstTextBaseline) {
-                Text(store.currentStateTitle)
+                Text(currentVisibleStageTitle)
                     .font(.system(size: 31, weight: .bold, design: .rounded))
                     .foregroundStyle(DS.ink)
-                    .accessibilityIdentifier(TodayAutomationID.state(store.todayDraft.state))
 
                 Spacer()
 
@@ -236,6 +255,11 @@ struct TodayView: View {
                         .background(DS.accent.opacity(0.08), in: Capsule())
                 }
             }
+
+            Text("现在 · \(store.currentStateTitle)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+                .accessibilityIdentifier(TodayAutomationID.state(store.todayDraft.state))
 
             if !store.todayLoopMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -259,76 +283,94 @@ struct TodayView: View {
     }
 
     private func loopProgress(scrollToTop: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            loopProgressGroup(
-                title: "今天先讲清楚",
-                route: "记录今天 -> 复盘一下",
-                states: [.capture, .organizing, .reviewCards, .selectMode, .selectLens, .answerQuestions],
-                tint: DS.brick,
-                scrollToTop: scrollToTop
-            )
-
-            loopProgressGroup(
-                title: "明天验证一下",
-                route: "做一步 -> 回来看结果",
-                states: [.reviewQuests, .extractPrinciple, .sessionComplete, .verifyYesterday],
-                tint: DS.success,
-                scrollToTop: scrollToTop
-            )
-
-            Text(progressCaption)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-        }
-        .padding(.top, 2)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: scrollToTop)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("今日流程进度")
-        .accessibilityHint("点按返回今日顶部")
-    }
-
-    private func loopProgressGroup(
-        title: String,
-        route: String,
-        states: [DailyLoopState],
-        tint: Color,
-        scrollToTop: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(tint)
-                Text(route)
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 12) {
+            if store.todayDraft.state == .verifyYesterday {
+                Label("开始前 · 回看昨天", systemImage: "arrow.counterclockwise")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.caution)
             }
 
-            HStack(spacing: 6) {
-                ForEach(states) { state in
-                    Button {
-                        if store.canNavigateTodayLoop(to: state) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                store.navigateTodayLoop(to: state)
-                                scrollToTop()
-                            }
-                        } else {
-                            scrollToTop()
-                        }
-                    } label: {
-                        Capsule()
-                            .fill(progressColor(for: state))
-                            .frame(height: 7)
-                            .opacity(store.canNavigateTodayLoop(to: state) || state == store.todayDraft.state ? 1 : 0.5)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("回到\(state.title)")
-                    .accessibilityHint(store.canNavigateTodayLoop(to: state) ? "点按回到该步骤编辑" : "该步骤暂不可返回")
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(TodayVisibleStage.allCases) { stage in
+                    visibleStageButton(stage, scrollToTop: scrollToTop)
                 }
             }
         }
+        .padding(.top, 2)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("今日流程进度")
+    }
+
+    private func visibleStageButton(
+        _ stage: TodayVisibleStage,
+        scrollToTop: @escaping () -> Void
+    ) -> some View {
+        let status = visibleStageStatus(for: stage)
+        let canNavigate = canNavigate(to: stage)
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                store.navigateTodayLoop(to: stage.entryState)
+                scrollToTop()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 0) {
+                    visibleStageMarker(stage, status: status)
+
+                    if stage != .defineValidation {
+                        Rectangle()
+                            .fill(visibleStageConnectorColor(after: stage))
+                            .frame(height: 1)
+                            .padding(.horizontal, 7)
+                    }
+                }
+
+                Text(stage.title)
+                    .font(.caption.weight(status == .current ? .bold : .semibold))
+                    .foregroundStyle(status == .upcoming ? DS.mutedInk : DS.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(TodayVisibleStageButtonStyle())
+        .disabled(!canNavigate)
+        .accessibilityIdentifier(stage.automationID)
+        .accessibilityLabel("\(stage.title)，\(status.accessibilityLabel)")
+        .accessibilityHint(canNavigate ? "点按回到这一阶段重新开始" : "")
+    }
+
+    private func visibleStageMarker(
+        _ stage: TodayVisibleStage,
+        status: TodayVisibleStageStatus
+    ) -> some View {
+        ZStack {
+            Circle()
+                .fill(status == .current ? DS.accent : Color.clear)
+            Circle()
+                .stroke(
+                    status == .upcoming ? DS.mutedInk.opacity(0.35) : DS.accent,
+                    lineWidth: status == .current ? 0 : 1
+                )
+
+            if status == .completed {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(DS.accent)
+            } else {
+                Text("\(stage.rawValue + 1)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(status == .current ? DS.surfaceStrong : DS.mutedInk)
+            }
+        }
+        .frame(width: 22, height: 22)
+    }
+
+    private func visibleStageConnectorColor(after stage: TodayVisibleStage) -> Color {
+        guard let currentVisibleStage else { return DS.hairline }
+        return stage.rawValue < currentVisibleStage.rawValue ? DS.accent.opacity(0.45) : DS.hairline
     }
 
     // MARK: - Verify Yesterday
@@ -400,13 +442,6 @@ struct TodayView: View {
     // Design: Generous text area, inviting, feels like opening a notebook
     private var captureSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            phaseBoundaryCard(
-                title: "今天内容",
-                body: "这里只收集今天内容：事实、动作、感受和想法；先不复盘，也不写明天。",
-                icon: "text.bubble",
-                tint: DS.accent
-            )
-
             stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
 
             FlowPills(items: ["发生了什么", "我怎么做", "我怎么想"])
@@ -717,10 +752,6 @@ struct TodayView: View {
                 )
             }
 
-            answerTrainingFocusStrip(
-                CoachObservationPolicy().observe(cards: store.thinkingCards)
-            )
-
             if let feedback = store.coachAnswerTrainingFeedback {
                 answerFeedbackPreviewView(
                     feedback,
@@ -772,46 +803,6 @@ struct TodayView: View {
             }
             .accessibilityIdentifier(TodayAutomationID.answerDiagnosisToggle)
         }
-    }
-
-    private func answerTrainingFocusStrip(_ observation: CoachObservation) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("这次先练")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(DS.accent)
-            Text("主练：\(observation.trainingAbility.trainingTitle)")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("先补")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.brick)
-                Text(materialLine(for: observation.missingMaterials, fallback: observation.feedback.ask))
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if !observation.secondaryTrainingLine.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("同时")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DS.graphite)
-                    Text(observation.secondaryTrainingLine)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1)
-        )
     }
 
     private func observationTrainingFrame(_ observation: CoachObservation) -> some View {
@@ -1024,85 +1015,15 @@ struct TodayView: View {
         }
     }
 
-    private func phaseBoundaryCard(title: String, body: String, icon: String, tint: Color) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(tint)
-                .frame(width: 22, height: 22)
-                .background(tint.opacity(0.10), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(tint)
-                    .textCase(.uppercase)
-                Text(body)
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.055), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(tint.opacity(0.14), lineWidth: 1)
-        )
-    }
-
     // MARK: - Review Quests
 
     // Purpose: Review tomorrow's action plan
     // Design: Quest cards feel actionable, main quest is visually prominent
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            phaseBoundaryCard(
-                title: "明日验证",
-                body: "今日复盘已结束；下面把今天的判断转成明天可验证的行动，不是继续写总结。",
-                icon: "flag.checkered",
-                tint: DS.success
-            )
-
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 10) {
-                    BriefRow(
-                        title: "明天怎么回看",
-                        body: "明天回到结果校准时，只检查做没做、有没有实际价值、判断要不要更新。",
-                        accent: DS.caution
-                    )
-                    BriefRow(
-                        title: "本页只设计明天的验证行动",
-                        body: "写明天能完成、能检查、能校准今天一个判断的一步；不要继续补今天的复盘。",
-                        accent: DS.success
-                    )
-                    BriefRow(
-                        title: "今日复盘交接点",
-                        body: "今天内容和今日复盘已经收束；这里不再补材料，只把一个待验证判断交给明天。",
-                        accent: DS.accent
-                    )
-                }
-                .padding(.top, 8)
-            } label: {
-                Label("查看验证边界", systemImage: "list.bullet.clipboard")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.mutedInk)
-            }
-            .accessibilityIdentifier(TodayAutomationID.reviewQuestsGuidanceToggle)
+            stepLabel("设计明日验证", subtitle: "把今天的判断变成明天能做、能检查的一步。")
 
             reviewQuestJudgmentAnchor
-
-            stepLabel("设计明日验证", subtitle: "验证行动必须验证今天的一个判断，并有明确完成标准。")
-
-            if !store.referencedPrinciples.isEmpty {
-                ReferencedPrinciplesView(
-                    principles: store.referencedPrinciples,
-                    retrievalReason: store.referencedPrincipleRetrievalReason,
-                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
-                    onFeedback: recordReferencedPrincipleFeedback
-                )
-            }
 
             ForEach(store.quests) { quest in
                 QuestCardView(
@@ -1124,29 +1045,36 @@ struct TodayView: View {
                     }
                 )
             }
+
+            if !store.referencedPrinciples.isEmpty {
+                ReferencedPrinciplesView(
+                    principles: store.referencedPrinciples,
+                    retrievalReason: store.referencedPrincipleRetrievalReason,
+                    retrievalSignalText: store.referencedPrincipleRetrievalSignalText,
+                    onFeedback: recordReferencedPrincipleFeedback
+                )
+            }
         }
     }
 
     private var reviewQuestJudgmentAnchor: some View {
         let target = mainQuestCalibrationTarget
-        return VStack(alignment: .leading, spacing: 9) {
-            BriefRow(
-                title: "今天待验证判断",
-                body: target ?? "还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。",
-                accent: target == nil ? DS.caution : DS.accent
-            )
-            if let target {
-                BriefRow(
-                    title: "校准目标",
-                    body: target,
-                    accent: DS.accent
-                )
+        return VStack(alignment: .leading, spacing: 7) {
+            Label(target == nil ? "先补一个判断" : "今天要验证", systemImage: "scope")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(target == nil ? DS.caution : DS.accent)
+
+            Text(target ?? "还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if target != nil {
+                Text("明天只用结果判断它是否成立。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
             }
-            BriefRow(
-                title: "下面的验证行动只验证这个判断",
-                body: "明日验证不是普通待办，也不是继续总结今天；它只负责让明天的结果能校准这条判断。",
-                accent: DS.success
-            )
+
             if target == nil {
                 Button {
                     store.navigateTodayLoop(to: .answerQuestions)
@@ -1160,13 +1088,14 @@ struct TodayView: View {
                 .accessibilityIdentifier(TodayAutomationID.returnToReviewForJudgmentAction)
             }
         }
-        .padding(10)
+        .padding(.vertical, 4)
+        .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke((target == nil ? DS.caution : DS.accent).opacity(0.16), lineWidth: 1)
-        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DS.hairline)
+                .frame(height: 1)
+        }
     }
 
     private var mainQuestCalibrationTarget: String? {
@@ -1314,8 +1243,7 @@ struct TodayView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(DS.accent)
+            .buttonStyle(TodayPrimaryActionButtonStyle())
             .disabled(store.isTodayPrimaryActionDisabled)
             .accessibilityIdentifier(TodayAutomationID.primaryAction)
 
@@ -1377,12 +1305,18 @@ struct TodayView: View {
                     .accessibilityIdentifier(TodayAutomationID.skipPrincipleAction)
                 }
 
-                Button("重置今日") {
-                    store.resetTodayLoop()
+                Menu {
+                    Button("重置今日", role: .destructive) {
+                        store.resetTodayLoop()
+                    }
+                    .accessibilityIdentifier(TodayAutomationID.resetAction)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.body)
                 }
-                .font(.footnote)
                 .foregroundStyle(DS.mutedInk)
-                .accessibilityIdentifier(TodayAutomationID.resetAction)
+                .accessibilityLabel("更多操作")
+                .accessibilityIdentifier(TodayAutomationID.moreActions)
             }
         }
         .padding(.horizontal, DS.pagePadding)
@@ -1438,21 +1372,6 @@ struct TodayView: View {
         }
     }
 
-    private var progressCaption: String {
-        switch store.todayDraft.state {
-        case .verifyYesterday: return "当前：先看昨天结果。看完再开始写今天。"
-        case .capture: return "当前：今天内容。先讲清发生了什么、怎么做、怎么想。"
-        case .organizing: return "当前：材料整理。把输入拆成可确认的思考材料。"
-        case .reviewCards: return "当前：材料确认。先确认真实材料，再让教练判断缺口。"
-        case .selectMode: return "当前：训练深度。选择今天要练到什么程度。"
-        case .selectLens: return "当前：教练先看一眼。明思先看哪里没讲清，再推荐练法。"
-        case .answerQuestions: return "当前：复盘今天。把没讲清、证据不足、判断跳跃的地方补一下。"
-        case .reviewQuests: return "当前：写明天要验证的一步。"
-        case .extractPrinciple: return "当前：原则沉淀。只保存可复用的行动准则。"
-        case .sessionComplete: return "今天完成了。明天先回来看结果。"
-        }
-    }
-
     private var canSupplementCapture: Bool {
         switch store.todayDraft.state {
         case .reviewCards, .selectMode, .selectLens, .answerQuestions, .reviewQuests, .extractPrinciple:
@@ -1473,6 +1392,29 @@ struct TodayView: View {
 
     // MARK: - Helpers
 
+    private var currentVisibleStage: TodayVisibleStage? {
+        TodayVisibleStage.allCases.first { $0.states.contains(store.todayDraft.state) }
+    }
+
+    private var currentVisibleStageTitle: String {
+        currentVisibleStage?.title ?? "回看昨天"
+    }
+
+    private func visibleStageStatus(for stage: TodayVisibleStage) -> TodayVisibleStageStatus {
+        guard let currentVisibleStage else { return .upcoming }
+        if stage.rawValue < currentVisibleStage.rawValue {
+            return .completed
+        }
+        if stage == currentVisibleStage {
+            return .current
+        }
+        return .upcoming
+    }
+
+    private func canNavigate(to stage: TodayVisibleStage) -> Bool {
+        store.todayDraft.state != stage.entryState && store.canNavigateTodayLoop(to: stage.entryState)
+    }
+
     private var todayScrollBottomReserve: CGFloat {
         if store.todayDraft.state == .answerQuestions {
             return DS.primaryScrollBottomReserve
@@ -1489,23 +1431,6 @@ struct TodayView: View {
                 .font(.subheadline)
                 .foregroundStyle(DS.mutedInk)
         }
-    }
-
-    private func progressColor(for state: DailyLoopState) -> Color {
-        let states = DailyLoopState.allCases
-        guard
-            let currentIndex = states.firstIndex(of: store.todayDraft.state),
-            let stateIndex = states.firstIndex(of: state)
-        else {
-            return Color.primary.opacity(0.08)
-        }
-        if stateIndex < currentIndex {
-            return DS.accent.opacity(0.55)
-        }
-        if stateIndex == currentIndex {
-            return DS.accent
-        }
-        return Color.primary.opacity(0.08)
     }
 
     private func bindingForQuestion(questionID: ReflectionQuestion.ID, fallbackIndex index: Int) -> Binding<String> {
@@ -3170,24 +3095,6 @@ private struct QuestionCardView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                 }
-
-                if let answerUse = question.answerUse {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                    Text(answerUse.displayTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                }
-
-                if let lensMove = question.lensMove {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                    Text(lensMove.displayTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                }
             }
 
             Text(question.question)
@@ -3195,19 +3102,11 @@ private struct QuestionCardView: View {
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                if let trainingCue = compactTrainingCue {
-                    Text(trainingCue)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DS.accent)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text(compactRepairCue)
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(compactRepairCue)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -3258,16 +3157,6 @@ private struct QuestionCardView: View {
             trimmed(question.calibrationTarget) != nil
     }
 
-    private var compactTrainingCue: String? {
-        if let lensMove = question.lensMove {
-            return "本题练：\(lensMove.displayTitle)"
-        }
-        if let answerUse = question.answerUse {
-            return "本题练：\(answerUse.displayTitle)"
-        }
-        return nil
-    }
-
     private var compactRepairCue: String {
         if let gapTitle = teachingGapTitle {
             return "先补：\(gapTitle)"
@@ -3282,16 +3171,16 @@ private struct QuestionCardView: View {
         VStack(alignment: .leading, spacing: 7) {
             BriefRow(title: "教练判断", body: coachDecisionLine, accent: DS.accent)
             BriefRow(title: "先补一句", body: coachRepairLine, accent: DS.brick)
+            if let lensMove = question.lensMove {
+                BriefRow(title: "本题练法", body: lensMove.displayTitle, accent: DS.success)
+            }
+            if let answerUse = question.answerUse {
+                BriefRow(title: "答案去向", body: answerUse.displayTitle, accent: DS.mutedInk)
+            }
             if let coachPracticeReason {
                 BriefRow(title: "为什么这样练", body: coachPracticeReason, accent: DS.success)
             }
         }
-        .padding(10)
-        .background(DS.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1)
-        )
     }
 
     private var coachDecisionLine: String {
@@ -3359,6 +3248,7 @@ private struct QuestCardView: View {
     @State private var draftCriteria: String
     @State private var draftResistance: String
     @State private var draftQuestion: String
+    @State private var showsDetails = false
     private let executionFeedback: QuestExecutionTrainingFeedback
 
     init(
@@ -3412,32 +3302,83 @@ private struct QuestCardView: View {
                     .foregroundStyle(DS.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
+                validationChecksView
+
                 VStack(alignment: .leading, spacing: 10) {
-                    BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    BriefRow(title: "为什么不是普通待办", body: executionFeedback.contractLine, accent: DS.success)
-                    BriefRow(title: "验证判断", body: executionFeedback.judgmentLine, accent: DS.accent)
+                    BriefRow(title: "对应判断", body: executionFeedback.judgmentLine, accent: DS.accent)
                     BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
-                    BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
-                    BriefRow(title: "结果校准信号", body: executionFeedback.calibrationLine, accent: DS.success)
-                    BriefRow(title: "这次练什么", body: executionFeedback.trainingLine, accent: DS.graphite)
-                    if let trainingTarget {
-                        BriefRow(
-                            title: "复现哪条原则",
-                            body: trainingTarget.principleTitle,
-                            accent: DS.accent
-                        )
-                        Text("命中信号：\(trainingTarget.matchSignal)")
+                    BriefRow(title: "校准问题", body: quest.reflectionQuestion, accent: DS.success)
+                }
+
+                DisclosureGroup(isExpanded: $showsDetails) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
+                        BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
+                        BriefRow(title: "训练说明", body: executionFeedback.contractLine, accent: DS.success)
+                        Text(executionFeedback.trainingLine)
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let trainingTarget {
+                            BriefRow(
+                                title: "复现哪条原则",
+                                body: trainingTarget.principleTitle,
+                                accent: DS.accent
+                            )
+                            Text("命中信号：\(trainingTarget.matchSignal)")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !trainingPrinciples.isEmpty {
+                            questTrainingPrinciplePicker
+                        }
                     }
-                    if !trainingPrinciples.isEmpty {
-                        questTrainingPrinciplePicker
-                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label("补充设计", systemImage: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
                 }
+                .accessibilityIdentifier(TodayAutomationID.questDetailsToggle)
             }
         }
         .questSurface(isMain: quest.type == .main)
+    }
+
+    private var validationChecksView: some View {
+        let checks = validationSummary.checks
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 12) {
+                validationCheckView(checks[0])
+                validationCheckView(checks[1])
+            }
+            HStack(spacing: 12) {
+                validationCheckView(checks[2])
+                validationCheckView(checks[3])
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func validationCheckView(_ check: QuestValidationCheck) -> some View {
+        HStack(spacing: 5) {
+            Image(
+                systemName: check.isSatisfied
+                    ? "checkmark.circle.fill"
+                    : "exclamationmark.circle"
+            )
+            .font(.caption2.weight(.semibold))
+            Text(check.dimension.title)
+                .font(.caption2.weight(.semibold))
+                .accessibilityIdentifier(TodayAutomationID.questValidationCheck(check.dimension))
+        }
+        .foregroundStyle(check.isSatisfied ? DS.success : DS.caution)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var validationSummary: QuestValidationSummary {
+        QuestValidationPolicy().evaluate(quest)
     }
 
     private var questTrainingPrinciplePicker: some View {

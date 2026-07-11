@@ -5622,6 +5622,52 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.state, .reviewQuests)
     }
 
+    func testQuestValidationPolicyRequiresAllFourValidationDimensions() {
+        let quest = Quest(
+            type: .main,
+            title: "验证负责人",
+            whyItMatters: "减少职责空白。",
+            completionCriteria: "负责人已书面确认。",
+            expectedResistance: "讨论节奏太快。",
+            reflectionQuestion: "职责空白是否减少？",
+            calibrationTarget: "书面确认负责人会减少职责空白"
+        )
+
+        let validSummary = QuestValidationPolicy().evaluate(quest)
+
+        XCTAssertEqual(validSummary.checks.map(\.dimension), QuestValidationDimension.allCases)
+        XCTAssertTrue(validSummary.isReady)
+        XCTAssertNil(validSummary.firstMissingCheck)
+
+        var missingCalibrationQuestion = quest
+        missingCalibrationQuestion.reflectionQuestion = "   "
+        let invalidSummary = QuestValidationPolicy().evaluate(missingCalibrationQuestion)
+
+        XCTAssertFalse(invalidSummary.isReady)
+        XCTAssertEqual(invalidSummary.firstMissingCheck?.dimension, .calibration)
+    }
+
+    func testReviewQuests_mainQuestWithoutCalibrationQuestion_blocksProgression() async throws {
+        try await advanceTo(.reviewQuests)
+        store.quests = [
+            Quest(
+                type: .main,
+                title: "验证负责人",
+                whyItMatters: "减少职责空白。",
+                completionCriteria: "负责人已书面确认。",
+                expectedResistance: "讨论节奏太快。",
+                reflectionQuestion: "   ",
+                calibrationTarget: "书面确认负责人会减少职责空白"
+            )
+        ]
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .reviewQuests)
+        XCTAssertTrue(store.todayLoopMessage.contains("看到结果后要回答的问题"))
+        XCTAssertTrue(store.todayLoopMessage.contains("支持、调整或推翻判断"))
+    }
+
     func testEditQuest_updatesQuestAndClearsPrincipleCandidate() async throws {
         try await advanceTo(.reviewQuests)
         let quest = Quest(type: .main, title: "Original quest", whyItMatters: "Old why",
@@ -5651,7 +5697,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [
             Quest(type: .main, title: "Valid quest", whyItMatters: "Matters",
                   completionCriteria: "Done when verified", expectedResistance: "None",
-                  reflectionQuestion: "What changed?")
+                  reflectionQuestion: "What changed?",
+                  calibrationTarget: "书面验收会减少返工")
         ]
         store.submitTodayStep()
         try await Task.sleep(for: .milliseconds(300))
@@ -5672,7 +5719,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [
             Quest(type: .main, title: "Confirm meeting owner", whyItMatters: "Matters",
                   completionCriteria: "Owner confirmed in writing", expectedResistance: "None",
-                  reflectionQuestion: "What changed?")
+                  reflectionQuestion: "What changed?",
+                  calibrationTarget: "书面确认负责人会减少职责空白")
         ]
 
         store.submitTodayStep()
@@ -5946,7 +5994,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await advanceTo(.reviewQuests)
         let quest = Quest(type: .main, title: "Confirm owner", whyItMatters: "Matters",
                           completionCriteria: "Owner confirmed", expectedResistance: "None",
-                          reflectionQuestion: "What changed?")
+                          reflectionQuestion: "What changed?",
+                          calibrationTarget: "书面确认负责人会减少职责空白")
         store.quests = [quest]
 
         store.submitTodayStep()
@@ -5983,7 +6032,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.quests = [
             Quest(type: .main, title: "Confirm owner", whyItMatters: "Matters",
                   completionCriteria: "Owner confirmed", expectedResistance: "None",
-                  reflectionQuestion: "What changed?")
+                  reflectionQuestion: "What changed?",
+                  calibrationTarget: "书面确认负责人会减少职责空白")
         ]
 
         store.submitTodayStep()
@@ -6178,7 +6228,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         // reviewQuests -> extractPrinciple (async principle generation)
         var quest = Quest(type: .main, title: "Confirm ownership",
                           whyItMatters: "Reduces rework", completionCriteria: "Owner confirmed",
-                          expectedResistance: "Cross-role discussion", reflectionQuestion: "What changed?")
+                          expectedResistance: "Cross-role discussion", reflectionQuestion: "What changed?",
+                          calibrationTarget: "Written ownership reduces rework")
         quest.status = .active
         store.quests = [quest]
         store.submitTodayStep()
@@ -9151,7 +9202,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             try await advanceTo(.reviewQuests)
             var quest = Quest(type: .main, title: "Valid quest", whyItMatters: "W",
                               completionCriteria: "Criteria met", expectedResistance: "E",
-                              reflectionQuestion: "R")
+                              reflectionQuestion: "R",
+                              calibrationTarget: "验收标准明确会减少返工")
             quest.status = .active
             store.quests = [quest]
             store.submitTodayStep()
@@ -10265,6 +10317,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.retryCurrentStepAction, "today.retry-current-step-action")
         XCTAssertEqual(TodayAutomationID.skipPrincipleAction, "today.skip-principle-action")
         XCTAssertEqual(TodayAutomationID.resetAction, "today.reset-action")
+        XCTAssertEqual(TodayAutomationID.moreActions, "today.more-actions")
         XCTAssertEqual(TodayAutomationID.cardConfirmAction, "today.card.confirm-action")
         XCTAssertEqual(TodayAutomationID.cardExcludeAction, "today.card.exclude-action")
         XCTAssertEqual(TodayAutomationID.trainingPrescriptionAcceptAction, "today.training-prescription.accept-action")
@@ -10279,6 +10332,11 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(TodayAutomationID.questionAnswerField, "today.question.answer-field")
         XCTAssertEqual(TodayAutomationID.loopBoundaryToggle, "today.loop-boundary-toggle")
         XCTAssertEqual(TodayAutomationID.questEditAction, "today.quest.edit-action")
+        XCTAssertEqual(TodayAutomationID.questDetailsToggle, "today.quest.details-toggle")
+        XCTAssertEqual(TodayAutomationID.questValidationCheck(.action), "today.quest.validation.action")
+        XCTAssertEqual(TodayAutomationID.questValidationCheck(.evidence), "today.quest.validation.evidence")
+        XCTAssertEqual(TodayAutomationID.questValidationCheck(.judgment), "today.quest.validation.judgment")
+        XCTAssertEqual(TodayAutomationID.questValidationCheck(.calibration), "today.quest.validation.calibration")
         XCTAssertEqual(TodayAutomationID.questTrainingPrinciplePicker, "today.quest.training-principle-picker")
         XCTAssertEqual(TodayAutomationID.lensGenerateAction, "today.lens.generate-action")
         XCTAssertEqual(TodayAutomationID.lensCustomAction, "today.lens.custom-action")
