@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 enum TodayAutomationID {
     static let primaryAction = "today.primary-action"
@@ -11,6 +12,10 @@ enum TodayAutomationID {
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
     static let moreActions = "today.more-actions"
+    static let cancelCurrentAIAction = "today.cancel-current-ai-action"
+    static let captureMaterialEvent = "today.capture.material-guide.event"
+    static let captureMaterialAction = "today.capture.material-guide.action"
+    static let captureMaterialThought = "today.capture.material-guide.thought"
     static let cardConfirmAction = "today.card.confirm-action"
     static let cardExcludeAction = "today.card.exclude-action"
     static let trainingPrescriptionAcceptAction = "today.training-prescription.accept-action"
@@ -24,6 +29,9 @@ enum TodayAutomationID {
     static let answerQuestionsOverrideGapAction = "today.answer.override-gap-action"
     static let answerDiagnosisToggle = "today.answer.diagnosis-toggle"
     static let answerTrainingToolsToggle = "today.answer.training-tools-toggle"
+    static let coachReferenceSuggestion = "today.answer.coach-reference-suggestion"
+    static let trainingTermsAction = "today.training-terms-action"
+    static let trainingTermsSheet = "today.training-terms-sheet"
     static let captureTrainingToolsToggle = "today.capture.training-tools-toggle"
     static let questionCoachBasisToggle = "today.question.coach-basis-toggle"
     static let questionAnswerField = "today.question.answer-field"
@@ -85,8 +93,8 @@ private enum TodayVisibleStage: Int, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .clarifyToday: return "讲清今天"
-        case .examineJudgment: return "想透判断"
-        case .defineValidation: return "定下验证"
+        case .examineJudgment: return "找出判断"
+        case .defineValidation: return "行动验证"
         }
     }
 
@@ -159,6 +167,43 @@ private struct TodayPrimaryActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct KeepScreenAwakeWhileTextEditing: ViewModifier {
+    let keepsScreenAwakeWhile: Bool
+    @State private var isTextEditing = false
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { _ in
+                isTextEditing = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidBeginEditingNotification)) { _ in
+                isTextEditing = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidEndEditingNotification)) { _ in
+                isTextEditing = false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UITextView.textDidEndEditingNotification)) { _ in
+                isTextEditing = false
+            }
+            .onChange(of: isTextEditing) { _, _ in
+                updateIdleTimer()
+            }
+            .onChange(of: keepsScreenAwakeWhile) { _, _ in
+                updateIdleTimer()
+            }
+            .onAppear {
+                updateIdleTimer()
+            }
+            .onDisappear {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+    }
+
+    private func updateIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = isTextEditing || keepsScreenAwakeWhile
+    }
+}
+
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
     @State private var isCaptureFocused = false
@@ -169,6 +214,7 @@ struct TodayView: View {
     @State private var isAnswerTrainingToolsExpanded = false
     @State private var isCaptureTrainingToolsExpanded = false
     @State private var isTrainingPrescriptionTeachingExpanded = false
+    @State private var isTrainingTermsPresented = false
 
     var body: some View {
         NavigationStack {
@@ -222,12 +268,16 @@ struct TodayView: View {
         .sheet(isPresented: $isCustomLensSheetPresented) {
             customLensSheet
         }
+        .sheet(isPresented: $isTrainingTermsPresented) {
+            TrainingTermsSheet()
+        }
         .onAppear {
             presentVisualQACustomLensSheetIfNeeded()
         }
         .onChange(of: store.todayDraft.state) { _, _ in
             presentVisualQACustomLensSheetIfNeeded()
         }
+        .modifier(KeepScreenAwakeWhileTextEditing(keepsScreenAwakeWhile: store.isAIRunning))
     }
 
     // MARK: - Header
@@ -245,6 +295,18 @@ struct TodayView: View {
                     .foregroundStyle(DS.ink)
 
                 Spacer()
+
+                Button {
+                    isTrainingTermsPresented = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.mutedInk)
+                .frame(width: 32, height: 32)
+                .accessibilityLabel("查看训练术语")
+                .accessibilityIdentifier(TodayAutomationID.trainingTermsAction)
 
                 if store.todayDraft.hasSelectedSessionMode {
                     Text(store.todayDraft.sessionMode.title)
@@ -433,6 +495,27 @@ struct TodayView: View {
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("什么事实让你这样判断？")
+                    .font(.subheadline.weight(.medium))
+                TextField(
+                    "例如：对方复述了验收标准，但仍有一处返工。",
+                    text: Binding(
+                        get: { store.todayDraft.yesterdayEvidence },
+                        set: { store.updateYesterdayEvidence($0) }
+                    ),
+                    axis: .vertical
+                )
+                .lineLimit(2...4)
+                .textFieldStyle(.plain)
+                .padding(12)
+                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
         }
     }
 
@@ -444,7 +527,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 14) {
             stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
 
-            FlowPills(items: ["发生了什么", "我怎么做", "我怎么想"])
+            CaptureMaterialGuide()
 
             CaptureTextView(text: Binding(
                 get: { store.todayDraft.rawText },
@@ -452,7 +535,7 @@ struct TodayView: View {
             ), isFocused: $isCaptureFocused)
             .accessibilityIdentifier(TodayAutomationID.captureRawTextField)
             .frame(minHeight: 220)
-            .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+            .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
                     .stroke(Color.primary.opacity(0.06), lineWidth: 1)
@@ -608,6 +691,7 @@ struct TodayView: View {
                 cardCount: store.thinkingCards.count,
                 streamingCards: store.streamingCards,
                 statusText: store.streamingStatusText,
+                activityStatus: store.aiActivityStatus,
                 failureMessage: store.lastAIFailureMessage,
                 canRetry: store.canRetryCurrentAI,
                 retry: { store.retryCurrentAIStep() }
@@ -758,6 +842,10 @@ struct TodayView: View {
                     answerMaterialObservation: store.coachAnswerMaterialObservation,
                     includesTeachingRoute: false
                 )
+            }
+
+            if let suggestion = store.coachReferenceSuggestion {
+                coachReferenceSuggestionView(suggestion)
             }
 
             if !store.referencedPrinciples.isEmpty {
@@ -937,6 +1025,32 @@ struct TodayView: View {
         }
     }
 
+    private func coachReferenceSuggestionView(_ suggestion: CoachReferenceSuggestion) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            BriefRow(title: "教练建议", body: suggestion.guidance, accent: DS.accent)
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(suggestion.workedExample)
+                        .font(.subheadline)
+                        .foregroundStyle(DS.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(suggestion.caveat)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 6)
+            } label: {
+                Label("查看对照写法", systemImage: "checklist")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.accent)
+            }
+            .tint(DS.accent)
+        }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier(TodayAutomationID.coachReferenceSuggestion)
+    }
+
     private func answerTrainingToolsDisclosure(
         _ feedback: CoachAnswerTrainingFeedback,
         answerMaterialObservation: String? = nil
@@ -1022,6 +1136,11 @@ struct TodayView: View {
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("设计明日验证", subtitle: "把今天的判断变成明天能做、能检查的一步。")
+
+            Text("先完成「明天做什么」，再用「完成证据」回答「校准问题」，据此更新今天的判断。")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
 
             reviewQuestJudgmentAnchor
 
@@ -1247,8 +1366,25 @@ struct TodayView: View {
             .disabled(store.isTodayPrimaryActionDisabled)
             .accessibilityIdentifier(TodayAutomationID.primaryAction)
 
-            if let blocker = store.todayPrimaryActionBlocker,
-               !store.canContinueAnswerQuestionsWithCoachGapOverride {
+            if store.isAIRunning {
+                Text(store.aiActivityStatus)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(TodayAutomationID.primaryActionHint)
+
+                Button {
+                    store.cancelCurrentAIRequest()
+                } label: {
+                    Label("取消本次生成", systemImage: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.caution)
+                .accessibilityIdentifier(TodayAutomationID.cancelCurrentAIAction)
+            } else if let blocker = store.todayPrimaryActionBlocker,
+                      !store.canContinueAnswerQuestionsWithCoachGapOverride {
                 Text(blocker)
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
@@ -2392,14 +2528,6 @@ private struct ThreePetalSpiralLoadingMark: View {
                     )
                 )
 
-                let head = ThreePetalSpiralGeometry.point(at: headDistance, in: sample)
-                let dot = Path(ellipseIn: CGRect(
-                    x: head.x - max(1.2, scale / 26.0),
-                    y: head.y - max(1.2, scale / 26.0),
-                    width: max(2.4, scale / 13.0),
-                    height: max(2.4, scale / 13.0)
-                ))
-                context.fill(dot, with: .color(DS.accent.opacity(0.94)))
             }
         }
     }
@@ -2529,6 +2657,7 @@ private struct AIGenerationProgressView: View {
     let cardCount: Int
     let streamingCards: [StreamingCardDraft]
     let statusText: String
+    let activityStatus: String
     let failureMessage: String?
     let canRetry: Bool
     let retry: () -> Void
@@ -2538,13 +2667,13 @@ private struct AIGenerationProgressView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     ThreePetalSpiralLoadingMark()
-                        .frame(width: 42, height: 42)
+                        .frame(width: 56, height: 56)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(organizingProgressTitle(isUsingOnlineModel: isUsingAI))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
-                        Text(statusText.isEmpty ? fallbackStatusText : statusText)
+                        Text(currentStatusText)
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                     }
@@ -2554,6 +2683,11 @@ private struct AIGenerationProgressView: View {
                 ProgressView(value: progressValue)
                     .tint(DS.accent)
                     .progressViewStyle(.linear)
+
+                Text("生成时会保持屏幕常亮。短暂切到后台会尝试完成，但 iOS 仍可能中断长连接。")
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .summarySurface()
 
@@ -2626,6 +2760,10 @@ private struct AIGenerationProgressView: View {
 
     private var fallbackStatusText: String {
         organizingProgressFallbackStatusText(isUsingOnlineModel: isUsingAI)
+    }
+
+    private var currentStatusText: String {
+        statusText.isEmpty ? activityStatus : "\(statusText) · \(activityStatus)"
     }
 
     private func generationStep(title: String, subtitle: String, state: AIGenerationStepState) -> some View {
@@ -3275,7 +3413,7 @@ private struct QuestCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(quest.type.title)
+                Text(quest.type == .main ? "明天的验证动作" : "辅助准备")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(quest.type == .main ? DS.accent : .secondary)
                 Spacer()
@@ -3321,11 +3459,11 @@ private struct QuestCardView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         if let trainingTarget {
                             BriefRow(
-                                title: "复现哪条原则",
+                                title: "本次沿用的旧原则",
                                 body: trainingTarget.principleTitle,
                                 accent: DS.accent
                             )
-                            Text("命中信号：\(trainingTarget.matchSignal)")
+                            Text("匹配依据：\(trainingTarget.matchSignal)。它只用于训练记录，不会替你改变明天要做的事。")
                                 .font(.caption)
                                 .foregroundStyle(DS.mutedInk)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -3336,7 +3474,7 @@ private struct QuestCardView: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Label("补充设计", systemImage: "slider.horizontal.3")
+                    Label("练习设置（可选）", systemImage: "slider.horizontal.3")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                 }
@@ -3383,7 +3521,7 @@ private struct QuestCardView: View {
 
     private var questTrainingPrinciplePicker: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text("选择复现原则")
+            Text("手动指定旧原则")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(DS.mutedInk)
             Picker(
@@ -3393,7 +3531,7 @@ private struct QuestCardView: View {
                     set: { selectTrainingPrinciple($0) }
                 )
             ) {
-                Text("自动判断").tag(Optional<PrincipleAsset.ID>.none)
+                Text("按内容匹配").tag(Optional<PrincipleAsset.ID>.none)
                 ForEach(trainingPrinciples) { principle in
                     Text(principle.title).tag(Optional(principle.id))
                 }
@@ -3509,6 +3647,153 @@ private struct FlowPills: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(DS.surface, in: Capsule())
+            }
+        }
+    }
+}
+
+private struct CaptureMaterialGuide: View {
+    private struct Item: Identifiable {
+        let id: String
+        let title: String
+        let symbol: String
+    }
+
+    private let items = [
+        Item(id: TodayAutomationID.captureMaterialEvent, title: "发生了什么", symbol: "text.bubble"),
+        Item(id: TodayAutomationID.captureMaterialAction, title: "我怎么做", symbol: "figure.walk"),
+        Item(id: TodayAutomationID.captureMaterialThought, title: "我怎么想", symbol: "brain.head.profile")
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                HStack(spacing: 5) {
+                    Image(systemName: item.symbol)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(DS.accent)
+                    Text(item.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                        .accessibilityIdentifier(item.id)
+                }
+                .frame(maxWidth: .infinity)
+
+                if index < items.count - 1 {
+                    Rectangle()
+                        .fill(DS.hairline)
+                        .frame(width: 1, height: 16)
+                        .padding(.horizontal, 7)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("记录提示")
+    }
+}
+
+private struct TrainingTerm: Identifiable {
+    let title: String
+    let meaning: String
+
+    var id: String { title }
+}
+
+private struct TrainingTermsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let cardTerms = [
+        TrainingTerm(title: "事实", meaning: "已经发生或可以观察、核对的记录，不等于你的解释。"),
+        TrainingTerm(title: "问题卡", meaning: "尚未看清、值得澄清的阻碍或缺口，不是在给你下结论。"),
+        TrainingTerm(title: "决策", meaning: "你当前的取舍或判断，之后要用结果校准。"),
+        TrainingTerm(title: "风险", meaning: "可能影响结果、但还没有被证实的担忧。"),
+        TrainingTerm(title: "想法", meaning: "尚未验证的假设或可能路径。"),
+        TrainingTerm(title: "沟通", meaning: "信息、责任或理解是否对齐的信号。"),
+        TrainingTerm(title: "任务卡", meaning: "你输入里已经出现的行动或待办，不等同于明日验证。")
+    ]
+
+    private let trainingTerms = [
+        TrainingTerm(title: "教练追问", meaning: "明思问你的问题，用来补一处材料；不是说你本身有问题。"),
+        TrainingTerm(title: "验证任务", meaning: "从当前判断推出的明日小行动，要留下可观察结果，不是普通待办清单。"),
+        TrainingTerm(title: "原则", meaning: "从多次证据中沉淀的可复用做法，之后仍要用反馈校正。"),
+        TrainingTerm(title: "对照写法", meaning: "你回答后，明思基于现有事实给出的参考结构；它不是标准答案，也不替代事实结论。")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("这些词说明明思正在处理哪一种材料，不评价你这个人。")
+                        .font(.subheadline)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    termSection(
+                        title: "思考卡片",
+                        summary: "先确认或排除候选材料，再进入后续训练。",
+                        terms: cardTerms
+                    )
+
+                    termSection(
+                        title: "训练过程",
+                        summary: "从材料到判断，再到可验证的下一步。",
+                        terms: trainingTerms
+                    )
+                }
+                .padding(.horizontal, DS.pagePadding)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
+            }
+            .background(DS.background.ignoresSafeArea())
+            .navigationTitle("训练术语")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .accessibilityIdentifier(TodayAutomationID.trainingTermsSheet)
+    }
+
+    private func termSection(title: String, summary: String, terms: [TrainingTerm]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(DS.accent)
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+            }
+            .padding(.bottom, 8)
+
+            ForEach(terms) { term in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(term.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text(term.meaning)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 11)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(DS.hairline)
+                        .frame(height: 1)
+                }
             }
         }
     }

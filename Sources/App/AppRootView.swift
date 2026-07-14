@@ -49,8 +49,8 @@ struct AppRootView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.ink)
                     Spacer()
-                    Button("后台重试") {
-                        store.retryPendingAIRepairs()
+                    Button("查看") {
+                        store.showPendingAIRepairGuidance()
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
@@ -80,7 +80,7 @@ struct AppRootView: View {
 
 func pendingTrainingRepairBannerText(isRunning: Bool, pendingCount: Int) -> String {
     if isRunning {
-        return "明思正在补齐训练结果，请等待"
+        return "明思正在重试当前训练，请等待"
     }
-    return "有 \(pendingCount) 个训练结果待补齐"
+    return "有 \(pendingCount) 个本地训练结果可重试"
 }

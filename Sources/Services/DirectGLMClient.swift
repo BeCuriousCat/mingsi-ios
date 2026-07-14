@@ -5,7 +5,8 @@ struct GLMClientConfiguration: Hashable {
         case openAICompatible
     }
 
-    static let defaultRequestTimeout: TimeInterval = 5 * 60
+    // This is an idle timeout: a stream may continue beyond ten minutes while it keeps delivering content.
+    static let defaultRequestTimeout: TimeInterval = 10 * 60
 
     let baseURL: URL
     let model: String
@@ -125,6 +126,10 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 where Self.shouldRetryRecoverableStatus(status: status) && attempt < configuration.maxRetryAttempts {
                 lastError = LLMClientError.httpStatus(status, data)
                 try await sleepBeforeRetry(attempt: attempt)
+            } catch LLMClientError.transport(let error)
+                where Self.shouldRetryRecoverableTransport(error) && attempt < configuration.maxRetryAttempts {
+                lastError = LLMClientError.transport(error)
+                try await sleepBeforeRetry(attempt: attempt)
             } catch {
                 throw error
             }
@@ -191,36 +196,64 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation
     ) async throws {
         for attempt in 0...configuration.maxRetryAttempts {
-            var urlRequest = try makeURLRequest(
-                request,
-                usesJSONResponseFormat: false,
-                stream: true
-            )
-            urlRequest.timeoutInterval = configuration.requestTimeout
-            let (bytes, response) = try await session.bytes(for: urlRequest)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw LLMClientError.invalidResponse
-            }
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                let data = try await Self.collectStreamErrorBody(from: bytes)
-                if Self.shouldRetryRecoverableStatus(status: httpResponse.statusCode),
-                   attempt < configuration.maxRetryAttempts {
+            var hasReceivedStreamEvent = false
+            do {
+                continuation.yield(.requestStarted)
+                var urlRequest = try makeURLRequest(
+                    request,
+                    usesJSONResponseFormat: false,
+                    stream: true
+                )
+                urlRequest.timeoutInterval = configuration.requestTimeout
+                let (bytes, response) = try await session.bytes(for: urlRequest)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw LLMClientError.invalidResponse
+                }
+                guard (200..<300).contains(httpResponse.statusCode) else {
+                    let data = try await Self.collectStreamErrorBody(from: bytes)
+                    if Self.shouldRetryRecoverableStatus(status: httpResponse.statusCode),
+                       attempt < configuration.maxRetryAttempts {
+                        try await sleepBeforeRetry(attempt: attempt)
+                        continue
+                    }
+                    throw LLMClientError.httpStatus(httpResponse.statusCode, data)
+                }
+                continuation.yield(.connected)
+
+                let lineIterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+                while let line = try await nextLineWithIdleTimeout(from: lineIterator) {
+                    try Task.checkCancellation()
+                    if Self.isNonTerminalSSEDataLine(line) {
+                        hasReceivedStreamEvent = true
+                        continuation.yield(.receivedEvent)
+                    }
+                    guard let event = Self.streamEvent(fromSSELine: line) else { continue }
+                    if case .completed = event {
+                        continuation.yield(.completed)
+                        continuation.finish()
+                        return
+                    }
+                    continuation.yield(event)
+                }
+                continuation.yield(.completed)
+                continuation.finish()
+                return
+            } catch LLMClientError.transport(let error)
+                where !hasReceivedStreamEvent && Self.shouldRetryRecoverableTransport(error) && attempt < configuration.maxRetryAttempts {
+                try await sleepBeforeRetry(attempt: attempt)
+                continue
+            } catch let error as LLMClientError {
+                throw error
+            } catch {
+                if !hasReceivedStreamEvent && Self.shouldRetryRecoverableTransport(error) && attempt < configuration.maxRetryAttempts {
                     try await sleepBeforeRetry(attempt: attempt)
                     continue
                 }
-                throw LLMClientError.httpStatus(httpResponse.statusCode, data)
+                throw LLMClientError.transport(error)
             }
-
-            let lineIterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
-            while let line = try await nextLineWithIdleTimeout(from: lineIterator) {
-                try Task.checkCancellation()
-                guard let event = Self.streamEvent(fromSSELine: line) else { continue }
-                continuation.yield(event)
-            }
-            continuation.yield(.completed)
-            continuation.finish()
-            return
         }
+
+        throw LLMClientError.invalidResponse
     }
 
     private func makeURLRequest(
@@ -268,6 +301,26 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         status == 429 || status == 529 || status == 500 || status == 502 || status == 503 || status == 504
     }
 
+    private static func shouldRetryRecoverableTransport(_ error: Error) -> Bool {
+        let code: URLError.Code?
+        if let urlError = error as? URLError {
+            code = urlError.code
+        } else {
+            let nsError = error as NSError
+            code = nsError.domain == NSURLErrorDomain
+                ? URLError.Code(rawValue: nsError.code)
+                : nil
+        }
+
+        switch code {
+        case .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
+             .cannotFindHost, .dnsLookupFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func sleepBeforeRetry(attempt: Int) async throws {
         let delay = configuration.retryBaseDelay * pow(2, Double(attempt))
         guard delay > 0 else { return }
@@ -307,6 +360,13 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         else { return nil }
         let content = chunk.choices.compactMap(\.delta.content).joined()
         return content.isEmpty ? nil : .token(content)
+    }
+
+    private static func isNonTerminalSSEDataLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("data:") else { return false }
+        let payload = trimmed.dropFirst("data:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        return !payload.isEmpty && payload != "[DONE]"
     }
 
     private static func collectStreamErrorBody(
@@ -457,6 +517,9 @@ extension LLMClientError {
             let nsError = error as NSError
             if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorTimedOut {
                 return "请求超时。较长时间没有收到新内容，请稍后重试或换用更快模型。"
+            }
+            if nsError.domain == NSURLErrorDomain, nsError.code == URLError.networkConnectionLost.rawValue {
+                return "网络连接中断。若刚刚锁屏或切换应用，请回到明思前台后重试。"
             }
             return "网络请求失败：\(error.localizedDescription)"
         }

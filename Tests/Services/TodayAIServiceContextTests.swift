@@ -321,6 +321,36 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(client.completeRequestCount, 0)
     }
 
+    func testGenerateQuestions_forwardsStreamProgressBeforeTheFinalJSONIsParsed() async throws {
+        let client = StreamingCapturingLLMClient(tokens: [
+            #"{"questions":[{"question":"补上一个可观察事实"}]}"#
+        ])
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+        var progress: [LLMStreamEvent] = []
+
+        do {
+            _ = try await service.generateQuestions(
+                for: TodayAIContext(
+                    draft: DailyEntryDraft(
+                        rawText: "我判断应该优先改注册流程。",
+                        sessionMode: .standard,
+                        hasSelectedSessionMode: true
+                    )
+                ),
+                onProgress: { event in
+                    progress.append(event)
+                }
+            )
+        } catch {
+            // The fixture is intentionally minimal; this test is about event delivery before parsing.
+        }
+
+        XCTAssertEqual(progress, [.token(#"{"questions":[{"question":"补上一个可观察事实"}]}"#), .completed])
+    }
+
     func testOrganizeCardsPrompt_usesStreamingXMLInstructions() {
         let template = LocalPromptProvider().template(for: .organizeCards, mode: .standard)
 

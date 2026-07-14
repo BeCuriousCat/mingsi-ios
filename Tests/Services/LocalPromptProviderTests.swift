@@ -356,6 +356,35 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(text.contains("expected principle was actually practiced"))
         XCTAssertTrue(text.contains("\"expected_principle_practice_assessment\""))
         XCTAssertTrue(text.contains("Do not use expected_principle_practice_assessment as practice evidence"))
+        XCTAssertTrue(text.contains("Completing an action proves only that the action was attempted"))
+        XCTAssertTrue(text.contains("keep the judgment open"))
+        XCTAssertTrue(text.contains("observed facts, the judgment update, and the next test"))
+        XCTAssertTrue(text.contains("currentInput.rawText as the user's recorded observable evidence"))
+    }
+
+    func testCoreCoachPrompts_preserveEvidenceOwnershipAcrossTheLoop() {
+        let questions = provider.template(for: .generateQuestions, mode: .standard).userText
+        let quests = provider.template(for: .generateQuests, mode: .standard).userText
+        let principles = provider.template(for: .extractPrinciple, mode: .standard).userText
+
+        XCTAssertTrue(questions.contains("coachObservation, trainingPrescription, and coachTeachingPlan are coaching interpretations"))
+        XCTAssertTrue(questions.contains("observation from interpretation"))
+        XCTAssertTrue(quests.contains("Completing the action is not evidence"))
+        XCTAssertTrue(quests.contains("discriminating signal"))
+        XCTAssertTrue(principles.contains("one favorable outcome is not enough"))
+        XCTAssertTrue(principles.contains("preserve it for later verification"))
+    }
+
+    func testCoreCoachPrompts_groundWorkInTheConditionThatMatters() {
+        let questions = provider.template(for: .generateQuestions, mode: .standard).userText
+        let quests = provider.template(for: .generateQuests, mode: .standard).userText
+
+        XCTAssertTrue(questions.contains("True-need grounding"))
+        XCTAssertTrue(questions.contains("proposed means, not proof"))
+        XCTAssertTrue(questions.contains("Do not add a separate needs-analysis ritual"))
+        XCTAssertTrue(quests.contains("True-need validation"))
+        XCTAssertTrue(quests.contains("not merely whether the work was delivered"))
+        XCTAssertTrue(quests.contains("smallest respectful discovery action"))
     }
 
     func testExtractPrincipleTemplate_rejectsSituationalLessonsAndRequiresBehaviorRule() {
@@ -413,22 +442,22 @@ final class LocalPromptProviderTests: XCTestCase {
     func testGenerateQuestionsCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.11.0")
+        XCTAssertEqual(current.version, "1.13.0")
         XCTAssertEqual(current.outputSchemaVersion, 6)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.10.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.12.0")
     }
 
     func testGenerateQuestionsRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
-        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.10.0")
+        let historical = provider.template(for: .generateQuestions, mode: .standard, version: "1.12.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.10.0")
+        XCTAssertEqual(historical?.version, "1.12.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, 6)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.9.0")
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.11.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
         XCTAssertTrue(historical?.userText.contains("Generate lens-specific reflection questions") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"evidence_gap_type\"") ?? false)
@@ -441,7 +470,7 @@ final class LocalPromptProviderTests: XCTestCase {
         XCTAssertTrue(historical?.userText.contains("not a satisfaction-maximizing assistant") ?? false)
         XCTAssertTrue(historical?.userText.contains("Empathy is not agreement") ?? false)
         XCTAssertTrue(historical?.userText.contains("coachObservation") ?? false)
-        XCTAssertTrue(historical?.userText.contains("明日实验") ?? false)
+        XCTAssertTrue(historical?.userText.contains("明日验证") ?? false)
     }
 
     func testGenerateQuestionsV190HistoricalPromptAsset_stillResolvesForRollbackHistory() {
@@ -553,30 +582,30 @@ final class LocalPromptProviderTests: XCTestCase {
     func testGenerateQuestsCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .generateQuests, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.6.0")
+        XCTAssertEqual(current.version, "1.8.0")
         XCTAssertEqual(current.outputSchemaVersion, 3)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.5.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.7.0")
     }
 
     func testGenerateQuestsRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .generateQuests, mode: .standard)
-        let historical = provider.template(for: .generateQuests, mode: .standard, version: "1.5.0")
+        let historical = provider.template(for: .generateQuests, mode: .standard, version: "1.7.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.5.0")
+        XCTAssertEqual(historical?.version, "1.7.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, 3)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.4.0")
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.6.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
-        XCTAssertTrue(historical?.userText.contains("Generate tomorrow's quests") ?? false)
+        XCTAssertTrue(historical?.userText.contains("Generate tomorrow's validation actions") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"calibration_target\"") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"lens_move\"") ?? false)
         XCTAssertTrue(historical?.userText.contains("not a satisfaction-maximizing assistant") ?? false)
         XCTAssertTrue(historical?.userText.contains("Empathy is not agreement") ?? false)
         XCTAssertTrue(historical?.userText.contains("coachTeachingPlan") ?? false)
-        XCTAssertTrue(historical?.userText.contains("明日实验") ?? false)
+        XCTAssertTrue(historical?.userText.contains("明日验证") ?? false)
 
         let prior140 = provider.template(for: .generateQuests, mode: .standard, version: "1.4.0")
         XCTAssertEqual(prior140?.version, "1.4.0")
@@ -602,25 +631,25 @@ final class LocalPromptProviderTests: XCTestCase {
     func testVerifyQuestCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .verifyQuest, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.6.0")
+        XCTAssertEqual(current.version, "1.7.0")
         XCTAssertEqual(current.outputSchemaVersion, 2)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.5.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.6.0")
     }
 
     func testVerifyQuestRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .verifyQuest, mode: .standard)
-        let historical = provider.template(for: .verifyQuest, mode: .standard, version: "1.5.0")
+        let historical = provider.template(for: .verifyQuest, mode: .standard, version: "1.6.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.5.0")
+        XCTAssertEqual(historical?.version, "1.6.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
-        XCTAssertEqual(historical?.outputSchemaVersion, 1)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.4.0")
+        XCTAssertEqual(historical?.outputSchemaVersion, 2)
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.5.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
         XCTAssertTrue(historical?.userText.contains("trainingPrinciple") ?? false)
-        XCTAssertFalse(historical?.userText.contains("\"expected_principle_practice_assessment\"") ?? true)
+        XCTAssertTrue(historical?.userText.contains("\"expected_principle_practice_assessment\"") ?? false)
 
         let prior140 = provider.template(for: .verifyQuest, mode: .standard, version: "1.4.0")
         XCTAssertEqual(prior140?.version, "1.4.0")
@@ -656,8 +685,8 @@ final class LocalPromptProviderTests: XCTestCase {
     func testExtractPrincipleCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .extractPrinciple, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.4.0")
-        XCTAssertEqual(current.rollbackTargetVersion, "1.3.0")
+        XCTAssertEqual(current.version, "1.5.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.4.0")
         XCTAssertTrue(current.userText.contains("exact titles from confirmedCards"))
         XCTAssertTrue(current.userText.contains("Do not invent source_card_titles"))
         XCTAssertTrue(current.userText.contains("at least two concrete actions"))
@@ -666,21 +695,21 @@ final class LocalPromptProviderTests: XCTestCase {
 
     func testExtractPrincipleRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .extractPrinciple, mode: .standard)
-        let historical = provider.template(for: .extractPrinciple, mode: .standard, version: "1.3.0")
+        let historical = provider.template(for: .extractPrinciple, mode: .standard, version: "1.4.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.3.0")
+        XCTAssertEqual(historical?.version, "1.4.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, current.outputSchemaVersion)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.2.0")
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.3.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
         XCTAssertTrue(historical?.userText.contains("\"source_card_titles\"") ?? false)
         XCTAssertTrue(historical?.userText.contains("exact titles from confirmedCards") ?? false)
         XCTAssertTrue(historical?.userText.contains("at least two concrete actions") ?? false)
         XCTAssertTrue(historical?.userText.contains("not a satisfaction-maximizing assistant") ?? false)
-        XCTAssertFalse(historical?.userText.contains("Empathy is not agreement") ?? true)
+        XCTAssertTrue(historical?.userText.contains("Empathy is not agreement") ?? false)
 
         let prior120 = provider.template(for: .extractPrinciple, mode: .standard, version: "1.2.0")
         XCTAssertEqual(prior120?.version, "1.2.0")

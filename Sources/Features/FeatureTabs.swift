@@ -60,6 +60,10 @@ enum SettingsAutomationID {
 }
 
 enum GrowthAutomationID {
+    static func principleDetailsToggle(principleId: String) -> String {
+        "growth.principle.\(sanitized(principleId)).details-toggle"
+    }
+
     static func disputeLatestPracticeEvidenceAction(evidenceId: String) -> String {
         "growth.principle-practice.\(sanitized(evidenceId)).dispute-action"
     }
@@ -80,35 +84,58 @@ enum GrowthAutomationID {
     }
 }
 
-enum HistoryFilterChipKind {
-    case project
-    case lens
-    case cardType
-    case questStatus
+private struct HistoryRecordLeadEvidence {
+    let label: String
+    let title: String
+    let detail: String?
+    let systemImage: String
+    let tint: Color
 }
 
-enum HistoryFilterChipMetrics {
-    static func minWidth(for kind: HistoryFilterChipKind) -> CGFloat {
-        switch kind {
-        case .project:
-            return 86
-        case .lens:
-            return 82
-        case .cardType, .questStatus:
-            return 96
-        }
+private func historyRecordLeadEvidence(_ record: HistoryRecord) -> HistoryRecordLeadEvidence {
+    if let card = record.cards.first(where: \.isConfirmed) {
+        return HistoryRecordLeadEvidence(
+            label: card.type.title,
+            title: card.title,
+            detail: card.body,
+            systemImage: "rectangle.stack",
+            tint: card.type.color
+        )
     }
-
-    static func maxWidth(for kind: HistoryFilterChipKind) -> CGFloat {
-        switch kind {
-        case .project:
-            return 136
-        case .lens:
-            return 128
-        case .cardType, .questStatus:
-            return 118
-        }
+    if let quest = record.mainQuest {
+        return HistoryRecordLeadEvidence(
+            label: "下一次验证",
+            title: quest.title,
+            detail: quest.completionCriteria,
+            systemImage: quest.type.systemImage,
+            tint: quest.type.tint
+        )
     }
+    if let verification = record.verification {
+        return HistoryRecordLeadEvidence(
+            label: "验证反馈",
+            title: verification.completion.title,
+            detail: verification.calibrationNote,
+            systemImage: "checkmark.seal",
+            tint: DS.caution
+        )
+    }
+    if !record.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return HistoryRecordLeadEvidence(
+            label: "原始记录",
+            title: record.draft.rawText,
+            detail: nil,
+            systemImage: "text.quote",
+            tint: DS.mutedInk
+        )
+    }
+    return HistoryRecordLeadEvidence(
+        label: "复盘记录",
+        title: "这一天还没有可追溯的证据。",
+        detail: nil,
+        systemImage: "tray",
+        tint: DS.mutedInk
+    )
 }
 
 struct HistoryView: View {
@@ -118,6 +145,7 @@ struct HistoryView: View {
     @State private var isRawInputExpanded = false
     @State private var highlightedSourceId: String?
     @State private var searchText = ""
+    @State private var isSearchExpanded = false
     @State private var evidenceFilter: HistoryEvidenceFilter = .all
     @State private var selectedProjectFilter: UUID?
     @State private var selectedLensFilter: ThinkingLens?
@@ -224,61 +252,20 @@ struct HistoryView: View {
 
     var body: some View {
         FeatureContainer(title: "历史", subtitle: "回看事实、判断和行动证据。") {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 if store.hasResumeableLoop && !store.isResumeBannerDismissed {
                     ResumeTodayRow()
                 }
 
-                historySearchSection
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(selectedRecord == nil ? "没有匹配记录" : "正在查看")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.mutedInk)
-                        Text(visibleRecord.draft.date.mingsiDisplayDate)
-                            .font(.headline)
-                            .foregroundStyle(DS.ink)
-                    }
-                    Spacer()
-                    Text(historyQuery.isActive ? "\(visibleRecords.count) 条匹配" : evidenceCounts)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                    Button {
-                        isCalendarPresented = true
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(DS.accent)
-                            .frame(width: 38, height: 38)
-                            .background(DS.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(DS.hairline, lineWidth: 1)
-                            )
-                    }
-                    .accessibilityLabel("打开历史日历")
-                }
-
-                HistoryDayHeader(
-                    date: visibleRecord.draft.date,
-                    title: visibleRecord.draft.state == .sessionComplete ? "复盘完成" : "复盘记录",
-                    subtitle: evidenceCounts
-                )
+                historyEvidenceLead
+                historyControls
 
                 if selectedRecord == nil {
                     EmptyStateLine(text: historyQuery.isActive ? "没有匹配的历史证据。试试换一个关键词或证据类型。" : "这一天还没有复盘记录。打开日历可以往前查看一周、一个月或一年。")
                 } else {
                     highlightNotice
                     aiRepairSection
-                    rawInputSection
-                    cardsSection
-                    lensAndQuestionsSection
-                    questsSection
-                    verificationSection
-                    principlesSection
-                    projectEvidenceSection
-                    growthContributionSection
+                    historyEvidenceDetails
                 }
             }
         }
@@ -342,199 +329,225 @@ struct HistoryView: View {
         }
     }
 
-    private var historySearchSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.mutedInk)
-                TextField("搜索历史证据", text: $searchText)
-                    .font(.subheadline)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .foregroundStyle(DS.ink)
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(DS.mutedInk.opacity(0.65))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("清除搜索")
+    private var historyEvidenceLead: some View {
+        let lead = historyRecordLeadEvidence(visibleRecord)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(visibleRecord.draft.date.mingsiDayNumber)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(DS.accent)
+                    .frame(width: 44, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedRecord == nil ? "没有匹配记录" : visibleRecord.draft.date.mingsiDisplayDate)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(lead.label)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(lead.tint)
                 }
+                Spacer(minLength: 8)
+                Text(historyQuery.isActive ? "\(visibleRecords.count) 条匹配" : evidenceCounts)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .multilineTextAlignment(.trailing)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(DS.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(DS.hairline, lineWidth: 1)
-            )
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            Label(lead.title, systemImage: lead.systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .lineLimit(2)
+
+            HStack(spacing: 12) {
+                historyEvidenceCount(visibleRecord.cards.count, title: "卡片", systemImage: "square.on.square")
+                historyEvidenceCount(visibleRecord.quests.count, title: "验证", systemImage: "scope")
+                historyEvidenceCount(visibleRecord.principles.count, title: "原则", systemImage: "bookmark")
+                historyEvidenceCount(visibleRecord.growthContributions.count, title: "成长", systemImage: "chart.line.uptrend.xyaxis")
+            }
+        }
+    }
+
+    private func historyEvidenceCount(_ count: Int, title: String, systemImage: String) -> some View {
+        Label("\(count) \(title)", systemImage: systemImage)
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(count == 0 ? DS.mutedInk.opacity(0.7) : DS.accentInk)
+    }
+
+    @ViewBuilder
+    private var historyEvidenceDetails: some View {
+        let hasDerivedEvidence = !visibleRecord.cards.isEmpty || visibleRecord.lensSession != nil || !visibleRecord.quests.isEmpty || visibleRecord.verification != nil || !visibleRecord.principles.isEmpty || !visibleRecord.projectLinks.isEmpty || !visibleRecord.growthContributions.isEmpty
+
+        if !visibleRecord.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            rawInputSection
+        }
+        if !visibleRecord.cards.isEmpty {
+            cardsSection
+        }
+        if visibleRecord.lensSession != nil {
+            lensAndQuestionsSection
+        }
+        if !visibleRecord.quests.isEmpty {
+            questsSection
+        }
+        if visibleRecord.verification != nil {
+            verificationSection
+        }
+        if !visibleRecord.principles.isEmpty {
+            principlesSection
+        }
+        if !visibleRecord.projectLinks.isEmpty {
+            projectEvidenceSection
+        }
+        if !visibleRecord.growthContributions.isEmpty {
+            growthContributionSection
+        }
+        if !hasDerivedEvidence {
+            Label("这一天只留下了原始记录", systemImage: "circle.dotted")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .padding(.top, 2)
+        }
+    }
+
+    private var historyControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isSearchExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isSearchExpanded ? "xmark" : "magnifyingglass")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 32, height: 32)
+                        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                                .stroke(DS.hairline, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+                .accessibilityLabel(isSearchExpanded ? "收起历史搜索" : "搜索历史证据")
+
+                historyFilterMenuButton
+
+                Spacer(minLength: 0)
+
+                Button {
+                    isCalendarPresented = true
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 32, height: 32)
+                        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                                .stroke(DS.hairline, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+                .accessibilityLabel("打开历史日历")
+            }
+
+            if isSearchExpanded || !searchText.isEmpty {
                 HStack(spacing: 8) {
-                    ForEach(HistoryEvidenceFilter.allCases) { filter in
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    TextField("搜索历史证据", text: $searchText)
+                        .font(.subheadline)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .foregroundStyle(DS.ink)
+                    if !searchText.isEmpty {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                evidenceFilter = filter
-                            }
+                            searchText = ""
                         } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: filter.systemImage)
-                                    .font(.caption2.weight(.bold))
-                                Text(filter.title)
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(evidenceFilter == filter ? DS.ink : DS.mutedInk)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(
-                                evidenceFilter == filter ? DS.accent.opacity(0.10) : DS.surface.opacity(0.65),
-                                in: Capsule()
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(evidenceFilter == filter ? DS.accent.opacity(0.35) : DS.hairline, lineWidth: 1)
-                            )
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(DS.mutedInk.opacity(0.65))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("清除搜索")
                     }
                 }
-                .padding(.vertical, 1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                )
             }
-
-            advancedFilterSection
         }
     }
 
-    private var advancedFilterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Label(advancedFilterCount == 0 ? "细筛" : "细筛 \(advancedFilterCount)", systemImage: "line.3.horizontal.decrease.circle")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.mutedInk)
-                Spacer()
-                if advancedFilterCount > 0 {
-                    Button {
-                        applyAdvancedFilterChange(clearAdvancedFilters)
-                    } label: {
-                        Text("清空")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.accent)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    historyFilterMenu(
-                        kind: .project,
-                        title: selectedProjectFilter.flatMap(projectFilterTitle) ?? "项目",
-                        systemImage: "folder",
-                        isActive: selectedProjectFilter != nil,
-                        isDisabled: projectFilterOptions.isEmpty
-                    ) {
-                        Button("全部项目") { applyAdvancedFilterChange { selectedProjectFilter = nil } }
-                        ForEach(projectFilterOptions, id: \.id) { option in
-                            Button(option.name) { applyAdvancedFilterChange { selectedProjectFilter = option.id } }
-                        }
-                    }
-
-                    historyFilterMenu(
-                        kind: .lens,
-                        title: selectedLensFilter?.title ?? "透镜",
-                        systemImage: "eye",
-                        isActive: selectedLensFilter != nil,
-                        isDisabled: lensFilterOptions.isEmpty
-                    ) {
-                        Button("全部透镜") { applyAdvancedFilterChange { selectedLensFilter = nil } }
-                        ForEach(lensFilterOptions) { lens in
-                            Button(lens.title) { applyAdvancedFilterChange { selectedLensFilter = lens } }
-                        }
-                    }
-
-                    historyFilterMenu(
-                        kind: .cardType,
-                        title: selectedCardTypeFilter?.title ?? "卡片类型",
-                        systemImage: "rectangle.stack",
-                        isActive: selectedCardTypeFilter != nil,
-                        isDisabled: cardTypeFilterOptions.isEmpty
-                    ) {
-                        Button("全部卡片") { applyAdvancedFilterChange { selectedCardTypeFilter = nil } }
-                        ForEach(cardTypeFilterOptions) { cardType in
-                            Button(cardType.title) { applyAdvancedFilterChange { selectedCardTypeFilter = cardType } }
-                        }
-                    }
-
-                    historyFilterMenu(
-                        kind: .questStatus,
-                        title: selectedQuestStatusFilter?.historyTitle ?? "任务状态",
-                        systemImage: "checkmark.circle",
-                        isActive: selectedQuestStatusFilter != nil,
-                        isDisabled: questStatusFilterOptions.isEmpty
-                    ) {
-                        Button("全部状态") { applyAdvancedFilterChange { selectedQuestStatusFilter = nil } }
-                        ForEach(questStatusFilterOptions) { status in
-                            Button(status.historyTitle) { applyAdvancedFilterChange { selectedQuestStatusFilter = status } }
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
-                .transaction { transaction in
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
-                }
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private func historyFilterMenu<Items: View>(
-        kind: HistoryFilterChipKind,
-        title: String,
-        systemImage: String,
-        isActive: Bool,
-        isDisabled: Bool,
-        @ViewBuilder items: () -> Items
-    ) -> some View {
+    private var historyFilterMenuButton: some View {
         Menu {
-            items()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.caption2.weight(.bold))
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            Section("证据类型") {
+                ForEach(HistoryEvidenceFilter.allCases) { filter in
+                    Button {
+                        evidenceFilter = filter
+                    } label: {
+                        Label(filter.title, systemImage: filter.systemImage)
+                    }
+                }
             }
-            .foregroundStyle(isActive ? DS.ink : DS.mutedInk)
-            .frame(
-                minWidth: HistoryFilterChipMetrics.minWidth(for: kind),
-                maxWidth: HistoryFilterChipMetrics.maxWidth(for: kind),
-                alignment: .leading
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(isActive ? DS.note.opacity(0.12) : DS.surface.opacity(0.65), in: Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(isActive ? DS.note.opacity(0.35) : DS.hairline, lineWidth: 1)
-            )
-        }
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.45 : 1)
-        .transaction { transaction in
-            transaction.animation = nil
-            transaction.disablesAnimations = true
-        }
-    }
 
-    private func projectFilterTitle(for projectId: UUID) -> String {
-        store.projectNames[projectId] ?? String(projectId.uuidString.prefix(8)).lowercased()
+            Section("进一步筛选") {
+                Menu("项目") {
+                    Button("全部项目") { selectedProjectFilter = nil }
+                    ForEach(projectFilterOptions, id: \.id) { option in
+                        Button(option.name) { selectedProjectFilter = option.id }
+                    }
+                }
+                .disabled(projectFilterOptions.isEmpty)
+
+                Menu("透镜") {
+                    Button("全部透镜") { selectedLensFilter = nil }
+                    ForEach(lensFilterOptions) { lens in
+                        Button(lens.title) { selectedLensFilter = lens }
+                    }
+                }
+                .disabled(lensFilterOptions.isEmpty)
+
+                Menu("卡片类型") {
+                    Button("全部卡片") { selectedCardTypeFilter = nil }
+                    ForEach(cardTypeFilterOptions) { cardType in
+                        Button(cardType.title) { selectedCardTypeFilter = cardType }
+                    }
+                }
+                .disabled(cardTypeFilterOptions.isEmpty)
+
+                Menu("任务状态") {
+                    Button("全部状态") { selectedQuestStatusFilter = nil }
+                    ForEach(questStatusFilterOptions) { status in
+                        Button(status.historyTitle) { selectedQuestStatusFilter = status }
+                    }
+                }
+                .disabled(questStatusFilterOptions.isEmpty)
+            }
+
+            if historyQuery.isActive {
+                Button("清除全部筛选", role: .destructive) {
+                    evidenceFilter = .all
+                    clearAdvancedFilters()
+                }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.caption.weight(.bold))
+                .frame(width: 32, height: 32)
+                .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(historyQuery.isActive ? DS.accent : DS.mutedInk)
+        .accessibilityLabel("筛选历史证据")
     }
 
     private func clearAdvancedFilters() {
@@ -542,14 +555,6 @@ struct HistoryView: View {
         selectedLensFilter = nil
         selectedCardTypeFilter = nil
         selectedQuestStatusFilter = nil
-    }
-
-    private func applyAdvancedFilterChange(_ update: () -> Void) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            update()
-        }
     }
 
     private func syncSelectedDateWithFilteredRecords() {
@@ -1087,6 +1092,17 @@ struct HistoryView: View {
                             .foregroundStyle(DS.ink)
                         Spacer()
                     }
+                    if !verification.evidenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("记录的事实")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.mutedInk)
+                            Text(verification.evidenceText)
+                                .font(.subheadline)
+                                .foregroundStyle(DS.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     Text(verification.calibrationNote)
                         .font(.subheadline)
                         .foregroundStyle(DS.mutedInk)
@@ -1350,21 +1366,9 @@ struct ProjectsView: View {
                             ResumeTodayRow()
                         }
 
-                        ProjectCurrentFocus(
-                            title: store.mainQuest?.title ?? "还没有设计验证行动",
-                            detail: store.mainQuest?.completionCriteria ?? "完成今日复盘后，明日验证会成为项目推进的临时焦点。",
-                            canCreateProject: store.canCreateProjectFromCurrentFocus,
-                            createProject: {
-                                Task {
-                                    await store.createProjectFromCurrentFocus()
-                                }
-                            }
-                        )
-
+                        projectBoard
                         projectsCandidateReviewSection
                         projectMergeReviewSection
-
-                        projectBoard
                     }
                     .padding(.horizontal, DS.pagePadding)
                     .padding(.top, 18)
@@ -1409,7 +1413,7 @@ struct ProjectsView: View {
             Text("项目")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundStyle(DS.ink)
-            Text("不是文件夹，也不是关键词聚类；这里只放被历史证据支撑的长期议题。")
+            Text("只保留有历史证据支撑的长期议题。")
                 .font(.subheadline)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1426,28 +1430,25 @@ struct ProjectsView: View {
         let filtered = projectStatusFilteredItems(projectItems, projectsById: store.projectsById, status: statusFilter)
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                SectionLabel("项目工作台")
+                SectionLabel(projectItems.isEmpty ? "长期议题" : "当前议题")
                 Spacer()
                 Text(projectBoardCountText(filteredCount: filtered.count, totalCount: projectItems.count, filterStatus: statusFilter))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(DS.mutedInk)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    statusFilterChip(label: "全部", isSelected: statusFilter == nil) {
-                        statusFilter = nil
-                    }
-                    ForEach(ProjectStatus.allCases) { status in
-                        statusFilterChip(label: status.chineseTitle, isSelected: statusFilter == status) {
-                            statusFilter = status
-                        }
-                    }
+                if !projectItems.isEmpty {
+                    projectStatusFilterMenu
                 }
             }
 
             if projectItems.isEmpty {
-                ProjectEmptyEvidenceState()
+                ProjectEmptyEvidenceState(
+                    title: store.mainQuest?.title,
+                    detail: store.mainQuest?.completionCriteria,
+                    canCreateProject: store.canCreateProjectFromCurrentFocus,
+                    createProject: {
+                        Task { await store.createProjectFromCurrentFocus() }
+                    }
+                )
             } else if filtered.isEmpty {
                 Text("没有匹配「\(statusFilter?.chineseTitle ?? "")」状态的项目。")
                     .font(.subheadline)
@@ -1470,23 +1471,20 @@ struct ProjectsView: View {
         }
     }
 
-    private func statusFilterChip(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.caption.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? DS.accent : DS.mutedInk)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? DS.accent.opacity(0.12) : Color.clear)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(isSelected ? DS.accent.opacity(0.3) : DS.mutedInk.opacity(0.2), lineWidth: 1)
-                )
+    private var projectStatusFilterMenu: some View {
+        Menu {
+            Button("全部项目") { statusFilter = nil }
+            ForEach(ProjectStatus.allCases) { status in
+                Button(status.chineseTitle) { statusFilter = status }
+            }
+        } label: {
+            Image(systemName: statusFilter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.caption.weight(.bold))
+                .frame(width: 32, height: 32)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .tint(statusFilter == nil ? DS.accent : DS.caution)
+        .accessibilityLabel(statusFilter.map { "筛选项目：\($0.chineseTitle)" } ?? "筛选项目")
     }
 
     @ViewBuilder
@@ -1599,37 +1597,24 @@ struct GrowthView: View {
 
     var body: some View {
         FeatureContainer(title: "成长", subtitle: "用趋势和证据看见自己的变化。") {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 if store.hasResumeableLoop && !store.isResumeBannerDismissed {
                     ResumeTodayRow()
                 }
 
-                GrowthSummaryPanel(snapshot: store.growthSnapshot)
-                GrowthReportActionPanel(
-                    isGenerating: store.isGeneratingGrowthReport,
-                    message: store.growthReportMessage,
-                    onWeekly: {
-                        Task { await store.generateWeeklyGrowthReport() }
-                    },
-                    onMonthly: {
-                        Task { await store.generateMonthlyGrowthReport() }
-                    }
-                )
-                GrowthReportReviewPanel(
-                    snapshot: store.growthSnapshot,
-                    contributions: store.growthReportReviewContributions,
-                    onSelectMetric: { metric in
-                        selectedMetric = metric
-                    }
-                )
-
                 if !store.growthSnapshot.canDisplayScores {
-                    GrowthEvidencePanel(
-                        title: "证据积累中",
-                        text: "先完成 3 次完整复盘，系统才有足够证据判断你的变化。",
-                        footnote: "指标只做个人趋势，不做能力标签。"
-                    )
+                    GrowthEvidenceProgressPanel(snapshot: store.growthSnapshot) {
+                        store.selectedTab = .today
+                    }
                 } else {
+                    GrowthReportReviewPanel(
+                        snapshot: store.growthSnapshot,
+                        contributions: store.growthReportReviewContributions,
+                        onSelectMetric: { metric in
+                            selectedMetric = metric
+                        }
+                    )
+
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel("训练指标")
                         TappableMetricRow(title: "清晰度", value: store.growthSnapshot.clarity, note: "问题是否被说清楚") {
@@ -1648,14 +1633,27 @@ struct GrowthView: View {
                             selectedMetric = .reflectionDepth
                         }
                     }
+
+                    GrowthReportActionPanel(
+                        isGenerating: store.isGeneratingGrowthReport,
+                        message: store.growthReportMessage,
+                        onWeekly: {
+                            Task { await store.generateWeeklyGrowthReport() }
+                        },
+                        onMonthly: {
+                            Task { await store.generateMonthlyGrowthReport() }
+                        }
+                    )
                 }
 
-                GrowthPrincipleAssetSection(
-                    isPresentingAddPrinciple: $isPresentingAddPrinciple,
-                    onRepairPrinciple: { principle in
-                        principleRepairTarget = principle
-                    }
-                )
+                if store.growthSnapshot.canDisplayScores || !store.activePrinciples.isEmpty || !store.principleTrainingSummaries.isEmpty {
+                    GrowthPrincipleAssetSection(
+                        isPresentingAddPrinciple: $isPresentingAddPrinciple,
+                        onRepairPrinciple: { principle in
+                            principleRepairTarget = principle
+                        }
+                    )
+                }
             }
         }
         .sheet(item: $selectedMetric) { metric in
@@ -1746,6 +1744,7 @@ private struct GrowthPrincipleAssetSection: View {
                     PrincipleArchiveRow(
                         principle: summary.principle,
                         trainingSummary: summary,
+                        compact: true,
                         onRepair: summary.state == .needsReview ? {
                             onRepairPrinciple(summary.principle)
                         } : nil,
@@ -3754,41 +3753,38 @@ struct ResumeTodayRow: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: "arrow.uturn.left")
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(DS.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.loopResumeText)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DS.ink)
-                Text("回到今日继续复盘")
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-            }
-            Spacer()
-            Button("继续") {
+            Text(store.loopResumeText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Button {
                 store.selectedTab = .today
+            } label: {
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 28, height: 28)
             }
-            .font(.footnote.weight(.semibold))
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .tint(DS.accent)
+            .accessibilityLabel("回到今日继续复盘")
 
             Button {
                 store.isResumeBannerDismissed = true
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.mutedInk)
+            .accessibilityLabel("暂时隐藏继续今日")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1)
-        )
+        .padding(.vertical, 2)
     }
 }
 
@@ -4339,14 +4335,26 @@ private struct HistoryTimelineRow: View {
 private struct PrincipleArchiveRow: View {
     let principle: PrincipleAsset
     var trainingSummary: PrincipleTrainingSummary?
+    var compact = false
     var isHighlighted: Bool = false
     var onSaveProject: (() -> Void)?
     var onRepair: (() -> Void)?
     var onArchive: (() -> Void)?
     var onDisputeLatestPracticeEvidence: (() -> Void)?
     var onDelete: (() -> Void)?
+    @State private var isCompactDetailExpanded = false
 
     var body: some View {
+        Group {
+            if compact {
+                compactContent
+            } else {
+                detailedContent
+            }
+        }
+    }
+
+    private var detailedContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(trainingSummary?.state.title ?? "原则")
@@ -4467,6 +4475,151 @@ private struct PrincipleArchiveRow: View {
             }
         }
         .evidenceSurface(isHighlighted: isHighlighted, base: .principle)
+    }
+
+    private var compactContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isCompactDetailExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Circle()
+                        .fill(trainingStateTint)
+                        .frame(width: 8, height: 8)
+                    Text(principle.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(trainingSummary?.state.title ?? "原则")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(trainingStateTint)
+                    Image(systemName: isCompactDetailExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(GrowthAutomationID.principleDetailsToggle(principleId: principle.id.uuidString))
+
+            Text(principle.summary)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .lineLimit(1)
+
+            if let trainingSummary {
+                HStack(spacing: 12) {
+                    Label("\(trainingSummary.practiceEvidenceCount)", systemImage: "checkmark.circle")
+                    Label("\(trainingSummary.negativeRecallFeedbackCount)", systemImage: "exclamationmark.triangle")
+                    if let role = trainingSummary.latestPracticeEvidenceRole {
+                        Label(role.title, systemImage: "scope")
+                    }
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(DS.mutedInk)
+
+                if isCompactDetailExpanded,
+                   let latestSummary = trainingSummary.latestPracticeEvidenceSummary,
+                   !latestSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("最近证据：\(latestSummary)")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(1)
+                    if let evidenceId = trainingSummary.latestPracticeEvidenceId,
+                       let onDisputeLatestPracticeEvidence {
+                        Button(action: onDisputeLatestPracticeEvidence) {
+                            Label("归因不准确", systemImage: "xmark.octagon")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DS.caution)
+                        .accessibilityIdentifier(
+                            GrowthAutomationID.disputeLatestPracticeEvidenceAction(
+                                evidenceId: evidenceId.uuidString
+                            )
+                        )
+                    }
+                }
+                if isCompactDetailExpanded,
+                   let disputedEvidenceId = trainingSummary.latestDisputedPracticeEvidenceId,
+                   let disputedSummary = trainingSummary.latestDisputedPracticeEvidenceSummary,
+                   !disputedSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(disputedPracticeEvidenceAuditText(
+                        summary: disputedSummary,
+                        note: trainingSummary.latestDisputedPracticeEvidenceNote
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(DS.caution)
+                    .lineLimit(2)
+                    .accessibilityIdentifier(
+                        GrowthAutomationID.disputedPracticeEvidenceAudit(
+                            evidenceId: disputedEvidenceId.uuidString
+                        )
+                    )
+                }
+                if isCompactDetailExpanded,
+                   let feedbackId = trainingSummary.latestNegativeRecallFeedbackId,
+                   let feedbackValue = trainingSummary.latestNegativeRecallFeedbackValue,
+                   let feedbackReason = trainingSummary.latestNegativeRecallFeedbackReason,
+                   !feedbackReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(negativeRecallFeedbackAuditText(
+                        value: feedbackValue,
+                        signal: trainingSummary.latestNegativeRecallFeedbackSignal,
+                        reason: feedbackReason,
+                        note: trainingSummary.latestNegativeRecallFeedbackNote
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(DS.caution)
+                    .lineLimit(2)
+                    .accessibilityIdentifier(
+                        GrowthAutomationID.negativeRecallFeedbackAudit(
+                            feedbackId: feedbackId.uuidString
+                        )
+                    )
+                }
+            }
+
+            if isCompactDetailExpanded {
+                HStack(spacing: 14) {
+                    if let onRepair {
+                        Button("复审", action: onRepair)
+                            .foregroundStyle(DS.accent)
+                    }
+                    if let onArchive {
+                        Button("归档", action: onArchive)
+                            .foregroundStyle(DS.caution)
+                    }
+                    if let onDelete {
+                        Button("删除", role: .destructive, action: onDelete)
+                    }
+                    if let onSaveProject {
+                        Button("保存为议题", action: onSaveProject)
+                            .foregroundStyle(DS.accent)
+                    }
+                }
+                .font(.caption.weight(.semibold))
+            }
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DS.hairline)
+                .frame(height: 1)
+        }
+        .background(isHighlighted ? DS.note.opacity(0.08) : Color.clear)
+    }
+
+    private var trainingStateTint: Color {
+        switch trainingSummary?.state {
+        case .consciouslyPracticed, .stablyInternalized:
+            return DS.success
+        case .needsReview:
+            return DS.caution
+        case .knownButUnused, .none:
+            return DS.mutedInk
+        }
     }
 
     private func disputedPracticeEvidenceAuditText(summary: String, note: String?) -> String {
@@ -4626,28 +4779,51 @@ private struct ProjectCurrentFocus: View {
 }
 
 private struct ProjectEmptyEvidenceState: View {
+    let title: String?
+    let detail: String?
+    let canCreateProject: Bool
+    let createProject: () -> Void
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "tray")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(DS.accent)
-                .frame(width: 42, height: 42)
+                .frame(width: 28, height: 28)
                 .background(DS.accent.opacity(0.08), in: Circle())
-            Text("尚无长期议题证据")
-                .font(.headline)
-                .foregroundStyle(DS.ink)
-            Text("完成几次复盘后，可以从历史证据创建或确认项目。项目只记录被卡片、任务、验证或原则支撑的长期议题，不展示示例数据。")
-                .font(.subheadline)
-                .foregroundStyle(DS.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("尚无长期议题")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                if let title, let detail {
+                    Text("当前可沉淀：\(title)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.accentInk)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                } else {
+                    Text("完成复盘后，可从已有证据确认一个长期议题。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if canCreateProject {
+                    Button(action: createProject) {
+                        Label("保存为长期议题", systemImage: "plus.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(DS.accent)
+                    .padding(.top, 2)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1)
-        )
+        .summarySurface()
     }
 }
 
@@ -4720,8 +4896,11 @@ private struct ProjectDetailView: View {
     let item: ProjectEvidenceBoardItem
     let project: Project?
     @State private var isEditorPresented = false
+    @State private var isProjectContextExpanded = false
     @State private var isProgressSignalsExpanded = false
     @State private var isEvidenceTimelineExpanded = false
+    @State private var isProjectInsightExpanded = false
+    @State private var isThinkingChangeExpanded = false
 
     private var digest: ProjectEvidenceDigest {
         item.digest
@@ -4729,21 +4908,15 @@ private struct ProjectDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 18) {
-                    detailHeader
-                    overviewSection
-                    progressSignalsSection
-                }
-                VStack(alignment: .leading, spacing: 18) {
-                    projectInsightSection
-                    thinkingChangeSection
-                    principlesSection
-                }
-                VStack(alignment: .leading, spacing: 18) {
-                    mergeAuditSection
-                    evidenceTimeline
-                }
+            VStack(alignment: .leading, spacing: 18) {
+                detailHeader
+                projectFocusSection
+                evidenceTimeline
+                projectContextSection
+                projectInsightSection
+                thinkingChangeSection
+                principlesSection
+                mergeAuditSection
             }
             .padding(.horizontal, DS.pagePadding)
             .padding(.top, 18)
@@ -4782,7 +4955,7 @@ private struct ProjectDetailView: View {
                     .frame(width: 4, height: 62)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(project?.name ?? item.name)
-                        .font(.system(size: 28, weight: .bold, design: .serif))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundStyle(DS.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
@@ -4795,25 +4968,83 @@ private struct ProjectDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var overviewSection: some View {
-        let factLines = projectOverviewFactLines(
+    private var projectFocusSection: some View {
+        let bottleneck = projectOverviewDisplayValue(project?.currentBottleneck)
+        let nextBet = projectOverviewDisplayValue(digest.nextBet)
+        let evidenceGap = projectOverviewDisplayValue(digest.evidenceGapMessage)
+        let latestEvidence = item.sortedEntries.first
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("当前路径")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(DS.mutedInk)
+
+            if let bottleneck {
+                ProjectDetailFactLine(title: "当前阻碍", value: bottleneck, tint: DS.caution)
+            }
+            if let nextBet {
+                ProjectDetailFactLine(title: "下一次验证", value: nextBet, tint: DS.accent)
+            } else if let evidenceGap {
+                ProjectDetailFactLine(title: "下一步", value: evidenceGap, tint: DS.caution)
+            }
+
+            if bottleneck == nil && nextBet == nil && evidenceGap == nil {
+                Text("还没有足够证据判断阻碍或下一次验证。继续从历史记录中补充事实与行动结果。")
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let latestEvidence {
+                Button {
+                    store.navigateToHistoryDeepLink(
+                        HistoryDeepLink(
+                            dailyEntryId: latestEvidence.record.draft.id,
+                            sourceId: latestEvidence.link.sourceId,
+                            sourceType: nil
+                        )
+                    )
+                } label: {
+                    Label("最新：\(projectEvidenceDisplayTitle(link: latestEvidence.link, record: latestEvidence.record))", systemImage: "arrow.up.right.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.accentInk)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("查看最新项目证据")
+            }
+        }
+    }
+
+    private var projectContextSection: some View {
+        let factLines = projectContextFactLines(
             goal: project?.goal,
             successCriteria: project?.successCriteria,
-            currentBottleneck: project?.currentBottleneck,
-            nextBet: digest.nextBet,
-            openQuestions: project?.openQuestions,
-            evidenceGapMessage: digest.evidenceGapMessage
+            openQuestions: project?.openQuestions
         )
         if !factLines.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionLabel("Overview")
-                ForEach(factLines, id: \.title) { line in
-                    ProjectDetailFactLine(title: line.title, value: line.value)
+            return AnyView(
+                DisclosureGroup(isExpanded: $isProjectContextExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(factLines, id: \.title) { line in
+                            ProjectDetailFactLine(title: line.title, value: line.value)
+                        }
+                    }
+                    .padding(.top, 10)
+                } label: {
+                    HStack {
+                        SectionLabel("项目背景")
+                        Spacer()
+                        Text(isProjectContextExpanded ? "收起" : "查看目标与标准")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                    }
                 }
-            }
-            .projectDetailSurface()
+                .tint(DS.accent)
+                .projectDetailSurface()
+            )
         }
+        return AnyView(EmptyView())
     }
 
     @ViewBuilder
@@ -4833,81 +5064,89 @@ private struct ProjectDetailView: View {
     }
 
     private var projectInsightSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    SectionLabel("项目洞察")
+        let accepted = store.acceptedProjectInsights.filter { $0.projectId == item.id }
+        let pending = store.pendingProjectInsights.filter { $0.projectId == item.id }
+
+        return DisclosureGroup(isExpanded: $isProjectInsightExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
                     Text("只从已确认历史证据生成，确认后才进入项目叙事。")
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
                         .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button {
+                        Task { await store.generateProjectInsights(for: item.id) }
+                    } label: {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.accent)
+                    .accessibilityLabel(store.isGeneratingProjectInsights ? "正在生成项目洞察" : "生成项目洞察")
+                    .disabled(store.isGeneratingProjectInsights)
                 }
-                Spacer(minLength: 8)
-                Button {
-                    Task { await store.generateProjectInsights(for: item.id) }
-                } label: {
-                    Label(store.isGeneratingProjectInsights ? "生成中" : "生成", systemImage: "sparkle.magnifyingglass")
-                        .font(.caption.weight(.semibold))
+
+                if store.isGeneratingProjectInsights {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(DS.accent)
+                        Text("正在根据历史证据生成洞察")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                    }
+                } else if !store.projectInsightGenerationMessage.isEmpty {
+                    ProjectInsightNote(message: store.projectInsightGenerationMessage)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(DS.accent)
-                .disabled(store.isGeneratingProjectInsights)
-            }
 
-            if store.isGeneratingProjectInsights {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .tint(DS.accent)
-                    Text("正在根据历史证据生成洞察")
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                }
-            } else if !store.projectInsightGenerationMessage.isEmpty {
-                ProjectInsightNote(message: store.projectInsightGenerationMessage)
-            }
-
-            let accepted = store.acceptedProjectInsights.filter { $0.projectId == item.id }
-            let pending = store.pendingProjectInsights.filter { $0.projectId == item.id }
-
-            if !accepted.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("已确认叙事")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(DS.ink)
-                    ForEach(accepted) { insight in
-                        ProjectAcceptedInsightCard(insight: insight)
+                if !accepted.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("已确认叙事")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(DS.ink)
+                        ForEach(accepted) { insight in
+                            ProjectAcceptedInsightCard(insight: insight)
+                        }
                     }
                 }
-            }
 
-            if !pending.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("待你判断")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(DS.ink)
-                    ForEach(pending) { insight in
-                        ProjectPendingInsightCard(
-                            insight: insight,
-                            onAccept: {
-                                Task { await store.submitProjectInsightFeedback(.accepted, for: insight.id) }
-                            },
-                            onInaccurate: {
-                                Task { await store.submitProjectInsightFeedback(.inaccurate, for: insight.id) }
-                            },
-                            onDismiss: {
-                                Task { await store.submitProjectInsightFeedback(.dismissed, for: insight.id) }
-                            }
-                        )
+                if !pending.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("待你判断")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(DS.ink)
+                        ForEach(pending) { insight in
+                            ProjectPendingInsightCard(
+                                insight: insight,
+                                onAccept: {
+                                    Task { await store.submitProjectInsightFeedback(.accepted, for: insight.id) }
+                                },
+                                onInaccurate: {
+                                    Task { await store.submitProjectInsightFeedback(.inaccurate, for: insight.id) }
+                                },
+                                onDismiss: {
+                                    Task { await store.submitProjectInsightFeedback(.dismissed, for: insight.id) }
+                                }
+                            )
+                        }
                     }
                 }
-            }
 
-            if accepted.isEmpty && pending.isEmpty && store.projectInsightGenerationMessage.isEmpty && !store.isGeneratingProjectInsights {
-                ProjectInsightNote(message: "还没有经过确认的项目洞察。先积累并确认几条项目证据，再让 AI 提出候选。")
+                if accepted.isEmpty && pending.isEmpty && store.projectInsightGenerationMessage.isEmpty && !store.isGeneratingProjectInsights {
+                    ProjectInsightNote(message: "还没有经过确认的项目洞察。先积累并确认几条项目证据，再让 AI 提出候选。")
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(spacing: 8) {
+                SectionLabel("项目洞察")
+                Text(projectInsightSummary(acceptedCount: accepted.count, pendingCount: pending.count))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
             }
         }
-        .projectDetailSurface()
+        .tint(DS.accent)
     }
 
     @ViewBuilder
@@ -4968,23 +5207,32 @@ private struct ProjectDetailView: View {
             hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
             acceptedInsightCount: acceptedInsightCount
         ) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel("思考变化")
-                Text(projectThinkingChangeHeadline(
-                    hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
-                    acceptedInsightCount: acceptedInsightCount
-                ))
-                    .font(.headline)
-                    .foregroundStyle(DS.ink)
-                Text(projectThinkingChangeBody(
-                    hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
-                    acceptedInsightCount: acceptedInsightCount
-                ))
-                    .font(.subheadline)
-                    .foregroundStyle(DS.mutedInk)
-                    .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup(isExpanded: $isThinkingChangeExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(projectThinkingChangeHeadline(
+                        hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
+                        acceptedInsightCount: acceptedInsightCount
+                    ))
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text(projectThinkingChangeBody(
+                        hasBeforeAfterEvidence: digest.hasBeforeAfterEvidence,
+                        acceptedInsightCount: acceptedInsightCount
+                    ))
+                        .font(.subheadline)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack(spacing: 8) {
+                    SectionLabel("思考变化")
+                    Text(acceptedInsightCount > 0 ? "已有确认" : "等待确认")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
             }
-            .projectDetailSurface()
+            .tint(DS.accent)
         }
     }
 
@@ -5025,7 +5273,7 @@ private struct ProjectDetailView: View {
             isExpanded: isEvidenceTimelineExpanded
         )
         VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("Evidence Timeline")
+            SectionLabel("证据时间线")
             ForEach(Array(item.sortedEntries.prefix(visibleCount)), id: \.link.id) { entry in
                 Button {
                     store.navigateToHistoryDeepLink(
@@ -5110,8 +5358,7 @@ private struct ProjectProgressSignalRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
-        .background(DS.background.opacity(0.48), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .padding(.vertical, 4)
     }
 }
 
@@ -5220,12 +5467,13 @@ private struct ProjectEditorSheet: View {
 private struct ProjectDetailFactLine: View {
     let title: String
     let value: String
+    var tint: Color = DS.mutedInk
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(DS.mutedInk)
+                .foregroundStyle(tint)
             Text(value)
                 .font(.subheadline)
                 .foregroundStyle(DS.ink)
@@ -5445,30 +5693,43 @@ private struct ProjectEvidenceLine: View {
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(DS.mutedInk.opacity(0.7))
                 }
-                Text(evidenceTitle)
+                Text(projectEvidenceDisplayTitle(link: link, record: record))
                     .font(.subheadline)
                     .foregroundStyle(DS.ink)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(10)
-        .background(DS.background.opacity(0.55), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .padding(.vertical, 4)
     }
 
-    private var evidenceTitle: String {
-        switch link.sourceType {
-        case .dailyEntry:
-            return record.draft.rawText.isEmpty ? "当日复盘记录" : record.draft.rawText
-        case .thinkingCard:
-            return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
-        case .quest:
-            return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
-        case .verification:
-            return record.verification?.calibrationNote ?? "结果校准"
-        case .principle:
-            return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
-        }
+}
+
+func projectEvidenceDisplayTitle(link: ProjectLink, record: HistoryRecord) -> String {
+    switch link.sourceType {
+    case .dailyEntry:
+        return record.draft.rawText.isEmpty ? "当日复盘记录" : record.draft.rawText
+    case .thinkingCard:
+        return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
+    case .quest:
+        return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
+    case .verification:
+        return record.verification?.calibrationNote ?? "结果校准"
+    case .principle:
+        return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
+    }
+}
+
+func projectInsightSummary(acceptedCount: Int, pendingCount: Int) -> String {
+    switch (acceptedCount, pendingCount) {
+    case (0, 0):
+        return "尚无叙事"
+    case (_, 0):
+        return "已确认 \(acceptedCount)"
+    case (0, _):
+        return "待判断 \(pendingCount)"
+    default:
+        return "已确认 \(acceptedCount) · 待判断 \(pendingCount)"
     }
 }
 
@@ -5677,6 +5938,58 @@ private extension ProjectSourceType {
     }
 }
 
+private struct GrowthEvidenceProgressPanel: View {
+    let snapshot: MetricSnapshot
+    let onContinue: () -> Void
+
+    private var remainingCount: Int {
+        growthEvidenceRemainingLoopCount(snapshot.completeLoopCount)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            GrowthLoopProgressIndicator(completedCount: snapshot.completeLoopCount)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("证据正在积累")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text(remainingCount > 0 ? "再完成 \(remainingCount) 次完整复盘" : "已满足展示变化的最小证据")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                if remainingCount > 0 {
+                    Button(action: onContinue) {
+                        Label("继续完成复盘", systemImage: "arrow.right")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(DS.accent)
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct GrowthLoopProgressIndicator: View {
+    let completedCount: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(index < min(completedCount, 3) ? DS.accent : DS.hairline)
+                    .frame(width: 10, height: 10)
+            }
+        }
+        .frame(width: 46, height: 46)
+        .background(DS.note.opacity(0.10), in: Circle())
+        .accessibilityLabel("已完成 \(completedCount) 次完整复盘")
+    }
+}
+
 private struct GrowthSummaryPanel: View {
     let snapshot: MetricSnapshot
 
@@ -5707,25 +6020,11 @@ private struct TappableMetricRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DS.ink)
-                        Spacer()
-                        Text(String(format: "%.1f", value))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(DS.accentInk)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(DS.mutedInk)
-                    }
-                    Text(note)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                }
-
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .frame(width: 82, alignment: .leading)
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
@@ -5736,10 +6035,19 @@ private struct TappableMetricRow: View {
                     }
                 }
                 .frame(height: 6)
+
+                Text(String(format: "%.1f", value))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(DS.accentInk)
+                    .frame(width: 30, alignment: .trailing)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(DS.mutedInk)
             }
+            .accessibilityLabel("\(title) \(note) \(String(format: "%.1f", value))")
+            .padding(.vertical, 7)
         }
         .buttonStyle(.plain)
-        .summarySurface()
     }
 }
 
@@ -6786,6 +7094,19 @@ func candidateConsequenceLine() -> String {
 
 // MARK: - Growth report drilldown helpers
 
+func growthEvidenceRemainingLoopCount(_ completeLoopCount: Int, threshold: Int = 3) -> Int {
+    max(0, threshold - completeLoopCount)
+}
+
+func growthEvidenceProgressText(completeLoopCount: Int, threshold: Int = 3) -> String {
+    let completed = max(0, completeLoopCount)
+    let remaining = growthEvidenceRemainingLoopCount(completed, threshold: threshold)
+    if remaining == 0 {
+        return "已完成 \(completed) 次完整复盘，等待可追溯的验证证据进入报告。"
+    }
+    return "已完成 \(completed) / \(threshold) 次完整复盘；再完成 \(remaining) 次并保留验证结果，才会展示变化。"
+}
+
 func growthMetricDisplayTitle(_ metric: GrowthMetric) -> String {
     switch metric {
     case .clarity: return "清晰度"
@@ -6877,6 +7198,26 @@ func projectOverviewFactLines(
     }
     if let evidenceGapMessage = projectOverviewDisplayValue(evidenceGapMessage) {
         lines.append(ProjectOverviewFactLine(title: "证据缺口", value: evidenceGapMessage))
+    }
+
+    return lines
+}
+
+func projectContextFactLines(
+    goal: String?,
+    successCriteria: String?,
+    openQuestions: [String]?
+) -> [ProjectOverviewFactLine] {
+    var lines: [ProjectOverviewFactLine] = []
+
+    if let goal = projectOverviewDisplayValue(goal) {
+        lines.append(ProjectOverviewFactLine(title: "目标", value: goal))
+    }
+    if let successCriteria = projectOverviewDisplayValue(successCriteria) {
+        lines.append(ProjectOverviewFactLine(title: "成功标准", value: successCriteria))
+    }
+    if let questions = openQuestions?.compactMap(projectOverviewDisplayValue), !questions.isEmpty {
+        lines.append(ProjectOverviewFactLine(title: "开放问题", value: questions.joined(separator: "\n")))
     }
 
     return lines

@@ -1209,6 +1209,12 @@ protocol LLMClient {
 }
 
 enum LLMStreamEvent: Hashable {
+    /// The request task started. It does not mean the remote endpoint has accepted it yet.
+    case requestStarted
+    /// HTTP headers arrived from a successful streaming response.
+    case connected
+    /// A non-terminal SSE data packet arrived, even when it has no displayable content.
+    case receivedEvent
     case token(String)
     case completed
 }
@@ -3723,20 +3729,20 @@ final class LocalPromptProvider: PromptProvider {
         let outputSchemaVersion: Int
         switch id {
         case .generateQuestions:
-            promptVersion = "1.11.0"
-            rollbackTargetVersion = "1.10.0"
+            promptVersion = "1.13.0"
+            rollbackTargetVersion = "1.12.0"
             outputSchemaVersion = 6
         case .generateQuests:
-            promptVersion = "1.6.0"
-            rollbackTargetVersion = "1.5.0"
+            promptVersion = "1.8.0"
+            rollbackTargetVersion = "1.7.0"
             outputSchemaVersion = 3
         case .verifyQuest:
-            promptVersion = "1.6.0"
-            rollbackTargetVersion = "1.5.0"
+            promptVersion = "1.7.0"
+            rollbackTargetVersion = "1.6.0"
             outputSchemaVersion = 2
         case .extractPrinciple:
-            promptVersion = "1.4.0"
-            rollbackTargetVersion = "1.3.0"
+            promptVersion = "1.5.0"
+            rollbackTargetVersion = "1.4.0"
             outputSchemaVersion = 1
         default:
             promptVersion = "1.0.0"
@@ -3761,6 +3767,30 @@ final class LocalPromptProvider: PromptProvider {
         current: PromptTemplate
     ) -> PromptTemplate? {
         switch (id, version) {
+        case (.generateQuestions, "1.12.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.11.0",
+                systemText: current.systemText,
+                userText: Self.userTextV1120(for: id, mode: mode),
+                outputSchemaVersion: 6
+            )
+        case (.generateQuestions, "1.11.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.10.0",
+                systemText: current.systemText,
+                userText: Self.userTextV1110(for: id, mode: mode),
+                outputSchemaVersion: 6
+            )
         case (.generateQuestions, "1.10.0"):
             return PromptTemplate(
                 id: id,
@@ -3905,6 +3935,30 @@ final class LocalPromptProvider: PromptProvider {
                 userText: Self.generateQuestionsV090UserText(for: mode),
                 outputSchemaVersion: 1
             )
+        case (.generateQuests, "1.7.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.6.0",
+                systemText: current.systemText,
+                userText: Self.userTextV1120(for: id, mode: mode),
+                outputSchemaVersion: 3
+            )
+        case (.generateQuests, "1.6.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.5.0",
+                systemText: current.systemText,
+                userText: Self.userTextV1110(for: id, mode: mode),
+                outputSchemaVersion: 3
+            )
         case (.generateQuests, "1.5.0"):
             return PromptTemplate(
                 id: id,
@@ -3977,6 +4031,18 @@ final class LocalPromptProvider: PromptProvider {
                 userText: Self.generateQuestsV100UserText(for: mode),
                 outputSchemaVersion: 1
             )
+        case (.verifyQuest, "1.6.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.5.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV160UserText(for: mode),
+                outputSchemaVersion: 2
+            )
         case (.verifyQuest, "1.5.0"):
             return PromptTemplate(
                 id: id,
@@ -4047,6 +4113,18 @@ final class LocalPromptProvider: PromptProvider {
                 rollbackTargetVersion: nil,
                 systemText: current.systemText,
                 userText: Self.verifyQuestV100UserText(for: mode),
+                outputSchemaVersion: 1
+            )
+        case (.extractPrinciple, "1.4.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.3.0",
+                systemText: current.systemText,
+                userText: Self.userTextV1110(for: id, mode: mode),
                 outputSchemaVersion: 1
             )
         case (.extractPrinciple, "1.3.0"):
@@ -4730,6 +4808,7 @@ final class LocalPromptProvider: PromptProvider {
         Do not decide for the user.
         Do not replace the user's thinking.
         Separate facts, interpretations, assumptions, risks, and validation needs.
+        Treat user statements as reported material, not independently verified facts. Do not present an inferred cause, motive, outcome, or growth claim as established evidence. When evidence is missing or conflicting, preserve the uncertainty and state what would make the claim checkable.
         Do not encourage the user to share confidential company information, code, customer data, or internal documents.
         Be concise, concrete, and non-performative.
         Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
@@ -4744,6 +4823,7 @@ final class LocalPromptProvider: PromptProvider {
         Convert raw daily input into editable thinking cards.
         Do not decide for the user.
         Do not replace the user's thinking.
+        Treat user statements as reported material, not independently verified facts. Preserve uncertainty instead of converting an interpretation, motive, or causal explanation into a fact.
         Do not encourage the user to share confidential company information, code, customer data, or internal documents.
         Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
         Session mode: \(mode.rawValue). Quick is shortest path, standard is the default full loop, and deep uses more scrutiny.
@@ -5242,6 +5322,26 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func verifyQuestV170UserText(for mode: SessionMode) -> String {
+        verifyQuestV160UserText(for: mode).replacingOccurrences(
+            of: "Do not use expected_principle_practice_assessment as practice evidence; it is audit feedback only.",
+            with: """
+            Do not use expected_principle_practice_assessment as practice evidence; it is audit feedback only.
+
+            Evidence ownership:
+            - Treat completion, userVerification, completionEvidence, actualValue, and the user's judgmentUpdate as separate claims. They do not prove one another.
+            - Completing an action proves only that the action was attempted; it does not prove value or confirm targetJudgment.
+            - Only a concrete observed result, response, artifact, metric, or failed acceptance criterion may support, weaken, or confirm targetJudgment.
+            - If the provided evidence is missing, indirect, conflicting, or only reports completion, explicitly say the evidence is insufficient and keep the judgment open. Do not invent an outcome, causal explanation, or principle practice.
+            - In calibration_note, label the boundary between observed facts, the judgment update, and the next test so the user can tell what is known versus inferred.
+            """
+        )
+        .replacingOccurrences(
+            of: "Input will include targetJudgment, trainingPrinciple, yesterdayQuest, userVerification, completionEvidence, and actualValue.",
+            with: "Input will include targetJudgment, trainingPrinciple, yesterdayQuest, completion, valueRating, judgmentUpdate, and currentInput.rawText as the user's recorded observable evidence."
+        )
+    }
+
     private static func extractPrincipleV100UserText(for mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         return """
@@ -5376,6 +5476,86 @@ final class LocalPromptProvider: PromptProvider {
     }
 
     private static func userText(for id: PromptID, mode: SessionMode) -> String {
+        let prior = userTextV1120(for: id, mode: mode)
+
+        switch id {
+        case .generateQuestions:
+            return """
+            \(prior)
+
+            True-need grounding:
+            - Treat a requested task, feature, solution, or plan as a proposed means, not proof of the underlying outcome that matters.
+            - When the confirmed material names an action but not the affected person, object, consequence, or success condition, use the first useful question to uncover exactly one missing link: who or what is affected, what cost remains if nothing changes, or what observable change would count as success.
+            - Do not add a separate needs-analysis ritual. If the cards already name a concrete affected object and an observable consequence or success condition, continue with the current evidence and judgment work.
+            - Ask in the user's situation and vocabulary. Do not use business jargon such as “true need” as a label for the user.
+            - A stated preference or a completed deliverable is not enough. The question must connect the proposed action to a condition in reality that the user can later observe.
+            """
+        case .generateQuests:
+            return """
+            \(prior)
+
+            True-need validation:
+            - A validation action must test whether the proposed work changes the concrete condition that matters, not merely whether the work was delivered.
+            - Preserve the affected person or object, the observable condition that should change, and the feedback that would show no meaningful change in calibration_target, completion_criteria, or reflection_question.
+            - When the real condition is still unknown, generate the smallest respectful discovery action instead of a delivery task. When it is already clear, do not add discovery work for its own sake.
+            - Do not describe this as a “true need” exercise to the user. Keep the task grounded in their actual situation and the signal that would update their judgment.
+            """
+        default:
+            return prior
+        }
+    }
+
+    private static func userTextV1120(for id: PromptID, mode: SessionMode) -> String {
+        let legacy = userTextV1110(for: id, mode: mode)
+
+        switch id {
+        case .generateQuestions:
+            return legacy.replacingOccurrences(
+                of: "Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.",
+                with: """
+                Ask as a thinking coach: expose the judgment being made, the evidence gap behind it, and the next calibration signal.
+
+                Evidence ownership:
+                - Confirmed cards are reported material. coachObservation, trainingPrescription, and coachTeachingPlan are coaching interpretations, not new source evidence.
+                - Do not phrase an interpretation, causal explanation, or inferred motive as an established fact.
+                - When a card contains only an interpretation, the first useful question must ask for the observable event, baseline, or counterexample that could support or weaken it.
+                - A complete-sounding answer is not sufficient by itself: proceed_when must require material that can distinguish observation from interpretation or make the judgment testable.
+                """
+            )
+        case .generateQuests:
+            return legacy.replacingOccurrences(
+                of: "Treat the main validation action as a calibration instrument, not a generic todo.",
+                with: """
+                Treat the main validation action as a calibration instrument, not a generic todo.
+
+                Evidence ownership:
+                - Completing the action is not evidence that the target judgment is correct or that the action created value.
+                - completion_criteria must name the observable result, response, artifact, metric, or failed acceptance criterion to collect, not merely that the action was done.
+                - reflection_question must ask what observed signal would support, weaken, or leave calibration_target unresolved; do not ask only whether the user completed the task.
+                - If no discriminating signal can be observed tomorrow, turn the action into the smallest evidence-collection step or ask for clarification instead of producing a normal task.
+                """
+            )
+        case .extractPrinciple:
+            return legacy.replacingOccurrences(
+                of: "Do not create a principle if the lesson is too situational.",
+                with: """
+                Do not create a principle if the lesson is too situational.
+
+                Evidence ownership:
+                - A completed action, a positive feeling, or one favorable outcome is not enough to establish a reusable rule.
+                - Create a principle only when the supplied material shows either a repeated pattern or a stated invariant with an explicit boundary and a checkable next-use test.
+                - Separate the observed pattern from the proposed rule. Do not invent repetition, causal certainty, or exceptions that are not supported by the input.
+                - If the evidence only supports a one-time lesson, return principle_candidate: null and preserve it for later verification rather than promoting it into memory.
+                """
+            )
+        case .verifyQuest:
+            return verifyQuestV170UserText(for: mode)
+        default:
+            return legacy
+        }
+    }
+
+    private static func userTextV1110(for id: PromptID, mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         switch id {
         case .organizeCards:

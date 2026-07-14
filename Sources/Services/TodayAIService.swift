@@ -64,7 +64,8 @@ final class TodayAIService {
 
     func streamOrganizedCards(
         for context: TodayAIContext,
-        onUpdate: @escaping ([StreamingCardDraft]) async -> Void
+        onUpdate: @escaping ([StreamingCardDraft]) async -> Void,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> [ThinkingCard] {
         guard let streamingClient = llmClient as? StreamingLLMClient else {
             return try await organizeCards(for: context)
@@ -78,6 +79,7 @@ final class TodayAIService {
         let assembler = XMLStreamingCardAssembler()
 
         for try await event in streamingClient.stream(request) {
+            await onProgress(event)
             switch event {
             case .token(let text):
                 let events = assembler.append(text)
@@ -86,7 +88,7 @@ final class TodayAIService {
                         await onUpdate(cards)
                     }
                 }
-            case .completed:
+            case .requestStarted, .connected, .receivedEvent, .completed:
                 break
             }
         }
@@ -102,12 +104,15 @@ final class TodayAIService {
         return cards
     }
 
-    func generateQuestions(for context: TodayAIContext) async throws -> [ReflectionQuestion] {
+    func generateQuestions(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> [ReflectionQuestion] {
         let request = request(
             promptID: .generateQuestions,
             context: context
         )
-        let data = try await completePossiblyStreaming(request)
+        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
         let questions = try parser.parseQuestions(from: data)
         let visiblePayload = request.contextPayload
         try validateCoachingQuality(
@@ -125,17 +130,21 @@ final class TodayAIService {
         return questions
     }
 
-    private func completePossiblyStreaming(_ request: LLMRequest) async throws -> Data {
+    private func completePossiblyStreaming(
+        _ request: LLMRequest,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> Data {
         guard let streamingClient = llmClient as? StreamingLLMClient else {
             return try await llmClient.complete(request)
         }
 
         var rawText = ""
         for try await event in streamingClient.stream(request) {
+            await onProgress(event)
             switch event {
             case .token(let text):
                 rawText += text
-            case .completed:
+            case .requestStarted, .connected, .receivedEvent, .completed:
                 break
             }
         }
@@ -145,12 +154,15 @@ final class TodayAIService {
         return Data(trimmed.utf8)
     }
 
-    func generateQuests(for context: TodayAIContext) async throws -> [Quest] {
+    func generateQuests(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> [Quest] {
         let request = request(
             promptID: .generateQuests,
             context: context
         )
-        let data = try await llmClient.complete(request)
+        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
         let quests = try parser.parseQuests(from: data)
         let visiblePayload = request.contextPayload
         try validateCoachingQuality(
@@ -163,18 +175,25 @@ final class TodayAIService {
         return quests
     }
 
-    func extractPrinciple(for context: TodayAIContext) async throws -> [PrincipleAsset] {
+    func extractPrinciple(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> [PrincipleAsset] {
         let request = request(
             promptID: .extractPrinciple,
             context: context
         )
-        let data = try await llmClient.complete(request)
+        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
         let principles = try parser.parsePrinciples(from: data)
         try validateCoachingQuality(PromptCoachingQualityPolicy.evaluatePrinciples(principles))
         return principles
     }
 
-    func verifyQuest(input: VerifyQuestInput, sessionMode: SessionMode) async throws -> VerifyQuestResult {
+    func verifyQuest(
+        input: VerifyQuestInput,
+        sessionMode: SessionMode,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> VerifyQuestResult {
         let template = promptProvider.template(for: .verifyQuest, mode: sessionMode)
         let contextPayload = PromptContextPayload(
             currentInput: .init(rawText: input.rawText),
@@ -197,7 +216,7 @@ final class TodayAIService {
             contextVersion: 1,
             contextRecordIDs: input.sourceRecordIDs
         )
-        let data = try await llmClient.complete(request)
+        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
         let result = try parser.parseVerification(from: data)
         try validateCoachingQuality(
             PromptCoachingQualityPolicy.evaluateVerification(

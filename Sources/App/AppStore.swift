@@ -1,8 +1,16 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 private struct HistoricalRetryCandidatePayload: Codable {
     var cards: [HistoricalRetryCardPayload]
+}
+
+private enum AIStreamProgress: Equatable {
+    case requestStarted
+    case connected
+    case receivedEvent
+    case receivingContent
 }
 
 struct PreparedDataExport: Identifiable, Equatable {
@@ -143,6 +151,7 @@ final class AppStore: ObservableObject {
     @Published var canRetryCurrentAI: Bool = false
     @Published private(set) var isAIRunning: Bool = false
     @Published private(set) var aiActivityMessage: String = ""
+    @Published private(set) var aiActivityElapsedSeconds: Int = 0
     @Published var streamingCards: [StreamingCardDraft] = []
     @Published var streamingStatusText: String = ""
     @Published var recentPromptRuns: [PromptRun] = []
@@ -254,6 +263,16 @@ final class AppStore: ObservableObject {
         }
     }
     private var activeAIRequestCount: Int = 0
+    private var aiActivityHeartbeatTask: Task<Void, Never>?
+    private var todayAIRequestTask: Task<Void, Never>?
+    private var activeTodayAIPrompt: PromptID?
+    private var cancelledTodayAIPrompt: PromptID?
+    private var isAppInBackground = false
+    private var aiBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var didEnterBackgroundDuringAIRequest = false
+    private var aiStreamProgress: AIStreamProgress = .requestStarted
+    private var aiStreamEventCount: Int = 0
+    private var aiStreamContentCharacterCount: Int = 0
     private static let exportTimestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -1541,6 +1560,15 @@ final class AppStore: ObservableObject {
         )
     }
 
+    var coachReferenceSuggestion: CoachReferenceSuggestion? {
+        guard let feedback = coachAnswerTrainingFeedback else { return nil }
+        return CoachReferenceSuggestionPolicy().make(
+            cards: confirmedCardsForAI,
+            questions: questions,
+            feedback: feedback
+        )
+    }
+
     var canContinueAnswerQuestionsWithCoachGapOverride: Bool {
         guard !isAIRunning else { return false }
         guard todayDraft.state == .answerQuestions else { return false }
@@ -1548,6 +1576,28 @@ final class AppStore: ObservableObject {
         guard hasAnsweredReflectionQuestion else { return true }
         guard let feedback = coachAnswerFeedbackPreview else { return false }
         return feedback.readiness != .ready
+    }
+
+    var aiActivityStatus: String {
+        let elapsed = formattedAIActivityElapsed
+        switch aiStreamProgress {
+        case .requestStarted:
+            return aiActivityElapsedSeconds < 25
+                ? "请求已发出，正在建立连接。"
+                : "已等待 \(elapsed)，尚未建立连接；你可以继续等或取消。"
+        case .connected:
+            return "已建立连接，等待模型首个数据包（已等待 \(elapsed)）。"
+        case .receivedEvent:
+            return "已收到模型数据，正在整理可用结果（\(aiStreamEventCount) 个数据包）。"
+        case .receivingContent:
+            return "持续接收中（\(aiStreamEventCount) 个数据包，已接收 \(aiStreamContentCharacterCount) 字符），正在整理可用结果。"
+        }
+    }
+
+    private var formattedAIActivityElapsed: String {
+        let minutes = aiActivityElapsedSeconds / 60
+        let seconds = aiActivityElapsedSeconds % 60
+        return minutes > 0 ? "\(minutes) 分 \(seconds) 秒" : "\(seconds) 秒"
     }
 
     var isTodayPrimaryActionDisabled: Bool {
@@ -3959,6 +4009,11 @@ final class AppStore: ObservableObject {
             return
         }
 
+        if let cancelledTodayAIPrompt {
+            retryCancelledTodayAIRequest(cancelledTodayAIPrompt)
+            return
+        }
+
         let draftID = todayDraft.id
         switch todayDraft.state {
         case .organizing:
@@ -3970,8 +4025,8 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "正在重试整理卡片训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
-            Task {
-                await generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID, allowsFallback: false)
+            launchTodayAIRequest(prompt: .organizeCards) {
+                await self.generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID, allowsFallback: false)
             }
         case .answerQuestions:
             guard todayDraft.selectedLens != nil else {
@@ -3981,8 +4036,8 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "正在重试教练追问训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
-            Task {
-                await generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            launchTodayAIRequest(prompt: .generateQuestions) {
+                await self.generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
             }
         case .reviewQuests:
             guard hasAnsweredReflectionQuestion else {
@@ -3992,19 +4047,65 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "正在重试明日验证训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
-            Task {
-                await generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            launchTodayAIRequest(prompt: .generateQuests) {
+                await self.generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
             }
         case .extractPrinciple:
             todayLoopMessage = "正在重试原则沉淀训练。"
             lastAIFailureMessage = nil
             canRetryCurrentAI = false
-            Task {
-                await generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            launchTodayAIRequest(prompt: .extractPrinciple) {
+                await self.generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
             }
         default:
             todayLoopMessage = "当前步骤没有可重试的训练生成。"
         }
+    }
+
+    private func retryCancelledTodayAIRequest(_ prompt: PromptID) {
+        let draftID = todayDraft.id
+        let trimmedInput = todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch prompt {
+        case .organizeCards:
+            guard !trimmedInput.isEmpty else {
+                todayLoopMessage = "请输入内容后再重试整理。"
+                return
+            }
+            todayLoopMessage = "正在重试整理卡片训练。"
+            launchTodayAIRequest(prompt: .organizeCards) {
+                await self.generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID, allowsFallback: false)
+            }
+        case .generateQuestions:
+            guard todayDraft.selectedLens != nil else {
+                todayLoopMessage = "请选择透镜后再重试追问。"
+                return
+            }
+            todayLoopMessage = "正在重试教练追问训练。"
+            launchTodayAIRequest(prompt: .generateQuestions) {
+                await self.generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        case .generateQuests:
+            guard hasAnsweredReflectionQuestion else {
+                todayLoopMessage = "至少回答一个问题后再重试设计明日验证。"
+                return
+            }
+            todayLoopMessage = "正在重试明日验证训练。"
+            launchTodayAIRequest(prompt: .generateQuests) {
+                await self.generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        case .extractPrinciple:
+            todayLoopMessage = "正在重试原则沉淀训练。"
+            launchTodayAIRequest(prompt: .extractPrinciple) {
+                await self.generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
+            }
+        default:
+            todayLoopMessage = "当前步骤没有可重试的训练生成。"
+            return
+        }
+
+        lastAIFailureMessage = nil
+        canRetryCurrentAI = false
     }
 
     func retryPendingAIRepairs() {
@@ -4013,40 +4114,23 @@ final class AppStore: ObservableObject {
             todayLoopMessage = coachBusyRepairMessage
             return
         }
-        let draftID = todayDraft.id
-        let currentState = todayDraft.state
-        let promptsToRepair = pendingAIRepairPrompts
-        let canRepairCards = canRunBackgroundCardRepair
-        todayLoopMessage = "正在后台补齐未完成训练。"
-        Task {
-            if promptsToRepair.contains(.organizeCards),
-               canRepairCards,
-               !todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                await generateCardsWithAIOrFallback(from: todayDraft.rawText, draftID: draftID, allowsFallback: false)
-            } else if promptsToRepair.contains(.organizeCards) {
-                pendingAIRepairPrompts.remove(.organizeCards)
-            }
-
-            if promptsToRepair.contains(.generateQuestions),
-               todayDraft.selectedLens != nil {
-                await generateQuestionsWithAIOrFallback(draftID: draftID, allowsFallback: false)
-            }
-
-            if promptsToRepair.contains(.generateQuests),
-               hasAnsweredReflectionQuestion {
-                await generateQuestsWithAIOrFallback(draftID: draftID, allowsFallback: false)
-            }
-
-            if promptsToRepair.contains(.extractPrinciple),
-               !quests.isEmpty {
-                await generatePrincipleWithAIOrFallback(draftID: draftID, allowsFallback: false)
-            }
-
-            if todayDraft.id == draftID {
-                todayDraft.state = currentState
-                persistDraft()
-            }
+        guard let prompt = retryablePromptForCurrentState,
+              pendingAIRepairPrompts.contains(prompt)
+        else {
+            showPendingAIRepairGuidance()
+            return
         }
+
+        retryCurrentAIStep()
+    }
+
+    func showPendingAIRepairGuidance() {
+        selectedTab = .today
+        let pendingNames = pendingAIRepairPrompts
+            .map(trainingPromptName(for:))
+            .sorted()
+            .joined(separator: "、")
+        todayLoopMessage = "当前本地训练结果已保留。待重试：\(pendingNames)。请回到对应生成步骤手动重试，不会在后台覆盖已确认内容。"
     }
 
     func dismissPendingAIRepairs() {
@@ -4105,6 +4189,12 @@ final class AppStore: ObservableObject {
 
     func selectYesterdayJudgmentUpdate(_ update: YesterdayJudgmentUpdate) {
         todayDraft.yesterdayJudgmentUpdate = update
+        clearTodayLoopMessage()
+        persistDraft()
+    }
+
+    func updateYesterdayEvidence(_ text: String) {
+        todayDraft.yesterdayEvidence = text
         clearTodayLoopMessage()
         persistDraft()
     }
@@ -4803,10 +4893,15 @@ final class AppStore: ObservableObject {
             todayLoopMessage = "进入条件：请选择昨天判断要确认、调整还是推翻。 训练理由：结果校准要用真实结果更新判断，不是继续写今天复盘。"
             return
         }
+        guard !todayDraft.yesterdayEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            todayLoopMessage = "进入条件：写下一条支持这个选择的真实结果。 训练理由：完成和感受不能代替证据。"
+            return
+        }
 
         let completion = todayDraft.yesterdayCompletion!
         let rating = todayDraft.yesterdayValueRating!
         let judgmentUpdate = todayDraft.yesterdayJudgmentUpdate!
+        let evidence = todayDraft.yesterdayEvidence.trimmingCharacters(in: .whitespacesAndNewlines)
         let draftID = todayDraft.id
 
         todayLoopMessage = "正在保存昨日验证。"
@@ -4816,6 +4911,7 @@ final class AppStore: ObservableObject {
                 completion: completion,
                 rating: rating,
                 judgmentUpdate: judgmentUpdate,
+                evidence: evidence,
                 draftID: draftID
             )
             moveTodayLoop(to: .capture)
@@ -4827,6 +4923,7 @@ final class AppStore: ObservableObject {
         completion: YesterdayCompletion,
         rating: YesterdayValueRating,
         judgmentUpdate: YesterdayJudgmentUpdate,
+        evidence: String,
         draftID: UUID
     ) async {
         var calibrationNote = "本地校准：用户自评完成度 \(completion.title)，价值 \(rating.title)，判断更新 \(judgmentUpdate.title)。"
@@ -4847,7 +4944,7 @@ final class AppStore: ObservableObject {
                         completion: completion.rawValue,
                         valueRating: rating.rawValue,
                         judgmentUpdate: judgmentUpdate.rawValue,
-                        rawText: todayDraft.rawText
+                        rawText: evidence
                     ),
                     sessionMode: todayDraft.sessionMode
                 )
@@ -4873,6 +4970,7 @@ final class AppStore: ObservableObject {
             completion: completion,
             valueRating: rating,
             judgmentUpdate: judgmentUpdate,
+            evidenceText: evidence,
             calibrationNote: calibrationNote,
             likelyIssue: likelyIssue,
             recommendation: recommendation
@@ -5141,8 +5239,8 @@ final class AppStore: ObservableObject {
             persistCards()
             return
         }
-        Task {
-            await generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID)
+        launchTodayAIRequest(prompt: .organizeCards) {
+            await self.generateCardsWithAIOrFallback(from: trimmedInput, draftID: draftID)
         }
     }
 
@@ -5193,8 +5291,8 @@ final class AppStore: ObservableObject {
                 recordLocalTrainingResult(message: "未配置 GLM，已使用本地追问。")
                 return
             }
-            Task {
-                await generateQuestionsWithAIOrFallback(draftID: draftID)
+            launchTodayAIRequest(prompt: .generateQuestions) {
+                await self.generateQuestionsWithAIOrFallback(draftID: draftID)
             }
             return
         }
@@ -5238,8 +5336,8 @@ final class AppStore: ObservableObject {
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地明日验证。")
             return
         }
-        Task {
-            await generateQuestsWithAIOrFallback(draftID: draftID)
+        launchTodayAIRequest(prompt: .generateQuests) {
+            await self.generateQuestsWithAIOrFallback(draftID: draftID)
         }
     }
 
@@ -5273,8 +5371,8 @@ final class AppStore: ObservableObject {
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地原则候选。")
             return
         }
-        Task {
-            await generatePrincipleWithAIOrFallback(draftID: draftID)
+        launchTodayAIRequest(prompt: .extractPrinciple) {
+            await self.generatePrincipleWithAIOrFallback(draftID: draftID)
         }
     }
 
@@ -5624,8 +5722,26 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private var retryablePromptForCurrentState: PromptID? {
+        switch todayDraft.state {
+        case .organizing:
+            return .organizeCards
+        case .answerQuestions:
+            return .generateQuestions
+        case .reviewQuests:
+            return .generateQuests
+        case .extractPrinciple:
+            return .extractPrinciple
+        default:
+            return nil
+        }
+    }
+
     private func aiFailureMessage(for error: Error) -> String {
         if let llmError = error as? LLMClientError {
+            if didEnterBackgroundDuringAIRequest, isNetworkConnectionLoss(llmError) {
+                return "应用在后台时网络连接被系统中断。请保持明思在前台后重试。"
+            }
             return llmError.userFacingMessage
         }
         if case TodayAIParsingError.qualityGateFailed(let reasons) = error {
@@ -5635,10 +5751,97 @@ final class AppStore: ObservableObject {
         return error.localizedDescription
     }
 
+    func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            isAppInBackground = false
+            endAIBackgroundTaskIfNeeded()
+        case .background:
+            isAppInBackground = true
+            guard isAIRunning else { return }
+            didEnterBackgroundDuringAIRequest = true
+            beginAIBackgroundTaskIfNeeded()
+        case .inactive:
+            if isAIRunning {
+                beginAIBackgroundTaskIfNeeded()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func isNetworkConnectionLoss(_ error: LLMClientError) -> Bool {
+        guard case .transport(let transportError) = error else { return false }
+        let nsError = transportError as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+        return nsError.code == URLError.networkConnectionLost.rawValue
+    }
+
+    private func launchTodayAIRequest(
+        prompt: PromptID,
+        operation: @escaping @MainActor () async -> Void
+    ) {
+        todayAIRequestTask?.cancel()
+        activeTodayAIPrompt = prompt
+        cancelledTodayAIPrompt = nil
+        todayAIRequestTask = Task { [weak self] in
+            await operation()
+            guard !Task.isCancelled else { return }
+            self?.todayAIRequestTask = nil
+            self?.activeTodayAIPrompt = nil
+        }
+    }
+
+    func cancelCurrentAIRequest() {
+        guard isAIRunning else { return }
+        let prompt = activeTodayAIPrompt ?? retryablePromptForCurrentState
+        guard let prompt else { return }
+
+        cancelledTodayAIPrompt = prompt
+        activeTodayAIPrompt = nil
+        todayAIRequestTask?.cancel()
+        todayAIRequestTask = nil
+        canRetryCurrentAI = true
+        todayLoopMessage = "已取消本次\(trainingPromptName(for: prompt))。当前内容已保留，可在准备好后重试。"
+
+        switch prompt {
+        case .organizeCards:
+            todayDraft.state = .organizing
+        case .generateQuestions:
+            todayDraft.state = .answerQuestions
+        case .generateQuests:
+            todayDraft.state = .reviewQuests
+        case .extractPrinciple:
+            todayDraft.state = .extractPrinciple
+        default:
+            break
+        }
+        persistDraft()
+    }
+
     private func beginAIActivity(_ message: String) {
+        if activeAIRequestCount == 0 {
+            didEnterBackgroundDuringAIRequest = false
+            aiActivityElapsedSeconds = 0
+            aiActivityHeartbeatTask?.cancel()
+            aiActivityHeartbeatTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    self?.incrementAIActivityElapsedTime()
+                }
+            }
+            aiStreamProgress = .requestStarted
+            aiStreamEventCount = 0
+            aiStreamContentCharacterCount = 0
+        }
         activeAIRequestCount += 1
         isAIRunning = true
         aiActivityMessage = message
+        if isAppInBackground {
+            didEnterBackgroundDuringAIRequest = true
+            beginAIBackgroundTaskIfNeeded()
+        }
     }
 
     private func endAIActivity() {
@@ -5646,7 +5849,48 @@ final class AppStore: ObservableObject {
         isAIRunning = activeAIRequestCount > 0
         if !isAIRunning {
             aiActivityMessage = ""
+            aiActivityElapsedSeconds = 0
+            aiActivityHeartbeatTask?.cancel()
+            aiActivityHeartbeatTask = nil
+            endAIBackgroundTaskIfNeeded()
         }
+    }
+
+    private func incrementAIActivityElapsedTime() {
+        guard isAIRunning else { return }
+        aiActivityElapsedSeconds += 1
+    }
+
+    private func recordAIStreamProgress(_ event: LLMStreamEvent) {
+        switch event {
+        case .requestStarted:
+            aiStreamProgress = .requestStarted
+        case .connected:
+            aiStreamProgress = .connected
+        case .receivedEvent:
+            aiStreamEventCount += 1
+            if aiStreamProgress != .receivingContent {
+                aiStreamProgress = .receivedEvent
+            }
+        case .token(let text):
+            aiStreamContentCharacterCount += text.count
+            aiStreamProgress = .receivingContent
+        case .completed:
+            break
+        }
+    }
+
+    private func beginAIBackgroundTaskIfNeeded() {
+        guard aiBackgroundTaskID == .invalid else { return }
+        aiBackgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "mingsi.ai-generation") { [weak self] in
+            self?.endAIBackgroundTaskIfNeeded()
+        }
+    }
+
+    private func endAIBackgroundTaskIfNeeded() {
+        guard aiBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(aiBackgroundTaskID)
+        aiBackgroundTaskID = .invalid
     }
 
     private func markLatestHistoricalRetryFailed(failedPromptRunId: UUID, reason: String) async {
@@ -5801,6 +6045,9 @@ final class AppStore: ObservableObject {
                     for: TodayAIContext(draft: todayDraft),
                     onUpdate: { [weak self] drafts in
                         await self?.publishStreamingDrafts(drafts, draftID: draftID)
+                    },
+                    onProgress: { [weak self] event in
+                        await self?.recordAIStreamProgress(event)
                     }
                 )
                 streamingStatusText = "已生成 \(thinkingCards.count) 张候选卡片，请查看并确认。"
@@ -5808,6 +6055,7 @@ final class AppStore: ObservableObject {
                 persistCards()
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 if allowsFallback {
                     handleAIFailure(prompt: .organizeCards, error: error) {
                         let streamedCards = streamingCards.compactMap(\.domainCard)
@@ -5902,7 +6150,10 @@ final class AppStore: ObservableObject {
                         coachDiagnosis: coachDiagnosis,
                         coachTurnState: coachTurnState,
                         coachPatternSummary: coachPatternSummaryForAI()
-                    )
+                    ),
+                    onProgress: { [weak self] event in
+                        await self?.recordAIStreamProgress(event)
+                    }
                 )
                 refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
                 persistLensSession()
@@ -5910,6 +6161,7 @@ final class AppStore: ObservableObject {
                 recordAISuccess(prompt: .generateQuestions)
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 if allowsFallback {
                     handleAIFailure(prompt: .generateQuestions, error: error) {
                         generateLocalQuestions(from: input)
@@ -5959,7 +6211,10 @@ final class AppStore: ObservableObject {
                         coachDiagnosis: coachDiagnosis,
                         coachTurnState: coachTurnState,
                         coachPatternSummary: coachPatternSummaryForAI()
-                    )
+                    ),
+                    onProgress: { [weak self] event in
+                        await self?.recordAIStreamProgress(event)
+                    }
                 )
                 refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
                 persistQuests()
@@ -5967,6 +6222,7 @@ final class AppStore: ObservableObject {
                 recordAISuccess(prompt: .generateQuests)
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 if allowsFallback {
                     handleAIFailure(prompt: .generateQuests, error: error) {
                         generateLocalQuests()
@@ -6007,7 +6263,10 @@ final class AppStore: ObservableObject {
                         principles: await existingPrinciplesForDedupe(),
                         selectedLensItem: selectedLensItem,
                         trainingPrescription: trainingPrescription
-                    )
+                    ),
+                    onProgress: { [weak self] event in
+                        await self?.recordAIStreamProgress(event)
+                    }
                 )
                 persistPrinciples()
                 let message = principles.isEmpty ? "没有足够稳定的原则候选，可以直接跳过。" : ""
@@ -6015,6 +6274,7 @@ final class AppStore: ObservableObject {
                 recordAISuccess(prompt: .extractPrinciple, message: message)
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 if allowsFallback {
                     handleAIFailure(prompt: .extractPrinciple, error: error) {
                         generateLocalPrinciple()

@@ -7,8 +7,8 @@ Date: 2026-07-11
 MingSi has completed the implementation and local regression of the three-stage Today flow:
 
 1. 讲清今天
-2. 想透判断
-3. 定下验证
+2. 找出判断
+3. 行动验证
 
 The product is now in closed-loop usability validation, not feature-completion expansion. The internal ten-state `DailyLoopState` remains an implementation detail and must not leak back into the user-visible hierarchy.
 

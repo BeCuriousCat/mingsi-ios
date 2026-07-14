@@ -1088,6 +1088,26 @@ final class AppDatabase {
             }
         }
 
+        migrator.registerMigration("v32_verification_evidence_text") { db in
+            if try db.tableExists("daily_entries") {
+                let columns = Set(try db.columns(in: "daily_entries").map(\.name))
+                if !columns.contains("yesterday_evidence") {
+                    try db.alter(table: "daily_entries") { table in
+                        table.add(column: "yesterday_evidence", .text).notNull().defaults(to: "")
+                    }
+                }
+            }
+
+            if try db.tableExists("verifications") {
+                let columns = Set(try db.columns(in: "verifications").map(\.name))
+                if !columns.contains("evidence_text") {
+                    try db.alter(table: "verifications") { table in
+                        table.add(column: "evidence_text", .text).notNull().defaults(to: "")
+                    }
+                }
+            }
+        }
+
         return migrator
     }
 }
@@ -1846,6 +1866,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
     var yesterdayCompletion: String?
     var yesterdayValueRating: String?
     var yesterdayJudgmentUpdate: String?
+    var yesterdayEvidence: String
     var state: String
     var privacyFlagsJson: String?
     var createdAt: String
@@ -1872,6 +1893,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         yesterdayCompletion = draft.yesterdayCompletion?.rawValue
         yesterdayValueRating = draft.yesterdayValueRating?.rawValue
         yesterdayJudgmentUpdate = draft.yesterdayJudgmentUpdate?.rawValue
+        yesterdayEvidence = draft.yesterdayEvidence
         state = draft.state.rawValue
         privacyFlagsJson = nil
         createdAt = now
@@ -1942,6 +1964,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
             yesterdayCompletion: completion,
             yesterdayValueRating: valueRating,
             yesterdayJudgmentUpdate: judgmentUpdate,
+            yesterdayEvidence: yesterdayEvidence,
             state: state
         )
     }
@@ -2404,6 +2427,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
     var completion: String
     var valueRating: String
     var judgmentUpdate: String
+    var evidenceText: String
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -2420,6 +2444,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
         completion = verification.completion.rawValue
         valueRating = verification.valueRating.rawValue
         judgmentUpdate = verification.judgmentUpdate.rawValue
+        evidenceText = verification.evidenceText
         calibrationNote = verification.calibrationNote
         likelyIssue = verification.likelyIssue
         recommendation = verification.recommendation
@@ -2455,6 +2480,7 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
             completion: completion,
             valueRating: rating,
             judgmentUpdate: judgmentUpdate,
+            evidenceText: evidenceText,
             calibrationNote: calibrationNote,
             likelyIssue: likelyIssue,
             recommendation: recommendation,

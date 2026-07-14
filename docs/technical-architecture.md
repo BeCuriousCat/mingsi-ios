@@ -207,7 +207,7 @@ DirectGLMClient
 - API Key 缺失时走 `MissingAPIKeyLLMClient` 明确抛出失败；正式路径不能用 mock 响应伪装成 GLM 成功，只能在 UI 中标记为本地 fallback / 可补跑。
 - App 启动加载本地草稿时，会读取 `PromptRunRepository.unresolvedFailures`，把属于当前 DailyEntry 的可修复 Prompt 恢复到待补跑队列。
 - GLM 直连默认请求超时为 300 秒；流式请求以 300 秒无新 token 作为空闲超时，超时错误必须明确显示为超时，避免用户无法判断是 Key、Base URL、额度还是等待时间问题。
-- `organizeCards` 在 MVP 必须支持 SSE 流式生成；其他 Prompt 仍可使用非流式 JSON 返回。
+- 今日训练生成统一支持 SSE 流式生成。整理卡片逐步展示候选卡片；追问、明日验证、原则与结果校准只在完整 JSON 通过解析和质量门槛后写入业务数据，但必须向 UI 回报连接、首个数据包和持续接收状态。
 
 ### Streaming Card Generation
 
@@ -225,8 +225,8 @@ protocol StreamingLLMClient {
 
 `DirectGLMClient` 实现两条路径：
 
-- `complete(_:)`：`stream=false`，用于 questions、quests、verification、principles。
-- `stream(_:)`：`stream=true`，使用 `URLSession.bytes(for:)` 读取 SSE，每行解析 `data:`，抽取 `choices[0].delta.content`。
+- `complete(_:)`：`stream=false`，用于不需要过程反馈的兼容路径。
+- `stream(_:)`：`stream=true`，使用 `URLSession.bytes(for:)` 读取 SSE；除 `choices[0].delta.content` 外，还需回报请求已发出、HTTP 已连接和已收到 SSE 数据包。兼容模型的 reasoning-only 数据包只作为活动信号，不展示或混入结构化业务输出。
 
 `organizeCards` 的流式输出使用受控 XML-like 协议，而不是半截 JSON：
 

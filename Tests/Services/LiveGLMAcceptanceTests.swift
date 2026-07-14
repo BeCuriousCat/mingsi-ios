@@ -60,7 +60,7 @@ final class LiveGLMAcceptanceTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
     }
 
-    func testHarnessProbeUsesFiveMinuteRequestTimeout() {
+    func testHarnessProbeUsesTenMinuteRequestTimeout() {
         let harness = LiveGLMAcceptanceHarness(environment: [:])
 
         XCTAssertEqual(harness.requestTimeout, GLMClientConfiguration.defaultRequestTimeout)

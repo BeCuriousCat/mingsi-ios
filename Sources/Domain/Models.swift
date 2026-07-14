@@ -1153,6 +1153,60 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var teachingPlan: CoachTeachingPlan
 }
 
+struct CoachReferenceSuggestion: Hashable {
+    let guidance: String
+    let workedExample: String
+    let caveat: String
+}
+
+struct CoachReferenceSuggestionPolicy {
+    func make(
+        cards: [ThinkingCard],
+        questions: [ReflectionQuestion],
+        feedback: CoachAnswerTrainingFeedback
+    ) -> CoachReferenceSuggestion {
+        let confirmedCards = cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+        let evidence = confirmedCards.first(where: { $0.type == .fact }) ?? confirmedCards.first
+        let evidenceText = trimmed(evidence?.body)
+        let answer = questions
+            .map(\.answer)
+            .map(trimmed)
+            .first(where: { !$0.isEmpty }) ?? ""
+        let calibrationTarget = questions
+            .compactMap(\.calibrationTarget)
+            .map(trimmed)
+            .first(where: { !$0.isEmpty }) ?? "明天最先出现的结果信号"
+
+        let guidance = feedback.canProceedToValidation
+            ? "把判断和验证信号绑在一起再行动，结果优先于解释。"
+            : "先用一个已知事实约束判断，再写清哪个结果会推翻它。"
+
+        let workedExample: String
+        if !evidenceText.isEmpty && !answer.isEmpty {
+            workedExample = "基于「\(excerpt(evidenceText))」，我暂时这样判断：\(excerpt(answer))。明天观察「\(excerpt(calibrationTarget))」；如果信号相反，就更新这个判断。"
+        } else if !evidenceText.isEmpty {
+            workedExample = "先按这个结构补一句：基于「\(excerpt(evidenceText))」，我暂时判断「……」。明天观察「\(excerpt(calibrationTarget))」；如果信号相反，就更新判断。"
+        } else {
+            workedExample = "先写一个可观察事实，再补：我暂时判断「……」。明天观察「\(excerpt(calibrationTarget))」；如果信号相反，就更新判断。"
+        }
+
+        return CoachReferenceSuggestion(
+            guidance: guidance,
+            workedExample: workedExample,
+            caveat: "这是基于当前材料的对照写法，不替代事实结论；你可以保留不同判断，但要留下能验证它的信号。"
+        )
+    }
+
+    private func trimmed(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func excerpt(_ value: String, limit: Int = 90) -> String {
+        guard value.count > limit else { return value }
+        return "\(value.prefix(limit))…"
+    }
+}
+
 struct CoachTurnPolicy {
     static let policyVersion = "coach-turn.local-v1"
 
@@ -3886,10 +3940,10 @@ enum QuestValidationDimension: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .action: return "行动清楚"
-        case .evidence: return "完成可查"
-        case .judgment: return "对应判断"
-        case .calibration: return "结果可校准"
+        case .action: return "明天做什么"
+        case .evidence: return "什么算完成"
+        case .judgment: return "验证什么判断"
+        case .calibration: return "结果怎么用"
         }
     }
 
@@ -4371,6 +4425,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
     var yesterdayCompletion: YesterdayCompletion?
     var yesterdayValueRating: YesterdayValueRating?
     var yesterdayJudgmentUpdate: YesterdayJudgmentUpdate?
+    var yesterdayEvidence: String
     var state: DailyLoopState
 
     init(
@@ -4387,6 +4442,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         yesterdayCompletion: YesterdayCompletion? = nil,
         yesterdayValueRating: YesterdayValueRating? = nil,
         yesterdayJudgmentUpdate: YesterdayJudgmentUpdate? = nil,
+        yesterdayEvidence: String = "",
         state: DailyLoopState = .verifyYesterday
     ) {
         self.id = id
@@ -4402,6 +4458,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         self.yesterdayCompletion = yesterdayCompletion
         self.yesterdayValueRating = yesterdayValueRating
         self.yesterdayJudgmentUpdate = yesterdayJudgmentUpdate
+        self.yesterdayEvidence = yesterdayEvidence
         self.state = state
     }
 }
@@ -5703,6 +5760,7 @@ struct Verification: Identifiable, Hashable {
     var completion: YesterdayCompletion
     var valueRating: YesterdayValueRating
     var judgmentUpdate: YesterdayJudgmentUpdate
+    var evidenceText: String
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -5717,6 +5775,7 @@ struct Verification: Identifiable, Hashable {
         completion: YesterdayCompletion,
         valueRating: YesterdayValueRating,
         judgmentUpdate: YesterdayJudgmentUpdate = .confirmed,
+        evidenceText: String = "",
         calibrationNote: String,
         likelyIssue: String? = nil,
         recommendation: String? = nil,
@@ -5730,6 +5789,7 @@ struct Verification: Identifiable, Hashable {
         self.completion = completion
         self.valueRating = valueRating
         self.judgmentUpdate = judgmentUpdate
+        self.evidenceText = evidenceText
         self.calibrationNote = calibrationNote
         self.likelyIssue = likelyIssue
         self.recommendation = recommendation

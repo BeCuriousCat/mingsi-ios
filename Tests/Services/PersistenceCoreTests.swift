@@ -764,6 +764,7 @@ final class PersistenceCoreTests: XCTestCase {
             completion: .partial,
             valueRating: .medium,
             judgmentUpdate: .adjusted,
+            evidenceText: "Owner acknowledgement was written, but one follow-up still needed clarification.",
             calibrationNote: "Criteria were partly met.",
             likelyIssue: "unclear_criteria",
             recommendation: "Make completion evidence visible."
@@ -776,6 +777,7 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertEqual(byEntry?.completion, .partial)
         XCTAssertEqual(byEntry?.likelyIssue, "unclear_criteria")
         XCTAssertEqual(byEntry?.judgmentUpdate, .adjusted)
+        XCTAssertEqual(byEntry?.evidenceText, "Owner acknowledgement was written, but one follow-up still needed clarification.")
 
         let byQuest = try await repo.verification(forQuestId: questId)
         XCTAssertEqual(byQuest?.id, verification.id)
@@ -4482,6 +4484,16 @@ final class PersistenceCoreTests: XCTestCase {
         try dbQueue.read { db in
             let columnNames = Set(try db.columns(in: "verifications").map(\.name))
             XCTAssertTrue(columnNames.contains("judgment_update"))
+        }
+    }
+
+    func testMigration_v32_addsVerificationEvidenceColumns() throws {
+        try dbQueue.read { db in
+            let entryColumns = Set(try db.columns(in: "daily_entries").map(\.name))
+            let verificationColumns = Set(try db.columns(in: "verifications").map(\.name))
+
+            XCTAssertTrue(entryColumns.contains("yesterday_evidence"))
+            XCTAssertTrue(verificationColumns.contains("evidence_text"))
         }
     }
 

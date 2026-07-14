@@ -51,8 +51,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         let pendingText = pendingTrainingRepairBannerText(isRunning: false, pendingCount: 2)
         let runningText = pendingTrainingRepairBannerText(isRunning: true, pendingCount: 2)
 
-        XCTAssertEqual(pendingText, "有 2 个训练结果待补齐")
-        XCTAssertEqual(runningText, "明思正在补齐训练结果，请等待")
+        XCTAssertEqual(pendingText, "有 2 个本地训练结果可重试")
+        XCTAssertEqual(runningText, "明思正在重试当前训练，请等待")
         XCTAssertFalse(pendingText.contains("AI"))
         XCTAssertFalse(runningText.contains("AI"))
     }
@@ -243,6 +243,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.selectYesterdayCompletion(.partial)
         store.selectYesterdayValueRating(.medium)
         store.selectYesterdayJudgmentUpdate(.adjusted)
+        store.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         store.submitTodayStep()
         try await waitForState(.capture)
 
@@ -261,6 +262,21 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(
             store.todayLoopMessage,
             "进入条件：请选择昨天判断要确认、调整还是推翻。 训练理由：结果校准要用真实结果更新判断，不是继续写今天复盘。"
+        )
+    }
+
+    func testVerifyYesterday_withSelectionsButNoEvidence_blocksVerification() {
+        store.quests = [activeMainQuest()]
+        store.selectYesterdayCompletion(.done)
+        store.selectYesterdayValueRating(.high)
+        store.selectYesterdayJudgmentUpdate(.confirmed)
+
+        store.submitTodayStep()
+
+        XCTAssertEqual(store.todayDraft.state, .verifyYesterday)
+        XCTAssertEqual(
+            store.todayLoopMessage,
+            "进入条件：写下一条支持这个选择的真实结果。 训练理由：完成和感受不能代替证据。"
         )
     }
 
@@ -306,6 +322,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         store.selectYesterdayCompletion(.done)
         store.selectYesterdayValueRating(.high)
         store.selectYesterdayJudgmentUpdate(.confirmed)
+        store.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
 
         store.submitTodayStep()
         try await waitForState(.capture)
@@ -316,6 +333,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(trainingPrinciple.principleTitle, "先写验收标准")
         XCTAssertEqual(trainingPrinciple.matchSignal, "用户选择")
         XCTAssertEqual(request.contextPayload?.verification?.judgmentUpdate, YesterdayJudgmentUpdate.confirmed.rawValue)
+        XCTAssertEqual(request.contextPayload?.currentInput.rawText, "一个可观察结果支持这次判断更新。")
     }
 
     func testVerifyYesterday_persistsVerificationOnOriginalQuestDayForHistory() async throws {
@@ -351,6 +369,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -427,6 +446,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -523,6 +543,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -592,6 +613,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -608,6 +630,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -744,6 +767,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.thinkingCards.count, 0)
         XCTAssertEqual(store.streamingCards.first?.title, "准备会议目标")
         XCTAssertEqual(store.streamingCards.first?.status, .receiving)
+        XCTAssertTrue(store.aiActivityStatus.contains("持续接收中"))
+        XCTAssertTrue(store.aiActivityStatus.contains("已接收"))
 
         await client.releaseRemaining()
 
@@ -843,7 +868,8 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         XCTAssertEqual(client.streamCallCount, 0)
         XCTAssertEqual(store.thinkingCards.map(\.title), ["已确认事实"])
-        XCTAssertEqual(store.pendingAIRepairCount, 0)
+        XCTAssertEqual(store.pendingAIRepairCount, 1)
+        XCTAssertTrue(store.todayLoopMessage.contains("不会在后台覆盖已确认内容"))
     }
 
     // MARK: - Organizing -> ReviewCards
@@ -1946,6 +1972,34 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(feedback?.nextRepairQuestion.contains("后来结果") == true)
     }
 
+    func testCoachReferenceSuggestionUsesConfirmedEvidenceWithoutInventingAConclusion() {
+        store.todayDraft.state = .answerQuestions
+        store.thinkingCards = confirmedCards([
+            ThinkingCard(
+                type: .fact,
+                title: "评审记录",
+                body: "客户在评审中提出三处验收问题。"
+            )
+        ])
+        store.questions = [
+            ReflectionQuestion(
+                question: "你准备怎么推进？",
+                whyItMatters: "先把判断和验证信号连起来。",
+                calibrationTarget: "明天会议纪要是否写明负责人和验收标准",
+                answer: "先让 Alex 写清验收标准。"
+            )
+        ]
+
+        let suggestion = store.coachReferenceSuggestion
+
+        XCTAssertEqual(suggestion?.guidance, "先用一个已知事实约束判断，再写清哪个结果会推翻它。")
+        XCTAssertTrue(suggestion?.workedExample.contains("客户在评审中提出三处验收问题") == true)
+        XCTAssertTrue(suggestion?.workedExample.contains("先让 Alex 写清验收标准") == true)
+        XCTAssertTrue(suggestion?.workedExample.contains("明天会议纪要是否写明负责人和验收标准") == true)
+        XCTAssertTrue(suggestion?.workedExample.contains("如果信号相反，就更新") == true)
+        XCTAssertTrue(suggestion?.caveat.contains("不替代事实结论") == true)
+    }
+
     func testCoachAnswerFeedbackPolicyCarriesObservedFoundationalAbilityTraining() {
         let turn = CoachTurnState(
             phase: .exploreProblem,
@@ -2598,7 +2652,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.pendingAIRepairCount, 1)
         XCTAssertTrue(store.canRetryCurrentAI)
         XCTAssertTrue(store.todayLoopMessage.contains("教练追问训练未完成"))
-        XCTAssertTrue(store.todayLoopMessage.contains("网络请求失败"))
+        XCTAssertTrue(store.todayLoopMessage.contains("网络连接中断"))
         XCTAssertFalse(store.isAIRunning)
     }
 
@@ -4124,7 +4178,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.13.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_rejectsExpiredRemoteTrustPolicy() async throws {
@@ -4190,7 +4244,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(report.installablePromptPacks.map(\.id), [String]())
         XCTAssertEqual(report.rejectedPromptPacks.map(\.reason), [AssetPackInstallRejectionReason.invalidTrustProof])
         XCTAssertEqual(store.promptAssetPacks.map(\.id), [])
-        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
+        XCTAssertEqual(store.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.13.0")
     }
 
     func testLoadPersistedState_usesPersistedRemoteTrustPolicyForPromptAssetPacks() async throws {
@@ -4319,7 +4373,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.expired-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.13.0")
     }
 
     func testLoadPersistedState_excludesPacksAuthorizedOnlyByUnsignedRemoteTrustPolicy() async throws {
@@ -4374,7 +4428,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         await restoredStore.loadPersistedState()
 
         XCTAssertEqual(restoredStore.promptAssetPacks.map(\.id), ["marketplace.prompts.unsigned-persisted-policy"])
-        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.11.0")
+        XCTAssertEqual(restoredStore.promptTemplate(for: .generateQuestions, mode: .standard).version, "1.13.0")
     }
 
     func testFetchAndInstallAssetPackInstallManifest_reportsRemoteTrustPolicyFetchFailure() async throws {
@@ -5960,6 +6014,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         verifyingStore.selectYesterdayCompletion(.done)
         verifyingStore.selectYesterdayValueRating(.high)
         verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+        verifyingStore.updateYesterdayEvidence("一个可观察结果支持这次判断更新。")
         verifyingStore.submitTodayStep()
         try await waitUntil(
             verifyingStore.todayDraft.state == .capture,
@@ -6727,6 +6782,47 @@ final class AppStoreStateMachineTests: XCTestCase {
         llmClient.release()
     }
 
+    func testCancelCurrentAIRequest_preservesCurrentStepAndMakesItRetryable() async throws {
+        let client = CancellableWaitingLLMClient()
+        store = AppStore(
+            todayAIService: TodayAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            ),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.todayDraft.state = .organizing
+        store.todayDraft.rawText = "Keep this training draft while waiting."
+        store.canRetryCurrentAI = true
+
+        store.retryCurrentAIStep()
+        try await waitUntil(
+            client.completeCallCount == 1 && store.isAIRunning,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected the cancellable training request to start"
+        ) {
+            client.completeCallCount == 1 && store.isAIRunning
+        }
+
+        store.cancelCurrentAIRequest()
+        try await waitUntil(
+            !store.isAIRunning,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected cancellation to finish the active training request"
+        ) {
+            !store.isAIRunning
+        }
+
+        XCTAssertEqual(store.todayDraft.state, .organizing)
+        XCTAssertTrue(store.canRetryCurrentAI)
+        XCTAssertTrue(store.todayLoopMessage.contains("已取消本次整理卡片训练"))
+        XCTAssertTrue(store.thinkingCards.isEmpty)
+    }
+
     func testPendingAIRepairInProgressMessage_usesTrainingLanguage() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
@@ -6777,8 +6873,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         ) {
             client.completeCallCount == 1
         }
-        XCTAssertTrue(store.todayLoopMessage.contains("正在后台补齐未完成训练"))
-        XCTAssertFalse(store.todayLoopMessage.contains("正在后台重试 AI"))
+        XCTAssertTrue(store.todayLoopMessage.contains("正在重试整理卡片训练"))
+        XCTAssertFalse(store.todayLoopMessage.contains("后台重试"))
 
         client.release()
     }
@@ -11405,6 +11501,16 @@ private final class SuspendingLLMClient: LLMClient {
         for continuation in pending {
             continuation.resume(returning: response)
         }
+    }
+}
+
+private final class CancellableWaitingLLMClient: LLMClient {
+    private(set) var completeCallCount = 0
+
+    func complete(_ request: LLMRequest) async throws -> Data {
+        completeCallCount += 1
+        try await Task.sleep(for: .seconds(60))
+        return Data()
     }
 }
 

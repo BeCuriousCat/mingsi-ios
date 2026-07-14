@@ -72,6 +72,17 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("appeasingWithoutCorrection"))
     }
 
+    func testPromptSpecDocumentsEvidenceOwnershipAcrossTheCoachLoop() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+
+        XCTAssertTrue(spec.contains("Evidence Ownership And Loop Handoff"))
+        XCTAssertTrue(spec.contains("reported material"))
+        XCTAssertTrue(spec.contains("coach interpretation"))
+        XCTAssertTrue(spec.contains("action is not proof"))
+        XCTAssertTrue(spec.contains("separate claims"))
+        XCTAssertTrue(spec.contains("repeated pattern or a"))
+    }
+
     func testPromptSpecDocumentsCoachTurnStateForStatefulCoachLoop() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
         let contextPRD = try readRepositoryFile("docs/prompt-context-engineering-prd.md")

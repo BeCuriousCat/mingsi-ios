@@ -8,6 +8,7 @@ final class DirectGLMClientTests: XCTestCase {
         GLMStubURLProtocol.requestBodies = []
         GLMStubURLProtocol.requestTimeouts = []
         GLMStubURLProtocol.responseDelays = []
+        GLMStubURLProtocol.transportErrors = []
         super.tearDown()
     }
 
@@ -48,10 +49,10 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertTrue(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
     }
 
-    func testConfiguration_defaultTimeoutAllowsLongGLMResponses() {
+    func testConfiguration_defaultTimeoutAllowsTenMinutesOfNoStreamProgress() {
         let configuration = GLMClientConfiguration()
 
-        XCTAssertEqual(GLMClientConfiguration.defaultRequestTimeout, 5 * 60)
+        XCTAssertEqual(GLMClientConfiguration.defaultRequestTimeout, 10 * 60)
         XCTAssertEqual(configuration.requestTimeout, GLMClientConfiguration.defaultRequestTimeout)
     }
 
@@ -152,6 +153,38 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 2)
     }
 
+    func testStream_retriesNetworkConnectionLostBeforeYieldingTokens() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: """
+                data: {"choices":[{"delta":{"content":"<CARD>"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        ]
+        GLMStubURLProtocol.transportErrors = [URLError(.networkConnectionLost), nil]
+
+        let client = makeClient(
+            configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!,
+                retryBaseDelay: 0
+            )
+        )
+        var tokens: [String] = []
+
+        for try await event in client.stream(makeRequest()) {
+            if case .token(let token) = event {
+                tokens.append(token)
+            }
+        }
+
+        XCTAssertEqual(tokens, ["<CARD>"])
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 2)
+    }
+
     func testStream_sendsStreamTrueAndYieldsDeltaContent() async throws {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
@@ -181,7 +214,38 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertFalse(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
     }
 
-    func testStream_appliesDefaultFiveMinuteTimeoutToStreamingRequests() async throws {
+    func testStream_reportsConnectionAndPacketProgressBeforeContent() async throws {
+        GLMStubURLProtocol.responses = [
+            StubbedHTTPResponse(
+                statusCode: 200,
+                body: """
+                data: {"choices":[{"delta":{"reasoning_content":"internal planning"}}]}
+
+                data: {"choices":[{"delta":{"content":"usable output"}}]}
+
+                data: [DONE]
+
+                """
+            )
+        ]
+
+        let client = makeClient()
+        var events: [LLMStreamEvent] = []
+        for try await event in client.stream(makeRequest()) {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events, [
+            .requestStarted,
+            .connected,
+            .receivedEvent,
+            .receivedEvent,
+            .token("usable output"),
+            .completed
+        ])
+    }
+
+    func testStream_appliesDefaultTenMinuteTimeoutToStreamingRequests() async throws {
         GLMStubURLProtocol.responses = [
             StubbedHTTPResponse(
                 statusCode: 200,
@@ -368,6 +432,7 @@ private final class GLMStubURLProtocol: URLProtocol {
     static var requestBodies: [String] = []
     static var requestTimeouts: [TimeInterval] = []
     static var responseDelays: [Duration] = []
+    static var transportErrors: [URLError?] = []
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -380,6 +445,13 @@ private final class GLMStubURLProtocol: URLProtocol {
     override func startLoading() {
         Self.requestBodies.append(Self.bodyString(for: request))
         Self.requestTimeouts.append(request.timeoutInterval)
+
+        let requestIndex = Self.requestBodies.count - 1
+        if Self.transportErrors.indices.contains(requestIndex),
+           let error = Self.transportErrors[requestIndex] {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
 
         let response = Self.responses.isEmpty
             ? StubbedHTTPResponse(statusCode: 500, body: #"{"error":"missing stub"}"#)

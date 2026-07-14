@@ -215,6 +215,62 @@ Every correction should state:
 - what ability it trains;
 - what to repair next.
 
+### Evidence Ownership And Loop Handoff
+
+The core coach loop must preserve a strict boundary between reported material,
+coach interpretation, action completion, observable results, and a judgment
+update. This is a higher-value guardrail than adding more coaching prose.
+
+- `organizeCards` preserves a user statement as reported material. It must not
+  promote an interpretation, motive, causal explanation, or intention into a
+  verified fact card.
+- `recommendLenses` and `generateQuestions` may use coach diagnosis and
+  observation to choose a training move, but must describe them as coaching
+  interpretations rather than source evidence. If the input only contains an
+  interpretation, the next question should request an observable event,
+  baseline, or counterexample.
+- `generateQuests` turns one testable judgment into an action. Completing that
+  action is not proof that the judgment is true or that value was created. Its
+  completion criteria must capture a discriminating result, response, artifact,
+  metric, or failed acceptance criterion.
+- `verifyQuest` treats completion, self-report, completion evidence, actual
+  value, and the user's proposed update as separate claims. It may confirm,
+  weaken, or update a judgment only from supplied observable evidence. Missing,
+  indirect, or conflicting evidence must keep the judgment open and lead to a
+  next evidence-collection step. The product must collect one user-written
+  observable result before this prompt runs and retain it with the verification
+  record; today's new raw input is not a substitute for yesterday's evidence.
+- `extractPrinciple` does not promote a single completed action, favorable
+  result, or feeling into a reusable rule. It needs a repeated pattern or a
+  stated invariant with an explicit boundary and a checkable next-use test;
+  otherwise it returns no principle candidate.
+
+This contract applies before deterministic quality gates. The gates remain a
+backstop, not the primary place where the model learns the distinction.
+
+### True-Need Grounding
+
+`真需求` is not a new interview flow or a prompt label shown to the user. It is
+a test for whether MingSi is training a meaningful judgment rather than helping
+the user complete an unexamined request.
+
+- A requested task, feature, solution, or plan is a proposed means, not proof
+  of the underlying condition that matters.
+- If the material only names work to do, `generateQuestions` should uncover one
+  missing link: the affected person or object, the consequence of inaction, or
+  the observable condition that would count as success.
+- If the material already states that condition, the coach must not add a
+  separate needs-analysis step. It should continue to evidence, tradeoffs, and
+  a testable judgment.
+- `generateQuests` must design a smallest respectful discovery action when the
+  condition is unknown, or otherwise a validation action that can show whether
+  the proposed work changed that condition. Delivering work alone is not a
+  successful validation result.
+
+The user-visible loop remains plain language: `讲清今天 -> 找出判断 -> 行动验证`.
+“实现路径” is too solution-first, and “实践路径” still reads as a training
+assignment; neither should be the primary navigation label.
+
 ### Coach Turn State
 
 Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. Prompt context may carry:

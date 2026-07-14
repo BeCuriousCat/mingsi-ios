@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct MingSiApp: App {
     @StateObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         DS.configureTabBarAppearance()
@@ -26,6 +27,9 @@ struct MingSiApp: App {
         WindowGroup {
             AppRootView()
                 .environmentObject(store)
+                .onChange(of: scenePhase) { _, phase in
+                    store.handleScenePhase(phase)
+                }
                 .task {
                     #if DEBUG
                     if AppStore.shouldUseVisualQAProjectDetailFixture() {

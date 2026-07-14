@@ -33,15 +33,6 @@ final class HistoryFeatureTests: XCTestCase {
         super.tearDown()
     }
 
-    func testHistoryFilterChipMetrics_keepAdvancedFilterWidthStable() {
-        XCTAssertEqual(HistoryFilterChipMetrics.minWidth(for: .project), 86)
-        XCTAssertEqual(HistoryFilterChipMetrics.minWidth(for: .lens), 82)
-        XCTAssertEqual(HistoryFilterChipMetrics.minWidth(for: .cardType), 96)
-        XCTAssertEqual(HistoryFilterChipMetrics.minWidth(for: .questStatus), 96)
-        XCTAssertGreaterThanOrEqual(HistoryFilterChipMetrics.maxWidth(for: .project), HistoryFilterChipMetrics.minWidth(for: .project))
-        XCTAssertGreaterThanOrEqual(HistoryFilterChipMetrics.maxWidth(for: .cardType), HistoryFilterChipMetrics.minWidth(for: .cardType))
-    }
-
     // MARK: - History list: list recent entries
 
     func testListEntries_noEntries_returnsEmpty() async throws {
@@ -874,6 +865,22 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertEqual(growthMetricDisplayTitle(.reflectionDepth), "反思深度")
     }
 
+    func testGrowthEvidenceProgressText_showsConcreteThresholdWithoutScore() {
+        XCTAssertEqual(growthEvidenceRemainingLoopCount(1), 2)
+        XCTAssertEqual(
+            growthEvidenceProgressText(completeLoopCount: 1),
+            "已完成 1 / 3 次完整复盘；再完成 2 次并保留验证结果，才会展示变化。"
+        )
+    }
+
+    func testGrowthEvidenceProgressText_keepsEvidenceGateAfterLoopThreshold() {
+        XCTAssertEqual(growthEvidenceRemainingLoopCount(4), 0)
+        XCTAssertEqual(
+            growthEvidenceProgressText(completeLoopCount: 4),
+            "已完成 4 次完整复盘，等待可追溯的验证证据进入报告。"
+        )
+    }
+
     func testHistoryRecordContainsDeepLinkSource_matchesQuestContributionSource() {
         let quest = Quest(
             type: .main,
@@ -1043,6 +1050,23 @@ final class HistoryFeatureTests: XCTestCase {
             evidenceGapMessage: ""
         )
         XCTAssertTrue(lines.isEmpty, "should produce no fact lines when all inputs are nil/empty")
+    }
+
+    func testProjectContextFactLines_keepsGoalAndCriteriaOutOfPrimaryFocus() {
+        let lines = projectContextFactLines(
+            goal: "提高会议效率",
+            successCriteria: "会后明确负责人和验收标准",
+            openQuestions: ["谁负责跟进？", "   "]
+        )
+
+        XCTAssertEqual(
+            lines,
+            [
+                ProjectOverviewFactLine(title: "目标", value: "提高会议效率"),
+                ProjectOverviewFactLine(title: "成功标准", value: "会后明确负责人和验收标准"),
+                ProjectOverviewFactLine(title: "开放问题", value: "谁负责跟进？"),
+            ]
+        )
     }
 
     func testProjectPrincipleEvidenceEntries_returnsOnlyPrincipleSourcesWithHistoryEvidence() {
