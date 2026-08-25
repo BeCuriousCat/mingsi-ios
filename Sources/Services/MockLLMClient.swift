@@ -137,10 +137,17 @@ final class MockLLMClient: LLMClient {
             ])
 
         case .verifyQuest:
+            let refs = request.sourceRecordIDs.filter { UUID(uuidString: $0) != nil }
             return try encode([
                 "calibration_note": "Original prediction: a visible artifact or response would clarify ownership. Actual evidence: the completed quest produced a concrete response but criteria were still a little broad. Evidence gained: ownership signals are easier to verify when tied to one artifact. Observable signal: the owner replied on the artifact. Completion criteria met: one visible artifact received a concrete response. Judgment update: keep tomorrow's quest anchored to a single observable artifact.",
                 "likely_issue": "unclear_criteria",
-                "recommendation": "Define tomorrow's quest so completion can be verified by one visible artifact or response."
+                "recommendation": "Define tomorrow's quest so completion can be verified by one visible artifact or response.",
+                "growth_evidence_items": [[
+                    "category": "action",
+                    "metric": "execution_reliability",
+                    "title": "用可见产物留下了可核对的结果",
+                    "source_refs": Array(refs.prefix(2))
+                ]]
             ])
 
         case .extractPrinciple:
@@ -160,7 +167,84 @@ final class MockLLMClient: LLMClient {
                 ]
             ])
 
+        case .generateSideQuest:
+            return try encode([
+                "decision": "offer",
+                "reason": "最近的记录以工作事项为主；一件不要求产出的轻松遇见，可能比再增加一个计划更合适。",
+                "grounding_refs": ["current_day"],
+                "offer": [
+                    "category": "making",
+                    "title": "给一件旧物换个角度",
+                    "invitation": "从手边一件平时不会多看的东西开始，随手挪到一个不同的位置看看；不需要整理，也不用留下它。",
+                    "evidence_prompt": "它换了位置之后，有没有一点不同的感觉？",
+                    "minimum_minutes": 5,
+                    "maximum_minutes": 15,
+                    "prerequisite_ids": [],
+                    "completion_experience": 20,
+                    "reflection_bonus_experience": 5,
+                    "notification_title": "今天留了一个小岔口",
+                    "notification_body": "路过时，看看会不会遇见一点新东西。"
+                ]
+            ])
+
+        case .recommendGuidance:
+            return try encode([
+                "decision": "show",
+                "hint_id": "action.completion_criteria",
+                "reason": "当前行动缺少可核对的完成信号。"
+            ])
+
+        case .evaluateGuidanceEvidence:
+            return try encode([
+                "result": "supports",
+                "hint_id": "verification.result_not_completion",
+                "reason": "验证中记录了实际结果，而不是只报告完成。"
+            ])
+
+        case .diagnoseTrainingCase:
+            return try encode([
+                "phase": "fill_evidence_gap",
+                "readiness": "not_ready",
+                "recommended_move": "surface_evidence_gap",
+                "training_dimension": "evidence_discipline",
+                "recommended_lens_id": "evidenceCheck",
+                "reason": "当前卡片有判断，但还缺少能支持或推翻它的可观察证据。",
+                "confidence": 0.78
+            ])
+
+        case .reviewCoachAnswer:
+            let refs = Array(request.sourceRecordIDs.prefix(2))
+            return try encode([
+                "readiness": "not_ready",
+                "recommended_move": "surface_evidence_gap",
+                "open_evidence_gaps": ["missing_observation"],
+                "reason": "回答提出了判断，但还没有给出能支持或推翻它的可观察结果。",
+                "turn_summary": "已记录判断，仍需补一个可观察信号。",
+                "coach_critique": "我听到你的判断，但当前材料还不能区分事实与解释。",
+                "repaired_material": "你明确了暂时的判断。",
+                "missing_material": "还缺一条可观察事实或结果信号。",
+                "proceed_line": "可以先补这个信号，也可以由你决定带着缺口继续。",
+                "ability_gap": "让判断有可观察依据。",
+                "training_output": "说清哪条事实会支持或削弱判断。",
+                "self_check": "别人能否指出你引用的事实，而不是只复述结论？",
+                "training_target": "练习把判断和证据分开。",
+                "next_repair_question": "哪一个已经发生的事实最能支持或削弱这个判断？",
+                "experience_replay_decision": "比较这次和旧经验的条件，再决定复现、调整或否定。",
+                "experience_replay_prompt": "过去类似情况中的哪个条件这次不同？",
+                "judgment_sentence_prompt": "基于什么事实，我暂时相信什么；什么结果会让我更新它？",
+                "reference_suggestion": "先写事实，再写暂时判断，最后写校准信号。",
+                "reference_example": "基于「可观察事实」，我暂时判断「……」；如果「相反信号」出现，我会更新判断。",
+                "source_refs": refs
+            ])
+
         case .weeklyCalibration:
+            if request.prompt.userText.contains("existing hint IDs") {
+                return try encode([
+                    "training_focus": "Make each action's completion evidence explicit.",
+                    "hint_ids": ["action.completion_criteria"],
+                    "evidence_refs": Array(request.sourceRecordIDs.prefix(2))
+                ] as [String: Any])
+            }
             return try encode([
                 "evidence": ["Repeated meetings improved when decisions were written as owner/action/date."],
                 "highest_value_action": "Clarifying ownership before implementation",
@@ -190,6 +274,21 @@ final class MockLLMClient: LLMClient {
             ] as [String: [Any]])
 
         case .generateProjectInsights:
+            if request.prompt.userText.contains("principle_candidates") {
+                let refs = Array(request.sourceRecordIDs.prefix(2))
+                return try encode([
+                    "summary": "Confirmed evidence shows the project closed with a testable handoff rule.",
+                    "principle_candidates": [[
+                        "title": "Confirm ownership before handoff",
+                        "summary": "Use an explicit owner before cross-team work starts.",
+                        "trigger_context": "Before a cross-team handoff",
+                        "actions": ["Name the owner", "Record the acceptance check"],
+                        "success_criteria": "The owner confirms the handoff in writing.",
+                        "exceptions": "Immediate incident response",
+                        "evidence_refs": refs
+                    ]]
+                ] as [String: Any])
+            }
             return try encode([
                 "insights": [],
                 "insufficient_evidence_reason": "Mock client requires real AI for insights."

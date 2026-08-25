@@ -15,6 +15,8 @@ struct StreamingCardDraft: Identifiable, Hashable {
     var sensitivity: String
     var confidence: String
     var reason: String
+    var caseKey: String
+    var caseTitle: String
     var status: StreamingCardStatus
 
     init(
@@ -26,6 +28,8 @@ struct StreamingCardDraft: Identifiable, Hashable {
         sensitivity: String = "",
         confidence: String = "",
         reason: String = "",
+        caseKey: String = "",
+        caseTitle: String = "",
         status: StreamingCardStatus = .receiving
     ) {
         self.id = id
@@ -36,6 +40,8 @@ struct StreamingCardDraft: Identifiable, Hashable {
         self.sensitivity = sensitivity
         self.confidence = confidence
         self.reason = reason
+        self.caseKey = caseKey
+        self.caseTitle = caseTitle
         self.status = status
     }
 
@@ -46,6 +52,7 @@ struct StreamingCardDraft: Identifiable, Hashable {
         guard case .closed = status else { return nil }
 
         return ThinkingCard(
+            id: id,
             type: ThinkingCardType(mingsiStreamRawValue: type),
             title: normalizedTitle.mingsiStreamIfEmpty("未命名卡片"),
             body: normalizedBody,
@@ -70,6 +77,8 @@ final class XMLStreamingCardAssembler {
         case sensitivity = "SENSITIVITY"
         case confidence = "CONFIDENCE"
         case reason = "REASON"
+        case caseKey = "CASE_KEY"
+        case caseTitle = "CASE_TITLE"
     }
 
     private static let allowedTags: Set<String> = Set(
@@ -193,6 +202,10 @@ final class XMLStreamingCardAssembler {
             cards[index].confidence += text
         case .reason:
             cards[index].reason += text
+        case .caseKey:
+            cards[index].caseKey += text
+        case .caseTitle:
+            cards[index].caseTitle += text
         }
     }
 
@@ -205,6 +218,8 @@ final class XMLStreamingCardAssembler {
         cards[index].sensitivity = cards[index].sensitivity.mingsiStreamTrimmed
         cards[index].confidence = cards[index].confidence.mingsiStreamTrimmed
         cards[index].reason = cards[index].reason.mingsiStreamTrimmed
+        cards[index].caseKey = cards[index].caseKey.mingsiStreamTrimmed
+        cards[index].caseTitle = cards[index].caseTitle.mingsiStreamTrimmed
 
         let hasUsableContent =
             !cards[index].title.isEmpty ||

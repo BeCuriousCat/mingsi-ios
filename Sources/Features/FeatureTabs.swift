@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 enum SettingsAutomationID {
+    static let advancedToolsAction = "settings.advanced-tools.action"
     static let assetPackManifestCard = "settings.asset-pack-manifest.card"
     static let assetPackManifestImportField = "settings.asset-pack-manifest.import-field"
     static let assetPackManifestPasteAction = "settings.asset-pack-manifest.paste-action"
@@ -26,6 +27,24 @@ enum SettingsAutomationID {
     static let promptPackImportField = "settings.prompt-pack.import-field"
     static let promptPackPasteAction = "settings.prompt-pack.paste-action"
     static let promptPackImportAction = "settings.prompt-pack.import-action"
+    static let sideQuestAction = "settings.side-quest.action"
+    static let sideQuestSettingsCard = "settings.side-quest.card"
+    static let sideQuestTrialReadoutCard = "settings.side-quest.trial-readout.card"
+    static let sideQuestEnabledToggle = "settings.side-quest.enabled-toggle"
+    static let sideQuestNotificationsToggle = "settings.side-quest.notifications-toggle"
+    static let sideQuestLifeContextCard = "settings.side-quest.life-context.card"
+    static let sideQuestTransitionWindows = "settings.side-quest.transition-windows"
+    static let sideQuestSeasonCard = "settings.side-quest.season.card"
+    static let sideQuestSeasonStartAction = "settings.side-quest.season.start-action"
+    static let sideQuestSeasonEndAction = "settings.side-quest.season.end-action"
+
+    static func sideQuestFloorField(_ place: SideQuestPracticalPlace) -> String {
+        "settings.side-quest.practical-place.\(place.rawValue).floor-field"
+    }
+
+    static func sideQuestStairsPicker(_ place: SideQuestPracticalPlace) -> String {
+        "settings.side-quest.practical-place.\(place.rawValue).stairs-picker"
+    }
 
     static func lensPackToggleAction(packId: String) -> String {
         "settings.lens-pack.\(sanitized(packId)).toggle-action"
@@ -60,6 +79,8 @@ enum SettingsAutomationID {
 }
 
 enum GrowthAutomationID {
+    static let weeklyGuidanceGenerateAction = "growth.weekly-guidance.generate-action"
+
     static func principleDetailsToggle(principleId: String) -> String {
         "growth.principle.\(sanitized(principleId)).details-toggle"
     }
@@ -74,6 +95,25 @@ enum GrowthAutomationID {
 
     static func negativeRecallFeedbackAudit(feedbackId: String) -> String {
         "growth.principle-recall.\(sanitized(feedbackId)).negative-audit"
+    }
+
+    private static func sanitized(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        return value.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : "_" }
+            .reduce(into: "") { $0.append($1) }
+    }
+}
+
+enum ProjectsAutomationID {
+    static let emptyStateTodayAction = "projects.empty-state.today-action"
+}
+
+enum HistoryAutomationID {
+    static let aiRepairDisclosure = "history.ai-repair.disclosure"
+
+    static func caseSettlementEvidence(caseId: UUID, settlementId: UUID) -> String {
+        "history.case.\(sanitized(caseId.uuidString)).settlement.\(sanitized(settlementId.uuidString))"
     }
 
     private static func sanitized(_ value: String) -> String {
@@ -140,17 +180,20 @@ private func historyRecordLeadEvidence(_ record: HistoryRecord) -> HistoryRecord
 
 struct HistoryView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedDate = Date()
     @State private var isCalendarPresented = false
     @State private var isRawInputExpanded = false
     @State private var highlightedSourceId: String?
     @State private var searchText = ""
     @State private var isSearchExpanded = false
+    @State private var isAIRepairSectionExpanded = false
     @State private var evidenceFilter: HistoryEvidenceFilter = .all
     @State private var selectedProjectFilter: UUID?
     @State private var selectedLensFilter: ThinkingLens?
     @State private var selectedCardTypeFilter: ThinkingCardType?
     @State private var selectedQuestStatusFilter: QuestStatus?
+    @State private var highlightedDeepLink: HistoryDeepLink?
     @State private var repairablePromptRuns: [PromptRun] = []
     @State private var isLoadingRepairablePromptRuns = false
     @State private var historicalRetryCandidates: [HistoricalRetryCandidate] = []
@@ -216,7 +259,8 @@ struct HistoryView: View {
         if !visibleRecord.quests.isEmpty { parts.append("\(visibleRecord.quests.count) 任务") }
         if !visibleRecord.principles.isEmpty { parts.append("\(visibleRecord.principles.count) 原则") }
         if !visibleRecord.projectLinks.isEmpty { parts.append("\(visibleRecord.projectLinks.count) 项目") }
-        if !visibleRecord.growthContributions.isEmpty { parts.append("\(visibleRecord.growthContributions.count) 成长") }
+        let growthContributions = normalizedHistoryGrowthContributions(visibleRecord.growthContributions)
+        if !growthContributions.isEmpty { parts.append("\(growthContributions.count) 成长") }
         return parts.isEmpty ? "暂无证据" : parts.joined(separator: " / ")
     }
 
@@ -264,18 +308,15 @@ struct HistoryView: View {
                     EmptyStateLine(text: historyQuery.isActive ? "没有匹配的历史证据。试试换一个关键词或证据类型。" : "这一天还没有复盘记录。打开日历可以往前查看一周、一个月或一年。")
                 } else {
                     highlightNotice
-                    aiRepairSection
                     historyEvidenceDetails
+                    aiRepairSection
                 }
             }
         }
         .task {
             await store.loadHistoryRecords()
             if let link = store.historyDeepLink {
-                highlightedSourceId = link.sourceId
-                if let linkedRecord = records.first(where: { $0.draft.id == link.dailyEntryId }) {
-                    selectedDate = linkedRecord.draft.date
-                }
+                receiveHistoryDeepLink(link)
             } else if let latest = records.first?.draft.date {
                 selectedDate = latest
             }
@@ -283,11 +324,7 @@ struct HistoryView: View {
         }
         .onChange(of: store.historyDeepLink) { _, newLink in
             if let newLink {
-                highlightedSourceId = newLink.sourceId
-                if let linkedRecord = records.first(where: { $0.draft.id == newLink.dailyEntryId }) {
-                    selectedDate = linkedRecord.draft.date
-                }
-                store.historyDeepLink = nil
+                receiveHistoryDeepLink(newLink)
             }
             Task { await loadRepairablePromptRunsForVisibleRecord() }
         }
@@ -329,39 +366,71 @@ struct HistoryView: View {
         }
     }
 
+    @ViewBuilder
     private var historyEvidenceLead: some View {
-        let lead = historyRecordLeadEvidence(visibleRecord)
-        return VStack(alignment: .leading, spacing: 12) {
+        if selectedRecord == nil {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(visibleRecord.draft.date.mingsiDayNumber)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(DS.accent)
+                Text(selectedDate.mingsiDayNumber)
+                    .font(.system(.title, design: .rounded).weight(.bold))
+                    .foregroundStyle(DS.mutedInk)
                     .frame(width: 44, alignment: .leading)
+
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedRecord == nil ? "没有匹配记录" : visibleRecord.draft.date.mingsiDisplayDate)
-                        .font(.caption.weight(.semibold))
+                    Text("没有匹配记录")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text(selectedDate.mingsiDisplayDate)
+                        .font(.caption)
                         .foregroundStyle(DS.mutedInk)
-                    Text(lead.label)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(lead.tint)
                 }
+
                 Spacer(minLength: 8)
-                Text(historyQuery.isActive ? "\(visibleRecords.count) 条匹配" : evidenceCounts)
+
+                Text(historyQuery.isActive ? "\(visibleRecords.count) 条匹配" : "暂无证据")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                     .multilineTextAlignment(.trailing)
             }
+        } else {
+            let record = visibleRecord
+            let lead = historyRecordLeadEvidence(record)
 
-            Label(lead.title, systemImage: lead.systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(DS.ink)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(record.draft.date.mingsiDayNumber)
+                        .font(.system(.title, design: .rounded).weight(.bold))
+                        .foregroundStyle(DS.accent)
+                        .frame(width: 44, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(record.draft.date.mingsiDisplayDate)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.mutedInk)
+                        Text(lead.label)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(lead.tint)
+                    }
+                    Spacer(minLength: 8)
+                    Text(historyQuery.isActive ? "\(visibleRecords.count) 条匹配" : evidenceCounts)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .multilineTextAlignment(.trailing)
+                }
 
-            HStack(spacing: 12) {
-                historyEvidenceCount(visibleRecord.cards.count, title: "卡片", systemImage: "square.on.square")
-                historyEvidenceCount(visibleRecord.quests.count, title: "验证", systemImage: "scope")
-                historyEvidenceCount(visibleRecord.principles.count, title: "原则", systemImage: "bookmark")
-                historyEvidenceCount(visibleRecord.growthContributions.count, title: "成长", systemImage: "chart.line.uptrend.xyaxis")
+                Label(lead.title, systemImage: lead.systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(2)
+
+                HStack(spacing: 12) {
+                    historyEvidenceCount(record.cards.count, title: "卡片", systemImage: "square.on.square")
+                    historyEvidenceCount(record.quests.count, title: "验证", systemImage: "scope")
+                    historyEvidenceCount(record.principles.count, title: "原则", systemImage: "bookmark")
+                    historyEvidenceCount(
+                        normalizedHistoryGrowthContributions(record.growthContributions).count,
+                        title: "成长",
+                        systemImage: "chart.line.uptrend.xyaxis"
+                    )
+                }
             }
         }
     }
@@ -374,22 +443,34 @@ struct HistoryView: View {
 
     @ViewBuilder
     private var historyEvidenceDetails: some View {
-        let hasDerivedEvidence = !visibleRecord.cards.isEmpty || visibleRecord.lensSession != nil || !visibleRecord.quests.isEmpty || visibleRecord.verification != nil || !visibleRecord.principles.isEmpty || !visibleRecord.projectLinks.isEmpty || !visibleRecord.growthContributions.isEmpty
+        let growthContributions = normalizedHistoryGrowthContributions(visibleRecord.growthContributions)
+        let hasCaseEvidence = visibleRecord.caseRecords.contains { caseRecord in
+            !caseRecord.cards.isEmpty ||
+                caseRecord.lensSession != nil ||
+                !caseRecord.quests.isEmpty ||
+                !caseRecord.verifications.isEmpty ||
+                !caseRecord.growthSettlements.isEmpty
+        }
+        let hasDerivedEvidence = !visibleRecord.cards.isEmpty || visibleRecord.lensSession != nil || !visibleRecord.quests.isEmpty || visibleRecord.verification != nil || !visibleRecord.principles.isEmpty || !visibleRecord.projectLinks.isEmpty || !growthContributions.isEmpty || hasCaseEvidence
 
         if !visibleRecord.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             rawInputSection
         }
-        if !visibleRecord.cards.isEmpty {
-            cardsSection
-        }
-        if visibleRecord.lensSession != nil {
-            lensAndQuestionsSection
-        }
-        if !visibleRecord.quests.isEmpty {
-            questsSection
-        }
-        if visibleRecord.verification != nil {
-            verificationSection
+        if !visibleRecord.caseRecords.isEmpty {
+            trainingCaseRecordsSection
+        } else {
+            if !visibleRecord.cards.isEmpty {
+                cardsSection
+            }
+            if visibleRecord.lensSession != nil {
+                lensAndQuestionsSection
+            }
+            if !visibleRecord.quests.isEmpty {
+                questsSection
+            }
+            if visibleRecord.verification != nil {
+                verificationSection
+            }
         }
         if !visibleRecord.principles.isEmpty {
             principlesSection
@@ -397,8 +478,11 @@ struct HistoryView: View {
         if !visibleRecord.projectLinks.isEmpty {
             projectEvidenceSection
         }
-        if !visibleRecord.growthContributions.isEmpty {
-            growthContributionSection
+        if !growthContributions.isEmpty {
+            HistoryGrowthContributionsSection(
+                contributions: growthContributions,
+                caseRecords: visibleRecord.caseRecords
+            )
         }
         if !hasDerivedEvidence {
             Label("这一天只留下了原始记录", systemImage: "circle.dotted")
@@ -408,17 +492,92 @@ struct HistoryView: View {
         }
     }
 
+    private var trainingCaseRecordsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionLabel("事项证据链")
+            ForEach(visibleRecord.caseRecords) { caseRecord in
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack {
+                        Text(caseRecord.trainingCase.title)
+                            .font(.headline)
+                            .foregroundStyle(DS.ink)
+                        Spacer()
+                        Text(caseRecord.trainingCase.status.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.mutedInk)
+                    }
+
+                    ForEach(caseRecord.cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }) { card in
+                        Label(card.title, systemImage: "square.on.square")
+                            .font(.subheadline)
+                            .foregroundStyle(isHighlighted(card.id) ? DS.accent : DS.ink)
+                    }
+
+                    if let lensSession = caseRecord.lensSession {
+                        Label(lensSession.selectedLens.title, systemImage: "scope")
+                            .font(.subheadline)
+                            .foregroundStyle(DS.mutedInk)
+                    }
+
+                    ForEach(caseRecord.quests) { quest in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(quest.title, systemImage: "flag")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(isHighlighted(quest.id) ? DS.accent : DS.ink)
+                            Text(quest.completionCriteria)
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                        }
+                    }
+
+                    ForEach(caseRecord.verifications) { verification in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label("验证证据", systemImage: "checkmark.seal")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.success)
+                            Text(verification.evidenceText)
+                                .font(.subheadline)
+                                .foregroundStyle(DS.ink)
+                        }
+                    }
+
+                    ForEach(caseRecord.growthSettlements) { settlement in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("判断更新 · \(settlement.judgmentUpdate.title)", systemImage: "arrow.triangle.2.circlepath")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DS.accentInk)
+                            Text("原判断：\(settlement.originalJudgment)")
+                                .font(.subheadline)
+                                .foregroundStyle(DS.ink)
+                            Text("实际结果：\(settlement.actualResult)")
+                                .font(.subheadline)
+                                .foregroundStyle(DS.ink)
+                        }
+                        .accessibilityIdentifier(
+                            HistoryAutomationID.caseSettlementEvidence(
+                                caseId: caseRecord.trainingCase.id,
+                                settlementId: settlement.id
+                            )
+                        )
+                    }
+                }
+                .padding(.vertical, 10)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+        }
+    }
+
     private var historyControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                         isSearchExpanded.toggle()
                     }
                 } label: {
                     Image(systemName: isSearchExpanded ? "xmark" : "magnifyingglass")
                         .font(.caption.weight(.bold))
-                        .frame(width: 32, height: 32)
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                         .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
@@ -438,7 +597,7 @@ struct HistoryView: View {
                 } label: {
                     Image(systemName: "calendar")
                         .font(.caption.weight(.bold))
-                        .frame(width: 32, height: 32)
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                         .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
@@ -467,6 +626,7 @@ struct HistoryView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(DS.mutedInk.opacity(0.65))
+                                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("清除搜索")
@@ -538,7 +698,7 @@ struct HistoryView: View {
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.caption.weight(.bold))
-                .frame(width: 32, height: 32)
+                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
@@ -601,8 +761,16 @@ struct HistoryView: View {
     }
 
     private var didLocateHighlightedSource: Bool {
-        guard let deepLink = store.historyDeepLink else { return false }
-        return historyRecordContainsDeepLinkSource(deepLink, in: visibleRecord)
+        historyDeepLinkIsLocated(highlightedDeepLink, in: visibleRecord)
+    }
+
+    private func receiveHistoryDeepLink(_ link: HistoryDeepLink) {
+        highlightedDeepLink = link
+        highlightedSourceId = link.sourceId
+        if let linkedRecord = records.first(where: { $0.draft.id == link.dailyEntryId }) {
+            selectedDate = linkedRecord.draft.date
+        }
+        store.historyDeepLink = nil
     }
 
     private func hasProjectLink(sourceId: String) -> Bool {
@@ -618,59 +786,61 @@ struct HistoryView: View {
         let unresolvedRuns = repairablePromptRuns.filter { run in
             !historicalRetryCandidates.contains { $0.failedPromptRunId == run.id }
         }
+        let activeCandidates = historicalRetryCandidates.filter { $0.status.needsHistoryRepairAttention }
+        let repairCount = unresolvedRuns.count + activeCandidates.count
 
-        if isLoadingRepairablePromptRuns {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("正在检查本日 AI 失败记录")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.mutedInk)
-                Spacer()
-            }
-            .summarySurface()
-        } else if !repairablePromptRuns.isEmpty || !historicalRetryCandidates.isEmpty {
+        if !isLoadingRepairablePromptRuns && repairCount > 0 {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(DS.caution)
-                    Text("历史 AI 修复")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(DS.ink)
-                    Spacer()
-                }
-
-                if let summaryLine = HistoryRepairSummary(
-                    unresolvedCount: unresolvedRuns.count,
-                    reviewableCount: historicalRetryCandidates.filter { $0.status == .candidateReady }.count,
-                    completedCount: historicalRetryCandidates.filter { $0.status == .accepted || $0.status == .dismissed }.count,
-                    problemCount: historicalRetryCandidates.filter { $0.status == .failed || $0.status == .blocked }.count
-                ).summaryLine {
-                    Text(summaryLine)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(unresolvedRuns) { run in
-                        historyRepairableRunRow(run: run)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isAIRepairSectionExpanded.toggle()
                     }
-                }
-
-                ForEach(historicalRetryCandidates) { candidate in
-                    historicalCandidateRow(candidate: candidate)
-                }
-
-                if visibleRecord.draft.id == store.todayDraft.id {
-                    Button {
-                        store.retryPendingAIRepairs()
-                    } label: {
-                        Label("后台重试当前记录", systemImage: "arrow.clockwise")
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(DS.caution)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("历史 AI 修复")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(DS.ink)
+                            Text("\(repairCount) 项候选，展开后查看操作；不会改写原记录")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: isAIRepairSectionExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
+                            .foregroundStyle(DS.mutedInk)
+                            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isAIRepairSectionExpanded ? "收起历史 AI 修复" : "查看历史 AI 修复")
+                .accessibilityValue("\(repairCount) 项")
+                .accessibilityIdentifier(HistoryAutomationID.aiRepairDisclosure)
+
+                if isAIRepairSectionExpanded {
+                    VStack(spacing: 8) {
+                        ForEach(unresolvedRuns) { run in
+                            historyRepairableRunRow(run: run)
+                        }
+                    }
+
+                    ForEach(activeCandidates) { candidate in
+                        historicalCandidateRow(candidate: candidate)
+                    }
+
+                    if visibleRecord.draft.id == store.todayDraft.id {
+                        Button {
+                            store.retryPendingAIRepairs()
+                        } label: {
+                            Label("后台重试当前记录", systemImage: "arrow.clockwise")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
             }
             .summarySurface()
@@ -680,28 +850,18 @@ struct HistoryView: View {
     @ViewBuilder
     private func historyRepairableRunRow(run: PromptRun) -> some View {
         let promptName = PromptID(rawValue: run.promptId)?.displayName ?? run.promptId
-        let canRetry = HistoryRepairPromptSupport.canStartHistoricalRetry(promptId: run.promptId)
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(promptName)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.ink)
-                if canRetry {
-                    Text("可修复")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(DS.caution)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(DS.caution.opacity(0.10), in: Capsule())
-                } else {
-                    Text("暂不支持")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(DS.mutedInk)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(DS.mutedInk.opacity(0.08), in: Capsule())
-                }
+                Text("待生成")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(DS.caution)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(DS.caution.opacity(0.10), in: Capsule())
                 Spacer(minLength: 8)
                 Text(run.createdAt.mingsiShortDate)
                     .font(.caption2)
@@ -713,34 +873,28 @@ struct HistoryView: View {
                 .foregroundStyle(DS.mutedInk)
                 .lineLimit(2)
 
-            Text(canRetry ? "待生成候选 · 点击下方按钮开始修复" : "仅审计 · 暂不支持此类历史修复")
+            Text("可重新生成候选卡片；查看或保留候选都不会改动原记录。")
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk.opacity(0.7))
 
-            if canRetry {
-                Button {
-                    Task {
-                        await store.startHistoricalOrganizeCardsRetry(failedPromptRunId: run.id)
-                        await loadRepairablePromptRunsForVisibleRecord()
-                    }
-                } label: {
-                    Label("生成候选卡片", systemImage: "arrow.clockwise")
-                        .font(.caption.weight(.semibold))
+            Button {
+                Task {
+                    await store.startHistoricalOrganizeCardsRetry(failedPromptRunId: run.id)
+                    await loadRepairablePromptRunsForVisibleRecord()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(DS.accent)
-            } else {
-                Text("暂不支持此类历史修复")
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk.opacity(0.7))
+            } label: {
+                Label("生成候选卡片", systemImage: "arrow.clockwise")
+                    .font(.caption.weight(.semibold))
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(DS.accent)
         }
         .padding(10)
         .background(DS.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
-                .stroke(canRetry ? DS.caution.opacity(0.16) : DS.hairline, lineWidth: 1)
+                .stroke(DS.caution.opacity(0.16), lineWidth: 1)
         )
     }
 
@@ -750,7 +904,7 @@ struct HistoryView: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(candidate.status.historyRepairTitle)
+                Text(candidate.status == .accepted ? "已保留候选（未写回）" : candidate.status.historyRepairTitle)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(candidateStatusColor(candidate.status))
                     .padding(.horizontal, 6)
@@ -818,7 +972,7 @@ struct HistoryView: View {
                     Image(systemName: "info.circle")
                         .font(.caption2)
                         .foregroundStyle(DS.note)
-                    Text("该记录已有已确认卡片或下游证据，接受候选可能被阻断。")
+                    Text("该记录已有已确认卡片或下游证据，候选只能作为审计记录保留。")
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
                 }
@@ -832,7 +986,7 @@ struct HistoryView: View {
                             await loadRepairablePromptRunsForVisibleRecord()
                         }
                     } label: {
-                        Label("接受候选", systemImage: "checkmark.circle")
+                        Label("保留候选记录", systemImage: "checkmark.circle")
                             .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
@@ -1172,10 +1326,18 @@ struct HistoryView: View {
 
     private var growthContributionSection: some View {
         HistoryGrowthContributionsSection(
-            contributions: visibleRecord.growthContributions
+            contributions: normalizedHistoryGrowthContributions(visibleRecord.growthContributions),
+            caseRecords: visibleRecord.caseRecords
         )
     }
 
+}
+
+/// History can be assembled from persisted rows or an in-memory fixture. Both
+/// paths may contain superseded contribution revisions, so the timeline must
+/// apply the same evidence-level normalization before rendering or counting.
+func normalizedHistoryGrowthContributions(_ contributions: [MetricContribution]) -> [MetricContribution] {
+    MetricContribution.latestVersionsForHistory(contributions)
 }
 
 private struct QuestRowCompact: View {
@@ -1281,6 +1443,7 @@ private struct ProjectLinkListContent: View {
 
 private struct HistoryGrowthContributionsSection: View {
     let contributions: [MetricContribution]
+    let caseRecords: [TrainingCaseRecord]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1288,7 +1451,7 @@ private struct HistoryGrowthContributionsSection: View {
             if contributions.isEmpty {
                 EmptyStateLine(text: "这一天没有关联的成长贡献。")
             } else {
-                GrowthContributionListContent(contributions: contributions)
+                GrowthContributionListContent(contributions: contributions, caseRecords: caseRecords)
             }
         }
     }
@@ -1296,6 +1459,7 @@ private struct HistoryGrowthContributionsSection: View {
 
 private struct GrowthContributionListContent: View {
     let contributions: [MetricContribution]
+    let caseRecords: [TrainingCaseRecord]
 
     var body: some View {
         VStack(spacing: DS.cardSpacing) {
@@ -1318,6 +1482,18 @@ private struct GrowthContributionListContent: View {
                     Text(contribution.metric.rawValue)
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
+                    if let caseTitle = caseTitle(for: contribution) {
+                        Text("事项：\(caseTitle)")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .lineLimit(1)
+                    }
+                    if let sourceTitle = sourceTitle(for: contribution) {
+                        Text(sourceTitle)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .lineLimit(1)
+                    }
                     Text(String(format: "%+.2f", contribution.delta))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(contribution.direction == .positive ? DS.success : DS.brick)
@@ -1326,6 +1502,28 @@ private struct GrowthContributionListContent: View {
             Spacer()
         }
         .summarySurface()
+    }
+
+    private func caseTitle(for contribution: MetricContribution) -> String? {
+        guard let caseId = contribution.sourceCaseId else { return nil }
+        return caseRecords.first(where: { $0.trainingCase.id == caseId })?.trainingCase.title
+    }
+
+    private func sourceTitle(for contribution: MetricContribution) -> String? {
+        switch contribution.sourceType {
+        case .quest:
+            return caseRecords
+                .flatMap(\.quests)
+                .first(where: { $0.id.uuidString == contribution.sourceId })
+                .map { "验证：\($0.title)" }
+        case .verification:
+            return caseRecords
+                .flatMap(\.verifications)
+                .first(where: { $0.id.uuidString == contribution.sourceId })
+                .map { "结果：\($0.questTitle)" }
+        default:
+            return nil
+        }
     }
 }
 
@@ -1411,7 +1609,7 @@ struct ProjectsView: View {
     private var projectHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("项目")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded).weight(.bold))
                 .foregroundStyle(DS.ink)
             Text("只保留有历史证据支撑的长期议题。")
                 .font(.subheadline)
@@ -1427,7 +1625,9 @@ struct ProjectsView: View {
 
     @ViewBuilder
     private var projectBoard: some View {
-        let filtered = projectStatusFilteredItems(projectItems, projectsById: store.projectsById, status: statusFilter)
+        let filtered = statusFilter.map {
+            projectStatusFilteredItems(projectItems, projectsById: store.projectsById, status: $0)
+        } ?? projectItems.filter { store.projectsById[$0.id]?.status != .archived }
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(projectItems.isEmpty ? "长期议题" : "当前议题")
@@ -1447,6 +1647,9 @@ struct ProjectsView: View {
                     canCreateProject: store.canCreateProjectFromCurrentFocus,
                     createProject: {
                         Task { await store.createProjectFromCurrentFocus() }
+                    },
+                    goToToday: {
+                        store.selectedTab = .today
                     }
                 )
             } else if filtered.isEmpty {
@@ -1473,14 +1676,14 @@ struct ProjectsView: View {
 
     private var projectStatusFilterMenu: some View {
         Menu {
-            Button("全部项目") { statusFilter = nil }
+            Button("当前项目") { statusFilter = nil }
             ForEach(ProjectStatus.allCases) { status in
                 Button(status.chineseTitle) { statusFilter = status }
             }
         } label: {
             Image(systemName: statusFilter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 .font(.caption.weight(.bold))
-                .frame(width: 32, height: 32)
+                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
         }
         .buttonStyle(.bordered)
         .tint(statusFilter == nil ? DS.accent : DS.caution)
@@ -1602,6 +1805,13 @@ struct GrowthView: View {
                     ResumeTodayRow()
                 }
 
+                if !store.growthSettlements.isEmpty {
+                    growthSettlementEvidenceSection
+                }
+
+                weeklyGuidanceSection
+                sideQuestExperienceSection
+
                 if !store.growthSnapshot.canDisplayScores {
                     GrowthEvidenceProgressPanel(snapshot: store.growthSnapshot) {
                         store.selectedTab = .today
@@ -1637,12 +1847,8 @@ struct GrowthView: View {
                     GrowthReportActionPanel(
                         isGenerating: store.isGeneratingGrowthReport,
                         message: store.growthReportMessage,
-                        onWeekly: {
-                            Task { await store.generateWeeklyGrowthReport() }
-                        },
-                        onMonthly: {
-                            Task { await store.generateMonthlyGrowthReport() }
-                        }
+                        onWeekly: { Task { await store.generateWeeklyGrowthReport() } },
+                        onMonthly: { Task { await store.generateMonthlyGrowthReport() } }
                     )
                 }
 
@@ -1666,8 +1872,8 @@ struct GrowthView: View {
                         store.navigateToHistoryDeepLink(
                         HistoryDeepLink(
                             dailyEntryId: contribution.sourceDailyEntryId,
-                            sourceId: contribution.sourceId,
-                            sourceType: contribution.sourceType
+                            sourceId: contribution.sourceCaseId?.uuidString ?? contribution.sourceId,
+                            sourceType: contribution.sourceCaseId == nil ? contribution.sourceType : nil
                         )
                     )
                 },
@@ -1699,17 +1905,171 @@ struct GrowthView: View {
     }
 
     private func metricDetailContributions(for metric: GrowthMetric) -> [MetricContribution] {
-        var seen: Set<UUID> = []
-        return (store.metricContributions + store.growthReportReviewContributions).filter { contribution in
-            guard contribution.metric == metric,
-                  contribution.candidateStatus != .rejected,
-                  contribution.userFeedback != .inaccurate,
-                  contribution.userFeedback != .dismissed,
-                  !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else {
-                return false
+        normalizedMetricDetailContributions(
+            store.metricContributions + store.growthReportReviewContributions,
+            metric: metric
+        )
+    }
+
+    private var weeklyGuidanceSection: some View {
+        let readiness = store.weeklyGuidanceReviewReadiness
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel("下周训练重点")
+                Spacer()
+                if store.isGeneratingGrowthReport {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if store.weeklyGuidanceReview == nil, readiness.isEligible {
+                    Button {
+                        Task { await store.generateWeeklyGrowthReport() }
+                    } label: {
+                        Label("生成", systemImage: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(DS.accent)
+                    .accessibilityIdentifier(GrowthAutomationID.weeklyGuidanceGenerateAction)
+                    .accessibilityLabel("生成下周训练重点")
+                }
             }
-            return seen.insert(contribution.id).inserted
+
+            if let review = store.weeklyGuidanceReview {
+                Text(review.trainingFocus)
+                    .font(.subheadline)
+                    .foregroundStyle(DS.ink)
+                if let referenceCopy = weeklyGuidanceReferenceCopy(hintIDs: review.hintIds) {
+                    Text("经验参考：\(referenceCopy)")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
+            } else if readiness.isEligible {
+                Text("已满足生成条件。本周只会基于已验证证据生成一次。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("最近 7 天：\(readiness.recentVerificationCount) / 3 次验证 · \(readiness.coveredDayCount) / 2 天")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text(weeklyGuidanceRequirementText(readiness))
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !store.growthReportMessage.isEmpty {
+                Text(store.growthReportMessage)
+                    .font(.caption)
+                    .foregroundStyle(store.growthReportMessage.contains("失败") ? DS.caution : DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var sideQuestExperienceSection: some View {
+        let summary = store.sideQuestExperienceSummary
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel("生活经验")
+                Spacer()
+                Text("独立于训练指标")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            HStack(spacing: 10) {
+                experienceValue(title: "累计", value: "\(summary.totalExperience)")
+                experienceValue(title: "连续", value: "\(summary.currentStreak) 天")
+                experienceValue(title: "最长", value: "\(summary.longestStreak) 天")
+            }
+
+            if !summary.experienceByTrack.isEmpty {
+                Text(
+                    summary.experienceByTrack
+                        .sorted { $0.key.rawValue < $1.key.rawValue }
+                        .map { "\($0.key.title) \($0.value)" }
+                        .joined(separator: "  ·  ")
+                )
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("完成自愿接下的生活奇遇后，这里会记录你的经历与连续性。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .summarySurface()
+    }
+
+    private func experienceValue(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(DS.ink)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func weeklyGuidanceRequirementText(_ readiness: WeeklyGuidanceReviewReadiness) -> String {
+        var requirements: [String] = []
+        if readiness.remainingVerificationCount > 0 {
+            requirements.append("还需 \(readiness.remainingVerificationCount) 次验证")
+        }
+        if readiness.remainingDayCount > 0 {
+            requirements.append("再覆盖 \(readiness.remainingDayCount) 天")
+        }
+        return "达到条件后，可以由你主动生成一次下周训练重点。\(requirements.joined(separator: "，"))。"
+    }
+
+    private var growthSettlementEvidenceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel("最近新增证据")
+            ForEach(Array(store.growthSettlements.prefix(8))) { settlement in
+                Button {
+                    guard let caseId = settlement.caseId,
+                          let record = store.historyRecords.first(where: { history in
+                              history.caseRecords.contains { $0.trainingCase.id == caseId }
+                          })
+                    else { return }
+                    store.navigateToHistoryDeepLink(
+                        HistoryDeepLink(
+                            dailyEntryId: record.draft.id,
+                            sourceId: caseId.uuidString,
+                            sourceType: nil
+                        )
+                    )
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(settlement.judgmentUpdate.title)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(DS.accent)
+                            Spacer()
+                            Text(settlement.createdAt.mingsiShortDate)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(DS.mutedInk)
+                        }
+                        Text(settlement.actualResult)
+                            .font(.subheadline)
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(2)
+                        Text(settlement.evidenceItems.map(\.title).joined(separator: " / "))
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .lineLimit(2)
+                    }
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                Divider()
+            }
         }
     }
 }
@@ -2177,38 +2537,655 @@ struct SettingsView: View {
         : ""
     @State private var assetPackRegistrySubscriptionNameInput = ""
     @State private var assetPackRegistrySubscriptionURLInput = ""
+    @State private var lifeContextHomeLabel = ""
+    @State private var lifeContextWorkLabel = ""
+    @State private var lifeContextHomeFloorLevel = ""
+    @State private var lifeContextWorkplaceFloorLevel = ""
+    @State private var lifeContextConstraints: [String] = []
+    @State private var newLifeContextConstraint = ""
+    @State private var sideQuestSeasonTheme = "城市漫游"
+    @State private var sideQuestSeasonIntent = ""
 
     var body: some View {
         FeatureContainer(title: "设置", subtitle: "隐私、模型、通知和数据控制。") {
             VStack(spacing: DS.cardSpacing) {
-                if AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
-                    assetPackInstallManifestCard
-                    apiKeyCard
-                    dataExportCard
-                } else {
-                    apiKeyCard
-                    dataExportCard
-                    assetPackInstallManifestCard
-                }
-                lensAssetPackCard
-                promptAssetPackCard
-                promptAuditCard
-                promptEvalGateCard
-                promptTemplateCard
+                apiKeyCard
+                dataExportCard
+                sideQuestSettingsLink
                 SettingRow(title: "GLM API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
-                SettingRow(title: "请求协议", value: "OpenAI-compatible / 自动 JSON 降级")
-                SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.title)
+                SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.displayTitle)
                 SettingRow(title: "本地通知", value: store.reminderStatusMessage)
+                advancedToolsLink
             }
         }
         .onAppear {
             baseURLInput = store.currentBaseURL
             modelNameInput = store.currentModelName
-            Task {
-                await store.loadRecentPromptRuns()
-                await store.loadRecentPromptEvalRuns()
-                await store.loadLensAssetPacks()
-                await store.loadPromptAssetPacks()
+            loadSideQuestLifeContextInputs()
+        }
+    }
+
+    private var sideQuestSettingsLink: some View {
+        NavigationLink {
+            sideQuestSettingsView
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.note)
+                    .frame(width: 36, height: 36)
+                    .background(DS.note.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("生活奇遇")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text(sideQuestSettingsSummary)
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardSurface()
+        .accessibilityIdentifier(SettingsAutomationID.sideQuestAction)
+    }
+
+    private var sideQuestSettingsSummary: String {
+        let preference = store.sideQuestPreference
+        guard preference.isEnabled else {
+            return "可选，由模型判断是否出现 · 已暂停"
+        }
+
+        let notificationStatus: String
+        if preference.notificationsEnabled {
+            notificationStatus = SideQuestNotificationScheduleOption.all.first {
+                $0.schedule == preference.notificationSchedule
+            }.map { "通知 \($0.title)" } ?? "通知已开启"
+        } else {
+            notificationStatus = "通知关闭"
+        }
+        return "可选，由模型判断是否出现 · 已开启 · \(preference.frequency.title) · \(notificationStatus)"
+    }
+
+    private var sideQuestSettingsView: some View {
+        ScrollView {
+            VStack(spacing: DS.cardSpacing) {
+                sideQuestSettingsCard
+                sideQuestSeasonCard
+                sideQuestTrialReadoutCard
+                sideQuestPermissionsCard
+                sideQuestLifeContextCard
+            }
+            .padding(.horizontal, DS.pagePadding)
+            .padding(.top, DS.primaryScrollTopPadding)
+            .padding(.bottom, DS.primaryScrollBottomReserve)
+        }
+        .scrollIndicators(.hidden)
+        .background(DS.background.ignoresSafeArea())
+        .navigationTitle("生活奇遇")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var sideQuestSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.note)
+                    .frame(width: 36, height: 36)
+                    .background(DS.note.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("生活奇遇")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text("由模型判断是否值得出现；你始终可以跳过，不会影响训练指标。")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Toggle("接收偶发生活奇遇", isOn: Binding(
+                get: { store.sideQuestPreference.isEnabled },
+                set: { value in Task { await store.setSideQuestInvitationsEnabled(value) } }
+            ))
+            .tint(DS.accent)
+            .accessibilityIdentifier(SettingsAutomationID.sideQuestEnabledToggle)
+
+            if store.sideQuestPreference.isEnabled {
+                Picker("出现频率", selection: Binding(
+                    get: { store.sideQuestPreference.frequency },
+                    set: { value in Task { await store.setSideQuestFrequency(value) } }
+                )) {
+                    ForEach(SideQuestOfferFrequency.allCases) { frequency in
+                        Text(frequency.title).tag(frequency)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("希望遇见哪些方向")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    ForEach(SideQuestCategory.allCases) { category in
+                        Toggle(category.title, isOn: Binding(
+                            get: { store.sideQuestPreference.enabledCategories.contains(category) },
+                            set: { value in Task { await store.setSideQuestCategory(category, isEnabled: value) } }
+                        ))
+                        .font(.subheadline)
+                        .tint(DS.accent)
+                    }
+                }
+
+                Divider()
+
+                Toggle("允许生活奇遇通知", isOn: Binding(
+                    get: { store.sideQuestPreference.notificationsEnabled },
+                    set: { value in Task { await store.setSideQuestNotificationsEnabled(value) } }
+                ))
+                .tint(DS.accent)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestNotificationsToggle)
+
+                if store.sideQuestPreference.notificationsEnabled {
+                    Picker("提醒时段", selection: Binding(
+                        get: {
+                            SideQuestNotificationScheduleOption.all.first {
+                                $0.schedule == store.sideQuestPreference.notificationSchedule
+                            } ?? SideQuestNotificationScheduleOption.default
+                        },
+                        set: { value in Task { await store.setSideQuestNotificationSchedule(value.schedule) } }
+                    )) {
+                        ForEach(SideQuestNotificationScheduleOption.all) { option in
+                            Text(option.title).tag(option)
+                        }
+                    }
+                }
+            }
+
+            if !store.sideQuestMessage.isEmpty {
+                Text(store.sideQuestMessage)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .cardSurface()
+        .accessibilityIdentifier(SettingsAutomationID.sideQuestSettingsCard)
+    }
+
+    private var sideQuestTrialReadoutCard: some View {
+        let metrics = store.sideQuestTrialMetrics
+        let planningDecisions = metrics?.planningDecisions ?? 0
+        let holds = metrics?.holds ?? 0
+        let offers = metrics?.offers ?? 0
+        let accepted = metrics?.accepted ?? 0
+        let completed = metrics?.completed ?? 0
+        let corrections = metrics?.correctionsByKind.values.reduce(0, +) ?? 0
+        let acceptanceRate = metrics?.acceptanceRate ?? 0
+        let completionRate = metrics?.completionRate ?? 0
+        let holdRate = metrics?.holdRate ?? 0
+
+        return VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("生活奇遇试用记录")
+                    .font(.headline)
+                    .foregroundStyle(DS.ink)
+                Text("最近 7 天 · 仅本机记录")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                GridRow {
+                    sideQuestTrialMetric("模型判断", value: "\(planningDecisions)")
+                    sideQuestTrialMetric("暂不出现", value: "\(holds)")
+                }
+                GridRow {
+                    sideQuestTrialMetric("发出", value: "\(offers)")
+                    sideQuestTrialMetric("接下", value: "\(accepted)")
+                }
+                GridRow {
+                    sideQuestTrialMetric("完成", value: "\(completed)")
+                    sideQuestTrialMetric("纠正", value: "\(corrections)")
+                }
+                GridRow {
+                    sideQuestTrialMetric("暂不出现率", value: Self.sideQuestPercentage(holdRate))
+                    sideQuestTrialMetric("接下率", value: Self.sideQuestPercentage(acceptanceRate))
+                }
+                GridRow {
+                    sideQuestTrialMetric("完成率", value: Self.sideQuestPercentage(completionRate))
+                    Color.clear
+                }
+            }
+
+            Text("用于 vNext.1 的保留、调整或移除决策，不改变训练指标。")
+                .font(.footnote)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .cardSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "生活奇遇试用记录，最近 7 天，仅本机记录。模型判断 \(planningDecisions) 次，暂不出现 \(holds) 次，发出 \(offers) 个，接下 \(accepted) 个，完成 \(completed) 个，纠正 \(corrections) 次，暂不出现率 \(Self.sideQuestPercentage(holdRate))，接下率 \(Self.sideQuestPercentage(acceptanceRate))，完成率 \(Self.sideQuestPercentage(completionRate))。用于 vNext.1 的保留、调整或移除决策，不改变训练指标。"
+        )
+        .accessibilityIdentifier(SettingsAutomationID.sideQuestTrialReadoutCard)
+    }
+
+    private var sideQuestSeasonCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("30 天探索季")
+                    .font(.headline)
+                    .foregroundStyle(DS.ink)
+                    .accessibilityIdentifier(SettingsAutomationID.sideQuestSeasonCard)
+                Text("给生活奇遇一个主题弧线，不是每日打卡；模型仍会判断何时出现或暂不出现。")
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let season = store.activeSideQuestSeason {
+                Text(season.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                if let intent = season.intent {
+                    Text(intent)
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 8) {
+                    GridRow {
+                        sideQuestTrialMetric("完成", value: "\(season.completedCount)")
+                        sideQuestTrialMetric("跳过", value: "\(season.skippedCount)")
+                    }
+                    GridRow {
+                        sideQuestTrialMetric("接下", value: "\(season.acceptedCount)")
+                        sideQuestTrialMetric("第几天", value: "\(season.currentDay)/\(season.maxDays)")
+                    }
+                }
+                Button("结束探索季") {
+                    Task { await store.closeSideQuestSeason(early: true) }
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.brick)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestSeasonEndAction)
+            } else if let season = store.sideQuestSeasonReview {
+                Text("最近一季回顾：\(season.title)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text("完成 \(season.completedCount) · 跳过 \(season.skippedCount) · 接下 \(season.acceptedCount)")
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+                if !store.sideQuestSeasonCategories.isEmpty {
+                    Text(store.sideQuestSeasonCategories
+                        .sorted { $0.key.rawValue < $1.key.rawValue }
+                        .map { "\($0.key.title) \($0.value)" }
+                        .joined(separator: " · "))
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Button("开启新的 30 天探索季") {
+                    Task { await store.startSideQuestSeason(title: sideQuestSeasonTheme, intent: sideQuestSeasonIntent) }
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.accent)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestSeasonStartAction)
+            } else {
+                Picker("探索主题", selection: $sideQuestSeasonTheme) {
+                    Text("城市漫游").tag("城市漫游")
+                    Text("重新连接").tag("重新连接")
+                    Text("动手创作").tag("动手创作")
+                    Text("照顾身体").tag("照顾身体")
+                }
+                TextField("这一季想探索什么（可选）", text: $sideQuestSeasonIntent)
+                Button("开启 30 天探索季") {
+                    Task { await store.startSideQuestSeason(title: sideQuestSeasonTheme, intent: sideQuestSeasonIntent) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DS.accent)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestSeasonStartAction)
+            }
+        }
+        .cardSurface()
+    }
+
+    private func sideQuestTrialMetric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+            Text(value)
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(DS.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private static func sideQuestPercentage(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+
+    private var sideQuestPermissionsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("系统情境权限")
+                .font(.headline)
+            Text("仅在你主动点击时请求；今日页面不会触发系统权限弹窗。")
+                .font(.footnote)
+                .foregroundStyle(DS.mutedInk)
+            permissionRow("位置", status: store.sideQuestLocationAuthorizationStatus) {
+                store.requestSideQuestLocationPermission()
+            }
+            permissionRow("日历", status: store.sideQuestCalendarAuthorizationStatus) {
+                store.requestSideQuestCalendarPermission()
+            }
+            permissionRow("健康", status: store.sideQuestHealthAuthorizationStatus) {
+                store.requestSideQuestHealthPermission()
+            }
+        }
+        .cardSurface()
+    }
+
+    private func permissionRow(
+        _ title: String,
+        status: SideQuestAuthorizationStatus,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(status.displayTitle)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+            Button("请求") { action() }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var sideQuestLifeContextCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("生活情境")
+                    .font(.headline)
+                    .foregroundStyle(DS.ink)
+                    .accessibilityIdentifier(SettingsAutomationID.sideQuestLifeContextCard)
+                Text("地点称呼只留在本机；模型只会看到家或工作地点及你选择的实际条件，不会收到称呼、定位、日历原文或健康样本。")
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            practicalPlaceFields(
+                title: "家",
+                labelPrompt: "家的称呼（仅本机保存，可选）",
+                label: $lifeContextHomeLabel,
+                floorLevel: $lifeContextHomeFloorLevel,
+                place: .home
+            )
+
+            practicalPlaceFields(
+                title: "工作地点",
+                labelPrompt: "工作地点的称呼（仅本机保存，可选）",
+                label: $lifeContextWorkLabel,
+                floorLevel: $lifeContextWorkplaceFloorLevel,
+                place: .workplace
+            )
+
+            transitionWindowMultiSelect
+
+            contextMultiSelect(title: "通勤方式", values: SideQuestCommuteMode.allCases, selection: store.sideQuestLifeContextProfile.commuteModes) { value, isSelected in
+                updateSideQuestLifeContext { profile in
+                    if isSelected { profile.commuteModes.insert(value) } else { profile.commuteModes.remove(value) }
+                }
+            }
+
+            Picker("活动范围", selection: Binding(
+                get: { store.sideQuestLifeContextProfile.preferredActivityRadius },
+                set: { radius in updateSideQuestLifeContext { $0.preferredActivityRadius = radius } }
+            )) {
+                Text("未设置").tag(SideQuestActivityRadius?.none)
+                ForEach(SideQuestActivityRadius.allCases) { radius in
+                    Text(radius.title).tag(Optional(radius))
+                }
+            }
+
+            contextMultiSelect(title: "活动偏好", values: SideQuestMovementPreference.allCases, selection: store.sideQuestLifeContextProfile.movementPreferences) { value, isSelected in
+                updateSideQuestLifeContext { profile in
+                    if isSelected { profile.movementPreferences.insert(value) } else { profile.movementPreferences.remove(value) }
+                }
+            }
+
+            contextMultiSelect(title: "不接受的奇遇类别", values: SideQuestCategory.allCases, selection: store.sideQuestLifeContextProfile.unavailableCategories) { value, isSelected in
+                updateSideQuestLifeContext { profile in
+                    if isSelected { profile.unavailableCategories.insert(value) } else { profile.unavailableCategories.remove(value) }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("明确限制")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                ForEach(Array(lifeContextConstraints.enumerated()), id: \.offset) { index, constraint in
+                    HStack(spacing: 8) {
+                        Text(constraint)
+                            .font(.subheadline)
+                            .foregroundStyle(DS.ink)
+                        Spacer(minLength: 0)
+                        Button {
+                            lifeContextConstraints.remove(at: index)
+                            persistSideQuestLifeContextInputs()
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(DS.brick)
+                        .accessibilityLabel("删除限制")
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("例如：不安排需要消费的活动", text: $newLifeContextConstraint)
+                    Button {
+                        let normalized = newLifeContextConstraint.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !normalized.isEmpty else { return }
+                        lifeContextConstraints.append(String(normalized.prefix(180)))
+                        newLifeContextConstraint = ""
+                        persistSideQuestLifeContextInputs()
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(DS.accent)
+                    .accessibilityLabel("添加限制")
+                }
+            }
+
+            Button("保存生活情境") {
+                persistSideQuestLifeContextInputs()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(DS.accent)
+        }
+        .cardSurface()
+    }
+
+    private func contextMultiSelect<Value: Identifiable & Hashable>(
+        title: String,
+        values: [Value],
+        selection: Set<Value>,
+        update: @escaping (Value, Bool) -> Void
+    ) -> some View where Value.ID == String, Value: RawRepresentable, Value.RawValue == String {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+            ForEach(values) { value in
+                Toggle(value.rawValue, isOn: Binding(
+                    get: { selection.contains(value) },
+                    set: { update(value, $0) }
+                ))
+                .font(.subheadline)
+                .tint(DS.accent)
+            }
+        }
+    }
+
+    private func practicalPlaceFields(
+        title: String,
+        labelPrompt: String,
+        label: Binding<String>,
+        floorLevel: Binding<String>,
+        place: SideQuestPracticalPlace
+    ) -> some View {
+        let practical = store.sideQuestLifeContextProfile.practicalContext(for: place)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+            TextField(labelPrompt, text: label)
+                .textInputAutocapitalization(.never)
+            TextField("所在楼层（可选）", text: floorLevel)
+                .keyboardType(.numberPad)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestFloorField(place))
+            Picker("是否方便走楼梯", selection: Binding(
+                get: { practical.stairsAvailable },
+                set: { value in
+                    updateSideQuestLifeContext { profile in
+                        var updated = profile.practicalContext(for: place)
+                        updated.stairsAvailable = value
+                        profile.setPracticalContext(updated, for: place)
+                    }
+                }
+            )) {
+                Text("未设置").tag(Bool?.none)
+                Text("可以").tag(Optional(true))
+                Text("不方便或没有").tag(Optional(false))
+            }
+            .accessibilityIdentifier(SettingsAutomationID.sideQuestStairsPicker(place))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var transitionWindowMultiSelect: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("常见时段")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+                .accessibilityIdentifier(SettingsAutomationID.sideQuestTransitionWindows)
+            ForEach(SideQuestTransitionWindow.allCases) { window in
+                Toggle(window.title, isOn: Binding(
+                    get: { store.sideQuestLifeContextProfile.transitionWindows.contains(window) },
+                    set: { isSelected in
+                        updateSideQuestLifeContext { profile in
+                            if isSelected { profile.transitionWindows.insert(window) } else { profile.transitionWindows.remove(window) }
+                        }
+                    }
+                ))
+                .font(.subheadline)
+                .tint(DS.accent)
+            }
+        }
+    }
+
+    private func loadSideQuestLifeContextInputs() {
+        let profile = store.sideQuestLifeContextProfile
+        lifeContextHomeLabel = profile.homeLabel ?? ""
+        lifeContextWorkLabel = profile.workLabel ?? ""
+        lifeContextHomeFloorLevel = profile.homePracticalContext.floorLevel.map(String.init) ?? ""
+        lifeContextWorkplaceFloorLevel = profile.workplacePracticalContext.floorLevel.map(String.init) ?? ""
+        lifeContextConstraints = profile.constraints
+    }
+
+    private func updateSideQuestLifeContext(_ update: @escaping (inout SideQuestLifeContextProfile) -> Void) {
+        var profile = store.sideQuestLifeContextProfile
+        update(&profile)
+        Task { await store.saveSideQuestLifeContextProfile(profile) }
+    }
+
+    private func persistSideQuestLifeContextInputs() {
+        var profile = store.sideQuestLifeContextProfile
+        profile.homeLabel = SideQuestLifeContextProfile.normalized(lifeContextHomeLabel, maximumLength: 80)
+        profile.workLabel = SideQuestLifeContextProfile.normalized(lifeContextWorkLabel, maximumLength: 80)
+        profile.homePracticalContext.floorLevel = Int(lifeContextHomeFloorLevel)
+        profile.workplacePracticalContext.floorLevel = Int(lifeContextWorkplaceFloorLevel)
+        profile.constraints = lifeContextConstraints
+        Task { await store.saveSideQuestLifeContextProfile(profile) }
+    }
+
+    private var advancedToolsLink: some View {
+        NavigationLink {
+            advancedToolsView
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DS.accent)
+                    .frame(width: 36, height: 36)
+                    .background(DS.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("高级工具")
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                    Text("模型调用诊断、Prompt 评测与本地扩展")
+                        .font(.footnote)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardSurface()
+        .accessibilityIdentifier(SettingsAutomationID.advancedToolsAction)
+    }
+
+    private var advancedToolsView: some View {
+        ScrollView {
+            VStack(spacing: DS.cardSpacing) {
+                if AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
+                    assetPackInstallManifestCard
+                }
+                promptAuditCard
+                promptEvalGateCard
+                promptTemplateCard
+                lensAssetPackCard
+                promptAssetPackCard
+                if !AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
+                    assetPackInstallManifestCard
+                }
+                SettingRow(title: "请求协议", value: "OpenAI-compatible / 自动 JSON 降级")
+            }
+            .padding(.horizontal, DS.pagePadding)
+            .padding(.top, DS.primaryScrollTopPadding)
+            .padding(.bottom, DS.primaryScrollBottomReserve)
+        }
+        .scrollIndicators(.hidden)
+        .background(DS.background.ignoresSafeArea())
+        .navigationTitle("高级工具")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await store.loadRecentPromptRuns()
+            await store.loadRecentPromptEvalRuns()
+            await store.loadLensAssetPacks()
+            await store.loadPromptAssetPacks()
+            if AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
                 await store.loadAssetPackRegistrySubscriptions()
             }
         }
@@ -2284,7 +3261,7 @@ struct SettingsView: View {
                         .font(.headline)
                         .foregroundStyle(DS.ink)
                         .accessibilityIdentifier(SettingsAutomationID.lensPackCard)
-                    Text("管理本机导入的角色卡、思维框架和未来 Marketplace 透镜。")
+                    Text("管理本机导入的角色卡和思维框架。")
                         .font(.footnote)
                         .foregroundStyle(DS.mutedInk)
                 }
@@ -2420,226 +3397,228 @@ struct SettingsView: View {
                     .accessibilityIdentifier(SettingsAutomationID.assetPackManifestMessage)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("远程目录 URL")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DS.ink)
-                Text("先获取目录，再选择其中的资产包条目安装。每个条目仍会走清单信任校验。")
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
-
-                HStack(spacing: 8) {
-                    SettingsTextField(
-                        placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
-                        text: $assetPackRegistryCatalogURLInput,
-                        keyboardType: .URL,
-                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistryCatalogURLField
-                    )
-
-                    Button {
-                        fetchRemoteAssetPackRegistryCatalog()
-                    } label: {
-                        Label("获取目录", systemImage: "list.bullet.rectangle")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DS.accent)
-                    .controlSize(.small)
-                    .disabled(assetPackRegistryCatalogURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogFetchAction)
-                }
-                .font(.footnote.weight(.semibold))
-            }
-
-            if !store.assetPackRegistryCatalogEntries.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("远程目录条目")
+            if AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("远程目录 URL")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(DS.ink)
-
-                    ForEach(store.assetPackRegistryCatalogEntries) { entry in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(entry.displayName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(DS.ink)
-                                    Text(entry.summary)
-                                        .font(.caption)
-                                        .foregroundStyle(DS.mutedInk)
-                                        .lineLimit(2)
-                                    if let publisherLine = assetPackRegistryCatalogPublisherLine(entry) {
-                                        Text(publisherLine)
-                                            .font(.caption2)
-                                            .foregroundStyle(DS.mutedInk)
-                                            .lineLimit(1)
-                                    }
-                                }
-
-                                Spacer(minLength: 0)
-
-                                Button {
-                                    installAssetPackRegistryCatalogEntry(entry.id)
-                                } label: {
-                                    Label("安装", systemImage: "arrow.down.circle")
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                                .font(.caption.weight(.semibold))
-                                .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId: entry.id))
-                            }
-
-                            Text(entry.manifestURL.absoluteString)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(DS.mutedInk)
-                                .lineLimit(1)
-
-                            if let trustPolicyLine = assetPackRegistryCatalogTrustPolicyLine(entry) {
-                                Text(trustPolicyLine)
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(DS.mutedInk)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .padding(10)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-                }
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("目录订阅")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DS.ink)
-                        Text("保存常用目录后，可统一同步并安装条目。")
-                            .font(.caption)
-                            .foregroundStyle(DS.mutedInk)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Button {
-                        syncAssetPackRegistrySubscriptions()
-                    } label: {
-                        Label("同步", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.footnote.weight(.semibold))
-                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSyncAction)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    SettingsTextField(
-                        placeholder: "MingSi Registry",
-                        text: $assetPackRegistrySubscriptionNameInput,
-                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionNameField
-                    )
-
-                    SettingsTextField(
-                        placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
-                        text: $assetPackRegistrySubscriptionURLInput,
-                        keyboardType: .URL,
-                        accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionURLField
-                    )
+                    Text("先获取目录，再选择其中的资产包条目安装。每个条目仍会走清单信任校验。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
 
                     HStack(spacing: 8) {
+                        SettingsTextField(
+                            placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
+                            text: $assetPackRegistryCatalogURLInput,
+                            keyboardType: .URL,
+                            accessibilityIdentifier: SettingsAutomationID.assetPackRegistryCatalogURLField
+                        )
+
                         Button {
-                            saveAssetPackRegistrySubscription()
+                            fetchRemoteAssetPackRegistryCatalog()
                         } label: {
-                            Label("保存订阅", systemImage: "bookmark")
+                            Label("获取目录", systemImage: "list.bullet.rectangle")
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(DS.accent)
                         .controlSize(.small)
-                        .disabled(
-                            assetPackRegistrySubscriptionNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                                assetPackRegistrySubscriptionURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        )
-                        .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSaveAction)
-
-                        Spacer(minLength: 0)
+                        .disabled(assetPackRegistryCatalogURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogFetchAction)
                     }
                     .font(.footnote.weight(.semibold))
                 }
 
-                if store.assetPackRegistrySubscriptions.isEmpty {
-                    Text("还没有保存的目录订阅。")
-                        .font(.footnote)
-                        .foregroundStyle(DS.mutedInk)
-                } else {
+                if !store.assetPackRegistryCatalogEntries.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(store.assetPackRegistrySubscriptions) { subscription in
+                        Text("远程目录条目")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DS.ink)
+
+                        ForEach(store.assetPackRegistryCatalogEntries) { entry in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Label(
-                                        subscription.displayName,
-                                        systemImage: subscription.isEnabled ? "checkmark.circle" : "pause.circle"
-                                    )
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(subscription.isEnabled ? DS.ink : DS.mutedInk)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(entry.displayName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(DS.ink)
+                                        Text(entry.summary)
+                                            .font(.caption)
+                                            .foregroundStyle(DS.mutedInk)
+                                            .lineLimit(2)
+                                        if let publisherLine = assetPackRegistryCatalogPublisherLine(entry) {
+                                            Text(publisherLine)
+                                                .font(.caption2)
+                                                .foregroundStyle(DS.mutedInk)
+                                                .lineLimit(1)
+                                        }
+                                    }
 
                                     Spacer(minLength: 0)
 
                                     Button {
-                                        toggleAssetPackRegistrySubscription(subscription)
+                                        installAssetPackRegistryCatalogEntry(entry.id)
                                     } label: {
-                                        Label(subscription.isEnabled ? "停用" : "启用", systemImage: subscription.isEnabled ? "pause" : "play")
+                                        Label("安装", systemImage: "arrow.down.circle")
                                     }
                                     .buttonStyle(.bordered)
                                     .controlSize(.mini)
                                     .font(.caption.weight(.semibold))
-                                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionToggleAction(subscriptionId: subscription.id))
+                                    .accessibilityIdentifier(SettingsAutomationID.assetPackRegistryCatalogEntryInstallAction(entryId: entry.id))
                                 }
 
-                                Text(subscription.catalogURL.absoluteString)
+                                Text(entry.manifestURL.absoluteString)
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(DS.mutedInk)
                                     .lineLimit(1)
 
-                                Text(assetPackRegistrySubscriptionStatusText(subscription))
-                                    .font(.caption)
-                                    .foregroundStyle(subscription.lastSyncStatus == .failed ? DS.caution : DS.mutedInk)
-                                    .lineLimit(2)
+                                if let trustPolicyLine = assetPackRegistryCatalogTrustPolicyLine(entry) {
+                                    Text(trustPolicyLine)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(DS.mutedInk)
+                                        .lineLimit(1)
+                                }
                             }
                             .padding(10)
                             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                     }
                 }
-            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("远程清单 URL")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DS.ink)
-                Text("获取后仍会经过本地信任校验再安装。")
-                    .font(.caption)
-                    .foregroundStyle(DS.mutedInk)
+                Divider()
 
-                HStack(spacing: 8) {
-                    SettingsTextField(
-                        placeholder: "https://example.com/mingsi/asset-pack-manifest.json",
-                        text: $assetPackManifestRemoteURLInput,
-                        keyboardType: .URL,
-                        accessibilityIdentifier: SettingsAutomationID.assetPackManifestRemoteURLField
-                    )
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("目录订阅")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(DS.ink)
+                            Text("保存常用目录后，可统一同步并安装条目。")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                        }
 
-                    Button {
-                        installRemoteAssetPackManifest()
-                    } label: {
-                        Label("获取安装", systemImage: "arrow.down.doc")
+                        Spacer(minLength: 0)
+
+                        Button {
+                            syncAssetPackRegistrySubscriptions()
+                        } label: {
+                            Label("同步", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .font(.footnote.weight(.semibold))
+                        .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSyncAction)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DS.accent)
-                    .controlSize(.small)
-                    .disabled(assetPackManifestRemoteURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier(SettingsAutomationID.assetPackManifestRemoteInstallAction)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingsTextField(
+                            placeholder: "MingSi Registry",
+                            text: $assetPackRegistrySubscriptionNameInput,
+                            accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionNameField
+                        )
+
+                        SettingsTextField(
+                            placeholder: "https://example.com/mingsi/asset-pack-catalog.json",
+                            text: $assetPackRegistrySubscriptionURLInput,
+                            keyboardType: .URL,
+                            accessibilityIdentifier: SettingsAutomationID.assetPackRegistrySubscriptionURLField
+                        )
+
+                        HStack(spacing: 8) {
+                            Button {
+                                saveAssetPackRegistrySubscription()
+                            } label: {
+                                Label("保存订阅", systemImage: "bookmark")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DS.accent)
+                            .controlSize(.small)
+                            .disabled(
+                                assetPackRegistrySubscriptionNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                    assetPackRegistrySubscriptionURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            )
+                            .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionSaveAction)
+
+                            Spacer(minLength: 0)
+                        }
+                        .font(.footnote.weight(.semibold))
+                    }
+
+                    if store.assetPackRegistrySubscriptions.isEmpty {
+                        Text("还没有保存的目录订阅。")
+                            .font(.footnote)
+                            .foregroundStyle(DS.mutedInk)
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(store.assetPackRegistrySubscriptions) { subscription in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Label(
+                                            subscription.displayName,
+                                            systemImage: subscription.isEnabled ? "checkmark.circle" : "pause.circle"
+                                        )
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(subscription.isEnabled ? DS.ink : DS.mutedInk)
+
+                                        Spacer(minLength: 0)
+
+                                        Button {
+                                            toggleAssetPackRegistrySubscription(subscription)
+                                        } label: {
+                                            Label(subscription.isEnabled ? "停用" : "启用", systemImage: subscription.isEnabled ? "pause" : "play")
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.mini)
+                                        .font(.caption.weight(.semibold))
+                                        .accessibilityIdentifier(SettingsAutomationID.assetPackRegistrySubscriptionToggleAction(subscriptionId: subscription.id))
+                                    }
+
+                                    Text(subscription.catalogURL.absoluteString)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(DS.mutedInk)
+                                        .lineLimit(1)
+
+                                    Text(assetPackRegistrySubscriptionStatusText(subscription))
+                                        .font(.caption)
+                                        .foregroundStyle(subscription.lastSyncStatus == .failed ? DS.caution : DS.mutedInk)
+                                        .lineLimit(2)
+                                }
+                                .padding(10)
+                                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                        }
+                    }
                 }
-                .font(.footnote.weight(.semibold))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("远程清单 URL")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text("获取后仍会经过本地信任校验再安装。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+
+                    HStack(spacing: 8) {
+                        SettingsTextField(
+                            placeholder: "https://example.com/mingsi/asset-pack-manifest.json",
+                            text: $assetPackManifestRemoteURLInput,
+                            keyboardType: .URL,
+                            accessibilityIdentifier: SettingsAutomationID.assetPackManifestRemoteURLField
+                        )
+
+                        Button {
+                            installRemoteAssetPackManifest()
+                        } label: {
+                            Label("获取安装", systemImage: "arrow.down.doc")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.accent)
+                        .controlSize(.small)
+                        .disabled(assetPackManifestRemoteURLInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier(SettingsAutomationID.assetPackManifestRemoteInstallAction)
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -2841,7 +3820,7 @@ struct SettingsView: View {
 
                     Picker("模式", selection: $selectedSessionMode) {
                         ForEach(SessionMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
+                            Text(mode.displayTitle).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -2851,7 +3830,7 @@ struct SettingsView: View {
                         LabeledContent("ID", value: template.id.rawValue)
                         LabeledContent("版本", value: template.version)
                         LabeledContent("输出 Schema 版本", value: "\(template.outputSchemaVersion)")
-                        LabeledContent("模式", value: selectedSessionMode.title)
+                        LabeledContent("模式", value: selectedSessionMode.displayTitle)
                     }
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(DS.ink)
@@ -3060,8 +4039,12 @@ struct SettingsView: View {
                 if !store.settingsMessage.isEmpty {
                     Text(store.settingsMessage)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .foregroundStyle(
+                            store.settingsMessage.contains("失败") || store.settingsMessage.contains("不可用")
+                                ? DS.caution
+                                : DS.mutedInk
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -3117,6 +4100,12 @@ struct SettingsView: View {
                         PromptAssetQualitySummarySection(
                             summaries: Array(store.promptAssetRunQualitySummaries.prefix(3)),
                             gate: store.promptAssetQualityGate
+                        )
+                    }
+
+                    if !store.coachPromptQualitySummaries.isEmpty {
+                        CoachPromptQualitySummarySection(
+                            summaries: Array(store.coachPromptQualitySummaries.prefix(5))
                         )
                     }
 
@@ -3726,7 +4715,7 @@ struct FeatureContainer<Content: View>: View {
                 VStack(alignment: .leading, spacing: DS.sectionSpacing) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
                             .foregroundStyle(DS.ink)
                         Text(subtitle)
                             .font(.subheadline)
@@ -3753,24 +4742,32 @@ struct ResumeTodayRow: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Image(systemName: "arrow.uturn.left")
-                .font(.caption.weight(.bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(DS.accent)
+                .frame(width: 34, height: 34)
+                .background(DS.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+
             Text(store.loopResumeText)
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ink)
-                .lineLimit(1)
-            Spacer(minLength: 8)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+
+            Spacer(minLength: 4)
+
             Button {
                 store.selectedTab = .today
             } label: {
                 Image(systemName: "arrow.right")
                     .font(.caption.weight(.bold))
-                    .frame(width: 28, height: 28)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                    .background(DS.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
             }
-            .buttonStyle(.bordered)
-            .tint(DS.accent)
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.accent)
             .accessibilityLabel("回到今日继续复盘")
 
             Button {
@@ -3778,13 +4775,19 @@ struct ResumeTodayRow: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .frame(width: 28, height: 28)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
             }
             .buttonStyle(.plain)
             .foregroundStyle(DS.mutedInk)
             .accessibilityLabel("暂时隐藏继续今日")
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                .stroke(DS.accent.opacity(0.14), lineWidth: 1)
+        )
     }
 }
 
@@ -3929,7 +4932,7 @@ private struct HistoryCalendarSheet: View {
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.headline)
-                                .frame(width: 38, height: 38)
+                                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                         }
                         .buttonStyle(.bordered)
 
@@ -3949,7 +4952,7 @@ private struct HistoryCalendarSheet: View {
                         } label: {
                             Image(systemName: "chevron.right")
                                 .font(.headline)
-                                .frame(width: 38, height: 38)
+                                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                         }
                         .buttonStyle(.bordered)
                     }
@@ -3997,7 +5000,7 @@ private struct HistoryCalendarSheet: View {
         case .month:
             VStack(spacing: 10) {
                 LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Calendar.current.veryShortWeekdaySymbols, id: \.self) { symbol in
+                    ForEach(Array(Calendar.current.veryShortWeekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                         Text(symbol)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(DS.mutedInk)
@@ -4783,6 +5786,7 @@ private struct ProjectEmptyEvidenceState: View {
     let detail: String?
     let canCreateProject: Bool
     let createProject: () -> Void
+    let goToToday: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -4819,6 +5823,16 @@ private struct ProjectEmptyEvidenceState: View {
                     .controlSize(.small)
                     .tint(DS.accent)
                     .padding(.top, 2)
+                } else {
+                    Button(action: goToToday) {
+                        Label("去今日记录", systemImage: "square.and.pencil")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(DS.accent)
+                    .padding(.top, 2)
+                    .accessibilityIdentifier(ProjectsAutomationID.emptyStateTodayAction)
                 }
             }
         }
@@ -4858,7 +5872,7 @@ private struct ProjectEvidenceBoardRow: View {
 
                     if let nextBet = item.digest.nextBet {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("Next Bet")
+                            Text("下一步验证")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(DS.accent)
                             Text(nextBet)
@@ -4896,6 +5910,7 @@ private struct ProjectDetailView: View {
     let item: ProjectEvidenceBoardItem
     let project: Project?
     @State private var isEditorPresented = false
+    @State private var isClosurePresented = false
     @State private var isProjectContextExpanded = false
     @State private var isProgressSignalsExpanded = false
     @State private var isEvidenceTimelineExpanded = false
@@ -4911,6 +5926,7 @@ private struct ProjectDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 detailHeader
                 projectFocusSection
+                projectClosureSection
                 evidenceTimeline
                 projectContextSection
                 projectInsightSection
@@ -4927,23 +5943,128 @@ private struct ProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if project != nil {
-                    Button {
-                        isEditorPresented = true
-                    } label: {
-                        Label("编辑", systemImage: "slider.horizontal.3")
+                if let currentProject {
+                    HStack(spacing: 12) {
+                        if currentProject.status == .archived {
+                            Button {
+                                Task { await store.restoreProject(currentProject.id) }
+                            } label: {
+                                Image(systemName: "arrow.uturn.backward.circle")
+                            }
+                            .accessibilityLabel("恢复项目")
+                        } else {
+                            Button {
+                                isClosurePresented = true
+                            } label: {
+                                Image(systemName: "stop.circle")
+                            }
+                            .accessibilityLabel("结束项目")
+                        }
+                        Button {
+                            isEditorPresented = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                        }
+                        .accessibilityLabel("编辑项目")
                     }
                 }
             }
         }
         .sheet(isPresented: $isEditorPresented) {
-            if let project {
-                ProjectEditorSheet(project: project)
+            if let currentProject {
+                ProjectEditorSheet(project: currentProject)
+                    .environmentObject(store)
+            }
+        }
+        .sheet(isPresented: $isClosurePresented) {
+            if let currentProject {
+                ProjectClosureSheet(project: currentProject)
                     .environmentObject(store)
             }
         }
         .task(id: item.id) {
             await store.loadProjectInsights(for: item.id)
+        }
+    }
+
+    private var currentProject: Project? {
+        store.projectsById[item.id] ?? project
+    }
+
+    @ViewBuilder
+    private var projectClosureSection: some View {
+        if let review = store.projectClosureReviews[item.id] {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    SectionLabel("结束复盘")
+                    Spacer()
+                    Text(review.reason.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Text(review.outcome)
+                    .font(.subheadline)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let note = review.reviewNote, !note.isEmpty {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider()
+                HStack {
+                    Text("结束总结")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Spacer()
+                    Button {
+                        Task { await store.generateProjectClosureSummary(for: review.projectId) }
+                    } label: {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.accent)
+                    .accessibilityLabel("生成项目结束总结")
+                    .disabled(store.isGeneratingProjectClosureSummary)
+                }
+                if store.isGeneratingProjectClosureSummary {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if !store.projectClosureSummaryMessage.isEmpty {
+                    Text(store.projectClosureSummaryMessage)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let summary = review.aiSummary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.subheadline)
+                        .foregroundStyle(DS.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(review.principleCandidates) { candidate in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(candidate.title)
+                            .font(.subheadline.weight(.semibold))
+                        Text(candidate.summary)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("依据 \(candidate.evidenceRefs.count) 条确认证据")
+                            .font(.caption2)
+                            .foregroundStyle(DS.mutedInk)
+                        Button("确认原则") {
+                            Task { await store.acceptProjectClosurePrinciple(candidate.id, projectId: review.projectId) }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .projectDetailSurface()
         }
     }
 
@@ -5080,7 +6201,7 @@ private struct ProjectDetailView: View {
                     } label: {
                         Image(systemName: "sparkle.magnifyingglass")
                             .font(.caption.weight(.semibold))
-                            .frame(width: 30, height: 30)
+                            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(DS.accent)
@@ -5241,7 +6362,7 @@ private struct ProjectDetailView: View {
         let entries = projectPrincipleEvidenceEntries(from: item)
         if !entries.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionLabel("Principles")
+                SectionLabel("原则资产")
                 Text("只展示已链接到历史原则资产的证据。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
@@ -5362,6 +6483,74 @@ private struct ProjectProgressSignalRow: View {
     }
 }
 
+private struct ProjectClosureSheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    let project: Project
+
+    @State private var reason: ProjectClosureReason = .achieved
+    @State private var outcome = ""
+    @State private var transferredItems = ""
+    @State private var reviewNote = ""
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("结束原因") {
+                    Picker("", selection: $reason) {
+                        ForEach(ProjectClosureReason.allCases) { reason in
+                            Text(reason.title).tag(reason)
+                        }
+                    }
+                    .labelsHidden()
+                    .accessibilityLabel("结束原因")
+                    .pickerStyle(.inline)
+                }
+
+                Section("实际结果") {
+                    TextField("项目最终产生了什么结果？", text: $outcome, axis: .vertical)
+                        .lineLimit(3...7)
+                }
+
+                Section("可选补充") {
+                    TextField("未完成事项如何处理", text: $transferredItems, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("补充复盘", text: $reviewNote, axis: .vertical)
+                        .lineLimit(2...5)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(DS.background.ignoresSafeArea())
+            .navigationTitle("结束项目")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("结束") {
+                        isSaving = true
+                        Task {
+                            let didClose = await store.closeProject(
+                                project.id,
+                                reason: reason,
+                                outcome: outcome,
+                                transferredItems: transferredItems,
+                                reviewNote: reviewNote
+                            )
+                            isSaving = false
+                            if didClose { dismiss() }
+                        }
+                    }
+                    .disabled(isSaving || outcome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
 private struct ProjectEditorSheet: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -5408,27 +6597,8 @@ private struct ProjectEditorSheet: View {
                     HStack {
                         Text("当前状态")
                         Spacer()
-                        Text(project.status.title)
+                        Text(project.status == .archived ? "已结束" : project.status.title)
                             .foregroundStyle(DS.mutedInk)
-                    }
-                    if project.status == .archived {
-                        Button {
-                            Task {
-                                await store.restoreProject(project.id)
-                                dismiss()
-                            }
-                        } label: {
-                            Label("恢复为 active", systemImage: "arrow.uturn.backward.circle")
-                        }
-                    } else {
-                        Button(role: .destructive) {
-                            Task {
-                                await store.archiveProject(project.id)
-                                dismiss()
-                            }
-                        } label: {
-                            Label("归档项目", systemImage: "archivebox")
-                        }
                     }
                 }
             }
@@ -5524,7 +6694,7 @@ private struct ProjectPendingInsightCard: View {
                 Button(action: onDismiss) {
                     Image(systemName: "minus.circle")
                         .font(.caption.weight(.semibold))
-                        .frame(width: 30, height: 30)
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DS.mutedInk)
@@ -5709,12 +6879,14 @@ func projectEvidenceDisplayTitle(link: ProjectLink, record: HistoryRecord) -> St
     switch link.sourceType {
     case .dailyEntry:
         return record.draft.rawText.isEmpty ? "当日复盘记录" : record.draft.rawText
+    case .trainingCase:
+        return record.caseRecords.first { $0.id.uuidString == link.sourceId }?.trainingCase.title ?? "事项"
     case .thinkingCard:
         return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
     case .quest:
         return record.quests.first { $0.id.uuidString == link.sourceId }?.title ?? "明日验证"
     case .verification:
-        return record.verification?.calibrationNote ?? "结果校准"
+        return record.allVerifications.first { $0.id.uuidString == link.sourceId }?.calibrationNote ?? "结果校准"
     case .principle:
         return record.principles.first { $0.id.uuidString == link.sourceId }?.title ?? "原则资产"
     }
@@ -5912,7 +7084,7 @@ private extension ProjectStatus {
         case .active: return "active"
         case .watching: return "watching"
         case .paused: return "paused"
-        case .archived: return "archived"
+        case .archived: return "已结束"
         }
     }
 
@@ -5921,7 +7093,7 @@ private extension ProjectStatus {
         case .active: return "活跃"
         case .watching: return "关注中"
         case .paused: return "暂停"
-        case .archived: return "已归档"
+        case .archived: return "已结束"
         }
     }
 }
@@ -5930,6 +7102,7 @@ private extension ProjectSourceType {
     var title: String {
         switch self {
         case .dailyEntry: return "日记"
+        case .trainingCase: return "事项"
         case .thinkingCard: return "卡片"
         case .quest: return "任务"
         case .verification: return "验证"
@@ -6371,7 +7544,7 @@ private struct ContributionRow: View {
             .labelStyle(.iconOnly)
             .font(.caption.weight(.semibold))
             .foregroundStyle(isMarkedInaccurate ? DS.success : DS.mutedInk)
-            .frame(width: 28, height: 28)
+            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -6675,6 +7848,97 @@ private struct PromptAssetQualitySummarySection: View {
     }
 }
 
+private struct CoachPromptQualitySummarySection: View {
+    let summaries: [CoachPromptQualitySummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("教练呈现质量")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text("(summaries.count)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                Spacer(minLength: 8)
+            }
+
+            Text("只统计实际显示给用户的追问和验证建议；无反馈样本显示为未知。")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(summaries) { summary in
+                    CoachPromptQualitySummaryRow(summary: summary)
+                }
+            }
+        }
+        .padding(10)
+        .background(DS.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        )
+    }
+}
+
+private struct CoachPromptQualitySummaryRow: View {
+    let summary: CoachPromptQualitySummary
+
+    private var promptName: String {
+        PromptID(rawValue: summary.promptId)?.displayName ?? summary.promptId
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(promptName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                Text("v\(summary.promptVersion)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+                Spacer(minLength: 8)
+                Text(summary.latestUpdatedAt.mingsiShortDate)
+                    .font(.caption2)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            Text("已呈现 \(summary.presentedCount) · 失败 (summary.transportFailedCount + summary.parseRejectedCount + summary.qualityRejectedCount) · 丢弃 (summary.discardedCount) · 取消 (summary.cancelledCount)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(DS.mutedInk)
+
+            HStack(spacing: 10) {
+                Text("反馈覆盖 \(Self.percent(summary.feedbackCoverageRate))")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+                if let rate = summary.ratedNegativeFeedbackRate {
+                    Text("负向反馈 \(Self.percent(rate))")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(rate > 0.35 ? DS.caution : DS.mutedInk)
+                } else {
+                    Text("负向反馈 未知")
+                        .font(.caption2)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer(minLength: 0)
+            }
+            .accessibilityIdentifier("coachPromptQuality-\(summary.id)")
+        }
+        .padding(10)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    private static func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+}
+
 private struct PromptAssetQualitySummaryRow: View {
     let summary: PromptAssetRunQualitySummary
 
@@ -6785,6 +8049,13 @@ private struct PromptRunAuditRow: View {
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .lineLimit(1)
+
+            if let route = run.decisionRoute {
+                Text("路由：\(route.title)")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(1)
+            }
 
             Text("source \(run.sourceRecordIds.count) · reference \(referenceCount)")
                 .font(.caption)
@@ -6916,8 +8187,8 @@ extension HistoricalRetryCandidateStatus {
         switch self {
         case .pending: return "等待后台生成候选卡片"
         case .retrying: return "正在重新调用 AI 生成候选"
-        case .candidateReady: return "候选已生成，可查看并决定是否接受"
-        case .accepted: return "候选已接受，作为本次历史修复审计结果保留"
+        case .candidateReady: return "候选已生成，可查看并保留为审计记录；不会改写原记录"
+        case .accepted: return "候选已保留为审计记录，原历史内容未被改写"
         case .dismissed: return "已忽略本次候选结果"
         case .blocked: return "因已有确认卡片或下游证据，候选被安全阻断"
         case .failed: return "本次重试生成失败，失败原因已保留"
@@ -6951,33 +8222,6 @@ extension PromptRun {
         case .auditOnlyFailure:
             return "失败 · 仅审计记录，暂不支持历史修复"
         }
-    }
-}
-
-struct HistoryRepairSummary {
-    var unresolvedCount: Int
-    var reviewableCount: Int
-    var completedCount: Int
-    var problemCount: Int
-
-    var summaryLine: String? {
-        guard unresolvedCount + reviewableCount + completedCount + problemCount > 0 else {
-            return nil
-        }
-        var parts: [String] = []
-        if unresolvedCount > 0 {
-            parts.append("\(unresolvedCount) 待生成候选")
-        }
-        if reviewableCount > 0 {
-            parts.append("\(reviewableCount) 待审阅")
-        }
-        if completedCount > 0 {
-            parts.append("\(completedCount) 已完成")
-        }
-        if problemCount > 0 {
-            parts.append("\(problemCount) 异常")
-        }
-        return parts.joined(separator: " · ")
     }
 }
 
@@ -7138,6 +8382,27 @@ func growthMetricFallbackReason(reason: String?, contributions: [MetricContribut
     return "根据已接受贡献归因，点击查看来源证据。"
 }
 
+func normalizedMetricDetailContributions(
+    _ contributions: [MetricContribution],
+    metric: GrowthMetric
+) -> [MetricContribution] {
+    MetricContribution.latestVersionsForHistory(
+        contributions.filter { contribution in
+            contribution.metric == metric &&
+                contribution.candidateStatus != .rejected &&
+                contribution.userFeedback != .inaccurate &&
+                contribution.userFeedback != .dismissed &&
+                !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    )
+}
+
+func weeklyGuidanceReferenceCopy(hintIDs: [String]) -> String? {
+    hintIDs.compactMap { hintID in
+        BuiltinGuidanceCatalog.items.first(where: { $0.hintId == hintID })?.copy
+    }.first
+}
+
 func historyRecordContainsDeepLinkSource(_ deepLink: HistoryDeepLink, in record: HistoryRecord) -> Bool {
     guard record.draft.id == deepLink.dailyEntryId, let sourceId = deepLink.sourceId else {
         return false
@@ -7148,6 +8413,11 @@ func historyRecordContainsDeepLinkSource(_ deepLink: HistoryDeepLink, in record:
         }
     }
     return record.sourceIds.contains(sourceId)
+}
+
+func historyDeepLinkIsLocated(_ deepLink: HistoryDeepLink?, in record: HistoryRecord) -> Bool {
+    guard let deepLink else { return false }
+    return historyRecordContainsDeepLinkSource(deepLink, in: record)
 }
 
 func isProjectLinkHighlighted(_ link: ProjectLink, highlightedSourceId: String?) -> Bool {

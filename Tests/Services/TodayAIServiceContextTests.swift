@@ -276,7 +276,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertFalse(updates.isEmpty)
         let request = try XCTUnwrap(client.requests.first)
         let legacy = try XCTUnwrap(request.contextPayload?.legacyKeyValues)
-        XCTAssertEqual(legacy["streamProtocol"], "MINGSI_STREAM_V1")
+        XCTAssertEqual(legacy["streamProtocol"], "MINGSI_STREAM_V2")
     }
 
     func testGenerateQuestions_usesStreamingClientWhenAvailable() async throws {
@@ -354,7 +354,7 @@ final class TodayAIServiceContextTests: XCTestCase {
     func testOrganizeCardsPrompt_usesStreamingXMLInstructions() {
         let template = LocalPromptProvider().template(for: .organizeCards, mode: .standard)
 
-        XCTAssertTrue(template.systemText.contains("MINGSI_STREAM_V1"))
+        XCTAssertTrue(template.systemText.contains("MINGSI_STREAM_V2"))
         XCTAssertFalse(template.systemText.contains("Return valid JSON only"))
         XCTAssertTrue(template.userText.contains("<CARD>"))
         XCTAssertTrue(template.userText.contains("</CARD>"))
@@ -569,6 +569,10 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertFalse(request.contextRecordIDs.contains(unrelatedPrinciple.id.uuidString))
         XCTAssertTrue(request.contextRecordIDs.contains(card.id.uuidString))
         XCTAssertTrue(request.inputSummary.contains("principles=Clarify meeting ownership"))
+        XCTAssertTrue(
+            try XCTUnwrap(request.contextPayload?.directives.principleSelectionRule)
+                .contains("final decision maker")
+        )
     }
 
     func testGenerateQuestions_exposesStructuredContextPayloadWithCardsLensModeAndPrinciples() async throws {

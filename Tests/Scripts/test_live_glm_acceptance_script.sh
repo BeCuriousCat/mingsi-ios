@@ -51,15 +51,29 @@ dry_output="$("$SCRIPT" \
   --api-key "secret-value" \
   --base-url "https://example.test/api/paas/v4/" \
   --model "glm-test" \
-  --destination "platform=iOS Simulator,name=iPhone 17")"
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4")"
 
 assert_contains "MINGSI_LIVE_GLM_ACCEPTANCE=1" "$dry_output"
 assert_contains "MINGSI_LIVE_GLM_API_KEY=<provided>" "$dry_output"
 assert_contains "MINGSI_LIVE_GLM_BASE_URL=https://example.test/api/paas/v4/" "$dry_output"
 assert_contains "MINGSI_LIVE_GLM_MODEL=glm-test" "$dry_output"
 assert_contains "test-without-building" "$dry_output"
+assert_not_contains "MINGSI_LIVE_GLM_CAREER_GOLDEN=1" "$dry_output"
 assert_not_contains "secret-value" "$dry_output"
 [[ ! -e "$TMP_DIR/live-flag.xctestrun" ]] || fail "dry-run should not create output xctestrun"
+
+career_dry_output="$("$SCRIPT" \
+  --dry-run \
+  --career-golden \
+  --source-xctestrun "$TMP_DIR/fake.xctestrun" \
+  --output-xctestrun "$TMP_DIR/career-live-flag.xctestrun" \
+  --api-key "secret-value" \
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4")"
+
+assert_contains "MINGSI_LIVE_GLM_CAREER_GOLDEN=1" "$career_dry_output"
+assert_contains "testLiveGLMCareerGoldenQuestionsWhenExplicitlyEnabled" "$career_dry_output"
+assert_not_contains "secret-value" "$career_dry_output"
+[[ ! -e "$TMP_DIR/career-live-flag.xctestrun" ]] || fail "career dry-run should not create output xctestrun"
 
 "$SCRIPT" \
   --prepare-only \
@@ -68,7 +82,7 @@ assert_not_contains "secret-value" "$dry_output"
   --api-key "secret-value" \
   --base-url "https://example.test/api/paas/v4/" \
   --model "glm-test" \
-  --destination "platform=iOS Simulator,name=iPhone 17" >/tmp/mingsi-live-glm-script-test.out
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" >/tmp/mingsi-live-glm-script-test.out
 
 [[ -f "$TMP_DIR/live-flag.xctestrun" ]] || fail "prepare-only should create output xctestrun"
 assert_not_contains "secret-value" "$(cat /tmp/mingsi-live-glm-script-test.out)"
@@ -86,5 +100,22 @@ do
   [[ "$base_url" == "https://example.test/api/paas/v4/" ]] || fail "missing base URL at $dict_path"
   [[ "$model" == "glm-test" ]] || fail "missing model at $dict_path"
 done
+
+"$SCRIPT" \
+  --prepare-only \
+  --career-golden \
+  --source-xctestrun "$TMP_DIR/fake.xctestrun" \
+  --output-xctestrun "$TMP_DIR/career-live-flag.xctestrun" \
+  --api-key "secret-value" \
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" >/tmp/mingsi-live-glm-career-script-test.out
+
+for dict_path in \
+  ":TestConfigurations:0:TestTargets:0:EnvironmentVariables" \
+  ":TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables"
+do
+  career_golden="$(/usr/libexec/PlistBuddy -c "Print ${dict_path}:MINGSI_LIVE_GLM_CAREER_GOLDEN" "$TMP_DIR/career-live-flag.xctestrun")"
+  [[ "$career_golden" == "1" ]] || fail "missing career golden flag at $dict_path"
+done
+assert_not_contains "secret-value" "$(cat /tmp/mingsi-live-glm-career-script-test.out)"
 
 printf 'PASS: live GLM acceptance script contract\n'

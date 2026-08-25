@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_PATH="$ROOT_DIR/MingSi.xcodeproj"
 SCHEME="MingSi"
-DESTINATION="platform=iOS Simulator,name=iPhone 17"
+source "$ROOT_DIR/scripts/fixed_simulator_guard.sh"
+DESTINATION="$MINGSI_FIXED_SIMULATOR_DESTINATION"
 DERIVED_DATA_PATH="${TMPDIR:-/tmp}/mingsi-ui-automation-dd"
 RESULT_BUNDLE_PATH="${TMPDIR:-/tmp}/mingsi-ui-automation.xcresult"
 ONLY_TESTING="MingSiUITests"
@@ -17,13 +18,14 @@ Usage: scripts/run_ui_automation.sh [options]
 Run the MingSi rendered UI automation suite through XCTest accessibility identifiers.
 
 Options:
-  --destination VALUE          xcodebuild destination. Default: iPhone 17 simulator.
+  --destination VALUE          xcodebuild destination. Default: fixed iPhone 17 UDID.
   --derived-data-path PATH     DerivedData path for this UI automation run.
   --result-bundle-path PATH    xcresult output path.
   --only-testing VALUE         XCTest only-testing selector. Default: MingSiUITests.
   --dry-run                    Print the xcodebuild command; do not run it.
   -h, --help                   Show this help.
 USAGE
+  mingsi_fixed_simulator_usage
 }
 
 while [[ $# -gt 0 ]]; do
@@ -60,6 +62,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+mingsi_validate_simulator_destination "$DESTINATION"
+
 print_command() {
   printf 'MingSi UI automation runner:\n'
   printf 'Destination: %s\n' "$DESTINATION"
@@ -75,6 +79,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   print_command
   exit 0
 fi
+
+mingsi_validate_fixed_simulator
 
 rm -rf "$RESULT_BUNDLE_PATH"
 

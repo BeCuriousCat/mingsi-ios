@@ -10,7 +10,7 @@ final class LocalPromptProviderTests: XCTestCase {
             let combined = "\(template.systemText)\n\(template.userText)"
 
             if promptID == .organizeCards {
-                XCTAssertTrue(combined.contains("MINGSI_STREAM_V1"), "\(promptID.rawValue) must require streaming XML output")
+                XCTAssertTrue(combined.contains("MINGSI_STREAM_V2"), "\(promptID.rawValue) must require streaming XML output")
                 XCTAssertTrue(combined.contains("Do not return JSON"), "\(promptID.rawValue) must avoid JSON for streaming output")
             } else {
                 XCTAssertTrue(combined.contains("Return valid JSON"), "\(promptID.rawValue) must require JSON output")
@@ -631,22 +631,23 @@ final class LocalPromptProviderTests: XCTestCase {
     func testVerifyQuestCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .verifyQuest, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.7.0")
-        XCTAssertEqual(current.outputSchemaVersion, 2)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.6.0")
+        XCTAssertEqual(current.version, "1.8.0")
+        XCTAssertEqual(current.outputSchemaVersion, 3)
+        XCTAssertEqual(current.rollbackTargetVersion, "1.7.0")
+        XCTAssertTrue(current.userText.contains("growth_evidence_items"))
     }
 
     func testVerifyQuestRollbackTarget_resolvesHistoricalPromptAsset() {
         let current = provider.template(for: .verifyQuest, mode: .standard)
-        let historical = provider.template(for: .verifyQuest, mode: .standard, version: "1.6.0")
+        let historical = provider.template(for: .verifyQuest, mode: .standard, version: "1.7.0")
 
         XCTAssertNotNil(historical)
-        XCTAssertEqual(historical?.version, "1.6.0")
+        XCTAssertEqual(historical?.version, "1.7.0")
         XCTAssertEqual(historical?.systemPolicyVersion, current.systemPolicyVersion)
         XCTAssertEqual(historical?.contextPolicyVersion, current.contextPolicyVersion)
         XCTAssertEqual(historical?.evalSuiteVersion, current.evalSuiteVersion)
         XCTAssertEqual(historical?.outputSchemaVersion, 2)
-        XCTAssertEqual(historical?.rollbackTargetVersion, "1.5.0")
+        XCTAssertEqual(historical?.rollbackTargetVersion, "1.6.0")
         XCTAssertNotEqual(historical?.userText, current.userText)
         XCTAssertTrue(historical?.userText.contains("trainingPrinciple") ?? false)
         XCTAssertTrue(historical?.userText.contains("\"expected_principle_practice_assessment\"") ?? false)

@@ -32,9 +32,10 @@ dry_output="$(MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=missing "$SCRIPT" \
   --ui-result-bundle-path "$TMP_DIR/ui.xcresult" \
   --live-derived-data-path "$TMP_DIR/live-dd" \
   --live-output-xctestrun "$TMP_DIR/live.xctestrun" \
-  --destination "platform=iOS Simulator,name=iPhone 17")"
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4")"
 
 assert_contains "MingSi Alpha acceptance plan:" "$dry_output"
+assert_contains "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" "$dry_output"
 assert_contains "1. scripts/check_alpha_prerequisites.sh --skip-xcode-select" "$dry_output"
 assert_contains "2. scripts/run_ui_automation.sh" "$dry_output"
 assert_contains "--only-testing MingSiUITests/MingSiUITests/testTodayReviewCardsSeedCanDriveRenderedLoopToCompletion" "$dry_output"

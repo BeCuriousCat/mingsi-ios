@@ -24,13 +24,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi
         INFOPLIST_KEY_CFBundleDisplayName: 明思
         INFOPLIST_KEY_UILaunchStoryboardName: LaunchScreen
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: 明思仅使用粗略位置情境生成可选生活奇遇。
+        INFOPLIST_KEY_NSCameraUsageDescription: 明思仅在你选择为生活奇遇留下一张照片时使用相机。
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: 明思仅在你选择照片附到生活奇遇时读取所选照片。
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: 明思仅在你拍下生活奇遇照片时，将它保存到“明思·奇遇”相册。
+        INFOPLIST_KEY_NSCalendarsUsageDescription: 明思仅使用日历忙闲状态生成可选生活奇遇。
+        INFOPLIST_KEY_NSHealthShareUsageDescription: 明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: 明思不会写入健康数据。
         GENERATE_INFOPLIST_FILE: YES
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: GQ6YS2M625
   MingSiTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
+        excludes:
+          - UI
     dependencies:
       - target: MingSi
       - package: GRDB
@@ -39,3 +48,24 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: ""
+  MingSiUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/UI
+    dependencies:
+      - target: MingSi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: ""
+schemes:
+  MingSi:
+    build:
+      targets:
+        MingSi: all
+    test:
+      targets:
+        - MingSiTests
+        - MingSiUITests

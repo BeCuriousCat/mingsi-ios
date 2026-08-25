@@ -21,13 +21,18 @@ struct TodayAIResponseParser {
     }
 
     func parseCards(from data: Data) throws -> [ThinkingCard] {
+        try parseOrganizedCapture(from: data).cards
+    }
+
+    func parseOrganizedCapture(from data: Data) throws -> OrganizedCaptureResult {
         let response = try decoder.decode(OrganizeCardsResponseDTO.self, from: normalizedPayloadData(from: data))
-        let cards = response.cards.compactMap { dto -> ThinkingCard? in
+        var grouped: [(card: ThinkingCard, caseKey: String, caseTitle: String)] = []
+        for dto in response.cards {
             let title = dto.title.trimmed
             let body = dto.body.trimmed
-            guard !title.isEmpty || !body.isEmpty else { return nil }
+            guard !title.isEmpty || !body.isEmpty else { continue }
 
-            return ThinkingCard(
+            let card = ThinkingCard(
                 type: ThinkingCardType(aiRawValue: dto.type.value),
                 title: title.isEmpty ? "未命名卡片" : title,
                 body: body.isEmpty ? dto.reason.trimmed : body,
@@ -36,10 +41,34 @@ struct TodayAIResponseParser {
                 confidence: ConfidenceMapper.score(from: dto.confidence.value),
                 isConfirmed: false
             )
+            grouped.append((card, dto.caseKey.trimmed, dto.caseTitle.trimmed))
         }
+        let cards = grouped.map(\.card)
 
         guard !cards.isEmpty else { throw TodayAIParsingError.emptyResult }
-        return cards
+        return OrganizedCaptureResult(
+            cards: cards,
+            caseSuggestions: Self.caseSuggestions(
+                grouped.map { ($0.card.id, $0.caseKey, $0.caseTitle, $0.card.title) }
+            )
+        )
+    }
+
+    private static func caseSuggestions(
+        _ values: [(cardId: UUID, key: String, title: String, fallbackTitle: String)]
+    ) -> [TrainingCaseSuggestion] {
+        var order: [String] = []
+        var groups: [String: (title: String, ids: [UUID])] = [:]
+        for value in values {
+            let key = value.key.isEmpty ? "default" : String(value.key.prefix(64))
+            if groups[key] == nil { order.append(key) }
+            let title = value.title.isEmpty ? value.fallbackTitle : value.title
+            groups[key, default: (title, [])].ids.append(value.cardId)
+        }
+        return order.compactMap { key in
+            guard let group = groups[key] else { return nil }
+            return TrainingCaseSuggestion(key: key, title: group.title.ifEmpty("今天要想清楚的事"), cardIds: group.ids)
+        }
     }
 
     func parseQuestions(from data: Data) throws -> [ReflectionQuestion] {
@@ -106,8 +135,61 @@ struct TodayAIResponseParser {
             calibrationNote: note,
             likelyIssue: dto.likelyIssue.trimmed.ifEmpty(nil),
             recommendation: dto.recommendation.trimmed.ifEmpty(nil),
-            expectedPrinciplePracticeAssessment: dto.expectedPrinciplePracticeAssessment.trimmed.ifEmpty(nil)
+            expectedPrinciplePracticeAssessment: dto.expectedPrinciplePracticeAssessment.trimmed.ifEmpty(nil),
+            growthEvidenceItems: try growthEvidenceItems(
+                dto.growthEvidenceItems,
+                allowedSourceRefs: []
+            )
         )
+    }
+
+    func parseVerification(
+        from data: Data,
+        allowedGrowthEvidenceRefs: Set<String>
+    ) throws -> VerifyQuestResult {
+        let dto = try decoder.decode(VerificationResponseDTO.self, from: normalizedPayloadData(from: data))
+        let note = dto.calibrationNote.trimmed
+        guard !note.isEmpty else { throw TodayAIParsingError.emptyResult }
+        return VerifyQuestResult(
+            calibrationNote: note,
+            likelyIssue: dto.likelyIssue.trimmed.ifEmpty(nil),
+            recommendation: dto.recommendation.trimmed.ifEmpty(nil),
+            expectedPrinciplePracticeAssessment: dto.expectedPrinciplePracticeAssessment.trimmed.ifEmpty(nil),
+            growthEvidenceItems: try growthEvidenceItems(
+                dto.growthEvidenceItems,
+                allowedSourceRefs: allowedGrowthEvidenceRefs
+            )
+        )
+    }
+
+    private func growthEvidenceItems(
+        _ items: [GrowthSettlementEvidenceDTO],
+        allowedSourceRefs: Set<String>
+    ) throws -> [GrowthSettlementEvidenceItem] {
+        guard items.count <= 3 else {
+            throw TodayAIParsingError.qualityGateFailed(["成长结算证据不得超过三条。"])
+        }
+        return try items.map { item in
+            guard let category = GrowthSettlementCategory(rawValue: item.category),
+                  let metric = GrowthMetric(rawValue: item.metric) else {
+                throw TodayAIParsingError.qualityGateFailed(["成长结算证据使用了未允许的分类或指标。"])
+            }
+            let title = item.title.trimmed
+            let refs = Array(Set(item.sourceRefs.map { $0.trimmed }.filter { !$0.isEmpty })).sorted()
+            guard !title.isEmpty, title.count <= 80, !refs.isEmpty else {
+                throw TodayAIParsingError.qualityGateFailed(["成长结算证据必须有简短标题和来源。"])
+            }
+            if !allowedSourceRefs.isEmpty,
+               !Set(refs).isSubset(of: allowedSourceRefs) {
+                throw TodayAIParsingError.qualityGateFailed(["成长结算证据只能引用当前行动和验证材料。"])
+            }
+            return GrowthSettlementEvidenceItem(
+                category: category,
+                metric: metric,
+                title: title,
+                sourceRefs: refs
+            )
+        }
     }
 
     func parseMetricContributions(from data: Data, snapshotId: UUID) throws -> [MetricContribution] {
@@ -275,6 +357,8 @@ private struct CardDTO: Decodable {
     let sensitivity: FlexibleString
     let confidence: FlexibleString
     let reason: String
+    let caseKey: String
+    let caseTitle: String
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -284,6 +368,8 @@ private struct CardDTO: Decodable {
         case sensitivity
         case confidence
         case reason
+        case caseKey
+        case caseTitle
     }
 
     init(from decoder: Decoder) throws {
@@ -295,6 +381,8 @@ private struct CardDTO: Decodable {
         sensitivity = try container.decodeIfPresent(FlexibleString.self, forKey: .sensitivity) ?? FlexibleString("")
         confidence = try container.decodeIfPresent(FlexibleString.self, forKey: .confidence) ?? FlexibleString("")
         reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        caseKey = try container.decodeIfPresent(String.self, forKey: .caseKey) ?? ""
+        caseTitle = try container.decodeIfPresent(String.self, forKey: .caseTitle) ?? ""
     }
 }
 
@@ -426,12 +514,14 @@ private struct VerificationResponseDTO: Decodable {
     let likelyIssue: String
     let recommendation: String
     let expectedPrinciplePracticeAssessment: String
+    let growthEvidenceItems: [GrowthSettlementEvidenceDTO]
 
     private enum CodingKeys: String, CodingKey {
         case calibrationNote
         case likelyIssue
         case recommendation
         case expectedPrinciplePracticeAssessment
+        case growthEvidenceItems
     }
 
     init(from decoder: Decoder) throws {
@@ -443,6 +533,29 @@ private struct VerificationResponseDTO: Decodable {
             String.self,
             forKey: .expectedPrinciplePracticeAssessment
         ) ?? ""
+        growthEvidenceItems = try container.decodeIfPresent(
+            [GrowthSettlementEvidenceDTO].self,
+            forKey: .growthEvidenceItems
+        ) ?? []
+    }
+}
+
+private struct GrowthSettlementEvidenceDTO: Decodable {
+    var category: String
+    var metric: String
+    var title: String
+    var sourceRefs: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case category, metric, title, sourceRefs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
+        metric = try container.decodeIfPresent(String.self, forKey: .metric) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        sourceRefs = try container.decodeIfPresent([String].self, forKey: .sourceRefs) ?? []
     }
 }
 

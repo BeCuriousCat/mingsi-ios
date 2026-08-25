@@ -11,10 +11,33 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
     case suggestProjectLinks
     case generateProjectInsights
     case suggestProjectMerges
+    case generateSideQuest
     case weeklyCalibration
     case monthlyGrowth
+    case recommendGuidance
+    case evaluateGuidanceEvidence
+    case diagnoseTrainingCase
+    case reviewCoachAnswer
 
     var id: String { rawValue }
+
+    /// Stable product-level routing for the global decision center. It is
+    /// derived from the PromptID so existing PromptRun rows need no migration.
+    var decisionRoute: LLMDecisionRoute {
+        switch self {
+        case .organizeCards:
+            return .capture
+        case .recommendLenses, .generateQuestions, .generateQuests, .diagnoseTrainingCase, .reviewCoachAnswer:
+            return .coaching
+        case .verifyQuest, .extractPrinciple, .weeklyCalibration, .monthlyGrowth,
+             .recommendGuidance, .evaluateGuidanceEvidence:
+            return .calibration
+        case .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges:
+            return .projects
+        case .generateSideQuest:
+            return .life
+        }
+    }
 
     var displayName: String {
         switch self {
@@ -27,8 +50,33 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
         case .suggestProjectLinks: return "建议长期议题"
         case .generateProjectInsights: return "生成项目洞察"
         case .suggestProjectMerges: return "建议合并议题"
+        case .generateSideQuest: return "生成生活奇遇"
         case .weeklyCalibration: return "周校准"
         case .monthlyGrowth: return "月度成长"
+        case .recommendGuidance: return "选择当前提示"
+        case .evaluateGuidanceEvidence: return "判断提示证据"
+        case .diagnoseTrainingCase: return "诊断事项训练重点"
+        case .reviewCoachAnswer: return "复盘教练回答"
+        }
+    }
+}
+
+enum LLMDecisionRoute: String, Codable, CaseIterable, Hashable, Identifiable {
+    case capture
+    case coaching
+    case calibration
+    case projects
+    case life
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .capture: return "整理中心"
+        case .coaching: return "教练中心"
+        case .calibration: return "校准成长中心"
+        case .projects: return "项目中心"
+        case .life: return "生活奇遇中心"
         }
     }
 }
@@ -59,6 +107,8 @@ struct PromptTemplate: Codable, Hashable {
 }
 
 struct LLMRequest: Hashable {
+    /// Correlates transport auditing with the output that reaches a coach surface.
+    let traceID: UUID
     let prompt: PromptTemplate
     let inputSummary: String
     var contextPayload: PromptContextPayload?
@@ -66,7 +116,12 @@ struct LLMRequest: Hashable {
     var contextVersion: Int = 1
     var contextRecordIDs: [String] = []
 
+    var decisionRoute: LLMDecisionRoute {
+        prompt.id.decisionRoute
+    }
+
     init(
+        traceID: UUID = UUID(),
         prompt: PromptTemplate,
         inputSummary: String,
         contextPayload: PromptContextPayload? = nil,
@@ -74,6 +129,7 @@ struct LLMRequest: Hashable {
         contextVersion: Int = 1,
         contextRecordIDs: [String] = []
     ) {
+        self.traceID = traceID
         self.prompt = prompt
         self.inputSummary = inputSummary
         self.contextPayload = contextPayload
@@ -210,6 +266,13 @@ struct PromptContextPayload: Codable, Hashable {
     struct CurrentInput: Codable, Hashable {
         var dailyEntryId: String?
         var rawText: String?
+    }
+
+    struct CurrentCaseContext: Codable, Hashable {
+        var id: String
+        var title: String
+        var status: String
+        var evidenceRefs: [String]
     }
 
     struct UserChoice: Codable, Hashable {
@@ -587,6 +650,7 @@ struct PromptContextPayload: Codable, Hashable {
         var privacyRules: String?
         var streamProtocol: String?
         var principleUsageRule: String?
+        var principleSelectionRule: String?
         var coachDiagnosisRule: String?
         var coachTurnRule: String?
         var coachTeachingRule: String?
@@ -719,6 +783,7 @@ struct PromptContextPayload: Codable, Hashable {
     }
 
     var currentInput: CurrentInput
+    var currentCase: CurrentCaseContext?
     var userChoice: UserChoice
     var trainingPrescription: TrainingPrescriptionContext?
     var coachDiagnosis: CoachDiagnosisContext?
@@ -764,6 +829,7 @@ struct PromptContextPayload: Codable, Hashable {
 
     init(
         currentInput: CurrentInput = CurrentInput(),
+        currentCase: CurrentCaseContext? = nil,
         userChoice: UserChoice,
         cards: [Card] = [],
         answers: [Answer] = [],
@@ -784,6 +850,7 @@ struct PromptContextPayload: Codable, Hashable {
         coachPatternSummary: CoachPatternSummaryContext? = nil
     ) {
         self.currentInput = currentInput
+        self.currentCase = currentCase
         self.userChoice = userChoice
         self.trainingPrescription = trainingPrescription
         self.coachDiagnosis = coachDiagnosis
@@ -815,6 +882,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let principleUsageRule = directives.principleUsageRule {
             copy.directives.principleUsageRule = principleUsageRule
+        }
+        if let principleSelectionRule = directives.principleSelectionRule {
+            copy.directives.principleSelectionRule = principleSelectionRule
         }
         if let coachDiagnosisRule = directives.coachDiagnosisRule {
             copy.directives.coachDiagnosisRule = coachDiagnosisRule
@@ -973,6 +1043,9 @@ struct PromptContextPayload: Codable, Hashable {
         }
         if let principleUsageRule = directives.principleUsageRule {
             values["principleUsageRule"] = principleUsageRule
+        }
+        if let principleSelectionRule = directives.principleSelectionRule {
+            values["principleSelectionRule"] = principleSelectionRule
         }
         if let coachDiagnosisRule = directives.coachDiagnosisRule {
             values["coachDiagnosisRule"] = coachDiagnosisRule
@@ -1208,6 +1281,35 @@ protocol LLMClient {
     func complete(_ request: LLMRequest) async throws -> Data
 }
 
+/// The single model gateway used by product decision services. Feature services
+/// still own their schemas and evidence boundaries, but all model traffic passes
+/// through this shared object so transport, cancellation, and PromptRun tracing
+/// have one authority instead of per-feature clients.
+final class CentralLLMDecisionCenter: LLMClient {
+    static let policyVersion = "llm-decision-center.v1"
+
+    private let base: LLMClient
+
+    init(base: LLMClient) {
+        self.base = base
+    }
+
+    func complete(_ request: LLMRequest) async throws -> Data {
+        try await base.complete(request)
+    }
+}
+
+extension CentralLLMDecisionCenter: StreamingLLMClient {
+    func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        guard let streamingBase = base as? StreamingLLMClient else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: LLMClientError.invalidResponse)
+            }
+        }
+        return streamingBase.stream(request)
+    }
+}
+
 enum LLMStreamEvent: Hashable {
     /// The request task started. It does not mean the remote endpoint has accepted it yet.
     case requestStarted
@@ -1275,6 +1377,7 @@ final class PromptTracingLLMClient: LLMClient {
         }
 
         let run = PromptRun(
+            id: request.traceID,
             promptId: request.prompt.id.rawValue,
             promptVersion: request.prompt.version,
             promptSourceKind: request.prompt.sourceKind,
@@ -3175,6 +3278,68 @@ private struct PromptEvalCase {
             try expect(candidates[0].overlappingEvidenceRefs == ["link-1", "verification-2"], "Expected overlap refs.")
         },
         PromptEvalCase(
+            promptId: .generateSideQuest,
+            caseId: "side_quest.llm_decides_offer_or_hold",
+            name: "Side quest decisions are model-led and bounded",
+            inputSummary: "An opted-in user with a small set of enabled life categories and recent outcomes.",
+            expectedBehavior: "Return offer or hold, ground the rationale, and keep the optional encounter non-task-like while retaining safety and notification fields.") { _ in
+            let template = LocalPromptProvider().template(for: .generateSideQuest, mode: .standard)
+            try expect(template.userText.contains("offer | hold"), "Expected explicit offer-or-hold decision.")
+            try expect(template.userText.contains("not being assigned another item to finish"), "Expected the encounter, rather than task, framing.")
+            try expect(template.userText.contains("find a counterexample"), "Expected abstract coaching exercises to be excluded.")
+            try expect(template.userText.contains("completion_experience"), "Expected explicit positive reward field.")
+            try expect(template.userText.contains("prerequisite_ids"), "Expected explicit prerequisite field.")
+            try expect(template.userText.contains("notification_title"), "Expected model-generated notification copy.")
+            let object = try jsonObject(
+                """
+                {"decision":"hold","reason":"今天没有足够依据提供新的邀请。","grounding_refs":[],"offer":null}
+                """
+            )
+            try expect(object["decision"] as? String == "hold", "Expected a valid hold decision fixture.")
+            try expect(object["offer"] is NSNull, "Expected hold to have no offer.")
+        },
+        PromptEvalCase(
+            promptId: .recommendGuidance,
+            caseId: "guidance.model_selects_existing_hint",
+            name: "Guidance selection is model-led and catalog-bounded",
+            inputSummary: "Two eligible hints are available for a verification stage with one missing result signal.",
+            expectedBehavior: "The model may show one supplied hint or hold, but cannot invent copy or IDs.") { _ in
+            let template = LocalPromptProvider().template(for: .recommendGuidance, mode: .standard)
+            try expect(template.userText.contains("show | hold"), "Expected explicit show-or-hold decision.")
+            try expect(template.userText.contains("Never invent hint IDs"), "Expected catalog boundary.")
+        },
+        PromptEvalCase(
+            promptId: .evaluateGuidanceEvidence,
+            caseId: "guidance.evidence_classification_is_model_led",
+            name: "Guidance evidence classification stays bounded",
+            inputSummary: "A verification contains a concrete result and a hint rule about observable evidence.",
+            expectedBehavior: "Return supports, counterexample, or insufficient for the supplied hint only.") { _ in
+            let template = LocalPromptProvider().template(for: .evaluateGuidanceEvidence, mode: .standard)
+            try expect(template.userText.contains("supports | counterexample | insufficient"), "Expected bounded evidence result.")
+            try expect(template.userText.contains("Do not create scores"), "Expected no-score boundary.")
+        },
+        PromptEvalCase(
+            promptId: .diagnoseTrainingCase,
+            caseId: "coach.central_training_decision",
+            name: "Training focus is decided by the central model",
+            inputSummary: "Confirmed cards contain a judgment with an unresolved evidence gap.",
+            expectedBehavior: "Return one existing lens, training dimension, phase, readiness, and repair-oriented reason.") { _ in
+            let template = LocalPromptProvider().template(for: .diagnoseTrainingCase, mode: .standard)
+            try expect(template.userText.contains("central coach decision layer"), "Expected central coach instruction.")
+            try expect(template.userText.contains("recommended_lens_id"), "Expected structured lens decision.")
+        },
+        PromptEvalCase(
+            promptId: .reviewCoachAnswer,
+            caseId: "coach.answer_review_is_current_matter_bounded",
+            name: "Answer review remains model-led and evidence-bounded",
+            inputSummary: "One answered question cites a current matter card and needs a readiness review.",
+            expectedBehavior: "Return readiness, an allowed move, and source references from the current matter only.") { _ in
+            let template = LocalPromptProvider().template(for: .reviewCoachAnswer, mode: .standard)
+            try expect(template.userText.contains("central coach review layer"), "Expected central answer-review instruction.")
+            try expect(template.userText.contains("source_refs"), "Expected evidence references.")
+            try expect(template.userText.contains("another matter's material"), "Expected current-matter isolation.")
+        },
+        PromptEvalCase(
             promptId: .weeklyCalibration,
             caseId: "growth.weekly_contributions_have_evidence",
             name: "Weekly growth contributions have evidence refs",
@@ -3737,9 +3902,9 @@ final class LocalPromptProvider: PromptProvider {
             rollbackTargetVersion = "1.7.0"
             outputSchemaVersion = 3
         case .verifyQuest:
-            promptVersion = "1.7.0"
-            rollbackTargetVersion = "1.6.0"
-            outputSchemaVersion = 2
+            promptVersion = "1.8.0"
+            rollbackTargetVersion = "1.7.0"
+            outputSchemaVersion = 3
         case .extractPrinciple:
             promptVersion = "1.5.0"
             rollbackTargetVersion = "1.4.0"
@@ -4041,6 +4206,18 @@ final class LocalPromptProvider: PromptProvider {
                 rollbackTargetVersion: "1.5.0",
                 systemText: current.systemText,
                 userText: Self.verifyQuestV160UserText(for: mode),
+                outputSchemaVersion: 2
+            )
+        case (.verifyQuest, "1.7.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.6.0",
+                systemText: current.systemText,
+                userText: Self.verifyQuestV170UserText(for: mode),
                 outputSchemaVersion: 2
             )
         case (.verifyQuest, "1.5.0"):
@@ -4827,7 +5004,7 @@ final class LocalPromptProvider: PromptProvider {
         Do not encourage the user to share confidential company information, code, customer data, or internal documents.
         Language: 默认使用简体中文回答；if the user clearly writes in another language, follow the user's input language.
         Session mode: \(mode.rawValue). Quick is shortest path, standard is the default full loop, and deep uses more scrutiny.
-        Return only MINGSI_STREAM_V1 XML-like tags. Do not return JSON, Markdown, comments, or explanations outside the allowed tags.
+        Return only MINGSI_STREAM_V2 XML-like tags. V2 may include CASE_KEY and CASE_TITLE inside each CARD. Do not return JSON, Markdown, comments, or explanations outside the allowed tags.
         """
     }
 
@@ -5342,6 +5519,36 @@ final class LocalPromptProvider: PromptProvider {
         )
     }
 
+    private static func verifyQuestV180UserText(for mode: SessionMode) -> String {
+        verifyQuestV170UserText(for: mode).replacingOccurrences(
+            of: "The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.",
+            with: """
+            The recommendation must name the next calibration action, test, or observable signal to watch; do not return generic encouragement.
+
+            Growth settlement evidence:
+            - Return zero to three growth_evidence_items only when the supplied evidence supports a specific newly demonstrated behavior.
+            - This is a one-time evidence receipt, not a score, rating, personality conclusion, or ability change.
+            - Each item must use exactly one category: clarify, judgment, or action; and one existing metric: clarity, value_judgment, execution_reliability, calibration, or reflection_depth.
+            - Each title must describe the observed behavior in under 80 characters. Do not use generic praise.
+            - source_refs may contain only the supplied quest ID and verification ID. The verification ID is preallocated for this request. If no item is evidence-backed, return an empty array.
+            """
+        )
+        .replacingOccurrences(
+            of: "\"expected_principle_practice_assessment\": \"string; required when trainingPrinciple is present, otherwise empty string\"",
+            with: """
+            \"expected_principle_practice_assessment\": \"string; required when trainingPrinciple is present, otherwise empty string\",
+            \"growth_evidence_items\": [
+              {
+                \"category\": \"clarify | judgment | action\",
+                \"metric\": \"clarity | value_judgment | execution_reliability | calibration | reflection_depth\",
+                \"title\": \"brief observed behavior\",
+                \"source_refs\": [\"quest UUID or verification UUID\"]
+              }
+            ]
+            """
+        )
+    }
+
     private static func extractPrincipleV100UserText(for mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         return """
@@ -5549,7 +5756,7 @@ final class LocalPromptProvider: PromptProvider {
                 """
             )
         case .verifyQuest:
-            return verifyQuestV170UserText(for: mode)
+            return verifyQuestV180UserText(for: mode)
         default:
             return legacy
         }
@@ -5569,8 +5776,10 @@ final class LocalPromptProvider: PromptProvider {
 
             Input will include rawText, optional projectContext, privacyRules, and sessionMode.
             Return only this controlled XML-like streaming format:
-            <MINGSI_STREAM version="1">
+            <MINGSI_STREAM version="2">
             <CARD>
+            <CASE_KEY>stable short key shared by cards from the same matter</CASE_KEY>
+            <CASE_TITLE>short natural-language matter title</CASE_TITLE>
             <TYPE>fact | problem | decision | risk | idea | communication | task</TYPE>
             <TITLE>string</TITLE>
             <BODY>string</BODY>
@@ -5585,12 +5794,15 @@ final class LocalPromptProvider: PromptProvider {
             - Output no Markdown and no text outside the tags.
             - Start a CARD as soon as a candidate is clear enough; do not wait to plan every card first.
             - Every CARD must close with </CARD>.
+            - Cards about the same matter must use the same CASE_KEY and CASE_TITLE. Distinct matters must use distinct keys.
             - BODY must not contain XML control tags. Rewrite angle brackets as plain words.
             - Prefer quick 1-3 cards, standard 2-6 cards, deep 3-8 cards.
 
             Example:
-            <MINGSI_STREAM version="1">
+            <MINGSI_STREAM version="2">
             <CARD>
+            <CASE_KEY>meeting-ownership</CASE_KEY>
+            <CASE_TITLE>明确会议中的接口归属</CASE_TITLE>
             <TYPE>problem</TYPE>
             <TITLE>会议前没有定义确认事项</TITLE>
             <BODY>今天的会议讨论了接口归属，但会前没有先列出必须确认的问题。</BODY>
@@ -5850,6 +6062,148 @@ final class LocalPromptProvider: PromptProvider {
             If no reusable rule is justified, return:
             {
               "principle_candidate": null
+            }
+            """
+
+        case .generateSideQuest:
+            return """
+            You are MingSi's life-encounter curator. Decide whether a small, optional encounter could feel naturally welcome today. This is not a productivity task generator, a self-improvement exercise, or a daily obligation.
+
+            Use only the supplied context: current day, explicitly enabled categories, recent side-quest outcomes, current confirmed matters, the user-provided life context, and a reduced current situation snapshot. Make one of two decisions: `hold` when no encounter would feel natural today, or `offer` when a small, voluntary moment can bring curiosity, a pleasant surprise, or a sense of discovery beyond the active work loop.
+
+            Encounter quality:
+            - An encounter should feel like noticing a small unexpected detail on the way to an ordinary plan, not being assigned another item to finish.
+            - Favor a concrete, low-pressure invitation: a different familiar turn, a sound or detail worth noticing, an unplanned browse, a small cultural detour, a remembered connection, or a private moment of attention.
+            - It may be missed, ignored, or naturally pass. Never imply that accepting, doing, or writing about it is an achievement.
+            - Never turn abstract thinking into an encounter. Do not ask the person to find a counterexample, analyze a belief, optimize themselves, make a plan, prove a result, or complete a deliberate training exercise.
+            - The title must be evocative but plain. The invitation must be one light suggestion, not a checklist, instruction sequence, or measurable challenge. The optional observation question should invite a feeling or a noticed detail, never evidence or evaluation.
+            - Prefer `hold` to a generic, task-like, repetitive, overly earnest, or weakly grounded offer.
+
+            Safety and dignity rules:
+            - Never infer personality, diagnose mental or physical health, judge appearance, prescribe diet/exercise, require spending, use contacts/location/calendar data, or encourage risky travel, strangers, alcohol, gambling, or illegal activity.
+            - A connection invitation must make contact entirely voluntary. A movement invitation must be gentle and body-appropriate. A self-care invitation must not imply cleanliness, body shape, or productivity is moral worth.
+            - Do not repeat a recent task or restate a declined task. Do not turn a user's unfinished main work into a side quest.
+            - Treat recent_side_quest_corrections as explicit preference signals. Avoid repeating a corrected pattern, but never expose or infer the user's private note; only use the reason code and has_note flag.
+            - When `exploration_season` is present, let its title and optional intent guide an offer without turning the season into a daily requirement. Prefer a category that extends the theme and avoid repeating categories already frequent in `category_history`. If no safe, practical invitation can genuinely continue that theme in the supplied situation, return `hold`.
+            - Keep it concrete, naturally possible within 5-45 minutes, and safe to decline without explanation. Do not use a command tone or a productivity tone.
+            - Never assume a facility, route, home/work identity, free time, physical capacity, or local resource that is not represented in the supplied context. In particular, do not suggest swimming, travel, or a venue without explicit evidence that it is available. Return `hold` whenever the situation is too uncertain for a practical invitation.
+            - For an `offer`, `grounding_refs` must contain one or more exact tokens from `available_grounding_refs`. They are the only allowed reasons for claiming the invitation fits this moment. Do not invent tokens.
+            - Choose only from enabled categories. Use only prerequisite IDs supplied by the schema.
+            - Experience rewards are a quiet acknowledgement recorded by the app, not proof of intelligence, worth, productivity, or one of the five coaching metrics. Completion experience must be 10-30 and reflection bonus 0-5.
+
+            Return JSON only:
+            {
+              "decision": "offer | hold",
+              "reason": "brief explanation grounded in supplied context",
+              "grounding_refs": ["exact token from available_grounding_refs"],
+              "offer": {
+                "category": "connection | curiosity | making | exploration | interest | vitality | self_care",
+                "title": "short, evocative natural-language title",
+                "invitation": "one voluntary, concrete, non-task-like suggestion",
+                "evidence_prompt": "one optional prompt about a noticed detail or feeling",
+                "minimum_minutes": 5,
+                "maximum_minutes": 45,
+                "prerequisite_ids": ["freelyChosenContact | daylightAndFamiliarRoute | availableMaterials | uninterruptedTenMinutes | bodyAppropriate | noRequiredSpending"],
+                "completion_experience": 10,
+                "reflection_bonus_experience": 0,
+                "notification_title": "short optional notification title",
+                "notification_body": "short optional notification body"
+              }
+            }
+            When holding, set "offer" to null and explain why no invitation is useful now.
+            """
+
+        case .recommendGuidance:
+            return """
+            You are MingSi's central decision layer for selecting a single, useful in-app coaching hint.
+            Review only the supplied current matter, stage, trigger signals, candidate hint definitions, and user hint state.
+            Decide whether one candidate materially improves the user's next thinking move now.
+            Return `hold` when the evidence is weak, the hint would be repetitive, or showing it would distract from the current action.
+            Return `show` only when the selected hint directly addresses the current evidence gap.
+            Never invent hint IDs or hint copy. Do not diagnose personality, motivation, intelligence, health, or intent.
+            The local app will enforce cooldown, mastery, consent, and safety before presenting your decision.
+
+            Return JSON only:
+            {
+              "decision": "show | hold",
+              "hint_id": "one supplied candidate hint ID, or null when holding",
+              "reason": "brief evidence-grounded explanation"
+            }
+            """
+
+        case .evaluateGuidanceEvidence:
+            return """
+            You are MingSi's central decision layer for evaluating whether a confirmed verification provides evidence for one coaching hint.
+            Compare the supplied hint rule, the original action and the user's actual verification evidence.
+            Return `supports` only when the evidence demonstrates the hint's behavior was practiced.
+            Return `counterexample` when the evidence shows the hinted behavior was missing or contradicted.
+            Return `insufficient` when the evidence is too vague, indirect, or unrelated.
+            Do not infer personality, motivation, health, or intent. Do not create scores or new hint IDs.
+
+            Return JSON only:
+            {
+              "result": "supports | counterexample | insufficient",
+              "hint_id": "the supplied hint ID",
+              "reason": "brief explanation grounded in the supplied evidence"
+            }
+            """
+
+        case .diagnoseTrainingCase:
+            return """
+            You are MingSi's central coach decision layer. Diagnose the current confirmed matter and choose one training focus before the user answers questions.
+            Separate reported cards from your interpretation. Base every decision on the supplied cards only.
+            Choose one phase, readiness, next move, training dimension, and existing thinking lens. Do not invent a new lens or diagnose personality, motivation, intelligence, health, or intent.
+            `not_ready` means the next questions must close an evidence gap before action. `ready` means an observable action can be designed now.
+            Be specific about what was observed, why it matters, what ability is being trained, and what the user must repair next.
+
+            Allowed phase values: explore_problem, clarify_judgment, fill_evidence_gap, form_action.
+            Allowed readiness values: ready, not_ready.
+            Allowed next_move values: ask_clarifying_question, surface_evidence_gap, slow_down_convergence, recommend_training_lens, generate_quest.
+            Allowed training dimensions: fact_interpretation_separation, evidence_discipline, counterexample_seeking, assumption_testing, system_feedback_awareness, judgment_calibration, testable_action_design.
+            Allowed lens IDs: firstPrinciples, evidenceCheck, opposingView, leverageAnalysis, systemThinking, judgmentCalibration.
+
+            Return JSON only:
+            {
+              "phase": "explore_problem | clarify_judgment | fill_evidence_gap | form_action",
+              "readiness": "ready | not_ready",
+              "recommended_move": "ask_clarifying_question | surface_evidence_gap | slow_down_convergence | recommend_training_lens | generate_quest",
+              "training_dimension": "one allowed training dimension",
+              "recommended_lens_id": "one allowed lens ID",
+              "reason": "what was observed, why it matters, and what to repair next",
+              "confidence": 0.0
+            }
+            """
+
+        case .reviewCoachAnswer:
+            return """
+            You are MingSi's central coach review layer. Review only the supplied current matter cards, the coach's prior evidence gaps, and the user's answered questions.
+            Decide whether the answer has actually closed the prior gap. Do not mistake fluency, optimism, task completion, or a stated intention for evidence.
+            Return `ready` only when the current material supports moving to one observable validation action. Otherwise return `not_ready` or `partially_ready` and name the remaining evidence gap.
+            Never diagnose personality, motivation, intelligence, health, or intent. Do not create scores, capability ratings, or facts that were not supplied. Do not use another matter's material.
+            `source_refs` must cite one or more supplied card or answer IDs only. A reference suggestion is optional; it must be a structure, not an answer for the user to copy as fact.
+
+            Return JSON only:
+            {
+              "readiness": "not_ready | partially_ready | ready",
+              "recommended_move": "ask_clarifying_question | surface_evidence_gap | slow_down_convergence | generate_quest",
+              "open_evidence_gaps": ["missing_observation | missing_baseline | missing_causal_link | missing_counterexample | missing_constraint | missing_calibration_signal"],
+              "reason": "brief evidence-grounded explanation",
+              "turn_summary": "brief summary of what changed after this answer",
+              "coach_critique": "direct but nonjudgmental feedback grounded in the answer",
+              "repaired_material": "what the answer made more concrete, or empty string",
+              "missing_material": "the one most important remaining material, or a clear ready statement",
+              "proceed_line": "what the user can do next, preserving their option to continue with a gap",
+              "ability_gap": "brief current training gap",
+              "training_output": "what a good next expression or action must make observable",
+              "self_check": "one check the user can apply",
+              "training_target": "what is being practiced in this current matter",
+              "next_repair_question": "one concrete next question",
+              "experience_replay_decision": "brief prompt to compare old experience with current conditions",
+              "experience_replay_prompt": "one safe replay question",
+              "judgment_sentence_prompt": "a sentence frame, not an asserted answer",
+              "reference_suggestion": "optional brief structural guidance or empty string",
+              "reference_example": "optional neutral sentence structure or empty string",
+              "source_refs": ["supplied card ID or answer ID"]
             }
             """
 

@@ -11,7 +11,7 @@ Coach Turn State v1 is the active milestone for the next MingSi slice. The inten
 - MingSi maintains the coach turn across confirmed cards, follow-up answers, and quest generation.
 - The coach can decide that the user is `not_ready` and should clarify or close evidence gaps before converging.
 - A user override means permission to proceed, not proof that the coach was wrong.
-- The implementation stays local, deterministic, auditable, and testable. It does not introduce a general chat agent, LangChain/LangGraph, subscription/sync/market expansion, or a database migration unless resume tests later prove persistence is necessary.
+- State transitions remain local, deterministic, auditable, and testable. The current vNext product contract routes meaningful diagnosis and recommendation through `CentralLLMDecisionCenter`; local state policy is not the authority for model-quality decisions. This audit does not introduce a general chat agent, LangChain/LangGraph, subscription/sync/market expansion, or a database migration.
 
 ## Stop Conditions
 

@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import GRDB
 
@@ -6,6 +7,11 @@ enum PersistenceError: Error, Equatable {
     case unimplemented
     case invalidStoredValue(String)
     case validationFailed(String)
+}
+
+enum AppDatabaseBootstrapError: Error, Equatable {
+    case preVNextBackupUnavailable
+    case vNextMigrationFailed
 }
 
 protocol DailyEntryRepository {
@@ -17,6 +23,18 @@ protocol DailyEntryRepository {
 protocol ThinkingCardRepository {
     func saveCards(_ cards: [ThinkingCard], dailyEntryId: UUID) async throws
     func cards(for dailyEntryId: UUID) async throws -> [ThinkingCard]
+    func saveCards(_ cards: [ThinkingCard], dailyEntryId: UUID, trainingCaseId: UUID) async throws
+    func cards(forTrainingCaseId trainingCaseId: UUID) async throws -> [ThinkingCard]
+}
+
+extension ThinkingCardRepository {
+    func saveCards(_ cards: [ThinkingCard], dailyEntryId: UUID, trainingCaseId: UUID) async throws {
+        try await saveCards(cards, dailyEntryId: dailyEntryId)
+    }
+
+    func cards(forTrainingCaseId trainingCaseId: UUID) async throws -> [ThinkingCard] {
+        []
+    }
 }
 
 protocol QuestRepository {
@@ -26,6 +44,25 @@ protocol QuestRepository {
     func sourceDailyEntryId(forQuestId questId: UUID) async throws -> UUID?
     func quests(for dailyEntryId: UUID) async throws -> [Quest]
     func updateQuestStatus(_ status: QuestStatus, questId: UUID) async throws
+    func saveQuests(_ quests: [Quest], sourceDailyEntryId: UUID, trainingCaseId: UUID) async throws
+    func quests(forTrainingCaseId trainingCaseId: UUID) async throws -> [Quest]
+    func activeQuests() async throws -> [Quest]
+    func deferVerification(for questId: UUID, until: Date?) async throws
+}
+
+extension QuestRepository {
+    func saveQuests(_ quests: [Quest], sourceDailyEntryId: UUID, trainingCaseId: UUID) async throws {
+        try await saveQuests(quests, sourceDailyEntryId: sourceDailyEntryId)
+    }
+
+    func quests(forTrainingCaseId trainingCaseId: UUID) async throws -> [Quest] { [] }
+
+    func activeQuests() async throws -> [Quest] {
+        if let quest = try await activeMainQuest() { return [quest] }
+        return []
+    }
+
+    func deferVerification(for questId: UUID, until: Date?) async throws {}
 }
 
 protocol PrincipleRepository {
@@ -62,11 +99,24 @@ protocol VerificationRepository {
     func latestVerification() async throws -> Verification?
     func verification(for dailyEntryId: UUID) async throws -> Verification?
     func verification(forQuestId questId: UUID) async throws -> Verification?
+    func verifications(for dailyEntryId: UUID) async throws -> [Verification]
+}
+
+extension VerificationRepository {
+    func verifications(for dailyEntryId: UUID) async throws -> [Verification] {
+        if let verification = try await verification(for: dailyEntryId) { return [verification] }
+        return []
+    }
 }
 
 protocol LensSessionRepository {
     func saveLensSession(_ session: LensSession) async throws
     func lensSession(for dailyEntryId: UUID) async throws -> LensSession?
+    func lensSession(forTrainingCaseId trainingCaseId: UUID) async throws -> LensSession?
+}
+
+extension LensSessionRepository {
+    func lensSession(forTrainingCaseId trainingCaseId: UUID) async throws -> LensSession? { nil }
 }
 
 protocol ProjectRepository {
@@ -252,22 +302,102 @@ extension HistoricalRetryCandidateRepository {
     }
 }
 
+private enum AppDatabaseFileLeaseError: Error {
+    case unavailable
+}
+
+private final class AppDatabaseFileLease {
+    private var descriptor: Int32 = -1
+
+    init(databaseURL: URL, exclusive: Bool) throws {
+        let lockURL = URL(fileURLWithPath: databaseURL.path + ".migration.lock")
+        let openedDescriptor = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard openedDescriptor >= 0 else {
+            throw AppDatabaseFileLeaseError.unavailable
+        }
+
+        let operation: Int32 = (exclusive ? LOCK_EX : LOCK_SH) | LOCK_NB
+        guard flock(openedDescriptor, operation) == 0 else {
+            _ = close(openedDescriptor)
+            throw AppDatabaseFileLeaseError.unavailable
+        }
+        descriptor = openedDescriptor
+    }
+
+    func release() {
+        guard descriptor >= 0 else { return }
+        _ = flock(descriptor, LOCK_UN)
+        _ = close(descriptor)
+        descriptor = -1
+    }
+
+    deinit {
+        release()
+    }
+}
+
 final class AppDatabase {
     let dbQueue: DatabaseQueue
+    private let fileLease: AppDatabaseFileLease?
 
-    init(url: URL) throws {
-        try FileManager.default.createDirectory(
+    init(url: URL, includesVNextMigrations: Bool = true) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        dbQueue = try DatabaseQueue(path: url.path)
-        let migrator = Self.makeMigrator()
-        try migrator.migrate(dbQueue)
+
+        let steadyLease = try AppDatabaseFileLease(databaseURL: url, exclusive: false)
+        let needsVNextMigration: Bool
+        if includesVNextMigrations, fileManager.fileExists(atPath: url.path) {
+            needsVNextMigration = try Self.requiresVNextMigration(at: url)
+        } else {
+            needsVNextMigration = false
+        }
+
+        if needsVNextMigration {
+            steadyLease.release()
+            let migrationLease: AppDatabaseFileLease
+            do {
+                migrationLease = try AppDatabaseFileLease(databaseURL: url, exclusive: true)
+            } catch {
+                throw AppDatabaseBootstrapError.preVNextBackupUnavailable
+            }
+
+            do {
+                if try Self.requiresVNextMigration(at: url) {
+                    guard try Self.backUpPreVNextDatabaseIfNeeded(at: url) else {
+                        throw AppDatabaseBootstrapError.preVNextBackupUnavailable
+                    }
+                    let backupURL = Self.preVNextBackupURL(for: url)
+                    try Self.migrateVNextAtomically(from: backupURL, replacing: url)
+                }
+            } catch let error as AppDatabaseBootstrapError {
+                migrationLease.release()
+                throw error
+            } catch {
+                migrationLease.release()
+                throw AppDatabaseBootstrapError.vNextMigrationFailed
+            }
+            migrationLease.release()
+
+            let finalLease = try AppDatabaseFileLease(databaseURL: url, exclusive: false)
+            let finalQueue = try DatabaseQueue(path: url.path)
+            self.dbQueue = finalQueue
+            self.fileLease = finalLease
+        } else {
+            let queue = try DatabaseQueue(path: url.path)
+            let migrator = Self.makeMigrator(includesVNextMigrations: includesVNextMigrations)
+            try migrator.migrate(queue)
+            self.dbQueue = queue
+            self.fileLease = steadyLease
+        }
     }
 
-    init(dbQueue: DatabaseQueue) throws {
+    init(dbQueue: DatabaseQueue, includesVNextMigrations: Bool = true) throws {
         self.dbQueue = dbQueue
-        let migrator = Self.makeMigrator()
+        self.fileLease = nil
+        let migrator = Self.makeMigrator(includesVNextMigrations: includesVNextMigrations)
         try migrator.migrate(dbQueue)
     }
 
@@ -281,7 +411,7 @@ final class AppDatabase {
         return directory.appendingPathComponent("mingsi.sqlite")
     }
 
-    static func makeMigrator() -> DatabaseMigrator {
+    static func makeMigrator(includesVNextMigrations: Bool = true) -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         migrator.registerMigration("v1_core_records") { db in
@@ -1108,7 +1238,130 @@ final class AppDatabase {
             }
         }
 
+        if includesVNextMigrations {
+            registerVNextMigrations(on: &migrator)
+        }
+
         return migrator
+    }
+
+    static func restorePreVNextDatabaseIfAvailable(at url: URL) throws -> Bool {
+        let fileManager = FileManager.default
+        let backupURL = url.deletingPathExtension().appendingPathExtension("pre-vnext.sqlite")
+        guard fileManager.fileExists(atPath: backupURL.path) else { return false }
+
+        let restorationURL = url.appendingPathExtension("restore-tmp")
+        if fileManager.fileExists(atPath: restorationURL.path) {
+            try fileManager.removeItem(at: restorationURL)
+        }
+        try fileManager.copyItem(at: backupURL, to: restorationURL)
+        if fileManager.fileExists(atPath: url.path) {
+            _ = try fileManager.replaceItemAt(url, withItemAt: restorationURL)
+        } else {
+            try fileManager.moveItem(at: restorationURL, to: url)
+        }
+        return true
+    }
+
+    private static func preVNextBackupURL(for url: URL) -> URL {
+        url.deletingPathExtension().appendingPathExtension("pre-vnext.sqlite")
+    }
+
+    private static func requiresVNextMigration(at url: URL) throws -> Bool {
+        let queue = try DatabaseQueue(path: url.path)
+        defer { try? queue.close() }
+        return try queue.read { db in
+            guard try db.tableExists("grdb_migrations") else {
+                return try db.tableExists("daily_entries")
+            }
+            return try String.fetchOne(
+                db,
+                sql: "SELECT identifier FROM grdb_migrations WHERE identifier = 'v33_training_cases'"
+            ) == nil
+        }
+    }
+
+    private static func removeSQLiteFiles(at url: URL, fileManager: FileManager = .default) {
+        for suffix in ["", "-wal", "-shm"] {
+            let candidate = suffix.isEmpty
+                ? url
+                : URL(fileURLWithPath: url.path + suffix)
+            try? fileManager.removeItem(at: candidate)
+        }
+    }
+
+    private static func removeSQLiteSidecars(at url: URL, fileManager: FileManager = .default) {
+        for suffix in ["-wal", "-shm"] {
+            try? fileManager.removeItem(at: URL(fileURLWithPath: url.path + suffix))
+        }
+    }
+
+    private static func backUpPreVNextDatabaseIfNeeded(at url: URL) throws -> Bool {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        guard try requiresVNextMigration(at: url) else { return false }
+        let backupURL = preVNextBackupURL(for: url)
+
+        // SQLite's backup API captures a consistent snapshot even when the live
+        // database is in WAL mode. Copying the main file and WAL independently
+        // can otherwise produce an unusable backup.
+        do {
+            guard !fileManager.fileExists(atPath: backupURL.path) else { return true }
+            let temporaryBackupURL = backupURL.appendingPathExtension("tmp")
+            removeSQLiteFiles(at: temporaryBackupURL, fileManager: fileManager)
+            let sourceQueue = try DatabaseQueue(path: url.path)
+            let backupQueue = try DatabaseQueue(path: temporaryBackupURL.path)
+            do {
+                try sourceQueue.backup(to: backupQueue)
+                try backupQueue.writeWithoutTransaction { db in
+                    _ = try Row.fetchOne(db, sql: "PRAGMA wal_checkpoint(TRUNCATE)")
+                }
+                try backupQueue.close()
+                try sourceQueue.close()
+            } catch {
+                try? backupQueue.close()
+                try? sourceQueue.close()
+                throw error
+            }
+            removeSQLiteSidecars(at: temporaryBackupURL, fileManager: fileManager)
+            try fileManager.moveItem(at: temporaryBackupURL, to: backupURL)
+            return true
+        } catch {
+            throw AppDatabaseBootstrapError.preVNextBackupUnavailable
+        }
+    }
+
+    private static func migrateVNextAtomically(from sourceURL: URL, replacing url: URL) throws {
+        let fileManager = FileManager.default
+        let workingURL = url.appendingPathExtension("vnext-migrating")
+        removeSQLiteFiles(at: workingURL, fileManager: fileManager)
+
+        var sourceQueue: DatabaseQueue?
+        var workingQueue: DatabaseQueue?
+        do {
+            sourceQueue = try DatabaseQueue(path: sourceURL.path)
+            workingQueue = try DatabaseQueue(path: workingURL.path)
+            guard let source = sourceQueue, let working = workingQueue else {
+                throw AppDatabaseBootstrapError.vNextMigrationFailed
+            }
+            try source.backup(to: working)
+            try source.close()
+            sourceQueue = nil
+
+            try Self.makeMigrator().migrate(working)
+            try working.writeWithoutTransaction { db in
+                _ = try Row.fetchOne(db, sql: "PRAGMA wal_checkpoint(TRUNCATE)")
+            }
+            try working.close()
+            workingQueue = nil
+            removeSQLiteSidecars(at: workingURL, fileManager: fileManager)
+            _ = try fileManager.replaceItemAt(url, withItemAt: workingURL)
+        } catch {
+            try? sourceQueue?.close()
+            try? workingQueue?.close()
+            removeSQLiteFiles(at: workingURL, fileManager: fileManager)
+            throw AppDatabaseBootstrapError.vNextMigrationFailed
+        }
     }
 }
 
@@ -1183,10 +1436,49 @@ final class SQLiteThinkingCardRepository: ThinkingCardRepository {
         }
     }
 
+    func saveCards(_ cards: [ThinkingCard], dailyEntryId: UUID, trainingCaseId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            let now = Date().mingsiStorageString
+            let savedIDs = cards.map { $0.id.uuidString }
+            let existingRows = try ThinkingCardRow
+                .filter(Column("daily_entry_id") == dailyEntryId.uuidString)
+                .filter(Column("case_id") == trainingCaseId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .fetchAll(db)
+
+            for var row in existingRows where !savedIDs.contains(row.id) {
+                row.deletedAt = now
+                row.updatedAt = now
+                try row.upsert(db)
+            }
+
+            for card in cards {
+                var scopedCard = card
+                scopedCard.trainingCaseId = trainingCaseId
+                var row = ThinkingCardRow(card: scopedCard, dailyEntryId: dailyEntryId)
+                if let existing = try ThinkingCardRow.fetchOne(db, key: row.id) {
+                    row.createdAt = existing.createdAt
+                }
+                try row.upsert(db)
+            }
+        }
+    }
+
     func cards(for dailyEntryId: UUID) async throws -> [ThinkingCard] {
         try await database.dbQueue.read { db in
             try ThinkingCardRow
                 .filter(Column("daily_entry_id") == dailyEntryId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").asc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func cards(forTrainingCaseId trainingCaseId: UUID) async throws -> [ThinkingCard] {
+        try await database.dbQueue.read { db in
+            try ThinkingCardRow
+                .filter(Column("case_id") == trainingCaseId.uuidString)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("created_at").asc)
                 .fetchAll(db)
@@ -1237,6 +1529,34 @@ final class SQLiteQuestRepository: QuestRepository {
         }
     }
 
+    func saveQuests(_ quests: [Quest], sourceDailyEntryId: UUID, trainingCaseId: UUID) async throws {
+        try await database.dbQueue.write { db in
+            let now = Date().mingsiStorageString
+            let savedIDs = quests.map { $0.id.uuidString }
+            let existingRows = try QuestRow
+                .filter(Column("source_daily_entry_id") == sourceDailyEntryId.uuidString)
+                .filter(Column("case_id") == trainingCaseId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .fetchAll(db)
+
+            for var row in existingRows where !savedIDs.contains(row.id) {
+                row.deletedAt = now
+                row.updatedAt = now
+                try row.upsert(db)
+            }
+
+            for quest in quests {
+                var scopedQuest = quest
+                scopedQuest.trainingCaseId = trainingCaseId
+                var row = QuestRow(quest: scopedQuest, sourceDailyEntryId: sourceDailyEntryId)
+                if let existing = try QuestRow.fetchOne(db, key: row.id) {
+                    row.createdAt = existing.createdAt
+                }
+                try row.upsert(db)
+            }
+        }
+    }
+
     func activeMainQuest() async throws -> Quest? {
         try await database.dbQueue.read { db in
             try QuestRow
@@ -1268,6 +1588,37 @@ final class SQLiteQuestRepository: QuestRepository {
                 .order(Column("created_at").asc)
                 .fetchAll(db)
                 .map { try $0.domainModel() }
+        }
+    }
+
+    func quests(forTrainingCaseId trainingCaseId: UUID) async throws -> [Quest] {
+        try await database.dbQueue.read { db in
+            try QuestRow
+                .filter(Column("case_id") == trainingCaseId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").asc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func activeQuests() async throws -> [Quest] {
+        try await database.dbQueue.read { db in
+            try QuestRow
+                .filter(Column("status") == QuestStatus.active.rawValue)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("due_date").asc, Column("created_at").asc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
+
+    func deferVerification(for questId: UUID, until: Date?) async throws {
+        try await database.dbQueue.write { db in
+            guard var row = try QuestRow.fetchOne(db, key: questId.uuidString) else { return }
+            row.verificationDeferredUntil = until?.mingsiStorageString
+            row.updatedAt = Date().mingsiStorageString
+            try row.upsert(db)
         }
     }
 
@@ -1562,6 +1913,17 @@ final class SQLiteVerificationRepository: VerificationRepository {
                 .domainModel()
         }
     }
+
+    func verifications(for dailyEntryId: UUID) async throws -> [Verification] {
+        try await database.dbQueue.read { db in
+            try VerificationRow
+                .filter(Column("source_daily_entry_id") == dailyEntryId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("created_at").asc)
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+        }
+    }
 }
 
 final class SQLiteLensSessionRepository: LensSessionRepository {
@@ -1574,11 +1936,15 @@ final class SQLiteLensSessionRepository: LensSessionRepository {
     func saveLensSession(_ session: LensSession) async throws {
         try await database.dbQueue.write { db in
             var row = LensSessionRow(session: session)
-            if let existing = try LensSessionRow
+            var request = LensSessionRow
                 .filter(Column("daily_entry_id") == session.dailyEntryId.uuidString)
                 .filter(Column("deleted_at") == nil)
-                .order(Column("updated_at").desc)
-                .fetchOne(db) {
+            if let trainingCaseId = session.trainingCaseId {
+                request = request.filter(Column("case_id") == trainingCaseId.uuidString)
+            } else {
+                request = request.filter(Column("case_id") == nil)
+            }
+            if let existing = try request.order(Column("updated_at").desc).fetchOne(db) {
                 row.id = existing.id
                 row.createdAt = existing.createdAt
             }
@@ -1590,6 +1956,17 @@ final class SQLiteLensSessionRepository: LensSessionRepository {
         try await database.dbQueue.read { db in
             try LensSessionRow
                 .filter(Column("daily_entry_id") == dailyEntryId.uuidString)
+                .filter(Column("deleted_at") == nil)
+                .order(Column("updated_at").desc)
+                .fetchOne(db)?
+                .domainModel()
+        }
+    }
+
+    func lensSession(forTrainingCaseId trainingCaseId: UUID) async throws -> LensSession? {
+        try await database.dbQueue.read { db in
+            try LensSessionRow
+                .filter(Column("case_id") == trainingCaseId.uuidString)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("updated_at").desc)
                 .fetchOne(db)?
@@ -1977,6 +2354,7 @@ private struct ThinkingCardRow: Codable, FetchableRecord, PersistableRecord {
 
     var id: String
     var dailyEntryId: String
+    var caseId: String?
     var schemaVersion: Int
     var type: String
     var title: String
@@ -1996,6 +2374,7 @@ private struct ThinkingCardRow: Codable, FetchableRecord, PersistableRecord {
         let now = Date().mingsiStorageString
         id = card.id.uuidString
         self.dailyEntryId = dailyEntryId.uuidString
+        caseId = card.trainingCaseId?.uuidString
         schemaVersion = 1
         type = card.type.rawValue
         title = card.title
@@ -2026,6 +2405,7 @@ private struct ThinkingCardRow: Codable, FetchableRecord, PersistableRecord {
         let refs: [String] = try PersistenceJSON.decode(sourceRefsJson) ?? []
         return ThinkingCard(
             id: uuid,
+            trainingCaseId: caseId.flatMap(UUID.init(uuidString:)),
             type: type,
             title: title,
             body: body,
@@ -2046,6 +2426,7 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
 
     var id: String
     var sourceDailyEntryId: String
+    var caseId: String?
     var schemaVersion: Int
     var type: String
     var title: String
@@ -2055,6 +2436,7 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
     var reflectionQuestion: String?
     var status: String
     var dueDate: String?
+    var verificationDeferredUntil: String?
     var reminderId: String?
     var linkedCardIdsJson: String?
     var rawPayloadJson: String?
@@ -2073,6 +2455,7 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
         let now = Date().mingsiStorageString
         id = quest.id.uuidString
         self.sourceDailyEntryId = sourceDailyEntryId.uuidString
+        caseId = quest.trainingCaseId?.uuidString
         schemaVersion = 1
         type = quest.type.rawValue
         title = quest.title
@@ -2081,7 +2464,8 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
         expectedResistance = quest.expectedResistance
         reflectionQuestion = quest.reflectionQuestion
         status = quest.status.rawValue
-        dueDate = nil
+        dueDate = quest.verificationDueAt?.mingsiStorageString
+        verificationDeferredUntil = quest.verificationDeferredUntil?.mingsiStorageString
         reminderId = nil
         linkedCardIdsJson = nil
         rawPayloadJson = Self.rawPayloadJson(
@@ -2107,6 +2491,7 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
         }
         return Quest(
             id: uuid,
+            trainingCaseId: caseId.flatMap(UUID.init(uuidString:)),
             type: type,
             title: title,
             whyItMatters: whyItMatters,
@@ -2117,7 +2502,9 @@ private struct QuestRow: Codable, FetchableRecord, PersistableRecord {
             lensMove: Self.rawPayload(from: rawPayloadJson)?.lensMove.flatMap(QuestionLensMove.init(aiRawValue:)),
             sourceCardTitles: Self.rawPayload(from: rawPayloadJson)?.sourceCardTitles ?? [],
             trainingPrincipleId: Self.rawPayload(from: rawPayloadJson)?.trainingPrincipleId.flatMap(UUID.init(uuidString:)),
-            status: status
+            status: status,
+            verificationDueAt: dueDate.flatMap(Date.init(mingsiStorageString:)),
+            verificationDeferredUntil: verificationDeferredUntil.flatMap(Date.init(mingsiStorageString:))
         )
     }
 
@@ -2497,6 +2884,7 @@ private struct LensSessionRow: Codable, FetchableRecord, PersistableRecord {
 
     var id: String
     var dailyEntryId: String
+    var caseId: String?
     var selectedLens: String
     var questionsJson: String
     var createdAt: String
@@ -2507,6 +2895,7 @@ private struct LensSessionRow: Codable, FetchableRecord, PersistableRecord {
         let now = Date().mingsiStorageString
         id = session.id.uuidString
         dailyEntryId = session.dailyEntryId.uuidString
+        caseId = session.trainingCaseId?.uuidString
         selectedLens = session.selectedLens.rawValue
         questionsJson = (try? PersistenceJSON.encode(session.questions)) ?? "[]"
         createdAt = session.createdAt.mingsiStorageString
@@ -2528,6 +2917,7 @@ private struct LensSessionRow: Codable, FetchableRecord, PersistableRecord {
         return LensSession(
             id: uuid,
             dailyEntryId: entryUUID,
+            trainingCaseId: caseId.flatMap(UUID.init(uuidString:)),
             selectedLens: lens,
             questions: questions,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
@@ -2536,7 +2926,7 @@ private struct LensSessionRow: Codable, FetchableRecord, PersistableRecord {
     }
 }
 
-private struct ProjectRow: Codable, FetchableRecord, PersistableRecord {
+struct ProjectRow: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "projects"
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
@@ -2963,12 +3353,14 @@ final class SQLiteMetricContributionRepository: MetricContributionRepository {
 
     func contributions(forDailyEntryId dailyEntryId: UUID) async throws -> [MetricContribution] {
         try await database.dbQueue.read { db in
-            try MetricContributionRow
+            let contributions = try MetricContributionRow
                 .filter(Column("source_daily_entry_id") == dailyEntryId.uuidString)
                 .filter(Column("deleted_at") == nil)
                 .order(Column("created_at").asc)
                 .fetchAll(db)
                 .map { try $0.domainModel() }
+            return MetricContribution
+                .latestVersionsForHistory(contributions)
                 .filter(\.isAcceptedForTrend)
         }
     }
@@ -4302,6 +4694,23 @@ enum DataExportSectionName: String, CaseIterable {
     case assetPackTrustPolicies = "asset_pack_trust_policies"
     case assetPackRegistrySubscriptions = "asset_pack_registry_subscriptions"
     case historicalRetryCandidates = "historical_retry_candidates"
+    case trainingCases = "training_cases"
+    case trainingCaseSessions = "training_case_sessions"
+    case trainingCaseMerges = "training_case_merges"
+    case trainingCaseLinks = "training_case_links"
+    case projectClosureReviews = "project_closure_reviews"
+    case growthSettlements = "growth_settlements"
+    case userGuidanceStates = "user_guidance_states"
+    case weeklyGuidanceReviews = "weekly_guidance_reviews"
+    case coachTurnFeedback = "coach_turn_feedback"
+    case coachPromptTurns = "coach_prompt_turns"
+    case sideQuestPreferences = "side_quest_preferences"
+    case sideQuestLifeContextProfiles = "side_quest_life_context_profiles"
+    case sideQuestPlanningRecords = "side_quest_planning_records"
+    case sideQuestRuns = "side_quest_runs"
+    case sideQuestExperienceEvents = "side_quest_experience_events"
+    case sideQuestPhotoMemories = "side_quest_photo_memories"
+    case sideQuestCorrectionEvents = "side_quest_correction_events"
 }
 
 final class SQLiteDataExportRepository: DataExportRepository {
@@ -4336,6 +4745,7 @@ final class SQLiteDataExportRepository: DataExportRepository {
     }
 
     private static func rows(in tableName: String, db: Database) throws -> [[String: Any]] {
+        guard try db.tableExists(tableName) else { return [] }
         let columns = try db.columns(in: tableName).map(\.name)
         guard !columns.isEmpty else { return [] }
         let quotedTable = tableName.replacingOccurrences(of: "\"", with: "\"\"")
@@ -4610,6 +5020,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
     var sourceType: String
     var sourceId: String
     var sourceDailyEntryId: String
+    var sourceCaseId: String?
     var userFeedback: String
     var candidateStatus: String
     var practiceRole: String
@@ -4630,6 +5041,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
         sourceType = contribution.sourceType.rawValue
         sourceId = contribution.sourceId
         sourceDailyEntryId = contribution.sourceDailyEntryId.uuidString
+        sourceCaseId = contribution.sourceCaseId?.uuidString
         userFeedback = contribution.userFeedback.rawValue
         candidateStatus = contribution.candidateStatus.rawValue
         practiceRole = contribution.practiceRole.rawValue
@@ -4677,6 +5089,7 @@ private struct MetricContributionRow: Codable, FetchableRecord, PersistableRecor
             sourceType: sourceType,
             sourceId: sourceId,
             sourceDailyEntryId: sourceDailyEntryUUID,
+            sourceCaseId: sourceCaseId.flatMap(UUID.init(uuidString:)),
             userFeedback: feedback,
             candidateStatus: candidateStatus,
             practiceRole: practiceRole,
@@ -4767,7 +5180,7 @@ private struct HistoricalRetryCandidateRow: Codable, FetchableRecord, Persistabl
     }
 }
 
-private struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
+struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "prompt_runs"
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase

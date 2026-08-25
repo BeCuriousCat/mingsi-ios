@@ -42,6 +42,8 @@ enum DS {
     static let sectionSpacing: CGFloat = 18
     static let cardSpacing: CGFloat = 10
     static let cardInnerPadding: CGFloat = 14
+    // Keep compact icon controls visually small while preserving iOS touch targets.
+    static let minimumTapTarget: CGFloat = 44
     static let primaryScrollTopPadding: CGFloat = 12
     static let primaryScrollBottomReserve: CGFloat = 188
     static let todayScrollBottomReserve: CGFloat = 112
@@ -51,9 +53,10 @@ enum DS {
 
     static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = dynamicUIColor(light: (0.958, 0.948, 0.922, 0.970), dark: (0.080, 0.076, 0.066, 0.970))
-        appearance.shadowColor = .separator
+        // Let the current iOS tab-bar material own its background. Supplying an
+        // opaque UIKit appearance as well as a SwiftUI toolbar background makes
+        // iOS 26 render two stacked surfaces above the page content.
+        appearance.configureWithDefaultBackground()
 
         let normalAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: 10, weight: .medium),

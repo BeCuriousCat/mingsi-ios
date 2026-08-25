@@ -724,6 +724,54 @@ final class TodayAIResponseParserTests: XCTestCase {
             result.expectedPrinciplePracticeAssessment,
             "The expected principle was partially practiced because the artifact was defined, but the evidence threshold remained vague."
         )
+        XCTAssertTrue(result.growthEvidenceItems.isEmpty)
+    }
+
+    func testParseVerification_acceptsEvidenceBackedGrowthSettlementItems() throws {
+        let questId = UUID().uuidString
+        let verificationId = UUID().uuidString
+        let json = """
+        {
+          "calibration_note": "Observed result updated the original judgment.",
+          "likely_issue": "none",
+          "recommendation": "Test one observable signal next time.",
+          "growth_evidence_items": [{
+            "category": "judgment",
+            "metric": "calibration",
+            "title": "Used the observed result to update the judgment",
+            "source_refs": ["\(questId)", "\(verificationId)"]
+          }]
+        }
+        """
+
+        let result = try parser.parseVerification(
+            from: Data(json.utf8),
+            allowedGrowthEvidenceRefs: Set([questId, verificationId])
+        )
+
+        XCTAssertEqual(result.growthEvidenceItems.count, 1)
+        XCTAssertEqual(result.growthEvidenceItems.first?.metric, .calibration)
+    }
+
+    func testParseVerification_rejectsGrowthSettlementEvidenceOutsideCurrentSources() throws {
+        let json = """
+        {
+          "calibration_note": "Observed result updated the original judgment.",
+          "growth_evidence_items": [{
+            "category": "judgment",
+            "metric": "calibration",
+            "title": "Used the observed result to update the judgment",
+            "source_refs": ["unrelated-source"]
+          }]
+        }
+        """
+
+        XCTAssertThrowsError(
+            try parser.parseVerification(
+                from: Data(json.utf8),
+                allowedGrowthEvidenceRefs: Set([UUID().uuidString])
+            )
+        )
     }
 
     func testParseVerification_emptyNote_throwsEmptyResult() {

@@ -3417,8 +3417,16 @@ final class PersistenceCoreTests: XCTestCase {
             modelProvider: "GLM",
             modelName: "glm-test"
         )
+        let failureRequest = LLMRequest(
+            prompt: request.prompt,
+            inputSummary: request.inputSummary,
+            contextPayload: request.contextPayload,
+            sourceRecordIDs: request.sourceRecordIDs,
+            contextVersion: request.contextVersion,
+            contextRecordIDs: request.contextRecordIDs
+        )
         do {
-            _ = try await failureClient.complete(request)
+            _ = try await failureClient.complete(failureRequest)
             XCTFail("Expected failing LLM client to throw")
         } catch {
             // Expected.
@@ -4940,6 +4948,111 @@ final class PersistenceCoreTests: XCTestCase {
 
         let noResults = try await contributionRepo.contributions(forDailyEntryId: UUID())
         XCTAssertEqual(noResults.count, 0)
+    }
+
+    func testMetricContributions_forDailyEntryId_keepsOnlyLatestVersionOfSameEvidence() async throws {
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        let entryID = UUID()
+        let sourceID = UUID().uuidString
+        let olderSnapshotID = UUID()
+        let latestSnapshotID = UUID()
+        let olderDate = Date(timeIntervalSince1970: 100)
+        let latestDate = Date(timeIntervalSince1970: 200)
+
+        let olderVersion = MetricContribution(
+            snapshotId: olderSnapshotID,
+            metric: .clarity,
+            direction: .positive,
+            delta: 0.08,
+            title: "旧的行动完成标准说明",
+            reason: "旧快照",
+            sourceType: .quest,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            candidateStatus: .accepted,
+            createdAt: olderDate,
+            updatedAt: olderDate
+        )
+        let latestVersion = MetricContribution(
+            snapshotId: latestSnapshotID,
+            metric: .clarity,
+            direction: .positive,
+            delta: 0.08,
+            title: "最新的行动完成标准说明",
+            reason: "最新快照",
+            sourceType: .quest,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            candidateStatus: .accepted,
+            createdAt: latestDate,
+            updatedAt: latestDate
+        )
+        let distinctMetric = MetricContribution(
+            snapshotId: latestSnapshotID,
+            metric: .reflectionDepth,
+            direction: .positive,
+            delta: 0.07,
+            title: "完成透镜追问",
+            reason: "不同指标仍应保留",
+            sourceType: .quest,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            candidateStatus: .accepted,
+            createdAt: latestDate,
+            updatedAt: latestDate
+        )
+
+        try await contributionRepo.saveContribution(olderVersion)
+        try await contributionRepo.saveContribution(latestVersion)
+        try await contributionRepo.saveContribution(distinctMetric)
+
+        let results = try await contributionRepo.contributions(forDailyEntryId: entryID)
+
+        XCTAssertEqual(Set(results.map(\.id)), Set([latestVersion.id, distinctMetric.id]))
+        XCTAssertFalse(results.contains { $0.id == olderVersion.id })
+    }
+
+    func testMetricContributions_forDailyEntryId_doesNotResurrectOlderAcceptedVersion() async throws {
+        let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        let entryID = UUID()
+        let sourceID = UUID().uuidString
+        let olderDate = Date(timeIntervalSince1970: 100)
+        let latestDate = Date(timeIntervalSince1970: 200)
+
+        let olderAccepted = MetricContribution(
+            snapshotId: UUID(),
+            metric: .calibration,
+            direction: .positive,
+            delta: 0.1,
+            title: "旧判断",
+            reason: "旧快照",
+            sourceType: .verification,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            candidateStatus: .accepted,
+            createdAt: olderDate,
+            updatedAt: olderDate
+        )
+        let latestRejected = MetricContribution(
+            snapshotId: UUID(),
+            metric: .calibration,
+            direction: .negative,
+            delta: 0.1,
+            title: "新判断",
+            reason: "最新快照已拒绝旧判断",
+            sourceType: .verification,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            candidateStatus: .rejected,
+            createdAt: latestDate,
+            updatedAt: latestDate
+        )
+
+        try await contributionRepo.saveContribution(olderAccepted)
+        try await contributionRepo.saveContribution(latestRejected)
+
+        let results = try await contributionRepo.contributions(forDailyEntryId: entryID)
+        XCTAssertTrue(results.isEmpty)
     }
 
     func testUpdateContributionFeedback_toInaccurateExcludesFromAccepted() async throws {

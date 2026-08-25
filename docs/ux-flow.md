@@ -84,7 +84,7 @@ SessionComplete
 AI 失败规则：
 
 - AI 调用失败时，当前步骤显示失败原因和“重试当前步骤”。
-- 初次失败时允许本地 fallback 先填充可编辑草稿，让用户继续走流程。
+- vNext 初次失败时不填充本地判断草稿；保留用户材料、显示中央模型失败原因并提供重试。Debug/预览夹具可以显式显示本地 fallback，但不代表 AI 成功。
 - 如果 fallback 被使用，App 顶部显示待补跑横幅，用户可点“后台重试”。
 - 重试成功后，横幅计数减少；重试失败时保留现有内容并继续允许重试。
 - 横幅关闭只隐藏待补跑提醒，不删除用户已确认内容。
@@ -147,7 +147,7 @@ AI 失败规则：
 行为：
 
 - 通过 GLM SSE 流式生成临时候选卡片。
-- 如果模型完全失败且没有闭合卡片，生成本地 fallback。
+- 如果模型完全失败且没有闭合卡片，保留输入并等待中央模型重试；不生成生产本地卡片。
 - 如果模型中断但已有闭合卡片，保留闭合卡片，提示可以重试补全。
 
 ### ReviewCards
@@ -256,6 +256,13 @@ Deep 模式：
 - 今天训练的思维能力。
 - 已保存的原则。
 - 返回 Today 或查看历史。
+
+## Optional Life Adventure
+
+- Today can show one optional, AI-generated life adventure without replacing the main action.
+- A user may temporarily set the current coarse scene, including workplace; the choice is memory-only for the day.
+- Work-scene practical facts such as floor and stair availability remain place-scoped. Place labels are not shown in the invitation and are never model input.
+- The DEBUG v2 visual-QA fixture verifies the workplace stair offer, manual scene menu, completion, and life-experience reward with in-memory data only.
 
 ## History Flow
 
@@ -473,12 +480,15 @@ Metric detail 必须展示一条可解释路径：
 
 ## Settings Flow
 
+信息架构规则：连贯的可选或高级功能在设置根页以一个简洁的 `NavigationLink` 和状态摘要呈现；其全部控件、系统权限、隐私细节和诊断均在原生二级页面中管理。
+
 设置项：
 
 - GLM API Key。
 - 默认模式。
 - 本地通知。
 - 隐私边界。
+- 生活奇遇：根页显示可选、模型判断及当前启用/暂停、频率或通知状态；二级页面管理邀请、通知、类别、探索季、生活情境、系统权限和 7 天试用记录。
 - AI 调用审计：最近 Prompt 调用、成功/失败、模型、source/context 数量、失败原因。
 - 数据导出。
 - 数据清除。

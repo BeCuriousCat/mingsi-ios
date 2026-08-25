@@ -198,5 +198,35 @@
     "minimalTrainingAction": "先让用户补一个待验证判断，再设计明天最小行动。",
     "shouldNotDo": "不要绕过训练直接给完整方案。",
     "coverageTags": ["行动替代目标", "明日验证不可检查", "用户要求直接给答案"]
+  },
+  {
+    "id": "G21",
+    "title": "学生练习失败的归因尚无反例",
+    "input": "练习提交有失败记录，我猜是粗心造成的。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "分开提交日志事实与粗心解释，并记录一条可能推翻解释的日志证据。",
+    "shouldNotDo": "不要因为用户是学生而假定能力、动机或给出完整学习方案；单次材料不足时不要生成原则。",
+    "coverageTags": ["职业语境仅作背景", "事实解释边界", "反例", "原则证据不足"]
+  },
+  {
+    "id": "G22",
+    "title": "软件工程环境超时的最小对照",
+    "input": "本地接口通过，集成环境两次超时，我猜缓存失效是主因。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "thinking",
+    "minimalTrainingAction": "固定请求参数，对照缓存命中与未命中的耗时、超时次数和依赖状态。",
+    "shouldNotDo": "不要把程序员身份或熟悉的故障模式当成判断依据，也不要直接给改代码答案。",
+    "coverageTags": ["职业语境仅作背景", "最小对照", "反例", "可观察完成标准"]
+  },
+  {
+    "id": "G23",
+    "title": "财务报表差异的口径核对",
+    "input": "月度报表与明细表相差1.8%，我推测是汇率口径造成的。",
+    "expectedPrimaryGap": "evidence_gap",
+    "expectedAbility": "calibration",
+    "minimalTrainingAction": "核对两个差异日期的汇率来源、计算口径和舍入结果，记录支持或推翻判断的证据。",
+    "shouldNotDo": "不要将金融职业标签或经验当作归因证据，不要给空泛鼓励或替用户下结论。",
+    "coverageTags": ["职业语境仅作背景", "事实解释边界", "反例", "可观察完成标准"]
   }
 ]

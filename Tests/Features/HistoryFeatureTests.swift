@@ -138,6 +138,18 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertFalse(entries[0].rawText.isEmpty)
     }
 
+    func testTodayHeaderDateTextUsesChineseProductLocale() {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = 2026
+        components.month = 7
+        components.day = 31
+        let date = try! XCTUnwrap(components.date)
+
+        XCTAssertEqual(todayHeaderDateText(date), "2026年7月31日")
+    }
+
     func testHistoryRecordCardSummary_countsConfirmedPendingAndExcludedSeparately() {
         let draft = DailyEntryDraft(rawText: "Fallback generated three cards", state: .reviewCards)
         let record = HistoryRecord(
@@ -293,6 +305,46 @@ final class HistoryFeatureTests: XCTestCase {
         let results = HistorySearchQuery(filter: .growth).apply(to: [linked, plain])
 
         XCTAssertEqual(results.map(\.id), [linked.id])
+    }
+
+    func testHistoryGrowthContributions_deduplicatesSupersededEvidenceRevisions() {
+        let sourceDailyEntryId = UUID()
+        let sourceId = UUID().uuidString
+        let earlier = Date(timeIntervalSince1970: 100)
+        let later = Date(timeIntervalSince1970: 200)
+        let first = MetricContribution(
+            snapshotId: UUID(),
+            metric: .calibration,
+            direction: .positive,
+            delta: 0.1,
+            title: "旧版本",
+            reason: "旧版本",
+            sourceType: .verification,
+            sourceId: sourceId,
+            sourceDailyEntryId: sourceDailyEntryId,
+            candidateStatus: .accepted,
+            createdAt: earlier,
+            updatedAt: earlier
+        )
+        let latest = MetricContribution(
+            snapshotId: first.snapshotId,
+            metric: .calibration,
+            direction: .positive,
+            delta: 0.2,
+            title: "最新版本",
+            reason: "最新版本",
+            sourceType: .verification,
+            sourceId: sourceId,
+            sourceDailyEntryId: sourceDailyEntryId,
+            candidateStatus: .accepted,
+            createdAt: later,
+            updatedAt: later
+        )
+
+        let result = normalizedHistoryGrowthContributions([first, latest])
+
+        XCTAssertEqual(result.map(\.id), [latest.id])
+        XCTAssertEqual(result.first?.title, "最新版本")
     }
 
     func testHistorySearchQuery_combinesKeywordAndFilterAsIntersection() {
@@ -694,29 +746,14 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertTrue(run.auditOutcomeLine.contains("仅审计"))
     }
 
-    // MARK: - History repair summary
-
-    func testHistoryRepairSummaryLine_mixedCounts() {
-        let summary = HistoryRepairSummary(
-            unresolvedCount: 2,
-            reviewableCount: 1,
-            completedCount: 1,
-            problemCount: 1
-        )
-        let line = summary.summaryLine
-        XCTAssertNotNil(line)
-        XCTAssertTrue(line!.contains("2"), "should mention unresolved count")
-        XCTAssertTrue(line!.contains("1"), "should mention reviewable or completed count")
-    }
-
-    func testHistoryRepairSummaryLine_emptyIsNil() {
-        let summary = HistoryRepairSummary(
-            unresolvedCount: 0,
-            reviewableCount: 0,
-            completedCount: 0,
-            problemCount: 0
-        )
-        XCTAssertNil(summary.summaryLine)
+    func testHistoricalRetryCandidateStatus_onlyActionableStatesNeedHistoryAttention() {
+        XCTAssertTrue(HistoricalRetryCandidateStatus.pending.needsHistoryRepairAttention)
+        XCTAssertTrue(HistoricalRetryCandidateStatus.retrying.needsHistoryRepairAttention)
+        XCTAssertTrue(HistoricalRetryCandidateStatus.candidateReady.needsHistoryRepairAttention)
+        XCTAssertFalse(HistoricalRetryCandidateStatus.accepted.needsHistoryRepairAttention)
+        XCTAssertFalse(HistoricalRetryCandidateStatus.dismissed.needsHistoryRepairAttention)
+        XCTAssertFalse(HistoricalRetryCandidateStatus.blocked.needsHistoryRepairAttention)
+        XCTAssertFalse(HistoricalRetryCandidateStatus.failed.needsHistoryRepairAttention)
     }
 
     // MARK: - Project merge audit display helpers
@@ -823,6 +860,50 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertNil(growthLeadingContribution([]))
     }
 
+    func testHistoryContributionDedup_ignoresMissingCaseBacklink() {
+        let dailyEntryID = UUID()
+        let sourceID = UUID().uuidString
+        let caseID = UUID()
+        let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = earlier.addingTimeInterval(60)
+        let legacy = MetricContribution(
+            snapshotId: UUID(),
+            metric: .calibration,
+            direction: .positive,
+            delta: 0.08,
+            title: "旧版校准证据",
+            reason: "旧记录没有事项回链。",
+            sourceType: .verification,
+            sourceId: sourceID,
+            sourceDailyEntryId: dailyEntryID,
+            sourceCaseId: nil,
+            candidateStatus: .accepted,
+            createdAt: earlier,
+            updatedAt: earlier
+        )
+        let migrated = MetricContribution(
+            snapshotId: legacy.snapshotId,
+            metric: .calibration,
+            direction: .positive,
+            delta: 0.08,
+            title: "已回链校准证据",
+            reason: "迁移后补齐事项回链。",
+            sourceType: .verification,
+            sourceId: sourceID,
+            sourceDailyEntryId: dailyEntryID,
+            sourceCaseId: caseID,
+            candidateStatus: .accepted,
+            createdAt: later,
+            updatedAt: later
+        )
+
+        let result = MetricContribution.latestVersionsForHistory([legacy, migrated])
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].id, migrated.id)
+        XCTAssertEqual(result[0].sourceCaseId, caseID)
+    }
+
     func testGrowthMetricReasonDisplay_trimsWhitespace() {
         XCTAssertEqual(growthMetricReasonDisplay("  实际原因  "), "实际原因")
     }
@@ -901,6 +982,8 @@ final class HistoryFeatureTests: XCTestCase {
         )
 
         XCTAssertTrue(historyRecordContainsDeepLinkSource(deepLink, in: record))
+        XCTAssertTrue(historyDeepLinkIsLocated(deepLink, in: record))
+        XCTAssertFalse(historyDeepLinkIsLocated(nil, in: record))
     }
 
     func testHistoryRecordContainsDeepLinkSource_matchesProjectContributionSource() {
@@ -1188,6 +1271,79 @@ final class HistoryFeatureTests: XCTestCase {
         )
 
         XCTAssertTrue(projectPrincipleEvidenceEntries(from: item).isEmpty)
+    }
+
+    func testProjectEvidenceDisplayTitleFindsVerificationInSecondCase() {
+        let entry = DailyEntryDraft(rawText: "两个事项", state: .sessionComplete)
+        let firstCase = TrainingCase(dailyEntryId: entry.id, title: "事项 A", status: .completed)
+        let secondCase = TrainingCase(dailyEntryId: entry.id, title: "事项 B", status: .completed, sortOrder: 1)
+        let firstQuest = Quest(trainingCaseId: firstCase.id, type: .main, title: "行动 A", whyItMatters: "A", completionCriteria: "A", expectedResistance: "A", reflectionQuestion: "A")
+        let secondQuest = Quest(trainingCaseId: secondCase.id, type: .main, title: "行动 B", whyItMatters: "B", completionCriteria: "B", expectedResistance: "B", reflectionQuestion: "B")
+        let firstVerification = Verification(questId: firstQuest.id, questTitle: firstQuest.title, sourceDailyEntryId: entry.id, completion: .done, valueRating: .high, calibrationNote: "校准 A")
+        let secondVerification = Verification(questId: secondQuest.id, questTitle: secondQuest.title, sourceDailyEntryId: entry.id, completion: .done, valueRating: .high, calibrationNote: "校准 B")
+        let record = HistoryRecord(
+            draft: entry,
+            quests: [firstQuest, secondQuest],
+            verification: firstVerification,
+            caseRecords: [
+                TrainingCaseRecord(trainingCase: firstCase, cards: [], quests: [firstQuest], lensSession: nil, verifications: [firstVerification]),
+                TrainingCaseRecord(trainingCase: secondCase, cards: [], quests: [secondQuest], lensSession: nil, verifications: [secondVerification])
+            ]
+        )
+        let link = ProjectLink(
+            projectId: UUID(),
+            sourceType: .verification,
+            sourceId: secondVerification.id.uuidString,
+            linkType: .evidence,
+            isUserConfirmed: true
+        )
+
+        XCTAssertEqual(projectEvidenceDisplayTitle(link: link, record: record), "校准 B")
+    }
+
+    func testWeeklyGuidanceReferenceCopyHidesInternalHintID() {
+        let copy = weeklyGuidanceReferenceCopy(hintIDs: ["action.completion_criteria"])
+
+        XCTAssertEqual(copy, "开始前，先写清怎样算完成。")
+        XCTAssertFalse(copy?.contains("action.completion_criteria") ?? true)
+    }
+
+    func testNormalizedMetricDetailContributionsKeepsNewestSemanticEvidenceVersion() {
+        let entryID = UUID()
+        let caseID = UUID()
+        let sourceID = UUID().uuidString
+        let old = MetricContribution(
+            snapshotId: UUID(),
+            metric: .clarity,
+            direction: .positive,
+            delta: 0.08,
+            title: "旧贡献",
+            reason: "旧版本",
+            sourceType: .quest,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            sourceCaseId: caseID,
+            candidateStatus: .accepted,
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        let newest = MetricContribution(
+            snapshotId: UUID(),
+            metric: .clarity,
+            direction: .positive,
+            delta: 0.12,
+            title: "新贡献",
+            reason: "新版本",
+            sourceType: .quest,
+            sourceId: sourceID,
+            sourceDailyEntryId: entryID,
+            sourceCaseId: caseID,
+            candidateStatus: .accepted,
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+
+        let normalized = normalizedMetricDetailContributions([old, newest, newest], metric: .clarity)
+
+        XCTAssertEqual(normalized.map(\.id), [newest.id])
     }
 
     // MARK: - Project status filter helpers

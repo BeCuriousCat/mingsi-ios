@@ -9,13 +9,20 @@ struct MingSiApp: App {
         DS.configureTabBarAppearance()
 #if DEBUG
         let storeInstance: AppStore
-        if AppStore.shouldUseVisualQAProjectDetailFixture() {
+        if AppStore.shouldUseVisualQASideQuestV2Fixture() {
+            storeInstance = AppStore.visualQASideQuestV2()
+        } else if AppStore.shouldUseVisualQAProjectDetailFixture() {
             storeInstance = AppStore.visualQAProjectDetail()
+        } else if AppStore.shouldUseVisualQAHistoryCaseSettlementFixture() {
+            storeInstance = AppStore.visualQAHistoryCaseSettlement()
+        } else if AppStore.shouldSeedVisualQAVNextOverview() {
+            storeInstance = AppStore.visualQAVNextOverview()
         } else {
             storeInstance = AppStore.live()
         }
         storeInstance.applyVisualQATabOverride()
         storeInstance.applyVisualQATodaySeed()
+        storeInstance.applyVisualQAVNextOverviewSeed()
         storeInstance.applyVisualQASettingsAuditProof()
         _store = StateObject(wrappedValue: storeInstance)
 #else
@@ -32,12 +39,22 @@ struct MingSiApp: App {
                 }
                 .task {
                     #if DEBUG
+                    if AppStore.shouldUseVisualQASideQuestV2Fixture() {
+                        return
+                    }
                     if AppStore.shouldUseVisualQAProjectDetailFixture() {
                         store.applyVisualQAProjectDetailFixture()
                         store.applyVisualQATabOverride()
                         return
                     }
+                    if AppStore.shouldUseVisualQAHistoryCaseSettlementFixture() {
+                        return
+                    }
+                    if AppStore.shouldSeedVisualQAVNextOverview() {
+                        return
+                    }
                     store.applyVisualQATodaySeed()
+                    store.applyVisualQAVNextOverviewSeed()
                     store.applyVisualQASettingsAuditProof()
                     guard store.loadsPersistedStateOnLaunch else { return }
                     #endif

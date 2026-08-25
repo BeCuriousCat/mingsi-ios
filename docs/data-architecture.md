@@ -1,5 +1,34 @@
 # 明思 Data Architecture
 
+## vNext Authoritative Additions (2026-07-25)
+
+`DailyEntry` remains the day container, but is no longer the authority for one training session. `TrainingCase` is the matter aggregate, and `TrainingCaseSession` is the authority for its resumable loop state.
+
+```text
+DailyEntry 1 -> N TrainingCase
+TrainingCase 1 -> 1 TrainingCaseSession
+TrainingCase 1 -> N ThinkingCard / Quest / LensSession
+Quest 1 -> 0..1 Verification -> 0..1 GrowthSettlement
+SideQuestPreference 1 -> N SideQuestRun -> 0..1 SideQuestExperienceEvent
+```
+
+- Verification derives Case ownership through Quest.
+- MetricContribution keeps `sourceCaseId` as an immutable attribution snapshot.
+- ProjectLink supports `training_case`.
+- ProjectClosureReview is retained across restore.
+- TrainingCaseMerge is reversible and never deletes source evidence.
+- TrainingCaseLink relates cross-day matters without rewriting ownership.
+- UserGuidanceState and CoachTurnFeedback are local audit records.
+- CoachPromptTurn attributes the exact coach output presented to the user and its quality-gate outcome.
+- WeeklyGuidanceReviewRecord stores one immutable, reusable review per natural week.
+- SideQuestLifeContextProfile keeps local-only home/workplace labels separate from typed practical context: optional floor level, stairs availability, and transition windows. Labels never cross the model boundary. Migration `v44_side_quest_practical_context_v2` preserves the legacy unscoped `floor_count` for local export and reassignment, but never treats it as model grounding.
+- SideQuestPlanningRecord records every central-LLM `offer` or `hold` once per local day, with only the decision, a PromptRun reference and planning time. It deliberately stores no raw context, model text or user notes. `v45_side_quest_planning_audit` commits the record, updated preference, and an optional AI offer in one transaction so trial metrics cannot count a decision that the app failed to persist.
+- SideQuestRun snapshots its catalog material and reward when offered. Completion writes one immutable SideQuestExperienceEvent transactionally; declining, expiring, or deferring never writes a negative event.
+- SideQuestExperienceEvent is a separate life-growth ledger. It never creates a MetricContribution or changes the five evidence-based coaching metrics.
+- HistoryRecord contains multiple TrainingCaseRecord values per day.
+
+Migrations are `v33_training_cases`, `v34_case_ownership`, `v35_vnext_support`, `v36_vnext_closure_integrity`, `v37_coach_prompt_turns`, `v38_weekly_guidance_reviews`, `v39_side_quest_foundation`, `v44_side_quest_practical_context_v2`, and `v45_side_quest_planning_audit`. Before a file-backed pre-vNext store migrates, SQLite completes a WAL checkpoint and the app atomically copies the complete main database to a versioned backup. Migration is attempted only when no other database connection keeps that checkpoint busy; otherwise the original database remains untouched and the app reopens it through the legacy flow. The migrator runs against a working copy and replaces the live database only after all migrations complete. If migration fails, the original database is preserved or restored and the app reopens it through the legacy flow. Export includes all vNext tables and excludes Keychain secrets.
+
 ## Purpose
 
 这份文档定义明思 MVP 的本地数据架构。目标是保证产品后续改 UI、改卡片形态、改动线、迁移 Prompt 或增加服务端时，用户的长期思考资产不会丢失。
@@ -152,7 +181,7 @@ deletedAt
 id
 schemaVersion
 projectId
-sourceType: daily_entry | thinking_card | quest | verification | principle
+sourceType: daily_entry | training_case | thinking_card | quest | verification | principle
 sourceId
 linkType: evidence | blocker | decision | task | principle | risk
 confidence
@@ -657,3 +686,30 @@ error
 - 迁移测试证明 rawText、confirmed cards、quests、verification、principles 不丢。
 - PromptRun 能记录 prompt 和模型版本。
 - UI 层不直接依赖数据库表结构。
+## vNext Closure Reliability (v36)
+
+- `project_closure_reviews.principle_candidates_json` stores unaccepted, evidence-backed project closure principle candidates. Accepted principles remain global `principle_assets` and are linked back to the project.
+- Closing a project persists the closure review and archived project row in one SQLite write transaction.
+- Updates to `lens_sessions.case_id` and `metric_contributions.source_case_id` are validated against the owning `DailyEntry`, matching insert-time ownership checks.
+
+## Coach Prompt Attribution (v37)
+
+- `coach_prompt_turns` records the Case session, PromptRun, coach observation, candidate output, exact presented output, quality-gate outcome, and timestamps for one coach turn.
+- Feedback is attributed only to the output actually shown to the user, so discarded or repaired candidates cannot distort prompt-quality measurements.
+- Prompt copy experiments require this attribution record and must preserve source references and Case isolation.
+
+## Weekly Guidance Review Persistence (v38)
+
+- `weekly_guidance_reviews.week_key` is a deterministic natural-week key and is unique.
+
+## Side Quest Foundation (v39)
+
+- `side_quest_preferences` is a single profile with categories, appearance frequency, notification preference and permitted time window. Invitations are visible by default; notification permission remains explicit.
+- `side_quest_runs` is the auditable lifecycle record: `offered`, `accepted`, `deferred`, `declined`, `completed`, or `expired`. SQLite allows only one unresolved invitation at a time.
+- `side_quest_experience_events.side_quest_run_id` is unique. Insert requires the referenced run to be completed, and update/delete triggers preserve the event as an immutable reward record.
+- Notification preference is stored in v39 and is activated only from an explicit Settings action; that action is the sole place that requests authorization. v40 schedules an AI-generated offer inside the selected window and cancels it when the invitation is resolved.
+- v40 adds the side-quest decision audit (`origin`, `prompt_run_id`, `decision_rationale`, notification copy), the last planning timestamp/PromptRun ID on the preference profile, and immutable positive `streak_count` on each experience event. The LLM decides offer/hold and content; local code remains the enforcement boundary.
+- v45 adds `side_quest_planning_records` so holds become durable, privacy-minimized trial evidence instead of disappearing after `last_ai_planning_at` is updated. A unique `day_key` and `prompt_run_id` prevent duplicate same-day accounting.
+- A generated review is immutable for that week. Repeated user actions and App restarts load the same row instead of making another model request.
+- Repository read failure suppresses generation to avoid accidental duplicate calls; an in-memory result remains reusable when persistence fails during the current session.
+- Export includes weekly reviews and their evidence references, but never API keys or provider credentials.

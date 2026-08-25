@@ -35,6 +35,17 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.sessionMode, .standard)
     }
 
+    func testSessionMode_displayTitleIsLocalizedWithoutChangingPersistenceValue() {
+        XCTAssertEqual(SessionMode.quick.displayTitle, "快速整理")
+        XCTAssertEqual(SessionMode.standard.displayTitle, "完整复盘")
+        XCTAssertEqual(SessionMode.deep.displayTitle, "深入复盘")
+        XCTAssertEqual(SessionMode.standard.title, "完整复盘")
+        XCTAssertEqual(SessionMode.quick.badgeTitle, "快速模式")
+        XCTAssertEqual(SessionMode.standard.badgeTitle, "标准模式")
+        XCTAssertEqual(SessionMode.deep.badgeTitle, "深入模式")
+        XCTAssertEqual(SessionMode.standard.rawValue, "standard")
+    }
+
     func testInitialState_hasNotSelectedMode() {
         XCTAssertFalse(store.todayDraft.hasSelectedSessionMode)
     }
@@ -45,6 +56,26 @@ final class AppStoreStateMachineTests: XCTestCase {
 
     func testInitialState_emptyRawText() {
         XCTAssertTrue(store.todayDraft.rawText.isEmpty)
+    }
+
+    func testVNextOverview_missingCentralModelKey_keepsOriginalInputWithoutLocalFallback() {
+        let vNextStore = AppStore(
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: true
+        )
+        vNextStore.apiKeyConfigured = false
+        let rawInput = "客户还没有回复验收邮件，明天先确认负责人。"
+        vNextStore.updateTodayCapture(rawInput)
+
+        vNextStore.organizeOverviewCapture()
+
+        XCTAssertEqual(vNextStore.todayDraft.rawText, rawInput)
+        XCTAssertEqual(vNextStore.todayDraft.state, .organizing)
+        XCTAssertFalse(vNextStore.isTodayOverviewPresented)
+        XCTAssertTrue(vNextStore.trainingCases.isEmpty)
+        XCTAssertTrue(vNextStore.thinkingCards.isEmpty)
+        XCTAssertEqual(vNextStore.selectedTab, .today)
+        XCTAssertTrue(vNextStore.lastAIFailureMessage?.contains("请先配置中央模型 API Key") == true)
     }
 
     func testPendingAIRepairBannerText_usesTrainingLanguage() {
@@ -238,7 +269,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         store = AppStore(
             quests: [quest],
             verificationRepository: verificationRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         store.selectYesterdayCompletion(.partial)
         store.selectYesterdayValueRating(.medium)
@@ -317,7 +349,8 @@ final class AppStoreStateMachineTests: XCTestCase {
                 promptProvider: LocalPromptProvider(),
                 llmClient: client
             ),
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         store.selectYesterdayCompletion(.done)
         store.selectYesterdayValueRating(.high)
@@ -359,7 +392,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             dailyEntryRepository: dailyRepo,
             questRepository: questRepo,
             verificationRepository: verificationRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         await verifyingStore.loadPersistedState()
         XCTAssertEqual(verifyingStore.todayDraft.id, today.id)
@@ -439,7 +473,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             principleRepository: principleRepo,
             verificationRepository: verificationRepo,
             principlePracticeEvidenceRepository: practiceRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         await verifyingStore.loadPersistedState()
 
@@ -536,7 +571,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             principleRepository: principleRepo,
             verificationRepository: verificationRepo,
             principlePracticeEvidenceRepository: practiceRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         await verifyingStore.loadPersistedState()
 
@@ -606,7 +642,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             principleRepository: principleRepo,
             verificationRepository: verificationRepo,
             principlePracticeEvidenceRepository: practiceRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         await verifyingStore.loadPersistedState()
 
@@ -679,7 +716,8 @@ final class AppStoreStateMachineTests: XCTestCase {
                 promptProvider: LocalPromptProvider(),
                 llmClient: client
             ),
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
 
         try await advanceTo(.capture)
@@ -708,7 +746,8 @@ final class AppStoreStateMachineTests: XCTestCase {
                 promptProvider: LocalPromptProvider(),
                 llmClient: client
             ),
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
 
         try await advanceTo(.capture)
@@ -718,8 +757,16 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         try await waitForGeneratedCards()
         XCTAssertEqual(store.todayDraft.state, .organizing)
-        XCTAssertEqual(store.streamingCards.count, 1)
-        XCTAssertEqual(store.streamingCards[0].status, .closed)
+        try await waitUntil(
+            store.streamingCards.count == 1,
+            timeout: 2,
+            file: #filePath,
+            line: #line,
+            failureMessage: "Expected final streaming card state before persistence"
+        ) {
+            store.streamingCards.count == 1
+        }
+        XCTAssertEqual(try XCTUnwrap(store.streamingCards.first).status, .closed)
         XCTAssertEqual(store.thinkingCards.first?.title, "准备会议目标")
         XCTAssertTrue(store.streamingStatusText.contains("已生成"))
 
@@ -732,7 +779,8 @@ final class AppStoreStateMachineTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         persistedCards = try await cardRepo.cards(for: store.todayDraft.id)
         XCTAssertEqual(persistedCards.count, 1)
-        XCTAssertTrue(persistedCards[0].isConfirmed)
+        let persistedCard = try XCTUnwrap(persistedCards.first)
+        XCTAssertTrue(persistedCard.isConfirmed)
     }
 
     func testCapture_streamingCardsAreVisibleBeforeStreamCompletes() async throws {
@@ -1461,6 +1509,26 @@ final class AppStoreStateMachineTests: XCTestCase {
                 "\(goldenCase.id) should not ask multiple questions at once."
             )
         }
+    }
+
+    func testCoachObservationPolicyTreatsTentativeExplanationsAsEvidenceGaps() {
+        let thinkingFromFailure = CoachObservationPolicy().diagnoseBaseline(
+            text: "练习提交有失败记录，我猜是粗心造成的。"
+        )
+        XCTAssertEqual(thinkingFromFailure.primaryGap, .evidenceGap)
+        XCTAssertEqual(thinkingFromFailure.foundationalAbility, .thinking)
+
+        let thinking = CoachObservationPolicy().diagnoseBaseline(
+            text: "集成环境两次超时，我猜缓存失效是主因。"
+        )
+        XCTAssertEqual(thinking.primaryGap, .evidenceGap)
+        XCTAssertEqual(thinking.foundationalAbility, .thinking)
+
+        let calibration = CoachObservationPolicy().diagnoseBaseline(
+            text: "月度报表与明细表相差1.8%，我推测是汇率口径造成的。"
+        )
+        XCTAssertEqual(calibration.primaryGap, .evidenceGap)
+        XCTAssertEqual(calibration.foundationalAbility, .calibration)
     }
 
     func testCoachPatternSummaryPolicyKeepsOnlyRecentGapPatternSummary() throws {
@@ -6007,7 +6075,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             principleRepository: principleRepo,
             verificationRepository: verificationRepo,
             principlePracticeEvidenceRepository: practiceRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
         await verifyingStore.loadPersistedState()
 
@@ -6309,7 +6378,8 @@ final class AppStoreStateMachineTests: XCTestCase {
             questRepository: questRepo,
             principleRepository: principleRepo,
             lensSessionRepository: lensRepo,
-            refreshesAIServiceFromKeychain: false
+            refreshesAIServiceFromKeychain: false,
+            trainingCasesVNextEnabled: false
         )
 
         let rawInput = "今天要把生产完成路径归档到历史证据里，确认明天可以复盘。"
@@ -7616,13 +7686,13 @@ final class AppStoreStateMachineTests: XCTestCase {
             growthAIService: nil
         )
 
-        await store.generateWeeklyGrowthReport()
+        await store.generateMonthlyGrowthReport()
 
         XCTAssertFalse(store.growthReportMessage.contains("服务暂不可用"))
-        XCTAssertTrue(store.growthReportMessage.contains("AI 成长报告生成失败"))
+        XCTAssertTrue(store.growthReportMessage.contains("AI 成长月报生成失败"))
         let recentRuns = try await promptRunRepo.recentPromptRuns(limit: 1)
         let run = try XCTUnwrap(recentRuns.first)
-        XCTAssertEqual(run.promptId, PromptID.weeklyCalibration.rawValue)
+        XCTAssertEqual(run.promptId, PromptID.monthlyGrowth.rawValue)
         XCTAssertEqual(run.modelProvider, "GLM")
         XCTAssertEqual(run.modelName, "missing-api-key")
         XCTAssertTrue(run.error?.contains("API Key") == true)
@@ -7632,7 +7702,6 @@ final class AppStoreStateMachineTests: XCTestCase {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let promptRunRepo = SQLitePromptRunRepository(database: database)
         let historicalEntryID = UUID()
-        let otherEntryID = UUID()
         let failedRun = PromptRun(
             promptId: PromptID.organizeCards.rawValue,
             promptVersion: "1.0.0",
@@ -7646,7 +7715,7 @@ final class AppStoreStateMachineTests: XCTestCase {
             error: "HTTP 504: timeout",
             createdAt: Date(timeIntervalSince1970: 200)
         )
-        let unrelatedRun = PromptRun(
+        let unsupportedRun = PromptRun(
             promptId: PromptID.generateQuestions.rawValue,
             promptVersion: "1.0.0",
             inputSchemaVersion: 1,
@@ -7654,13 +7723,13 @@ final class AppStoreStateMachineTests: XCTestCase {
             modelProvider: "GLM",
             modelName: "glm-test",
             sessionMode: SessionMode.standard.rawValue,
-            sourceRecordIds: [otherEntryID.uuidString],
-            requestSummary: "other failure",
+            sourceRecordIds: [historicalEntryID.uuidString],
+            requestSummary: "unsupported historical failure",
             error: "HTTP 500",
             createdAt: Date(timeIntervalSince1970: 300)
         )
         try await promptRunRepo.savePromptRun(failedRun)
-        try await promptRunRepo.savePromptRun(unrelatedRun)
+        try await promptRunRepo.savePromptRun(unsupportedRun)
 
         let auditStore = AppStore(
             promptRunRepository: promptRunRepo,
@@ -7756,6 +7825,38 @@ final class AppStoreStateMachineTests: XCTestCase {
         let candidates = try await candidateRepo.candidates(for: entry.id)
         XCTAssertTrue(candidates.isEmpty)
         XCTAssertTrue(auditStore.todayLoopMessage.contains("暂只支持历史卡片整理"))
+    }
+
+    func testHistoricalRetryCandidatesOnlyExposeActionableStatuses() async throws {
+        let candidateRepo = InMemoryHistoricalRetryCandidateRepository()
+        let entryId = UUID()
+        let statuses = HistoricalRetryCandidateStatus.allCases
+        let candidates = statuses.map { status in
+            HistoricalRetryCandidate(
+                failedPromptRunId: UUID(),
+                promptId: .organizeCards,
+                sourceDailyEntryId: entryId,
+                status: status,
+                reconstructedInputSummary: "Historical input"
+            )
+        }
+        for candidate in candidates {
+            try await candidateRepo.saveCandidate(candidate)
+        }
+
+        let store = AppStore(
+            historicalRetryCandidateRepository: candidateRepo,
+            refreshesAIServiceFromKeychain: false
+        )
+
+        let visible = await store.historicalRetryCandidates(for: entryId)
+
+        XCTAssertEqual(
+            Set(visible.map(\.status)),
+            [.pending, .retrying, .candidateReady]
+        )
+        XCTAssertFalse(visible.contains { $0.status == .blocked })
+        XCTAssertFalse(visible.contains { $0.status == .failed })
     }
 
     func testAcceptHistoricalRetryCandidate_blocksWhenConfirmedCardsExist() async throws {
@@ -8031,7 +8132,10 @@ final class AppStoreStateMachineTests: XCTestCase {
 
         await growthStore.loadLatestGrowthSnapshot()
 
-        XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), [reviewCandidate.id, acceptedNegative.id])
+        XCTAssertEqual(
+            Set(growthStore.growthReportReviewContributions.map(\.id)),
+            Set([reviewCandidate.id, acceptedNegative.id])
+        )
         XCTAssertTrue(growthStore.acceptedReportReviewContributions(for: .clarity).isEmpty)
         XCTAssertEqual(growthStore.acceptedReportReviewContributions(for: .valueJudgment).map(\.id), [acceptedNegative.id])
     }
@@ -8117,19 +8221,23 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(growthStore.acceptedReportReviewContributions(for: .clarity).isEmpty)
     }
 
-    func testGenerateWeeklyGrowthReport_withEnoughEvidencePersistsAIContributionsAsReviewCandidates() async throws {
+    func testGenerateWeeklyGrowthReport_withEnoughEvidenceSetsControlledGuidanceWithoutChangingScores() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
         let questRepo = SQLiteQuestRepository(database: database)
         let verificationRepo = SQLiteVerificationRepository(database: database)
         let snapshotRepo = SQLiteMetricSnapshotRepository(database: database)
         let contributionRepo = SQLiteMetricContributionRepository(database: database)
+        let weeklyReviewRepo = SQLiteWeeklyGuidanceReviewRepository(database: database)
 
-        var firstEntryId: UUID?
-        var firstQuestId: UUID?
+        let now = Date()
+        var verificationIDs: [UUID] = []
         for index in stride(from: 2, through: 0, by: -1) {
+            let evidenceDate = index == 0
+                ? now
+                : Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
             let draft = DailyEntryDraft(
-                date: Calendar.current.date(byAdding: .day, value: -index, to: Date()) ?? Date(),
+                date: evidenceDate,
                 rawText: "Completed report loop \(index)",
                 state: .sessionComplete
             )
@@ -8144,29 +8252,31 @@ final class AppStoreStateMachineTests: XCTestCase {
                 status: .completed
             )
             try await questRepo.saveQuest(quest, sourceDailyEntryId: draft.id)
-            try await verificationRepo.saveVerification(
-                Verification(
-                    questId: quest.id,
-                    questTitle: quest.title,
-                    sourceDailyEntryId: draft.id,
-                    completion: .done,
-                    valueRating: .high,
-                    calibrationNote: "Report verification \(index)"
-                )
+            let verification = Verification(
+                questId: quest.id,
+                questTitle: quest.title,
+                sourceDailyEntryId: draft.id,
+                completion: .done,
+                valueRating: .high,
+                evidenceText: "Observed evidence \(index)",
+                calibrationNote: "Report verification \(index)",
+                createdAt: evidenceDate,
+                updatedAt: evidenceDate
             )
-
-            if firstEntryId == nil {
-                firstEntryId = draft.id
-                firstQuestId = quest.id
-            }
+            try await verificationRepo.saveVerification(verification)
+            verificationIDs.append(verification.id)
         }
 
-        let entryId = try XCTUnwrap(firstEntryId)
-        let questId = try XCTUnwrap(firstQuestId)
-        let response = Self.growthReportResponse(entryID: entryId, sourceID: questId.uuidString)
+        let evidenceRef = try XCTUnwrap(verificationIDs.first?.uuidString)
+        let response = Data(
+            """
+            {"training_focus":"先写清核心判断","hint_ids":["judgment.observable_evidence"],"evidence_refs":["\(evidenceRef)"]}
+            """.utf8
+        )
+        let client = RecordingLLMClient(response: response)
         let growthService = GrowthAIService(
             promptProvider: LocalPromptProvider(),
-            llmClient: RecordingLLMClient(response: response)
+            llmClient: client
         )
         let growthStore = AppStore(
             dailyEntryRepository: dailyRepo,
@@ -8174,29 +8284,53 @@ final class AppStoreStateMachineTests: XCTestCase {
             verificationRepository: verificationRepo,
             metricSnapshotRepository: snapshotRepo,
             metricContributionRepository: contributionRepo,
+            weeklyGuidanceReviewRepository: weeklyReviewRepo,
             refreshesAIServiceFromKeychain: false,
             growthAIService: growthService
         )
 
         await growthStore.loadHistoryRecords()
+        let scoresBefore = growthStore.growthSnapshot
         await growthStore.generateWeeklyGrowthReport()
 
-        let savedSnapshotCandidate = try await snapshotRepo.latestSnapshot()
-        let savedSnapshot = try XCTUnwrap(savedSnapshotCandidate)
-        XCTAssertEqual(savedSnapshot.period, "weekly")
-        XCTAssertTrue(savedSnapshot.canDisplayScores)
-        XCTAssertEqual(savedSnapshot.summary, "AI weekly growth summary")
-        XCTAssertEqual(savedSnapshot.completeLoopCount, 3)
+        XCTAssertEqual(growthStore.weeklyGuidanceReview?.trainingFocus, "先写清核心判断")
+        XCTAssertEqual(growthStore.weeklyGuidanceReview?.hintIds, ["judgment.observable_evidence"])
+        XCTAssertEqual(growthStore.weeklyGuidanceReview?.evidenceRefs, [evidenceRef])
         XCTAssertFalse(growthStore.isGeneratingGrowthReport)
-        XCTAssertTrue(growthStore.growthReportMessage.contains("周度"))
+        XCTAssertTrue(growthStore.growthReportMessage.contains("下周训练重点已生成"))
+        let savedSnapshot = try await snapshotRepo.latestSnapshot()
+        XCTAssertNil(savedSnapshot)
+        XCTAssertEqual(growthStore.growthSnapshot, scoresBefore)
+        XCTAssertTrue(growthStore.metricContributions.isEmpty)
+        XCTAssertTrue(growthStore.growthReportReviewContributions.isEmpty)
+        XCTAssertEqual(client.requests.count, 1)
 
-        let savedContributions = try await contributionRepo.contributions(for: savedSnapshot.id)
-        XCTAssertEqual(savedContributions.count, 1)
-        XCTAssertEqual(savedContributions[0].sourceId, questId.uuidString)
-        XCTAssertEqual(savedContributions[0].sourceDailyEntryId, entryId)
-        XCTAssertEqual(savedContributions[0].candidateStatus, .candidate)
-        XCTAssertEqual(savedContributions[0].practiceRole, .possibleSignal)
-        XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), savedContributions.map(\.id))
+        await growthStore.generateWeeklyGrowthReport()
+        XCTAssertEqual(client.requests.count, 1, "The same natural week must reuse its saved review")
+        XCTAssertTrue(growthStore.growthReportMessage.contains("继续沿用"))
+
+        let weekKey = WeeklyGuidanceReviewPolicy().weekKey()
+        let persistedReview = try await weeklyReviewRepo.review(forWeekKey: weekKey)
+        XCTAssertEqual(persistedReview?.selection, growthStore.weeklyGuidanceReview)
+
+        let restoredClient = RecordingLLMClient(response: response)
+        let restoredStore = AppStore(
+            dailyEntryRepository: dailyRepo,
+            questRepository: questRepo,
+            verificationRepository: verificationRepo,
+            weeklyGuidanceReviewRepository: weeklyReviewRepo,
+            refreshesAIServiceFromKeychain: false,
+            growthAIService: GrowthAIService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: restoredClient
+            )
+        )
+        await restoredStore.loadPersistedState()
+        XCTAssertEqual(restoredStore.weeklyGuidanceReview, growthStore.weeklyGuidanceReview)
+
+        await restoredStore.generateWeeklyGrowthReport()
+        XCTAssertTrue(restoredClient.requests.isEmpty, "Restarting must not trigger another weekly model call")
+        XCTAssertTrue(restoredStore.growthReportMessage.contains("继续沿用"))
     }
 
     func testGenerateMonthlyGrowthReport_withEnoughEvidencePersistsAIContributionsAsReviewCandidates() async throws {
@@ -8276,7 +8410,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(growthStore.growthReportReviewContributions.map(\.id), savedContributions.map(\.id))
     }
 
-    func testGenerateWeeklyGrowthReport_includesDismissedContributionFeedbackFromLatestSnapshot() async throws {
+    func testGenerateMonthlyGrowthReport_includesDismissedContributionFeedbackFromLatestSnapshot() async throws {
         let database = try AppDatabase(dbQueue: DatabaseQueue())
         let dailyRepo = SQLiteDailyEntryRepository(database: database)
         let questRepo = SQLiteQuestRepository(database: database)
@@ -8367,7 +8501,7 @@ final class AppStoreStateMachineTests: XCTestCase {
         )
 
         await growthStore.loadHistoryRecords()
-        await growthStore.generateWeeklyGrowthReport()
+        await growthStore.generateMonthlyGrowthReport()
 
         let request = try XCTUnwrap(client.requests.first)
         let payload = try XCTUnwrap(request.contextPayload)
@@ -9914,6 +10048,26 @@ final class AppStoreStateMachineTests: XCTestCase {
             fixtureStore.loadsPersistedStateOnLaunch,
             "Visual QA fixture store must not load persisted state on launch"
         )
+    }
+
+    func testVisualQAVNextOverviewFixture_isSelectedForDirectAndSimctlFlagsAndIsIsolated() {
+        XCTAssertTrue(AppStore.shouldSeedVisualQAVNextOverview(
+            environment: ["MINGSI_VISUAL_QA_VNEXT_OVERVIEW": "1"]
+        ))
+        XCTAssertTrue(AppStore.shouldSeedVisualQAVNextOverview(
+            environment: ["SIMCTL_CHILD_MINGSI_VISUAL_QA_VNEXT_OVERVIEW": "1"]
+        ))
+        XCTAssertFalse(AppStore.shouldSeedVisualQAVNextOverview(environment: [:]))
+
+        let fixtureStore = AppStore.visualQAVNextOverview()
+        fixtureStore.applyVisualQAVNextOverviewSeed(
+            environment: ["MINGSI_VISUAL_QA_VNEXT_OVERVIEW": "1"]
+        )
+
+        XCTAssertTrue(fixtureStore.trainingCasesVNextEnabled)
+        XCTAssertFalse(fixtureStore.loadsPersistedStateOnLaunch)
+        XCTAssertEqual(fixtureStore.trainingCases.count, 3)
+        XCTAssertTrue(fixtureStore.isTodayOverviewPresented)
     }
 
     func testApplyVisualQAProjectDetailFixture_populatesStoreAndOptsOutOfLoadPersistedState() {
@@ -13049,6 +13203,8 @@ extension AppStoreStateMachineTests {
                     switch link.sourceType {
                     case .dailyEntry:
                         return link.sourceId != record.draft.id.uuidString
+                    case .trainingCase:
+                        return !record.caseRecords.contains { $0.trainingCase.id.uuidString == link.sourceId }
                     case .thinkingCard:
                         return !record.cards.contains { $0.id.uuidString == link.sourceId }
                     case .quest:
@@ -13083,7 +13239,7 @@ extension AppStoreStateMachineTests {
         XCTAssertEqual(projectDetailStatusChipText(for: .active), "活跃")
         XCTAssertEqual(projectDetailStatusChipText(for: .watching), "关注中")
         XCTAssertEqual(projectDetailStatusChipText(for: .paused), "暂停")
-        XCTAssertEqual(projectDetailStatusChipText(for: .archived), "已归档")
+        XCTAssertEqual(projectDetailStatusChipText(for: .archived), "已结束")
         XCTAssertEqual(projectDetailStatusChipText(for: nil), "活跃")
     }
 

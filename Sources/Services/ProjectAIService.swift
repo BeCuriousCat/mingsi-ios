@@ -43,6 +43,12 @@ struct ProjectInsightsContext: Hashable {
     var acceptedInsightCount: Int
 }
 
+struct ProjectClosureReviewAIResult: Hashable {
+    var summary: String
+    var principleCandidates: [ProjectClosurePrincipleCandidate]
+    var insufficientEvidenceReason: String?
+}
+
 struct ProjectMergeSuggestionProjectContext: Hashable {
     var id: String
     var name: String
@@ -166,6 +172,137 @@ final class ProjectAIService {
 
         let data = try await llmClient.complete(request)
         return try parser.parseProjectInsights(from: data)
+    }
+
+    func generateClosureReview(
+        project: Project,
+        closure: ProjectClosureReview,
+        confirmedEvidence: [ProjectInsightEvidenceContext]
+    ) async throws -> ProjectClosureReviewAIResult {
+        guard confirmedEvidence.count >= 2 else {
+            return ProjectClosureReviewAIResult(
+                summary: "",
+                principleCandidates: [],
+                insufficientEvidenceReason: "至少需要两条已确认项目证据，才能生成结束总结或原则候选。"
+            )
+        }
+        let base = promptProvider.template(for: .generateProjectInsights, mode: .standard)
+        let template = PromptTemplate(
+            id: base.id,
+            version: base.version,
+            systemPolicyVersion: base.systemPolicyVersion,
+            contextPolicyVersion: base.contextPolicyVersion,
+            evalSuiteVersion: base.evalSuiteVersion,
+            rollbackTargetVersion: base.rollbackTargetVersion,
+            systemText: base.systemText,
+            userText: Self.closureReviewPrompt,
+            outputSchemaVersion: 1
+        )
+        var payload = buildContextPayload(from: ProjectInsightsContext(
+            projectId: project.id,
+            projectName: project.name,
+            projectGoal: project.goal,
+            projectSuccessCriteria: project.successCriteria,
+            confirmedEvidence: confirmedEvidence,
+            acceptedInsightCount: 0
+        ))
+        payload.currentInput = .init(
+            dailyEntryId: nil,
+            rawText: "结束原因：\(closure.reason.title)\n实际结果：\(closure.outcome)\n补充复盘：\(closure.reviewNote ?? "")"
+        )
+        let refs = Set(confirmedEvidence.map(\.id))
+        let request = LLMRequest(
+            prompt: template,
+            inputSummary: "project=\(project.id.uuidString); closure_evidence=\(refs.count)",
+            contextPayload: payload,
+            sourceRecordIDs: refs.sorted(),
+            contextVersion: 1,
+            contextRecordIDs: [project.id.uuidString]
+        )
+        let data = try await llmClient.complete(request)
+        let result = try Self.parseClosureReview(data)
+        guard result.insufficientEvidenceReason == nil else { return result }
+        guard result.principleCandidates.allSatisfy({
+            $0.evidenceRefs.count >= 2 && Set($0.evidenceRefs).isSubset(of: refs)
+        }) else {
+            throw TodayAIParsingError.qualityGateFailed(["项目结束原则候选缺少可回链证据。"])
+        }
+        return result
+    }
+
+    private static let closureReviewPrompt = """
+    Summarize a closed project using only confirmed project evidence and the user's closure review.
+    Do not infer hidden causes, traits, or conclusions. If the evidence cannot support a reusable rule, return an insufficient_evidence_reason and no candidates.
+    Every principle candidate must cite two or more real source_refs from the supplied evidence. The user will confirm each candidate manually; never state that a candidate has been accepted.
+    Return JSON only:
+    {
+      "summary": "short evidence-backed project summary",
+      "insufficient_evidence_reason": "optional string",
+      "principle_candidates": [{
+        "title": "string", "summary": "string", "trigger_context": "string",
+        "actions": ["string"], "success_criteria": "string", "exceptions": "string",
+        "evidence_refs": ["real evidence id"]
+      }]
+    }
+    """
+
+    private static func parseClosureReview(_ data: Data) throws -> ProjectClosureReviewAIResult {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let text = String(decoding: data, as: UTF8.self)
+        let payload: Data
+        if let envelope = try? decoder.decode(ClosureEnvelope.self, from: data),
+           let content = envelope.choices.first?.message?.content,
+           let start = content.firstIndex(of: "{"), let end = content.lastIndex(of: "}") {
+            payload = Data(content[start...end].utf8)
+        } else if let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}") {
+            payload = Data(text[start...end].utf8)
+        } else {
+            throw TodayAIParsingError.invalidJSON
+        }
+        let response = try decoder.decode(ClosureReviewDTO.self, from: payload)
+        let reason = response.insufficientEvidenceReason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = response.principleCandidates.compactMap { item -> ProjectClosurePrincipleCandidate? in
+            let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = item.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let actions = item.actions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let refs = Array(Set(item.evidenceRefs.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })).sorted()
+            guard !title.isEmpty, !summary.isEmpty, !actions.isEmpty,
+                  !item.triggerContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !item.successCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !refs.isEmpty else { return nil }
+            return ProjectClosurePrincipleCandidate(
+                title: title, summary: summary, triggerContext: item.triggerContext,
+                actions: actions, successCriteria: item.successCriteria,
+                exceptions: item.exceptions, evidenceRefs: refs
+            )
+        }
+        if reason?.isEmpty == false { return .init(summary: "", principleCandidates: [], insufficientEvidenceReason: reason) }
+        guard !response.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TodayAIParsingError.emptyResult
+        }
+        return .init(summary: response.summary.trimmingCharacters(in: .whitespacesAndNewlines), principleCandidates: candidates, insufficientEvidenceReason: nil)
+    }
+
+    private struct ClosureReviewDTO: Decodable {
+        var summary: String
+        var insufficientEvidenceReason: String?
+        var principleCandidates: [ClosurePrincipleDTO]
+    }
+
+    private struct ClosurePrincipleDTO: Decodable {
+        var title: String
+        var summary: String
+        var triggerContext: String
+        var actions: [String]
+        var successCriteria: String
+        var exceptions: String
+        var evidenceRefs: [String]
+    }
+
+    private struct ClosureEnvelope: Decodable {
+        struct Choice: Decodable { struct Message: Decodable { var content: String? }; var message: Message? }
+        var choices: [Choice]
     }
 
     private func buildContextPayload(from context: ProjectInsightsContext) -> PromptContextPayload {

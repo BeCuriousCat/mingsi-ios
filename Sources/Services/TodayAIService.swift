@@ -1,7 +1,9 @@
 import Foundation
 
 struct VerifyQuestInput: Hashable {
+    var verificationId: UUID = UUID()
     var sourceRecordIDs: [String] = []
+    var currentTrainingCase: TrainingCase? = nil
     var questTitle: String
     var completionCriteria: String
     var targetJudgment: String? = nil
@@ -17,10 +19,14 @@ struct VerifyQuestResult: Hashable {
     var likelyIssue: String?
     var recommendation: String?
     var expectedPrinciplePracticeAssessment: String? = nil
+    /// Model-authored evidence that may be shown in the one-time settlement.
+    /// It is deliberately separate from metric contributions and scores.
+    var growthEvidenceItems: [GrowthSettlementEvidenceItem] = []
 }
 
 struct TodayAIContext: Hashable {
     var draft: DailyEntryDraft
+    var currentTrainingCase: TrainingCase? = nil
     var confirmedCards: [ThinkingCard] = []
     var questions: [ReflectionQuestion] = []
     var quests: [Quest] = []
@@ -34,32 +40,47 @@ struct TodayAIContext: Hashable {
     var coachPatternSummary: CoachPatternSummary? = nil
 }
 
+struct CoachGenerated<Value> {
+    var value: Value
+    var promptRunId: UUID?
+}
+
 final class TodayAIService {
     private let promptProvider: PromptProvider
     private let llmClient: LLMClient
     private let parser: TodayAIResponseParser
     private let contextAssembler: ContextAssembler
+    private let coachPromptTurnRepository: CoachPromptTurnRepository?
 
     init(
         promptProvider: PromptProvider,
         llmClient: LLMClient,
         parser: TodayAIResponseParser = TodayAIResponseParser(),
-        contextAssembler: ContextAssembler = DefaultContextAssembler()
+        contextAssembler: ContextAssembler = DefaultContextAssembler(),
+        coachPromptTurnRepository: CoachPromptTurnRepository? = nil
     ) {
         self.promptProvider = promptProvider
         self.llmClient = llmClient
         self.parser = parser
         self.contextAssembler = contextAssembler
+        self.coachPromptTurnRepository = coachPromptTurnRepository
     }
 
     func organizeCards(for context: TodayAIContext) async throws -> [ThinkingCard] {
+        try await organizeCapture(for: context).cards
+    }
+
+    func organizeCapture(for context: TodayAIContext) async throws -> OrganizedCaptureResult {
         let request = request(
             promptID: .organizeCards,
             context: context,
             directives: organizeCardsDirectives()
         )
+        try Task.checkCancellation()
         let data = try await llmClient.complete(request)
-        return try parser.parseCards(from: data)
+        // Some clients finish after cancellation; never parse a late response.
+        try Task.checkCancellation()
+        return try parser.parseOrganizedCapture(from: data)
     }
 
     func streamOrganizedCards(
@@ -67,18 +88,28 @@ final class TodayAIService {
         onUpdate: @escaping ([StreamingCardDraft]) async -> Void,
         onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> [ThinkingCard] {
+        try await streamOrganizedCapture(for: context, onUpdate: onUpdate, onProgress: onProgress).cards
+    }
+
+    func streamOrganizedCapture(
+        for context: TodayAIContext,
+        onUpdate: @escaping ([StreamingCardDraft]) async -> Void,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> OrganizedCaptureResult {
         guard let streamingClient = llmClient as? StreamingLLMClient else {
-            return try await organizeCards(for: context)
+            return try await organizeCapture(for: context)
         }
 
         let request = request(
             promptID: .organizeCards,
             context: context,
-            directives: organizeCardsDirectives(streamProtocol: "MINGSI_STREAM_V1")
+            directives: organizeCardsDirectives(streamProtocol: "MINGSI_STREAM_V2")
         )
         let assembler = XMLStreamingCardAssembler()
 
+        try Task.checkCancellation()
         for try await event in streamingClient.stream(request) {
+            try Task.checkCancellation()
             await onProgress(event)
             switch event {
             case .token(let text):
@@ -98,36 +129,89 @@ final class TodayAIService {
                 await onUpdate(cards)
             }
         }
+        // A stream can close a card without emitting another incremental update.
+        // Always publish the assembler's final state before domain cards are returned.
+        await onUpdate(assembler.currentCards)
+        try Task.checkCancellation()
 
-        let cards = assembler.currentCards.compactMap(\.domainCard)
+        let values = assembler.currentCards.compactMap { draft -> (ThinkingCard, String, String)? in
+            guard let card = draft.domainCard else { return nil }
+            return (card, draft.caseKey, draft.caseTitle)
+        }
+        let cards = values.map(\.0)
         guard !cards.isEmpty else { throw TodayAIParsingError.emptyResult }
-        return cards
+        var order: [String] = []
+        var groups: [String: (title: String, ids: [UUID])] = [:]
+        for value in values {
+            let key = value.1.isEmpty ? "default" : String(value.1.prefix(64))
+            if groups[key] == nil { order.append(key) }
+            let title = value.2.isEmpty ? value.0.title : value.2
+            groups[key, default: (title, [])].ids.append(value.0.id)
+        }
+        let suggestions = order.compactMap { key -> TrainingCaseSuggestion? in
+            guard let group = groups[key] else { return nil }
+            return TrainingCaseSuggestion(key: key, title: group.title.isEmpty ? "今天要想清楚的事" : group.title, cardIds: group.ids)
+        }
+        return OrganizedCaptureResult(cards: cards, caseSuggestions: suggestions)
     }
 
     func generateQuestions(
         for context: TodayAIContext,
         onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> [ReflectionQuestion] {
+        try await generateQuestionsWithTrace(for: context, onProgress: onProgress).value
+    }
+
+    func generateQuestionsWithTrace(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> CoachGenerated<[ReflectionQuestion]> {
         let request = request(
             promptID: .generateQuestions,
             context: context
         )
-        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
-        let questions = try parser.parseQuestions(from: data)
-        let visiblePayload = request.contextPayload
-        try validateCoachingQuality(
-            PromptCoachingQualityPolicy.evaluateQuestions(
-                questions,
-                selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
-                lensFeedback: visiblePayload?.lensFeedback ?? [],
-                primaryTrainingDimension: visiblePayload?.trainingPrescription?.primaryTrainingDimension,
-                baselineTrainingDimensions: visiblePayload?.trainingPrescription?.baselineTrainingDimensions ?? [],
-                coachTurnState: coachTurnState(from: visiblePayload),
-                relevantPrinciples: visiblePayload?.principles ?? [],
-                coachObservation: visiblePayload?.coachObservation
-            )
+        let data: Data
+        do {
+            try Task.checkCancellation()
+            data = try await completePossiblyStreaming(request, onProgress: onProgress)
+            try Task.checkCancellation()
+        } catch {
+            await recordCoachTurnFailure(for: request, error: error)
+            throw error
+        }
+        await recordCoachTurnOutcome(
+            request,
+            outcome: .responseReceived,
+            detail: nil
         )
-        return questions
+
+        do {
+            let questions = try parser.parseQuestions(from: data)
+            let visiblePayload = request.contextPayload
+            try validateCoachingQuality(
+                PromptCoachingQualityPolicy.evaluateQuestions(
+                    questions,
+                    selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
+                    lensFeedback: visiblePayload?.lensFeedback ?? [],
+                    primaryTrainingDimension: visiblePayload?.trainingPrescription?.primaryTrainingDimension,
+                    baselineTrainingDimensions: visiblePayload?.trainingPrescription?.baselineTrainingDimensions ?? [],
+                    coachTurnState: coachTurnState(from: visiblePayload),
+                    relevantPrinciples: visiblePayload?.principles ?? [],
+                    coachObservation: visiblePayload?.coachObservation
+                )
+            )
+            return CoachGenerated(
+                value: questions,
+                promptRunId: coachPromptTurnRepository == nil ? nil : request.traceID
+            )
+        } catch {
+            await recordCoachTurnOutcome(
+                request,
+                outcome: coachOutcome(for: error),
+                detail: coachOutcomeDetail(for: error)
+            )
+            throw error
+        }
     }
 
     private func completePossiblyStreaming(
@@ -135,11 +219,16 @@ final class TodayAIService {
         onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> Data {
         guard let streamingClient = llmClient as? StreamingLLMClient else {
-            return try await llmClient.complete(request)
+            try Task.checkCancellation()
+            let data = try await llmClient.complete(request)
+            try Task.checkCancellation()
+            return data
         }
 
         var rawText = ""
+        try Task.checkCancellation()
         for try await event in streamingClient.stream(request) {
+            try Task.checkCancellation()
             await onProgress(event)
             switch event {
             case .token(let text):
@@ -149,6 +238,7 @@ final class TodayAIService {
             }
         }
 
+        try Task.checkCancellation()
         let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw TodayAIParsingError.emptyResult }
         return Data(trimmed.utf8)
@@ -158,21 +248,54 @@ final class TodayAIService {
         for context: TodayAIContext,
         onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> [Quest] {
+        try await generateQuestsWithTrace(for: context, onProgress: onProgress).value
+    }
+
+    func generateQuestsWithTrace(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> CoachGenerated<[Quest]> {
         let request = request(
             promptID: .generateQuests,
             context: context
         )
-        let data = try await completePossiblyStreaming(request, onProgress: onProgress)
-        let quests = try parser.parseQuests(from: data)
-        let visiblePayload = request.contextPayload
-        try validateCoachingQuality(
-            PromptCoachingQualityPolicy.evaluateQuests(
-                quests,
-                selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
-                coachTurnState: coachTurnState(from: visiblePayload)
-            )
+        let data: Data
+        do {
+            try Task.checkCancellation()
+            data = try await completePossiblyStreaming(request, onProgress: onProgress)
+            try Task.checkCancellation()
+        } catch {
+            await recordCoachTurnFailure(for: request, error: error)
+            throw error
+        }
+        await recordCoachTurnOutcome(
+            request,
+            outcome: .responseReceived,
+            detail: nil
         )
-        return quests
+
+        do {
+            let quests = try parser.parseQuests(from: data)
+            let visiblePayload = request.contextPayload
+            try validateCoachingQuality(
+                PromptCoachingQualityPolicy.evaluateQuests(
+                    quests,
+                    selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
+                    coachTurnState: coachTurnState(from: visiblePayload)
+                )
+            )
+            return CoachGenerated(
+                value: quests,
+                promptRunId: coachPromptTurnRepository == nil ? nil : request.traceID
+            )
+        } catch {
+            await recordCoachTurnOutcome(
+                request,
+                outcome: coachOutcome(for: error),
+                detail: coachOutcomeDetail(for: error)
+            )
+            throw error
+        }
     }
 
     func extractPrinciple(
@@ -197,6 +320,14 @@ final class TodayAIService {
         let template = promptProvider.template(for: .verifyQuest, mode: sessionMode)
         let contextPayload = PromptContextPayload(
             currentInput: .init(rawText: input.rawText),
+            currentCase: input.currentTrainingCase.map {
+                .init(
+                    id: $0.id.uuidString,
+                    title: $0.title,
+                    status: $0.status.rawValue,
+                    evidenceRefs: input.sourceRecordIDs
+                )
+            },
             userChoice: .init(sessionMode: sessionMode.rawValue),
             verification: .init(
                 questTitle: input.questTitle,
@@ -217,7 +348,11 @@ final class TodayAIService {
             contextRecordIDs: input.sourceRecordIDs
         )
         let data = try await completePossiblyStreaming(request, onProgress: onProgress)
-        let result = try parser.parseVerification(from: data)
+        let result = try parser.parseVerification(
+            from: data,
+            allowedGrowthEvidenceRefs: Set([input.sourceRecordIDs.first ?? "", input.verificationId.uuidString])
+                .filter { !$0.isEmpty }
+        )
         try validateCoachingQuality(
             PromptCoachingQualityPolicy.evaluateVerification(
                 result,
@@ -232,6 +367,78 @@ final class TodayAIService {
         guard !issues.isEmpty else { return }
         let reasons = Array(Set(issues.map { $0.reason.rawValue })).sorted()
         throw TodayAIParsingError.qualityGateFailed(reasons)
+    }
+
+    private func recordCoachTurnFailure(for request: LLMRequest, error: Error) async {
+        await recordCoachTurnOutcome(
+            request,
+            outcome: coachOutcome(for: error),
+            detail: coachOutcomeDetail(for: error)
+        )
+    }
+
+    private func recordCoachTurnOutcome(
+        _ request: LLMRequest,
+        outcome: CoachPromptTurnOutcome,
+        detail: String?
+    ) async {
+        guard let coachPromptTurnRepository,
+              request.prompt.id == .generateQuestions || request.prompt.id == .generateQuests || request.prompt.id == .reviewCoachAnswer
+        else { return }
+        try? await coachPromptTurnRepository.recordOutcome(
+            promptRunId: request.traceID,
+            promptId: request.prompt.id,
+            outcome: outcome,
+            detail: detail
+        )
+    }
+
+    private func coachOutcome(for error: Error) -> CoachPromptTurnOutcome {
+        if Task.isCancelled || error is CancellationError {
+            return .cancelled
+        }
+        if let parsingError = error as? TodayAIParsingError {
+            if case .qualityGateFailed = parsingError {
+                return .qualityRejected
+            }
+            return .parseRejected
+        }
+        return .transportFailed
+    }
+
+    private func coachOutcomeDetail(for error: Error) -> String {
+        if Task.isCancelled || error is CancellationError {
+            return "cancelled"
+        }
+        if let parsingError = error as? TodayAIParsingError {
+            switch parsingError {
+            case .missingResponseContent:
+                return "missing_response_content"
+            case .invalidJSON:
+                return "invalid_json"
+            case .emptyResult:
+                return "empty_result"
+            case .qualityGateFailed(let reasons):
+                return "quality_gate:\(reasons.sorted().joined(separator: ","))"
+            }
+        }
+        if let clientError = error as? LLMClientError {
+            switch clientError {
+            case .missingAPIKey:
+                return "missing_api_key"
+            case .invalidEndpoint:
+                return "invalid_endpoint"
+            case .invalidResponse:
+                return "invalid_response"
+            case .httpStatus(let status, _):
+                return "http_\(status)"
+            case .encodingFailed:
+                return "encoding_failed"
+            case .transport:
+                return "transport"
+            }
+        }
+        return String(describing: type(of: error))
     }
 
     private func effectiveTrainingLens(for context: TodayAIContext) -> ThinkingLens? {
@@ -619,7 +826,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
-             .generateProjectInsights, .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+             .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -629,8 +837,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests:
             return true
         case .extractPrinciple, .organizeCards, .recommendLenses, .verifyQuest,
-             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
-             .weeklyCalibration, .monthlyGrowth:
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -640,8 +848,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
-             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
-             .weeklyCalibration, .monthlyGrowth:
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -651,7 +859,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
-             .generateProjectInsights, .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+             .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -661,8 +870,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
-             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
-             .weeklyCalibration, .monthlyGrowth:
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -673,7 +882,8 @@ struct CoachContextMemoryPolicy {
             return true
         case .organizeCards, .recommendLenses, .generateQuests, .verifyQuest,
              .extractPrinciple, .suggestProjectLinks, .generateProjectInsights,
-             .suggestProjectMerges, .weeklyCalibration, .monthlyGrowth:
+             .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -683,8 +893,8 @@ struct CoachContextMemoryPolicy {
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
-             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges,
-             .weeklyCalibration, .monthlyGrowth:
+             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -715,6 +925,9 @@ struct DefaultContextAssembler: ContextAssembler {
             directives: .init(
                 principleUsageRule: !relevantPrinciples.isEmpty
                     ? "Use accepted principles as experience replay: ask whether today's case should reproduce, adapt, or reject the prior behavior. Do not force today's situation to fit them."
+                    : nil,
+                principleSelectionRule: !relevantPrinciples.isEmpty
+                    ? "The principles supplied here are bounded candidate material, not a local conclusion. You are the final decision maker: select only a candidate that is materially relevant to the current matter, and ignore all candidates that do not fit today's evidence. Never claim a principle was applied unless the current evidence supports that claim."
                     : nil,
                 coachDiagnosisRule: memory.coachDiagnosis != nil
                     ? "Use coachDiagnosis as a coach plan, not source evidence. If readiness is not_ready, ask clarification or evidence-gap questions before converging. Treat user override as a user choice to proceed, not proof that the coach diagnosis was wrong."
@@ -756,8 +969,16 @@ struct DefaultContextAssembler: ContextAssembler {
         PromptContextPayload(
             currentInput: .init(
                 dailyEntryId: context.draft.id.uuidString,
-                rawText: context.draft.rawText
+                rawText: caseScopedRawText(for: context)
             ),
+            currentCase: context.currentTrainingCase.map { trainingCase in
+                .init(
+                    id: trainingCase.id.uuidString,
+                    title: trainingCase.title,
+                    status: trainingCase.status.rawValue,
+                    evidenceRefs: context.confirmedCards.map { $0.id.uuidString }
+                )
+            },
             userChoice: .init(
                 sessionMode: context.draft.sessionMode.rawValue,
                 selectedLens: selectedLensId(for: context),
@@ -853,6 +1074,9 @@ struct DefaultContextAssembler: ContextAssembler {
 
     private func sourceRecordIDs(for context: TodayAIContext) -> [String] {
         var ids = [context.draft.id.uuidString]
+        if let currentTrainingCase = context.currentTrainingCase {
+            ids.append(currentTrainingCase.id.uuidString)
+        }
         ids.append(contentsOf: context.confirmedCards.map { $0.id.uuidString })
         ids.append(contentsOf: context.questions.map { $0.id.uuidString })
         ids.append(contentsOf: context.quests.map { $0.id.uuidString })
@@ -873,11 +1097,19 @@ struct DefaultContextAssembler: ContextAssembler {
     }
 
     private func inputSummary(for context: TodayAIContext, relevantPrinciples: [PrincipleAsset]) -> String {
-        let rawText = context.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawText = caseScopedRawText(for: context).trimmingCharacters(in: .whitespacesAndNewlines)
         let lens = selectedLensItem(for: context)?.promptId ?? "none"
         let cardTitles = context.confirmedCards.map(\.title).joined(separator: ", ")
         let principleTitles = relevantPrinciples.map(\.title).joined(separator: ", ")
         return "mode=\(context.draft.sessionMode.rawValue); lens=\(lens); rawText=\(rawText); cards=\(cardTitles); principles=\(principleTitles)"
+    }
+
+    private func caseScopedRawText(for context: TodayAIContext) -> String {
+        guard context.currentTrainingCase != nil else { return context.draft.rawText }
+        return context.confirmedCards
+            .filter { !$0.isExcludedFromModel }
+            .map { "\($0.title)：\($0.body)" }
+            .joined(separator: "\n")
     }
 
     private func selectedLensId(for context: TodayAIContext) -> String? {

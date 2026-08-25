@@ -28,10 +28,24 @@ enum SessionMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
+        displayTitle
+    }
+
+    // User-facing copy stays localized; rawValue remains stable for prompts and persistence.
+    var displayTitle: String {
         switch self {
-        case .quick: return "Quick"
-        case .standard: return "Standard"
-        case .deep: return "Deep"
+        case .quick: return "快速整理"
+        case .standard: return "完整复盘"
+        case .deep: return "深入复盘"
+        }
+    }
+
+    // The header displays a passive state label, not the action a user is about to take.
+    var badgeTitle: String {
+        switch self {
+        case .quick: return "快速模式"
+        case .standard: return "标准模式"
+        case .deep: return "深入模式"
         }
     }
 }
@@ -2113,6 +2127,22 @@ struct CoachObservationPolicy {
             )
         }
 
+        // Keep concrete observations paired with an explicitly tentative explanation
+        // in the evidence gap, before the narrative fallback can hide the distinction.
+        if hasFactAndInsufficientExplanation(normalizedText) {
+            let ability: CoachFoundationalAbility = isResultCalibrationScenario(normalizedText)
+                ? .calibration
+                : .thinking
+            return baselineDecision(
+                gap: .evidenceGap,
+                ability: ability,
+                action: ability == .calibration
+                    ? "核对结果的口径、来源和计算细节，记录支持或推翻判断的证据。"
+                    : "分开可观察事实和解释，并记录一条可能推翻当前解释的证据。",
+                reason: "已有事实或结果记录，但当前原因仍只是推测，证据边界还没有展开。"
+            )
+        }
+
         if makesJudgmentLeap(normalizedText) {
             let ability: CoachFoundationalAbility = mentionsYesterdayResult(normalizedText) ? .calibration : .thinking
             return baselineDecision(
@@ -2890,6 +2920,22 @@ struct CoachObservationPolicy {
         containsAny(text, ["就是不重视", "都不想负责", "故意"])
     }
 
+    private func hasFactAndInsufficientExplanation(_ text: String) -> Bool {
+        let hasConcreteObservation = containsAny(text, [
+            "记录", "数据", "实际", "结果", "失败", "通过", "超时", "报表", "明细表",
+            "相差", "差异", "偏差", "observed", "recorded", "result", "timeout"
+        ])
+        let hasTentativeExplanation = containsAny(text, [
+            "我猜", "猜是", "我推测", "推测是", "可能是", "可能由", "主因", "原因是",
+            "猜测", "推测", "可能", "probably", "likely", "hypothesis"
+        ])
+        return hasConcreteObservation && hasTentativeExplanation
+    }
+
+    private func isResultCalibrationScenario(_ text: String) -> Bool {
+        containsAny(text, ["报表", "明细表", "汇率", "相差", "差异", "偏差", "口径", "对账", "exchange rate"])
+    }
+
     private func makesJudgmentLeap(_ text: String) -> Bool {
         if containsAny(text, ["肯定", "一定", "所以", "不适合", "会提升", "应该有效"]) {
             return true
@@ -3579,6 +3625,7 @@ enum SensitivityLevel: String, CaseIterable, Identifiable {
 
 struct ThinkingCard: Identifiable, Hashable {
     let id: UUID
+    var trainingCaseId: UUID?
     var type: ThinkingCardType
     var title: String
     var body: String
@@ -3591,6 +3638,7 @@ struct ThinkingCard: Identifiable, Hashable {
 
     init(
         id: UUID = UUID(),
+        trainingCaseId: UUID? = nil,
         type: ThinkingCardType,
         title: String,
         body: String,
@@ -3602,6 +3650,7 @@ struct ThinkingCard: Identifiable, Hashable {
         sourceRefs: [String] = []
     ) {
         self.id = id
+        self.trainingCaseId = trainingCaseId
         self.type = type
         self.title = title
         self.body = body
@@ -3881,6 +3930,7 @@ enum QuestStatus: String, CaseIterable, Identifiable {
 
 struct Quest: Identifiable, Hashable {
     let id: UUID
+    var trainingCaseId: UUID?
     var type: QuestType
     var title: String
     var whyItMatters: String
@@ -3892,9 +3942,12 @@ struct Quest: Identifiable, Hashable {
     var sourceCardTitles: [String]
     var trainingPrincipleId: UUID?
     var status: QuestStatus
+    var verificationDueAt: Date?
+    var verificationDeferredUntil: Date?
 
     init(
         id: UUID = UUID(),
+        trainingCaseId: UUID? = nil,
         type: QuestType,
         title: String,
         whyItMatters: String,
@@ -3905,9 +3958,12 @@ struct Quest: Identifiable, Hashable {
         lensMove: QuestionLensMove? = nil,
         sourceCardTitles: [String] = [],
         trainingPrincipleId: UUID? = nil,
-        status: QuestStatus = .draft
+        status: QuestStatus = .draft,
+        verificationDueAt: Date? = nil,
+        verificationDeferredUntil: Date? = nil
     ) {
         self.id = id
+        self.trainingCaseId = trainingCaseId
         self.type = type
         self.title = title
         self.whyItMatters = whyItMatters
@@ -3919,6 +3975,8 @@ struct Quest: Identifiable, Hashable {
         self.sourceCardTitles = Self.normalizedSourceCardTitles(sourceCardTitles)
         self.trainingPrincipleId = trainingPrincipleId
         self.status = status
+        self.verificationDueAt = verificationDueAt
+        self.verificationDeferredUntil = verificationDeferredUntil
     }
 
     private static func normalizedSourceCardTitles(_ titles: [String]) -> [String] {
@@ -4488,6 +4546,13 @@ struct PromptRun: Identifiable, Hashable {
     var error: String?
     var userFeedback: PromptRunFeedback
     var createdAt: Date
+
+    /// Backwards-compatible audit view of the global decision route. The route
+    /// is derived from the persisted PromptID, so existing databases need no
+    /// migration and unknown historical prompts remain representable.
+    var decisionRoute: LLMDecisionRoute? {
+        PromptID(rawValue: promptId)?.decisionRoute
+    }
 
     init(
         id: UUID = UUID(),
@@ -5436,6 +5501,17 @@ enum HistoricalRetryCandidateStatus: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+extension HistoricalRetryCandidateStatus {
+    var needsHistoryRepairAttention: Bool {
+        switch self {
+        case .pending, .retrying, .candidateReady:
+            return true
+        case .accepted, .dismissed, .blocked, .failed:
+            return false
+        }
+    }
+}
+
 struct HistoricalRetryCandidate: Identifiable, Hashable {
     let id: UUID
     var schemaVersion: Int
@@ -5635,7 +5711,7 @@ enum MetricSnapshotStatus: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum GrowthMetric: String, CaseIterable, Identifiable {
+enum GrowthMetric: String, CaseIterable, Identifiable, Codable {
     case clarity
     case valueJudgment = "value_judgment"
     case executionReliability = "execution_reliability"
@@ -5707,6 +5783,7 @@ struct MetricContribution: Identifiable, Hashable {
     var sourceType: MetricContributionSourceType
     var sourceId: String
     var sourceDailyEntryId: UUID
+    var sourceCaseId: UUID?
     var userFeedback: MetricContributionFeedback
     var candidateStatus: MetricContributionStatus
     var practiceRole: MetricContributionPracticeRole
@@ -5728,6 +5805,7 @@ struct MetricContribution: Identifiable, Hashable {
         sourceType: MetricContributionSourceType,
         sourceId: String,
         sourceDailyEntryId: UUID,
+        sourceCaseId: UUID? = nil,
         userFeedback: MetricContributionFeedback = .none,
         candidateStatus: MetricContributionStatus = .candidate,
         practiceRole: MetricContributionPracticeRole = .possibleSignal,
@@ -5744,11 +5822,53 @@ struct MetricContribution: Identifiable, Hashable {
         self.sourceType = sourceType
         self.sourceId = sourceId
         self.sourceDailyEntryId = sourceDailyEntryId
+        self.sourceCaseId = sourceCaseId
         self.userFeedback = userFeedback
         self.candidateStatus = candidateStatus
         self.practiceRole = practiceRole
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+struct MetricContributionHistoryEvidenceKey: Hashable {
+    let sourceDailyEntryId: UUID
+    let sourceType: MetricContributionSourceType
+    let sourceId: String
+    let metric: GrowthMetric
+}
+
+extension MetricContribution {
+    var historyEvidenceKey: MetricContributionHistoryEvidenceKey {
+        MetricContributionHistoryEvidenceKey(
+            sourceDailyEntryId: sourceDailyEntryId,
+            sourceType: sourceType,
+            sourceId: sourceId.trimmingCharacters(in: .whitespacesAndNewlines),
+            metric: metric
+        )
+    }
+
+    static func latestVersionsForHistory(_ contributions: [MetricContribution]) -> [MetricContribution] {
+        var latestByEvidence: [MetricContributionHistoryEvidenceKey: MetricContribution] = [:]
+
+        for contribution in contributions {
+            let key = contribution.historyEvidenceKey
+            guard let current = latestByEvidence[key] else {
+                latestByEvidence[key] = contribution
+                continue
+            }
+
+            if contribution.createdAt > current.createdAt ||
+                (contribution.createdAt == current.createdAt && contribution.updatedAt > current.updatedAt) ||
+                (contribution.createdAt == current.createdAt && contribution.updatedAt == current.updatedAt && contribution.id.uuidString > current.id.uuidString) {
+                latestByEvidence[key] = contribution
+            }
+        }
+
+        return latestByEvidence.values.sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
     }
 }
 
@@ -5801,6 +5921,7 @@ struct Verification: Identifiable, Hashable {
 struct LensSession: Identifiable, Hashable {
     let id: UUID
     var dailyEntryId: UUID
+    var trainingCaseId: UUID?
     var selectedLens: ThinkingLens
     var questions: [ReflectionQuestion]
     var createdAt: Date
@@ -5809,6 +5930,7 @@ struct LensSession: Identifiable, Hashable {
     init(
         id: UUID = UUID(),
         dailyEntryId: UUID,
+        trainingCaseId: UUID? = nil,
         selectedLens: ThinkingLens,
         questions: [ReflectionQuestion] = [],
         createdAt: Date = .now,
@@ -5816,6 +5938,7 @@ struct LensSession: Identifiable, Hashable {
     ) {
         self.id = id
         self.dailyEntryId = dailyEntryId
+        self.trainingCaseId = trainingCaseId
         self.selectedLens = selectedLens
         self.questions = questions
         self.createdAt = createdAt
@@ -5832,6 +5955,7 @@ struct HistoryRecord: Identifiable, Hashable {
     var lensSession: LensSession?
     var projectLinks: [ProjectLink]
     var growthContributions: [MetricContribution]
+    var caseRecords: [TrainingCaseRecord]
 
     var id: DailyEntryDraft.ID { draft.id }
 
@@ -5878,7 +6002,7 @@ struct HistoryRecord: Identifiable, Hashable {
     }
 
     var hasVerificationEvidence: Bool {
-        verification != nil
+        !allVerifications.isEmpty
     }
 
     var hasPrincipleEvidence: Bool {
@@ -5899,11 +6023,24 @@ struct HistoryRecord: Identifiable, Hashable {
 
     var sourceIds: [String] {
         var ids: [String] = [draft.id.uuidString]
+        ids.append(contentsOf: caseRecords.map { $0.trainingCase.id.uuidString })
         ids.append(contentsOf: cards.map { $0.id.uuidString })
         ids.append(contentsOf: quests.map { $0.id.uuidString })
         if let verification { ids.append(verification.id.uuidString) }
+        ids.append(contentsOf: caseRecords.flatMap { $0.verifications.map { $0.id.uuidString } })
         ids.append(contentsOf: principles.map { $0.id.uuidString })
-        return ids
+        return Array(Set(ids))
+    }
+
+    var allVerifications: [Verification] {
+        var seen = Set<UUID>()
+        var values: [Verification] = []
+        for item in caseRecords.flatMap(\.verifications) + (verification.map { [$0] } ?? []) {
+            if seen.insert(item.id).inserted {
+                values.append(item)
+            }
+        }
+        return values
     }
 
     init(
@@ -5914,7 +6051,8 @@ struct HistoryRecord: Identifiable, Hashable {
         verification: Verification? = nil,
         lensSession: LensSession? = nil,
         projectLinks: [ProjectLink] = [],
-        growthContributions: [MetricContribution] = []
+        growthContributions: [MetricContribution] = [],
+        caseRecords: [TrainingCaseRecord] = []
     ) {
         self.draft = draft
         self.cards = cards
@@ -5924,6 +6062,7 @@ struct HistoryRecord: Identifiable, Hashable {
         self.lensSession = lensSession
         self.projectLinks = projectLinks
         self.growthContributions = growthContributions
+        self.caseRecords = caseRecords
     }
 }
 
@@ -5931,7 +6070,8 @@ private extension HistoryRecord {
     var coachPatternText: String {
         var parts: [String] = [draft.rawText]
         parts.append(contentsOf: confirmedCards.map { "\($0.title) \($0.body)" })
-        if let lensSession {
+        let sessions = caseRecords.compactMap(\.lensSession) + (lensSession.map { [$0] } ?? [])
+        for lensSession in sessions {
             parts.append(contentsOf: lensSession.questions.map { question in
                 [question.question, question.answer]
                     .joined(separator: " ")
@@ -5946,7 +6086,7 @@ private extension HistoryRecord {
             ]
             .joined(separator: " ")
         })
-        if let verification {
+        for verification in allVerifications {
             parts.append(verification.calibrationNote)
             if let likelyIssue = verification.likelyIssue {
                 parts.append(likelyIssue)
@@ -6085,7 +6225,7 @@ struct HistorySearchQuery: Hashable {
         var parts: [String] = [
             record.draft.rawText,
             record.draft.state.title,
-            record.draft.sessionMode.title
+            record.draft.sessionMode.displayTitle
         ]
 
         parts.append(contentsOf: record.cards.flatMap { card in
@@ -6202,6 +6342,7 @@ enum ProjectCreatedBy: String, CaseIterable, Identifiable {
 
 enum ProjectSourceType: String, CaseIterable, Identifiable {
     case dailyEntry = "daily_entry"
+    case trainingCase = "training_case"
     case thinkingCard = "thinking_card"
     case quest
     case verification
@@ -6659,6 +6800,8 @@ struct ProjectEvidenceDigest: Hashable {
         case .dailyEntry:
             let text = record.draft.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? "当日复盘记录" : String(text.prefix(80))
+        case .trainingCase:
+            return record.caseRecords.first { $0.id.uuidString == link.sourceId }?.trainingCase.title ?? "事项"
         case .thinkingCard:
             return record.cards.first { $0.id.uuidString == link.sourceId }?.title ?? "思考卡片"
         case .quest:

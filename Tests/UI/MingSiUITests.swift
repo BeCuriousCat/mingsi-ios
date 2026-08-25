@@ -25,6 +25,197 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
     }
 
+    func testVNextTodayOverviewDisplaysMultipleIndependentCases() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["今日事项"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["事项 A：明确验收负责人"].exists)
+        XCTAssertTrue(app.staticTexts["事项 B：验证注册问题"].exists)
+        XCTAssertTrue(app.staticTexts["事项 C：准备项目复盘"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "内容较多")).firstMatch.exists)
+        XCTAssertEqual(
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "today.overview.case.")).count,
+            2
+        )
+    }
+
+    func testVNextOverviewMissingKeyCTAOpensAPIConfigurationAtAccessibilityXXXL() throws {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-UIPreferredContentSizeCategory",
+            "UICTContentSizeCategoryAccessibilityXXXL"
+        ]
+        app.launchEnvironment["MINGSI_VNEXT_CASES_ENABLED"] = "1"
+        app.launch()
+
+        let configureCentralModel = app.buttons["today.central-model-key.settings-action"]
+        XCTAssertTrue(configureCentralModel.waitForExistence(timeout: 8))
+        XCTAssertTrue(configureCentralModel.label.contains("配置中央模型后整理"))
+        XCTAssertTrue(configureCentralModel.isHittable)
+        configureCentralModel.tap()
+
+        XCTAssertTrue(app.staticTexts["设置"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["API 配置"].waitForExistence(timeout: 4))
+    }
+
+    func testVNextTodayOverviewSupportsAccessibilityTextSize() throws {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-UIPreferredContentSizeCategory",
+            "UICTContentSizeCategoryAccessibilityXXXL"
+        ]
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let title = app.staticTexts["今日概览"]
+        let help = app.buttons["today.training-terms-action"]
+        let firstCase = app.staticTexts["事项 A：明确验收负责人"]
+
+        XCTAssertTrue(title.waitForExistence(timeout: 8))
+        XCTAssertTrue(help.waitForExistence(timeout: 4))
+        XCTAssertTrue(firstCase.waitForExistence(timeout: 4))
+        XCTAssertLessThan(title.frame.maxX, help.frame.minX)
+        XCTAssertLessThan(title.frame.maxY, firstCase.frame.minY)
+    }
+
+    func testVNextTodayOverviewCanResumePendingCaseConfirmation() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let resume = app.buttons["today.case-confirmation.resume-action"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        resume.tap()
+
+        XCTAssertTrue(app.staticTexts["确认事项"].waitForExistence(timeout: 4))
+    }
+
+    func testTodaySideQuestIsOptionalAndCanAwardLifeExperience() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launchEnvironment["MINGSI_VISUAL_QA_SIDE_QUEST"] = "1"
+        app.launch()
+
+        let accept = app.buttons["today.side-quest.accept-action"]
+        scrollToElement(accept, in: app)
+        XCTAssertTrue(accept.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["做出一个十分钟成品"].exists)
+        XCTAssertTrue(app.buttons["today.side-quest.skip-action"].exists)
+        accept.tap()
+
+        let complete = app.buttons["today.side-quest.complete-action"]
+        scrollToElement(complete, in: app)
+        XCTAssertTrue(complete.waitForExistence(timeout: 4))
+        complete.tap()
+        XCTAssertTrue(app.navigationBars["收下这一刻"].waitForExistence(timeout: 4))
+        app.navigationBars["收下这一刻"].buttons["收下"].tap()
+
+        let reward = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "这一刻已被收下")
+        ).firstMatch
+        XCTAssertTrue(reward.waitForExistence(timeout: 4))
+    }
+
+    func testSideQuestV2SettingsShowsPlaceScopedPracticalSamplesWithoutPlaceNames() throws {
+        let app = sideQuestV2App(tab: "settings")
+        app.launch()
+        openSideQuestSettings(in: app)
+
+        let lifeContext = app.staticTexts["settings.side-quest.life-context.card"]
+        scrollToElement(lifeContext, in: app)
+        XCTAssertTrue(app.staticTexts["生活情境"].exists)
+        XCTAssertTrue(app.staticTexts["家"].exists)
+        XCTAssertTrue(app.staticTexts["工作地点"].exists)
+        XCTAssertEqual(
+            app.textFields["settings.side-quest.practical-place.home.floor-field"].value as? String,
+            "12"
+        )
+        XCTAssertEqual(
+            app.textFields["settings.side-quest.practical-place.workplace.floor-field"].value as? String,
+            "7"
+        )
+        XCTAssertTrue(app.descendants(matching: .any)["settings.side-quest.practical-place.home.stairs-picker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["settings.side-quest.practical-place.workplace.stairs-picker"].exists)
+        XCTAssertTrue(app.staticTexts["午饭后"].exists)
+        XCTAssertTrue(app.staticTexts["离开工作地点时"].exists)
+        XCTAssertTrue(app.staticTexts["到家后"].exists)
+        XCTAssertFalse(app.staticTexts["Visual QA 工作地点"].exists)
+    }
+
+    func testSideQuestV2SettingsCanStartAndEndExplorationSeasonWithReview() throws {
+        let app = sideQuestV2App(tab: "settings")
+        app.launch()
+        openSideQuestSettings(in: app)
+
+        let seasonCard = app.staticTexts["settings.side-quest.season.card"]
+        scrollToElement(seasonCard, in: app)
+        let start = app.buttons["settings.side-quest.season.start-action"]
+        XCTAssertTrue(start.waitForExistence(timeout: 4))
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
+
+        let end = app.buttons["settings.side-quest.season.end-action"]
+        XCTAssertTrue(end.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["城市漫游"].exists)
+        scrollToElement(seasonCard, in: app)
+        XCTAssertTrue(end.isHittable)
+        end.tap()
+
+        let review = app.staticTexts["最近一季回顾：城市漫游"]
+        XCTAssertTrue(review.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["settings.side-quest.season.end-action"].exists)
+    }
+
+    func testSideQuestV2WorkplaceStairsOfferCanBeAcceptedAndCompleted() throws {
+        let app = sideQuestV2App(tab: "today")
+        app.launch()
+
+        let card = app.staticTexts["today.side-quest.card"]
+        scrollToElement(card, in: app)
+        XCTAssertTrue(app.staticTexts["下班前走一段楼梯"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "为你遇见")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "工作地点")).firstMatch.exists)
+        let rationale = app.descendants(matching: .any)["today.side-quest.rationale"]
+        XCTAssertTrue(rationale.label.contains("第 7 层"))
+        XCTAssertTrue(rationale.label.contains("楼梯可用"))
+
+        let sceneMenu = app.buttons["today.side-quest.current-scene-menu"]
+        XCTAssertTrue(sceneMenu.waitForExistence(timeout: 4))
+        XCTAssertTrue(sceneMenu.label.contains("设置当前粗粒度情境"))
+        sceneMenu.tap()
+        let workplace = app.buttons["在工作地点"]
+        XCTAssertTrue(workplace.waitForExistence(timeout: 4))
+        workplace.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "当前情境已设为在工作地点")).firstMatch.waitForExistence(timeout: 4))
+
+        let accept = app.buttons["today.side-quest.accept-action"]
+        scrollToElement(accept, in: app)
+        accept.tap()
+        let complete = app.buttons["today.side-quest.complete-action"]
+        XCTAssertTrue(complete.waitForExistence(timeout: 4))
+        complete.tap()
+        XCTAssertTrue(app.navigationBars["收下这一刻"].waitForExistence(timeout: 4))
+        app.navigationBars["收下这一刻"].buttons["收下"].tap()
+
+        let reward = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "这一刻已被收下")).firstMatch
+        XCTAssertTrue(reward.waitForExistence(timeout: 4))
+    }
+
+    func testGrowthShowsWeeklyEvidenceProgressBeforeGenerationIsAvailable() throws {
+        let app = seededGrowthApp()
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["最近 7 天：0 / 3 次验证 · 0 / 2 天"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["达到条件后，可以由你主动生成一次下周训练重点。还需 3 次验证，再覆盖 2 天。"].exists)
+        XCTAssertFalse(app.buttons["growth.weekly-guidance.generate-action"].exists)
+    }
+
     func testTodayTrainingPrescriptionShowsPrimaryFocusAndBaselineChecks() throws {
         let app = seededTodayApp(stage: "review_cards_confirmed")
         app.launch()
@@ -478,6 +669,41 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(primaryAction.isEnabled)
     }
 
+    func testVNextAnswerQuestionsKeepsFirstAnswerFieldAbovePrimaryAction() throws {
+        let app = seededVNextTodayApp(stage: "answer_questions")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["先写下支持或推翻判断的可观察事实。"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["把事实与解释分开，能减少只凭感受确认原判断。"].exists)
+        XCTAssertTrue(app.buttons["反馈"].exists)
+
+        let answerField = app.textFields.matching(identifier: "today.question.answer-field").firstMatch
+        let primaryAction = app.buttons["today.primary-action"]
+        XCTAssertTrue(answerField.waitForExistence(timeout: 4))
+        XCTAssertTrue(primaryAction.waitForExistence(timeout: 4))
+        XCTAssertTrue(answerField.isHittable)
+        XCTAssertLessThanOrEqual(
+            answerField.frame.maxY + 8,
+            primaryAction.frame.minY,
+            "answerField: \(answerField.frame), primaryAction: \(primaryAction.frame)"
+        )
+    }
+
+    func testVNextGuidanceRevealsExplanationAndStateActionsOnDemand() throws {
+        let app = seededVNextTodayApp(stage: "answer_questions")
+        app.launch()
+
+        let guidanceToggle = app.buttons["today.active-guidance-toggle"]
+        XCTAssertTrue(guidanceToggle.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["把事实与解释分开，能减少只凭感受确认原判断。"].exists)
+
+        guidanceToggle.tap()
+
+        XCTAssertTrue(app.staticTexts["把事实与解释分开，能减少只凭感受确认原判断。"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["暂不显示"].exists)
+        XCTAssertTrue(app.buttons["我已掌握"].exists)
+    }
+
     func testTodayAnswerQuestionsPrioritizesQuestionAndAnswerBeforeDiagnostics() throws {
         let app = seededTodayApp(stage: "answer_questions")
         app.launch()
@@ -916,9 +1142,36 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["匹配依据：写出负责人。它只用于训练记录，不会替你改变明天要做的事。"].waitForExistence(timeout: 4))
     }
 
+    func testSettingsKeepsAdvancedToolsBehindSingleEntry() throws {
+        let app = settingsApp()
+        app.launch()
+
+        let action = app.buttons["settings.advanced-tools.action"]
+        scrollToElement(action, in: app)
+        XCTAssertFalse(app.descendants(matching: .any)["settings.asset-pack-manifest.card"].exists)
+        XCTAssertFalse(app.staticTexts["AI 调用审计"].exists)
+
+        action.tap()
+        XCTAssertTrue(app.navigationBars["高级工具"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["settings.asset-pack-manifest.card"].waitForExistence(timeout: 4))
+    }
+
+    func testSettingsProductionAdvancedToolsKeepRemoteRegistryHidden() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "settings"
+        app.launch()
+        openSettingsAdvancedTools(in: app)
+
+        XCTAssertTrue(app.descendants(matching: .any)["settings.asset-pack-manifest.import-field"].exists)
+        XCTAssertFalse(app.textFields["settings.asset-pack-registry.catalog-url-field"].exists)
+        XCTAssertFalse(app.textFields["settings.asset-pack-manifest.remote-url-field"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Marketplace")).firstMatch.exists)
+    }
+
     func testSettingsAssetPackManifestInstallReportsInvalidJSONThroughIdentifier() throws {
         let app = settingsApp()
         app.launch()
+        openSettingsAdvancedTools(in: app)
 
         let installAction = app.descendants(matching: .any)["settings.asset-pack-manifest.install-action"]
         XCTAssertTrue(installAction.waitForExistence(timeout: 8))
@@ -933,6 +1186,7 @@ final class MingSiUITests: XCTestCase {
     func testSettingsAssetPackManifestRemoteURLInstallReportsFetchFailureThroughIdentifier() throws {
         let app = settingsApp()
         app.launch()
+        openSettingsAdvancedTools(in: app)
 
         let urlField = app.textFields["settings.asset-pack-manifest.remote-url-field"]
         XCTAssertTrue(urlField.waitForExistence(timeout: 8))
@@ -951,6 +1205,7 @@ final class MingSiUITests: XCTestCase {
     func testSettingsAssetPackRegistryCatalogFetchReportsFailureThroughIdentifier() throws {
         let app = settingsApp()
         app.launch()
+        openSettingsAdvancedTools(in: app)
 
         let catalogURLField = app.textFields["settings.asset-pack-registry.catalog-url-field"]
         XCTAssertTrue(catalogURLField.waitForExistence(timeout: 8))
@@ -969,6 +1224,7 @@ final class MingSiUITests: XCTestCase {
     func testSettingsAssetPackRegistrySubscriptionControlsRenderThroughIdentifiers() throws {
         let app = settingsApp()
         app.launch()
+        openSettingsAdvancedTools(in: app)
 
         let nameField = app.textFields["settings.asset-pack-registry.subscription-name-field"]
         scrollToElement(nameField, in: app)
@@ -983,6 +1239,7 @@ final class MingSiUITests: XCTestCase {
     func testSettingsPromptAssetQualitySummaryRendersThroughIdentifier() throws {
         let app = settingsApp()
         app.launch()
+        openSettingsAdvancedTools(in: app)
 
         let section = app.staticTexts["settings.prompt-asset-quality.section"]
         scrollToElement(section, in: app)
@@ -991,6 +1248,9 @@ final class MingSiUITests: XCTestCase {
         let row = app.staticTexts["settings.prompt-asset-quality.mingsi_builtin_prompts.organizeCards.connection-test"]
         XCTAssertTrue(row.waitForExistence(timeout: 4))
         XCTAssertTrue(row.label.contains("失败率 100%"))
+
+        let route = app.staticTexts["路由：整理中心"]
+        XCTAssertTrue(route.waitForExistence(timeout: 4))
     }
 
     func testGrowthPrinciplePracticeCorrectionActionRendersThroughIdentifier() throws {
@@ -1030,7 +1290,7 @@ final class MingSiUITests: XCTestCase {
     func testGrowthNeedsReviewRecallAuditRendersThroughIdentifier() throws {
         let app = seededGrowthApp()
         app.launch()
-        expandFirstGrowthPrincipleDetails(in: app)
+        expandGrowthPrincipleDetails(at: 1, in: app)
 
         let recallAudit = app.staticTexts.matching(NSPredicate(format: "identifier ENDSWITH %@", ".negative-audit")).firstMatch
         scrollToElement(recallAudit, in: app)
@@ -1049,6 +1309,23 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["这一天没有选择思考透镜。"].exists)
         XCTAssertFalse(app.staticTexts["这一天没有设计明日验证。"].exists)
         XCTAssertFalse(app.staticTexts["这一天没有验证记录。"].exists)
+        XCTAssertFalse(app.buttons["history.ai-repair.disclosure"].exists)
+    }
+
+    func testHistoryCaseSettlementShowsOriginalResultAndJudgmentUpdate() throws {
+        let app = historyCaseSettlementApp()
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["验证证据"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["判断更新 · 调整判断"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["原判断：只要会后补发结论，就能避免后续返工。"].exists)
+        XCTAssertTrue(app.staticTexts["实际结果：返工追问减少，但关键参与方仍需在会前参与确认。"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.case."))
+                .firstMatch
+                .exists
+        )
     }
 
     private func seededTodayApp(
@@ -1060,6 +1337,8 @@ final class MingSiUITests: XCTestCase {
         missingCalibrationTarget: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
+        // These regression fixtures exercise the legacy single-entry flow.
+        app.launchEnvironment["MINGSI_VNEXT_CASES_ENABLED"] = "0"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = input
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = stage
@@ -1070,12 +1349,48 @@ final class MingSiUITests: XCTestCase {
         return app
     }
 
+    private func seededVNextTodayApp(stage: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VNEXT_CASES_ENABLED"] = "1"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = """
+        事实：会议结束后没有明确负责人。
+        风险：验收标准缺失会导致明天返工。
+        """
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = stage
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_ACTIVE_CASE"] = "1"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        return app
+    }
+
     private func settingsApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "settings"
         app.launchEnvironment["MINGSI_VISUAL_QA_SETTINGS_AUDIT_PROOF"] = "1"
         app.launchEnvironment["MINGSI_VISUAL_QA_SETTINGS_ASSET_PACK_MANIFEST"] = "1"
         return app
+    }
+
+    private func sideQuestV2App(tab: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_SIDE_QUEST_V2"] = "1"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = tab
+        return app
+    }
+
+    private func openSettingsAdvancedTools(in app: XCUIApplication) {
+        let action = app.buttons["settings.advanced-tools.action"]
+        scrollToElement(action, in: app)
+        action.tap()
+        XCTAssertTrue(app.navigationBars["高级工具"].waitForExistence(timeout: 4))
+    }
+
+    private func openSideQuestSettings(in app: XCUIApplication) {
+        let action = app.buttons["settings.side-quest.action"]
+        scrollToElement(action, in: app)
+        XCTAssertTrue(action.isHittable)
+        action.tap()
+        XCTAssertTrue(app.navigationBars["生活奇遇"].waitForExistence(timeout: 4))
     }
 
     private func seededGrowthApp() -> XCUIApplication {
@@ -1090,10 +1405,20 @@ final class MingSiUITests: XCTestCase {
         return app
     }
 
+    private func historyCaseSettlementApp() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_HISTORY_CASE_SETTLEMENT"] = "1"
+        return app
+    }
+
     private func expandFirstGrowthPrincipleDetails(in app: XCUIApplication) {
+        expandGrowthPrincipleDetails(at: 0, in: app)
+    }
+
+    private func expandGrowthPrincipleDetails(at index: Int, in app: XCUIApplication) {
         let detailsToggle = app.buttons.matching(
             NSPredicate(format: "identifier ENDSWITH %@", ".details-toggle")
-        ).firstMatch
+        ).element(boundBy: index)
         scrollToElement(detailsToggle, in: app)
         detailsToggle.tap()
     }

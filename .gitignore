@@ -3,10 +3,54 @@
 .claude/
 .omo/
 .superpowers/
+
+# Local configuration and credentials. Keep the documented template public.
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+credentials/
+*.local
+*.local.xcconfig
+*.key
+*.pem
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# Local app data and database sidecars.
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.db3
+*.db3-*
+*.realm
+*.realm.*
+*.store
+*.store-*
+
+# Local work products and test reports.
+work/
+outputs/
+*.xcresult
+*.log
+*.profdata
+*.profraw
+
+# Xcode and Swift build artifacts.
 *.xcuserdata
 xcuserdata/
 DerivedData/
 build/
+Build/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
 *.moved-aside
 *.pbxuser
 !default.pbxuser
@@ -20,5 +64,6 @@ build/
 *.ipa
 *.dSYM.zip
 *.dSYM
+.build/
 Pods/
 Vendor/GRDB.swift/Tests/

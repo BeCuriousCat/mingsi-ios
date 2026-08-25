@@ -1,8 +1,43 @@
 # 明思 Prompt Specification
 
+## vNext Case Isolation And Stream V2 (2026-07-15)
+
+- `organizeCards` uses `MINGSI_STREAM_V2` and may include `CASE_KEY` / `CASE_TITLE` in every CARD.
+- The streaming parser remains compatible with V1. Missing or invalid grouping falls back to one matter.
+- The model proposes groups only; it never confirms, merges, splits, closes, restores, or saves a principle.
+- Matter-scoped coaching requests include `PromptContextPayload.currentCase` with Case ID, title, status, and explicit evidence refs.
+- `diagnoseTrainingCase` is the model authority for phase, readiness, training dimension, and recommended lens. Local training-policy output may only remain as a provisional UI-safe value while the central request is pending.
+- When currentCase is present, rawText is rebuilt only from that Case's confirmed cards. Other same-day matter text is excluded.
+- PromptRun source IDs include the active Case ID, actual source record IDs, context policy version, provider, and model.
+- Every PromptID maps to a stable `LLMDecisionRoute`; PromptRun diagnostics derive and display that route without requiring a migration. This makes the global decision center auditable while preserving feature-specific schemas and evidence boundaries.
+- Guidance UI copy comes only from the versioned local catalog. The shared LLM decision center selects at most one eligible hint for the current stage and classifies verification evidence as supporting, contradictory, or insufficient. It may not invent hint IDs, UI copy, scores, or personality conclusions.
+- A weekly guidance review is allowed only when the last seven days contain at least three Verifications across two calendar days. Its response is limited to `training_focus`, existing `hint_ids`, and supplied Verification `evidence_refs`; it never writes metric scores or contributions.
+- A project closure summary is user-triggered. It may use only confirmed project evidence, and every proposed principle must cite at least two supplied evidence references. Candidates are saved for explicit, per-item user confirmation.
+
+V2 card fragment:
+
+```xml
+<MINGSI_STREAM version="2">
+<CARD>
+<CASE_KEY>stable-matter-key</CASE_KEY>
+<CASE_TITLE>自然语言事项标题</CASE_TITLE>
+<TYPE>fact</TYPE>
+...
+</CARD>
+</MINGSI_STREAM>
+```
+
 ## Prompt Architecture
 
 Prompt 与上下文工程的完整产品规格见 `docs/prompt-context-engineering-prd.md`。本文档保留具体 Prompt schema 和模板要求；上下文选择、原则资产检索、上下文预算和 eval 规则以该 PRD 为准。
+
+## Side Quest Situation Grounding
+
+- `generateSideQuest` receives only a reduced `current_situation`: coarse scene, availability, opaque context markers, and dynamic constraints. With explicit HealthKit permission, recent activity and sleep may appear only as coarse threshold tokens. It never receives coordinates, location names, calendar titles, health samples, exact health values, contacts, or the user's raw system records.
+- Practical place context is typed and semantic: `home` or `workplace`, optional floor level, explicit stairs availability, and selected transition windows. User-entered home/workplace labels are local-only and are excluded from both `life_context` and `available_grounding_refs`; legacy unscoped floor data is retained locally but not sent to the model.
+- A user may temporarily correct the coarse scene to home, work, familiar place, or unknown. The correction is in-memory only, expires at the end of the local day, and overrides a system scene only while valid.
+- The central model alone decides `offer` or `hold` and supplies a short natural-language reason plus exact `grounding_refs`. For an offer, every grounding reference must match one supplied `available_grounding_refs` token exactly; local code validates consent, expiration, grounding membership, safety, eligibility, and durable state only, and must not invent a substitute invitation.
+- A delivered invitation snapshots the model rationale. Today may render that rationale as “为什么现在推荐” only for AI-generated runs and never exposes the prompt, `grounding_refs`, opaque tokens, or raw system data.
 
 Prompt 不允许和 SwiftUI 页面耦合。业务层只能通过 `PromptProvider` 获取模板。
 
@@ -63,8 +98,15 @@ Mode affects prompt depth, not the underlying data model.
 - All prompts must therefore still say “return valid JSON only” and include an explicit output shape; the parser must not depend solely on transport-level JSON mode.
 - Fallback does not change schema versions or parser expectations.
 - A successful connection test does not guarantee successful production prompts; production calls can still fail on quota, model permission, malformed JSON, empty content, schema mismatch, or transport errors.
-- If a production prompt fails, UI must show the concrete error, keep or create an editable local fallback, and allow retry with the same local input.
+- If a production prompt fails, including when the API Key is missing, UI must show the concrete error, preserve confirmed local input, and allow retry with the same input; it must not silently replace a model decision with local heuristics. An explicitly labeled local fallback is limited to injected test or preview paths and legacy fixtures.
 - Retry prompts must be idempotent: re-running the same prompt against the same DailyEntry should replace only that prompt's draft output, not duplicate cards, quests, or principles.
+
+## Opt-In Live Career Golden Evaluation
+
+- `scripts/run_live_glm_acceptance.sh` keeps the ordinary single completion probe as its default behavior. `--career-golden` selects one separate XCTest that runs exactly three synthetic `generateQuestions` scenarios: student, software engineer, and finance worker.
+- The career run requires both `MINGSI_LIVE_GLM_ACCEPTANCE=1` and `MINGSI_LIVE_GLM_CAREER_GOLDEN=1`, plus an explicit BYOK environment key. Missing either opt-in or the key skips the XCTest and never sends a request; Keychain-only configuration is not enough for this paid live evaluation.
+- Each scenario uses the current `LocalPromptProvider` template and structured payload, then parses the real DirectGLM completion with `TodayAIResponseParser` and rejects `PromptCoachingQualityPolicy` failures. Career labels are context only, never evidence for ability, motivation, preference, income, responsibility, or a conclusion. The request also denies stereotypes, appeasement, and direct-answer behavior.
+- This is a manually invoked regression harness, not a product workflow or a source of user data. It does not assert exact output wording and it does not log the BYOK key.
 
 ## Data Shapes
 
@@ -273,7 +315,7 @@ assignment; neither should be the primary navigation label.
 
 ### Coach Turn State
 
-Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. Prompt context may carry:
+Coach Turn State v1 turns the coach from a one-shot lens recommender into a Today-local stateful coach loop. The state is persisted locally, while its meaningful diagnosis is produced by `diagnoseTrainingCase` through the central decision center. Prompt context may carry:
 
 ```json
 {
@@ -534,7 +576,52 @@ Principle output can be flagged with:
 
 The gate should stay conservative: it catches low-cost, high-confidence failures. Passing the gate means "not obviously bad"; it does not mean the prompt is high quality.
 
-At runtime, `TodayAIService.generateQuestions`, `TodayAIService.generateQuests`, `TodayAIService.verifyQuest`, and `TodayAIService.extractPrinciple` run this gate after JSON parsing and before returning output to the app state machine. If the gate finds issues, the service throws `TodayAIParsingError.qualityGateFailed` with issue reason codes only. The app should treat this like a parse-quality failure and use the existing fallback and retry path rather than showing low-quality AI output to the user.
+At runtime, `TodayAIService.generateQuestions`, `TodayAIService.generateQuests`, `TodayAIService.verifyQuest`, and `TodayAIService.extractPrinciple` run this gate after JSON parsing and before returning output to the app state machine. If the gate finds issues, the service throws `TodayAIParsingError.qualityGateFailed` with issue reason codes only. The app should treat this like a parse-quality failure and keep the step retryable rather than showing low-quality AI output or silently substituting a local decision when a model is configured.
+This uses the central-decision retry path: a missing-key or model failure preserves the input and waits for a retry; only injected test/preview runs may show a labeled local fallback.
+
+## Coach Prompt Iteration Protocol
+
+Coach Prompt quality is iterated as a versioned evidence loop, not by casually editing copy after a single impression:
+
+```text
+attributed user feedback + runtime failures + fixed checks
+-> one explicit quality hypothesis
+-> versioned Prompt change
+-> deterministic regression + human review
+-> limited real-use comparison
+-> keep, revise, or roll back
+```
+
+### Attribution And Signals
+
+- A feedback event is stored with the active `TrainingCaseSession`.
+- During `answerQuestions`, it is linked only when the visible question output's fingerprint matches a `presented` `generateQuestions` turn for that case session.
+- During `reviewQuests`, it is linked only when the visible Quest output's fingerprint matches a `presented` `generateQuests` turn for that case session.
+- A newer or failed `PromptRun`, a fallback result, and a response that was never presented must not receive user feedback attribution.
+- During user `selectLens` override, it remains intentionally unlinked; the model diagnosis Prompt must not be blamed for a user-selected lens.
+- `wrong_target`, `repetitive`, `too_abstract`, and `gave_away_answer` mark an attributed run as denied so the existing per-version runtime quality gate can see it. `useful` is recorded but never auto-accepts a Prompt version.
+- Raw feedback notes and private user material are diagnostic data. They must not be sent back to a model automatically.
+
+### Required Change Record
+
+Every Prompt change must record, in the change description or release note:
+
+1. the affected `PromptID` and the old/new version;
+2. one falsifiable hypothesis, for example: "this change should reduce wrong-target questions for evidence-gap cases";
+3. the exact failure mode and affected training phase;
+4. fixed fixtures or golden examples added for that failure;
+5. the expected leading signal and the rollback version.
+
+One change should address one primary failure mode. Do not combine a tone rewrite, schema change, context-policy change, and coaching-strategy change in one version unless each is separately evaluated.
+
+### Evaluation Gates
+
+1. **Local gate:** parser/schema fixtures and `PromptCoachingQualityPolicy` must pass. This only proves that an output is not obviously invalid.
+2. **Golden review:** run the affected fixed cases, including prior anonymized negative-feedback cases, against the target model. A human reviews whether the response targets the right training gap, asks instead of answers, avoids repetition, and produces an actionable next move.
+3. **Limited comparison:** expose one version at a time and compare the same `PromptID + version` on attributed call count, runtime failure rate, empty-result rate, and all five coach-feedback values. Also inspect downstream action completion criteria and verification quality; a lower complaint rate alone is not sufficient.
+4. **Decision:** keep only when the evidence improves or holds the target signal without harming another coaching constraint. Roll back to the recorded version when the target failure rises materially, repeated severe feedback appears, or the human review reveals a new safety/quality regression.
+
+The deterministic suite is a release guard, not a claim that the live model response is high quality. Live golden evaluation is manually triggered and version-comparative; it must never become a hidden per-screen model request.
 
 ### Principle Candidate
 

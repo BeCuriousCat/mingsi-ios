@@ -1,5 +1,25 @@
 # 明思 Technical Architecture
 
+## vNext Coordination Boundary (2026-07-15)
+
+The active architecture adds matter-scoped repositories and coordinators without exposing internal loop states in SwiftUI:
+
+```text
+TodayView -> AppStore -> TrainingCaseCoordinator
+                     -> VerificationCoordinator / transactional settlement repository
+                     -> GuidanceEngine (eligibility only)
+                     -> GuidanceAIService -> CentralLLMDecisionCenter
+                     -> CoachDecisionAIService -> CentralLLMDecisionCenter
+                     -> GrowthAIService / ProjectAIService / SideQuestAIService
+                                             -> CentralLLMDecisionCenter
+                     -> Project closure repository
+
+Meaningful decision -> CentralLLMDecisionCenter -> PromptRun source ids
+AI request -> PromptContextPayload.currentCase -> PromptRun source ids
+```
+
+Card, Quest, and Lens writes use Case-scoped repository APIs so saving Case A cannot soft-delete Case B. Switching first waits for queued persistence, then reloads the selected Case session and evidence. Live verification commits Verification, Quest status, and GrowthSettlement in one SQLite transaction. Provider-profile expansion remains outside this milestone.
+
 ## Architecture Summary
 
 MVP 是一个本地优先的 iPhone SwiftUI App。用户自带 GLM API Key，App 直接调用 GLM API。Prompt、模型调用、存储、通知和 UI 都通过协议层解耦，保证后续可以迁移到服务端或替换实现。
@@ -10,8 +30,8 @@ MVP 高层结构：
 SwiftUI App
   -> Feature UseCases
   -> PromptProvider
-  -> LLMClient
-  -> DirectGLMClient
+  -> CentralLLMDecisionCenter
+  -> LLMClient -> DirectGLMClient
 
 SwiftUI App
   -> Repository Protocols
@@ -29,6 +49,8 @@ PromptProvider: LocalPromptProvider -> RemotePromptProvider
 LLMClient: DirectGLMClient -> ProxyLLMClient
 ReminderService: LocalNotificationReminder -> AppleRemindersSync / CalendarSync
 ```
+
+`CentralLLMDecisionCenter` 是全局判断中心，而非本地状态机的替代品。当前生产路径为 `DirectGLMClient`；Pi 只可在未来作为服务端 `AgentRuntimeAdapter` 的隔离实验实现，且必须仍由中心以 `LLMClient` / `StreamingLLMClient` 调用。adapter 不得访问 iOS 数据库、Keychain、通知、HealthKit、位置、联系人、日历或 UI 状态，也不得拥有持久化与事务权威。触发条件和受控多轮协议见 `docs/agent-runtime-decision.md`；当前 3-7 天真实体验不实现 Pi。
 
 ## Core Principle
 
@@ -152,7 +174,21 @@ protocol PrincipleRetriever {
 - `ContextAssembler` 负责选择 raw input、cards、answers、principles、projects、growth weak signals 等上下文。
 - `PrincipleRetriever` 负责从用户已确认原则中选 1-3 条相关原则。
 - `TodayAIService` 只编排业务调用，不直接决定长期上下文检索策略。
-- `LLMClient` 只负责传输，不理解产品语义。
+- `CentralLLMDecisionCenter` 是所有需要判断、推荐、分类或总结的模型调用入口；它共享一个经过 PromptRun 审计的客户端实例。
+- `LLMClient` 只负责传输，不理解产品语义。具体服务负责 schema 和证据边界，不能绕过中心直接创建新的生产模型客户端。
+- 本地规则只负责客观资格、用户同意、频率与冷却、安全边界、权限和事务状态，不代替模型做内容决策。原则候选、教练模式摘要和支线邀请素材都只是受控输入材料；最终选择、解释、分类或总结必须由中央 LLM 完成。
+
+### 情境化生活奇遇
+
+`SideQuestContextSnapshot` 是发送给中央模型的最小当前情境：粗粒度场景、忙闲状态、匿名化上下文标记和动态约束。用户可在 Today 临时选择“在家”“在工作地点”“在熟悉地点”或“暂不确定”；这个修正仅在内存中保存至当天结束，并优先于系统模糊场景，不保存坐标、地点原文或系统原始记录。用户未同意生活奇遇前，`AppStore` 不调用任何情境 provider。
+
+在用户主动授予 HealthKit 读取权限后，端侧 `AggregatingSideQuestHealthSummaryProvider` 仅计算过去三天步数、活动能量和睡眠时长的平均区间，并将其转换为不含数值的 token。查询结果、样本、来源、精确时间及数值均不进入 `SideQuestContextSnapshot` 或模型请求；无数据或拒绝读取时不产生健康 token。
+
+模型负责 `offer` / `hold`、邀请内容和 `decisionRationale`；本地只验证 grounding token、资格、同意、冷却、安全及持久化状态。已经发出的 `SideQuestRun` 是不可变的事实快照，情境更改不会改写它或触发同日重复请求。Today 只在 AI run 有安全自然语言理由时展示“为什么现在推荐”，不暴露 prompt、grounding token 或原始数据。
+
+情境资料是自愿、可编辑且可清除的本地最小资料：家/工作地点本地标签、各自可选的数值楼层与楼梯可用性、过渡时间、通勤/运动偏好、禁用类别和简短 constraints；`familiarPlace` 只可作为当前 snapshot scene，不是持久地点资料。模型不接收地点标签、地址、坐标、原始日历或健康样本；当前 payload 会发送活跃地点的数值 `floor_level` 与 `stairs_available`。`practical_place_home` / `workplace` 及其 `*_floor` / `*_stairs` 只在 scene 匹配时进入 `available_grounding_refs`，并有 `scene_*`、`availability_*` 和粗粒度健康 snapshot token。当前不存在设施、预约、预算或熟悉路线 token，因此模型不得建议游泳、远距离场馆、陌生路线或其他外部依赖活动；没有依据时必须 `hold` 或返回不依赖未知条件的体验。未来扩展这些条件必须先新增自愿字段和 grounding token。
+
+未来受控多轮请求也必须由本地协调：purpose 限定的最小字段 allowlist，最多 2 个模型回合，且第二回合的任何补充情境均需用户逐项确认。模型和 `AgentRuntimeAdapter` 只能建议，不能自行操作现实世界、发通知、请求权限或写持久化；本地层仍负责隐私、同意、通知、幂等性和 SQLite 事务。详细契约见 `docs/agent-runtime-decision.md`。
 
 上下文注入规则：
 
@@ -200,13 +236,14 @@ DirectGLMClient
 
 - 连接测试只验证最小请求链路，不证明正式 Prompt 的 schema 输出一定可用。
 - `LLMClientError.userFacingMessage` 必须向 UI 传递 HTTP 状态、网络错误或响应异常，不能只显示“调用失败”。
-- Today 生成步骤失败时，AppStore 先生成本地 fallback，并按 `PromptID` 记录待补跑项。
-- `retryCurrentAIStep()` 只重试当前步骤对应的 Prompt；重试失败时保留现有 fallback，不重复新增同一个待补跑项。
+- Today 生成步骤在 vNext 正式运行中不会用本地启发式替代模型判断；无 Key、模型失败或质量门失败时，AppStore 保留已确认材料、记录具体失败并按 `PromptID` 提供待补跑项。
+- `retryCurrentAIStep()` 只重试当前步骤对应的 Prompt。本地 fallback 仅允许显式注入式测试/预览服务和旧流程夹具，不得进入 vNext 生产路径。
 - `retryPendingAIRepairs()` 只补跑待修复的 Prompt，并在成功后移除对应项。
 - 当前 MVP 通过 `PromptTracingLLMClient` 持久记录成功/失败 PromptRun。
-- API Key 缺失时走 `MissingAPIKeyLLMClient` 明确抛出失败；正式路径不能用 mock 响应伪装成 GLM 成功，只能在 UI 中标记为本地 fallback / 可补跑。
+- API Key 缺失时走 `MissingAPIKeyLLMClient` 明确抛出失败；正式路径不能用 mock 响应伪装成 GLM 成功。vNext 无 Key 时只显示中央模型不可用并进入可补跑状态；本地 fallback 只属于注入式测试/预览和旧流程夹具。
 - App 启动加载本地草稿时，会读取 `PromptRunRepository.unresolvedFailures`，把属于当前 DailyEntry 的可修复 Prompt 恢复到待补跑队列。
 - GLM 直连默认请求超时为 300 秒；流式请求以 300 秒无新 token 作为空闲超时，超时错误必须明确显示为超时，避免用户无法判断是 Key、Base URL、额度还是等待时间问题。
+- Verification 失败时，vNext 正式流程不会保存本地伪校准或伪结算；用户保留当前证据并重试中央 LLM。仅显式注入式测试/预览和旧流程夹具允许显示带标记的本地草稿。
 - 今日训练生成统一支持 SSE 流式生成。整理卡片逐步展示候选卡片；追问、明日验证、原则与结果校准只在完整 JSON 通过解析和质量门槛后写入业务数据，但必须向 UI 回报连接、首个数据包和持续接收状态。
 
 ### Streaming Card Generation

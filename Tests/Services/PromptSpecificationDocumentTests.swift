@@ -208,7 +208,7 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("question does not serve the primary training dimension or any baseline training dimension"))
         XCTAssertTrue(spec.contains("first question does not serve the primary training dimension"))
         XCTAssertTrue(spec.contains("qualityGateFailed"))
-        XCTAssertTrue(spec.contains("existing fallback and retry path"))
+        XCTAssertTrue(spec.contains("central-decision retry path"))
         XCTAssertTrue(productRisks.contains("deterministic coaching quality gate"))
         XCTAssertTrue(productRisks.contains("does not replace human or LLM review"))
         XCTAssertTrue(productRisks.contains("qualityGateFailed"))

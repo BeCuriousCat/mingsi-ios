@@ -9,6 +9,7 @@ enum TodayAutomationID {
     static let supplementCaptureAction = "today.supplement-capture-action"
     static let returnToReviewForJudgmentAction = "today.return-to-review-for-judgment-action"
     static let retryCurrentStepAction = "today.retry-current-step-action"
+    static let centralModelKeySettingsAction = "today.central-model-key.settings-action"
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
     static let moreActions = "today.more-actions"
@@ -39,6 +40,17 @@ enum TodayAutomationID {
     static let loopBoundaryToggle = "today.loop-boundary-toggle"
     static let captureGuidanceToggle = "today.capture.guidance-toggle"
     static let reviewQuestsGuidanceToggle = "today.review-quests.guidance-toggle"
+    static let activeGuidanceToggle = "today.active-guidance-toggle"
+    static let sideQuestEnableAction = "today.side-quest.enable-action"
+    static let sideQuestAcceptAction = "today.side-quest.accept-action"
+    static let sideQuestSkipAction = "today.side-quest.skip-action"
+    static let sideQuestCompleteAction = "today.side-quest.complete-action"
+    static let sideQuestCard = "today.side-quest.card"
+    static let sideQuestCurrentSceneMenu = "today.side-quest.current-scene-menu"
+    static let sideQuestRationale = "today.side-quest.rationale"
+    static func overviewCaseAction(_ caseId: UUID) -> String {
+        "today.overview.case.\(caseId.uuidString).action"
+    }
     static func questionAnswerField(questionId: String) -> String {
         "today.question.answer-field.\(questionId)"
     }
@@ -140,6 +152,15 @@ private enum TodayVisibleStageStatus {
     }
 }
 
+func todayHeaderDateText(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "zh_CN")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyy年M月d日"
+    return formatter.string(from: date)
+}
+
 private struct TodayVisibleStageButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -163,6 +184,53 @@ private struct TodayPrimaryActionButtonStyle: ButtonStyle {
                         .stroke(DS.hairline, lineWidth: 1)
                 }
             }
+            .opacity(configuration.isPressed ? 0.78 : 1)
+    }
+}
+
+private struct TodayCaseOverviewCardStyle: ButtonStyle {
+    let isEmphasized: Bool
+    let statusTint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+        configuration.label
+            .background {
+                ZStack {
+                    shape
+                        .fill(statusTint.opacity(isEmphasized ? 0.14 : 0.055))
+                        .overlay(shape.stroke(DS.hairline, lineWidth: 1))
+                        .scaleEffect(0.972, anchor: .top)
+                        .offset(y: 6)
+
+                    shape
+                        .fill(statusTint.opacity(isEmphasized ? 0.08 : 0.035))
+                        .overlay(shape.stroke(DS.hairline.opacity(0.72), lineWidth: 1))
+                        .scaleEffect(0.986, anchor: .top)
+                        .offset(y: 3)
+
+                    shape.fill(
+                        isEmphasized
+                            ? statusTint.opacity(configuration.isPressed ? 0.11 : 0.07)
+                            : DS.cardBackground
+                    )
+                }
+            }
+            .overlay {
+                shape.stroke(
+                    configuration.isPressed
+                        ? statusTint.opacity(0.62)
+                        : (isEmphasized ? statusTint.opacity(0.30) : DS.hairline),
+                    lineWidth: isEmphasized ? 1.25 : 1
+                )
+            }
+            .shadow(
+                color: isEmphasized ? statusTint.opacity(configuration.isPressed ? 0.05 : 0.12) : .black.opacity(0.025),
+                radius: configuration.isPressed ? 2 : (isEmphasized ? 5 : 1.5),
+                y: configuration.isPressed ? 0 : (isEmphasized ? 2 : 1)
+            )
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
@@ -204,8 +272,54 @@ private struct KeepScreenAwakeWhileTextEditing: ViewModifier {
     }
 }
 
+private struct SideQuestPhotoMemoryThumbnail: View {
+    let memory: SideQuestPhotoMemory
+    let markUnavailable: () -> Void
+    @State private var image: UIImage?
+    @State private var didAttemptLoad = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                VStack(spacing: 5) {
+                    Image(systemName: memory.unavailable ? "photo.slash" : "photo")
+                    Text(memory.unavailable ? "照片不可用" : "读取照片")
+                        .font(.caption2)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(DS.mutedInk)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(DS.mutedInk.opacity(0.08))
+            }
+        }
+        .frame(width: 76, height: 76)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1)
+        }
+        .task(id: memory.id) {
+            guard !memory.unavailable, !didAttemptLoad else { return }
+            didAttemptLoad = true
+            let service = PhotoMemoryMediaService()
+            image = await service.thumbnail(for: memory.assetLocalIdentifier, targetSize: CGSize(width: 152, height: 152))
+            if image == nil {
+                markUnavailable()
+            }
+        }
+        .accessibilityLabel(memory.unavailable ? "奇遇照片不可用" : "奇遇照片")
+    }
+}
+
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var caseTransitionNamespace
     @State private var isCaptureFocused = false
     @State private var isCustomLensSheetPresented = false
     @State private var customLensTitle = ""
@@ -215,6 +329,16 @@ struct TodayView: View {
     @State private var isCaptureTrainingToolsExpanded = false
     @State private var isTrainingPrescriptionTeachingExpanded = false
     @State private var isTrainingTermsPresented = false
+    @State private var isActiveGuidanceExpanded = false
+    @State private var newCaseTitle = ""
+    @State private var isSideQuestCompletionPresented = false
+    @State private var isSideQuestCorrectionPresented = false
+    @State private var sideQuestCorrectionKind: SideQuestCorrectionKind = .notHere
+    @State private var sideQuestCorrectionNote = ""
+    @State private var sideQuestReflection = ""
+    @State private var isPhotoMemoryLibraryPickerPresented = false
+    @State private var isPhotoMemoryCameraPickerPresented = false
+    @State private var photoMemoryPermissionMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -223,44 +347,71 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: DS.sectionSpacing) {
                         header
                             .id(TodayScrollAnchor.top)
-                        loopProgress {
-                            withAnimation(.easeInOut(duration: 0.24)) {
-                                proxy.scrollTo(TodayScrollAnchor.top, anchor: .top)
+                        if isVNextOverview {
+                            todayOverviewSection
+                                .transition(.asymmetric(
+                                    insertion: .opacity,
+                                    removal: .move(edge: .leading).combined(with: .opacity)
+                                ))
+                        } else {
+                            loopProgress {
+                                withAnimation(.easeInOut(duration: 0.24)) {
+                                    proxy.scrollTo(TodayScrollAnchor.top, anchor: .top)
+                                }
                             }
-                        }
 
-                        switch store.todayDraft.state {
-                        case .verifyYesterday:
-                            verifyYesterdaySection
-                        case .capture:
-                            captureSection
-                        case .organizing:
-                            organizingSection
-                        case .reviewCards:
-                            reviewCardsSection
-                        case .selectMode:
-                            selectModeSection
-                        case .selectLens:
-                            selectLensSection
-                        case .answerQuestions:
-                            answerQuestionsSection
-                        case .reviewQuests:
-                            reviewQuestsSection
-                        case .extractPrinciple:
-                            extractPrincipleSection
-                        case .sessionComplete:
-                            sessionCompleteSection
+                            guidanceSection
+
+                            switch store.todayDraft.state {
+                            case .verifyYesterday:
+                                verifyYesterdaySection
+                            case .capture:
+                                captureSection
+                            case .organizing:
+                                organizingSection
+                            case .reviewCards:
+                                reviewCardsSection
+                            case .selectMode:
+                                selectModeSection
+                            case .selectLens:
+                                selectLensSection
+                            case .answerQuestions:
+                                answerQuestionsSection
+                            case .reviewQuests:
+                                reviewQuestsSection
+                            case .extractPrinciple:
+                                extractPrincipleSection
+                            case .sessionComplete:
+                                sessionCompleteSection
+                            }
+
+                            coachTurnFeedbackSection
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                                    removal: .opacity
+                                ))
                         }
                     }
                     .padding(.horizontal, DS.pagePadding)
                     .padding(.top, DS.primaryScrollTopPadding)
                     .padding(.bottom, todayScrollBottomReserve)
+                    .animation(
+                        reduceMotion ? nil : .easeOut(duration: 0.22),
+                        value: isVNextOverview
+                    )
                 }
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        dismissKeyboard()
+                    }
+                )
                 .pageBackground()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    actionRow
+                    if !isVNextOverview {
+                        actionRow
+                    }
                 }
             }
         }
@@ -268,8 +419,35 @@ struct TodayView: View {
         .sheet(isPresented: $isCustomLensSheetPresented) {
             customLensSheet
         }
+        .onChange(of: store.activeGuidance?.hintId) { _, _ in
+            isActiveGuidanceExpanded = false
+        }
         .sheet(isPresented: $isTrainingTermsPresented) {
             TrainingTermsSheet()
+        }
+        .sheet(isPresented: $isSideQuestCompletionPresented) {
+            sideQuestCompletionSheet
+        }
+        .sheet(isPresented: $isPhotoMemoryLibraryPickerPresented) {
+            PhotoMemoryLibraryPicker(
+                onSelect: { identifier in
+                    isPhotoMemoryLibraryPickerPresented = false
+                    Task { await store.attachPhotoMemoryToCurrentSideQuest(assetLocalIdentifier: identifier) }
+                },
+                onCancel: { isPhotoMemoryLibraryPickerPresented = false }
+            )
+        }
+        .sheet(isPresented: $isPhotoMemoryCameraPickerPresented) {
+            PhotoMemoryCameraPicker(
+                onCapture: { image in
+                    isPhotoMemoryCameraPickerPresented = false
+                    Task { await saveCapturedPhotoMemory(image) }
+                },
+                onCancel: { isPhotoMemoryCameraPickerPresented = false }
+            )
+        }
+        .sheet(isPresented: $isSideQuestCorrectionPresented) {
+            sideQuestCorrectionSheet
         }
         .onAppear {
             presentVisualQACustomLensSheetIfNeeded()
@@ -280,48 +458,48 @@ struct TodayView: View {
         .modifier(KeepScreenAwakeWhileTextEditing(keepsScreenAwakeWhile: store.isAIRunning))
     }
 
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
     // MARK: - Header
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(store.todayDraft.date, style: .date)
+            Text(todayHeaderDateText(store.todayDraft.date))
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
-                .textCase(.uppercase)
 
-            HStack(alignment: .firstTextBaseline) {
-                Text(currentVisibleStageTitle)
-                    .font(.system(size: 31, weight: .bold, design: .rounded))
-                    .foregroundStyle(DS.ink)
-
-                Spacer()
-
-                Button {
-                    isTrainingTermsPresented = true
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title3)
+            if usesStackedHeaderActions {
+                HStack(alignment: .firstTextBaseline) {
+                    headerTitleContent
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(DS.mutedInk)
-                .frame(width: 32, height: 32)
-                .accessibilityLabel("查看训练术语")
-                .accessibilityIdentifier(TodayAutomationID.trainingTermsAction)
-
-                if store.todayDraft.hasSelectedSessionMode {
-                    Text(store.todayDraft.sessionMode.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DS.accent)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(DS.accent.opacity(0.08), in: Capsule())
+                HStack {
+                    Spacer(minLength: 0)
+                    headerActions
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    headerTitleContent
+                    Spacer(minLength: 0)
+                    headerActions
                 }
             }
 
-            Text("现在 · \(store.currentStateTitle)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(DS.mutedInk)
-                .accessibilityIdentifier(TodayAutomationID.state(store.todayDraft.state))
+            if let activeCase = store.activeTrainingCase, !isVNextOverview {
+                activeCaseHeader(activeCase)
+            } else if !isVNextOverview {
+                Text("现在 · \(store.currentStateTitle)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+                    .accessibilityIdentifier(TodayAutomationID.state(store.todayDraft.state))
+            }
 
             if !store.todayLoopMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -340,6 +518,920 @@ struct TodayView: View {
                     }
                 }
                 .padding(.top, 2)
+            }
+        }
+    }
+
+    private func activeCaseHeader(_ trainingCase: TrainingCase) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: trainingCaseStatusSymbol(trainingCase.status))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.accent)
+            Text(trainingCase.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.accent)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(DS.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.accent.opacity(0.18), lineWidth: 1)
+        }
+        .matchedGeometryEffect(
+            id: trainingCaseTransitionID(trainingCase.id),
+            in: caseTransitionNamespace,
+            properties: .frame,
+            anchor: .center,
+            isSource: false
+        )
+        .transaction { transaction in
+            if reduceMotion { transaction.animation = nil }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("当前事项：\(trainingCase.title)")
+    }
+
+    private func trainingCaseTransitionID(_ id: UUID) -> String {
+        "today.training-case.\(id.uuidString)"
+    }
+
+    private var usesStackedHeaderActions: Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
+    @ViewBuilder
+    private var headerTitleContent: some View {
+        if store.activeTrainingCase != nil && !isVNextOverview {
+            Button {
+                Task { await store.returnToTodayOverview() }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.ink)
+            .accessibilityLabel("返回今日概览")
+        }
+
+        Text(isVNextOverview ? "今日概览" : currentVisibleStageTitle)
+            .font(.system(.largeTitle, design: .rounded).weight(.bold))
+            .foregroundStyle(DS.ink)
+    }
+
+    private var headerActions: some View {
+        HStack(spacing: 8) {
+            Button {
+                isTrainingTermsPresented = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.mutedInk)
+            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            .accessibilityLabel("查看训练术语")
+            .accessibilityIdentifier(TodayAutomationID.trainingTermsAction)
+
+            if store.todayDraft.hasSelectedSessionMode {
+                Text(store.todayDraft.sessionMode.badgeTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(DS.accent.opacity(0.08), in: Capsule())
+            }
+        }
+    }
+
+    private var isVNextOverview: Bool {
+        store.trainingCasesVNextEnabled && store.isTodayOverviewPresented
+    }
+
+    private var todayOverviewSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if store.hasPendingCaseConfirmation {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("AI 已整理出事项，确认后再逐件推进。", systemImage: "checklist")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Button {
+                        store.resumeTrainingCaseConfirmation()
+                    } label: {
+                        Label("继续确认事项", systemImage: "arrow.right.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DS.accent)
+                    .accessibilityIdentifier("today.case-confirmation.resume-action")
+                }
+                .padding(.vertical, 10)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+
+            if store.hasTodayOverload {
+                Label("今天待推进或待验证的内容较多，先选一件最值得推进的事。", systemImage: "gauge.with.dots.needle.33percent")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(DS.caution)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 10)
+                    .overlay(alignment: .bottom) { Divider() }
+            }
+
+            if !store.dueVerificationQuests.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    todaySectionLabel("到期验证")
+                    ForEach(store.dueVerificationQuests) { quest in
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text(quest.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(DS.ink)
+                            Text(quest.completionCriteria)
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 10) {
+                                Button {
+                                    Task { await store.beginVerification(quest) }
+                                } label: {
+                                    Label("验证", systemImage: "checkmark.circle")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .tint(DS.accent)
+
+                                Button {
+                                    Task { await store.deferVerification(quest) }
+                                } label: {
+                                    Label("稍后", systemImage: "clock.arrow.circlepath")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        Divider()
+                    }
+                }
+            }
+
+            if let settlement = store.latestGrowthSettlement {
+                growthSettlementView(settlement)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                todaySectionLabel(store.trainingCases.isEmpty ? "记录今天" : "补充记录")
+                CaptureTextView(
+                    text: Binding(
+                        get: { store.todayDraft.rawText },
+                        set: { store.updateTodayCapture($0) }
+                    ),
+                    isFocused: $isCaptureFocused
+                )
+                .frame(height: overviewCaptureHeight)
+                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(DS.hairline, lineWidth: 1)
+                )
+
+                if store.trainingCases.isEmpty {
+                    if store.isVNextModelLed && !store.apiKeyConfigured {
+                        Button {
+                            store.selectedTab = .settings
+                        } label: {
+                            Label("配置中央模型后整理", systemImage: "gearshape")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.accent)
+                        .accessibilityIdentifier(TodayAutomationID.centralModelKeySettingsAction)
+                    } else {
+                        Button {
+                            store.organizeOverviewCapture()
+                        } label: {
+                            Label("整理成事项", systemImage: "sparkles.rectangle.stack")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.accent)
+                        .disabled(store.todayDraft.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                } else {
+                    Text("补充内容会保留在今天的原始记录中；需要单独推进时，在下方新增事项。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    todaySectionLabel("今日事项")
+                    Spacer()
+                    Text("\(store.trainingCases.filter { $0.status != .merged }.count) 件")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(DS.mutedInk)
+                }
+
+                if store.trainingCases.isEmpty {
+                    Text("整理原始输入后，事项会出现在这里。")
+                        .font(.subheadline)
+                        .foregroundStyle(DS.mutedInk)
+                } else {
+                    ForEach(store.trainingCases) { trainingCase in
+                        trainingCaseOverviewRow(trainingCase)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    TextField("手动新增事项", text: $newCaseTitle)
+                        .textFieldStyle(.roundedBorder)
+                    Button {
+                        let title = newCaseTitle
+                        newCaseTitle = ""
+                        Task { await store.addManualTrainingCase(title: title) }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.headline)
+                            .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("新增事项")
+                    .disabled(newCaseTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            if !store.trainingCaseMerges.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    todaySectionLabel("合并记录")
+                    ForEach(store.trainingCaseMerges) { merge in
+                        HStack {
+                            Text("已合并事项")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                            Spacer()
+                            Button("撤销") {
+                                Task { await store.undoTrainingCaseMerge(merge.id) }
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                    }
+                }
+            }
+
+            sideQuestSection
+        }
+    }
+
+    @ViewBuilder
+    private var sideQuestSection: some View {
+        if let run = store.sideQuestRun {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    todaySectionLabel("今日奇遇")
+                        .accessibilityIdentifier(TodayAutomationID.sideQuestCard)
+                    Spacer()
+                    if store.sideQuestPreference.isEnabled {
+                        Menu {
+                            ForEach([
+                                SideQuestContextSnapshot.Scene.home,
+                                .work,
+                                .familiarPlace,
+                                .unknown
+                            ], id: \.self) { scene in
+                                Button {
+                                    store.setSideQuestManualScene(scene)
+                                } label: {
+                                    Label(
+                                        scene.manualSelectionTitle,
+                                        systemImage: scene == (store.sideQuestManualSceneContext?.scene ?? .unknown)
+                                            ? "checkmark"
+                                            : "circle"
+                                    )
+                                }
+                            }
+                            if store.sideQuestManualSceneContext != nil {
+                                Divider()
+                                Button("清除当前情境") {
+                                    store.setSideQuestManualScene(nil)
+                                }
+                            }
+                        } label: {
+                            Label(
+                                store.sideQuestManualSceneContext?.scene.manualSelectionTitle ?? "当前情境",
+                                systemImage: "location"
+                            )
+                            .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DS.mutedInk)
+                        .accessibilityIdentifier(TodayAutomationID.sideQuestCurrentSceneMenu)
+                        .accessibilityLabel("设置当前粗粒度情境")
+                    }
+                    Text("可选")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: sideQuestSymbol(for: run.status))
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(sideQuestTint(for: run.status))
+                            .frame(width: 30, height: 30)
+                            .accessibilityHidden(true)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(run.title)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(DS.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("\(run.origin == .aiGenerated ? "为你遇见 · " : "")\(run.category.title) · 不必完成")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                            if let season = store.activeSideQuestSeason, run.seasonId == season.id {
+                                Text("探索季：\(season.title) · 完成 \(season.completedCount) · 跳过 \(season.skippedCount)")
+                                    .font(.caption)
+                                    .foregroundStyle(DS.mutedInk)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        sideQuestOptions(for: run)
+                    }
+
+                    Text(run.invitation)
+                        .font(.subheadline)
+                        .foregroundStyle(DS.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let rationale = sideQuestRationaleDisplayText(for: run) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("为什么现在推荐")
+                                    .font(.caption.weight(.semibold))
+                                Text(rationale)
+                                    .font(.caption)
+                            }
+                        } icon: {
+                            Image(systemName: "lightbulb")
+                        }
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier(TodayAutomationID.sideQuestRationale)
+                        .accessibilityLabel("为什么现在推荐：\(rationale)")
+                    }
+
+                    sideQuestActionRow(for: run)
+
+                    if !store.sideQuestPhotoMemories.isEmpty {
+                        sideQuestPhotoMemories
+                    }
+
+                    if run.status == .offered && !store.sideQuestPreference.notificationsEnabled {
+                        Button {
+                            Task { await store.setSideQuestNotificationsEnabled(true) }
+                        } label: {
+                            Label("开启系统提醒", systemImage: "bell.badge")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(DS.accent)
+                        .disabled(store.isSideQuestActionInFlight)
+                        .accessibilityLabel("开启生活奇遇系统提醒")
+                    }
+
+                    if !store.sideQuestMessage.isEmpty {
+                        Text(store.sideQuestMessage)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(DS.cardInnerPadding)
+                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                        .stroke(sideQuestTint(for: run.status).opacity(0.22), lineWidth: 1)
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("今日奇遇：\(run.title)，\(sideQuestStatusText(for: run.status))")
+            }
+            .padding(.top, 2)
+        } else if store.sideQuestPreference.consentStatus == .notAsked {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "location.north.circle")
+                    .font(.title3)
+                    .foregroundStyle(DS.note)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("开启生活奇遇")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text("明思会偶尔结合你的记录发出一件可跳过的生活邀请。")
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 6) {
+                    Button {
+                        Task { await store.enableSideQuestInvitations() }
+                    } label: {
+                        Text("开启")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(DS.accent)
+                    .accessibilityIdentifier(TodayAutomationID.sideQuestEnableAction)
+                    .accessibilityLabel("开启今日奇遇")
+
+                    Button("暂不开启") {
+                        Task { await store.setSideQuestInvitationsEnabled(false) }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .accessibilityIdentifier("today.side-quest.decline-consent-action")
+                }
+                .disabled(store.isSideQuestActionInFlight)
+            }
+            .padding(.vertical, 8)
+            .overlay(alignment: .top) { Divider() }
+        } else if !store.sideQuestPreference.isEnabled {
+            EmptyView()
+        } else if !store.sideQuestMessage.isEmpty {
+            Text(store.sideQuestMessage)
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+        }
+    }
+
+    @ViewBuilder
+    private func sideQuestOptions(for run: SideQuestRun) -> some View {
+        if run.status.occupiesInvitationSlot {
+            Menu {
+                Section("告诉明思") {
+                    ForEach(SideQuestCorrectionKind.allCases.filter { $0 != .note }) { kind in
+                        Button(kind.title) {
+                            sideQuestCorrectionKind = kind
+                            sideQuestCorrectionNote = ""
+                            isSideQuestCorrectionPresented = true
+                        }
+                    }
+                }
+                Divider()
+                Button("关闭“\(run.category.title)”类奇遇", role: .destructive) {
+                    Task { await store.disableCurrentSideQuestCategory() }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.mutedInk)
+            .disabled(store.isSideQuestActionInFlight)
+            .accessibilityLabel("更多今日奇遇选项")
+        }
+    }
+
+    private var sideQuestCorrectionSheet: some View {
+        NavigationStack {
+            Form {
+                Section("反馈类型") {
+                    Picker("反馈类型", selection: $sideQuestCorrectionKind) {
+                        ForEach(SideQuestCorrectionKind.allCases.filter { $0 != .note }) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+                }
+                Section("补充说明（可选）") {
+                    TextEditor(text: $sideQuestCorrectionNote)
+                        .frame(minHeight: 100)
+                }
+            }
+            .navigationTitle("调整奇遇").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { isSideQuestCorrectionPresented = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("提交") {
+                        let note = sideQuestCorrectionNote
+                        isSideQuestCorrectionPresented = false
+                        Task { await store.recordSideQuestCorrection(sideQuestCorrectionKind, note: note) }
+                    }
+                    .disabled(store.isSideQuestActionInFlight)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private func sideQuestActionRow(for run: SideQuestRun) -> some View {
+        switch run.status {
+        case .offered:
+            HStack(spacing: 10) {
+                Button {
+                    Task { await store.acceptCurrentSideQuest() }
+                } label: {
+                    Label("去看看", systemImage: "sparkle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DS.accent)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(TodayAutomationID.sideQuestAcceptAction)
+
+                Button {
+                    Task { await store.moveCurrentSideQuestToNextTime() }
+                } label: {
+                    Text("留到下次")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(TodayAutomationID.sideQuestSkipAction)
+            }
+        case .accepted, .deferred:
+            HStack(spacing: 10) {
+                Label("已留意", systemImage: "checkmark.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.success)
+                Spacer()
+                Button {
+                    sideQuestReflection = ""
+                    isSideQuestCompletionPresented = true
+                } label: {
+                    Label("记下这一刻", systemImage: "bookmark")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DS.success)
+                .disabled(store.isSideQuestActionInFlight)
+                .accessibilityIdentifier(TodayAutomationID.sideQuestCompleteAction)
+            }
+        case .completed:
+            if store.latestSideQuestExperience != nil {
+                Label(
+                    "这一刻已被收下",
+                    systemImage: "bookmark.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.success)
+            } else {
+                Label("这一刻已被收下", systemImage: "bookmark.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.success)
+            }
+        case .declined, .expired:
+            EmptyView()
+        }
+    }
+
+    private var sideQuestCompletionSheet: some View {
+        NavigationStack {
+            Form {
+                if let run = store.sideQuestRun {
+                    Section("留住这次遇见") {
+                        Text(run.title)
+                            .font(.headline)
+                        Text(run.evidencePrompt)
+                            .font(.subheadline)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Section {
+                    TextEditor(text: $sideQuestReflection)
+                        .frame(minHeight: 112)
+                        .accessibilityLabel("这次奇遇的观察")
+                } header: {
+                    Text("若它留下了什么（可选）")
+                } footer: {
+                    Text("写一句感觉、细节或意外都可以；什么都不写也没关系。")
+                }
+
+                Section("留下一张照片（可选）") {
+                    Button {
+                        photoMemoryPermissionMessage = ""
+                        isPhotoMemoryLibraryPickerPresented = true
+                    } label: {
+                        Label("从相册选择", systemImage: "photo.on.rectangle")
+                    }
+
+                    Button {
+                        Task { await presentPhotoMemoryCamera() }
+                    } label: {
+                        Label("现在拍一张", systemImage: "camera")
+                    }
+                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+
+                    if !photoMemoryPermissionMessage.isEmpty {
+                        Text(photoMemoryPermissionMessage)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .navigationTitle("收下这一刻")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        isSideQuestCompletionPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("收下") {
+                        let reflection = sideQuestReflection
+                        isSideQuestCompletionPresented = false
+                        Task { await store.completeCurrentSideQuest(reflection: reflection) }
+                    }
+                    .disabled(store.isSideQuestActionInFlight || store.sideQuestRun?.status.canComplete != true)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var sideQuestPhotoMemories: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("留住的照片")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.mutedInk)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(store.sideQuestPhotoMemories) { memory in
+                        SideQuestPhotoMemoryThumbnail(memory: memory) {
+                            Task { await store.markSideQuestPhotoMemoryUnavailable(id: memory.id) }
+                        }
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func presentPhotoMemoryCamera() async {
+        let service = PhotoMemoryMediaService()
+        let cameraStatus = await service.requestCameraPermission()
+        guard cameraStatus.permitsPhotoSelection else {
+            photoMemoryPermissionMessage = "请在系统设置中允许使用相机后，再拍下这一刻。"
+            return
+        }
+        photoMemoryPermissionMessage = ""
+        isPhotoMemoryCameraPickerPresented = true
+    }
+
+    private func saveCapturedPhotoMemory(_ image: UIImage) async {
+        do {
+            let identifier = try await PhotoMemoryMediaService().saveCapturedImage(image)
+            await store.attachPhotoMemoryToCurrentSideQuest(
+                assetLocalIdentifier: identifier,
+                addToSharedAlbum: false
+            )
+        } catch {
+            photoMemoryPermissionMessage = error.localizedDescription
+        }
+    }
+
+    private func sideQuestSymbol(for status: SideQuestRunStatus) -> String {
+        switch status {
+        case .offered: return "location.north.circle"
+        case .accepted, .deferred: return "figure.walk.motion"
+        case .completed: return "checkmark.seal.fill"
+        case .declined, .expired: return "circle"
+        }
+    }
+
+    private func sideQuestTint(for status: SideQuestRunStatus) -> Color {
+        switch status {
+        case .offered: return DS.note
+        case .accepted, .deferred: return DS.accent
+        case .completed: return DS.success
+        case .declined, .expired: return DS.mutedInk
+        }
+    }
+
+    private func sideQuestStatusText(for status: SideQuestRunStatus) -> String {
+        switch status {
+        case .offered: return "可自行决定是否去看看"
+        case .accepted: return "已留意"
+        case .deferred: return "已暂存"
+        case .completed: return "这一刻已被收下"
+        case .declined: return "留到下次"
+        case .expired: return "已结束"
+        }
+    }
+
+    private func trainingCaseOverviewRow(_ trainingCase: TrainingCase) -> some View {
+        let canOpenCase = [.ready, .inProgress].contains(trainingCase.status)
+        return Group {
+            if canOpenCase {
+                Button {
+                    Task { await store.openTrainingCase(trainingCase.id) }
+                } label: {
+                    trainingCaseOverviewCardContent(trainingCase, isActionable: true)
+                }
+                .buttonStyle(
+                    TodayCaseOverviewCardStyle(
+                        isEmphasized: trainingCase.status == .inProgress,
+                        statusTint: trainingCaseStatusTint(trainingCase.status)
+                    )
+                )
+                .matchedGeometryEffect(
+                    id: trainingCaseTransitionID(trainingCase.id),
+                    in: caseTransitionNamespace,
+                    properties: .frame,
+                    anchor: .center,
+                    isSource: true
+                )
+                .transaction { transaction in
+                    if reduceMotion { transaction.animation = nil }
+                }
+                .accessibilityLabel("推进事项：\(trainingCase.title)，\(trainingCase.status.title)")
+                .accessibilityIdentifier(TodayAutomationID.overviewCaseAction(trainingCase.id))
+            } else {
+                trainingCaseOverviewCardContent(trainingCase, isActionable: false)
+                    .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
+                            .stroke(DS.hairline, lineWidth: 1)
+                    )
+            }
+        }
+        .opacity(trainingCase.status == .merged ? 0.55 : 1)
+    }
+
+    private func trainingCaseOverviewCardContent(
+        _ trainingCase: TrainingCase,
+        isActionable: Bool
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: trainingCaseStatusSymbol(trainingCase.status))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(trainingCase.status == .inProgress ? DS.accent : DS.mutedInk)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(trainingCase.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(trainingCase.status.title)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            Spacer(minLength: 8)
+
+            if isActionable {
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(DS.accent)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(trainingCaseStatusTint(trainingCase.status))
+                .frame(width: 3)
+                .padding(.vertical, 12)
+        }
+    }
+
+    private func trainingCaseStatusTint(_ status: TrainingCaseStatus) -> Color {
+        switch status {
+        case .pendingConfirmation:
+            return DS.note
+        case .ready:
+            return DS.mutedInk.opacity(0.55)
+        case .inProgress:
+            return DS.accent
+        case .awaitingVerification:
+            return DS.caution
+        case .completed:
+            return DS.success
+        case .merged:
+            return DS.graphite
+        }
+    }
+
+    private func trainingCaseStatusSymbol(_ status: TrainingCaseStatus) -> String {
+        switch status {
+        case .pendingConfirmation: return "questionmark.circle"
+        case .ready: return "circle"
+        case .inProgress: return "play.circle"
+        case .awaitingVerification: return "clock.badge.checkmark"
+        case .completed: return "checkmark.circle.fill"
+        case .merged: return "arrow.triangle.merge"
+        }
+    }
+
+    private var overviewCaptureHeight: CGFloat {
+        if dynamicTypeSize.isAccessibilitySize {
+            return store.trainingCases.isEmpty ? 220 : 156
+        }
+        return store.trainingCases.isEmpty ? 180 : 112
+    }
+
+    private func todaySectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(DS.mutedInk)
+            .textCase(.uppercase)
+    }
+
+    private func growthSettlementView(_ settlement: GrowthSettlement) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                todaySectionLabel("本次成长证据")
+                Spacer()
+                Button {
+                    store.dismissLatestGrowthSettlement()
+                } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("关闭成长结算")
+            }
+            BriefRow(title: "原判断", body: settlement.originalJudgment, accent: DS.graphite)
+            BriefRow(title: "实际结果", body: settlement.actualResult, accent: DS.accent)
+            BriefRow(title: "判断更新", body: settlement.judgmentUpdate.title, accent: DS.success)
+            ForEach(settlement.evidenceItems) { item in
+                Label(item.title, systemImage: "checkmark.seal")
+                    .font(.subheadline)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    @ViewBuilder
+    private var guidanceSection: some View {
+        if let guidance = store.activeGuidance {
+            DisclosureGroup(isExpanded: $isActiveGuidanceExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(guidance.explanation)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 12) {
+                        Button("暂不显示") { Task { await store.snoozeActiveGuidance() } }
+                        Button("我已掌握") { Task { await store.markActiveGuidanceMastered() } }
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                .padding(.top, 8)
+            } label: {
+                Label(guidance.copy, systemImage: "lightbulb.min")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityIdentifier(TodayAutomationID.activeGuidanceToggle)
+            .padding(.vertical, 8)
+            .overlay(alignment: .bottom) { Divider() }
+        }
+    }
+
+    @ViewBuilder
+    private var coachTurnFeedbackSection: some View {
+        if store.activeTrainingCase != nil,
+           [.selectLens, .answerQuestions, .reviewQuests].contains(store.todayDraft.state) {
+            HStack {
+                Text("这次教练建议")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                Spacer()
+                Menu {
+                    ForEach(CoachTurnFeedbackValue.allCases) { value in
+                        Button(value.title) {
+                            Task { await store.recordCoachTurnFeedback(value) }
+                        }
+                    }
+                } label: {
+                    Label("反馈", systemImage: "hand.thumbsup")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
     }
@@ -684,26 +1776,64 @@ struct TodayView: View {
     // Design: Quiet progress, not a loading spinner spectacle
     private var organizingSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel(store.apiKeyConfigured ? "正在整理" : "本地整理中", subtitle: "整理成可确认、可排除、可继续追问的卡片。")
-
-            AIGenerationProgressView(
-                isUsingAI: store.apiKeyConfigured,
-                cardCount: store.thinkingCards.count,
-                streamingCards: store.streamingCards,
-                statusText: store.streamingStatusText,
-                activityStatus: store.aiActivityStatus,
-                failureMessage: store.lastAIFailureMessage,
-                canRetry: store.canRetryCurrentAI,
-                retry: { store.retryCurrentAIStep() }
+            stepLabel(
+                store.isVNextModelLed
+                    ? (store.apiKeyConfigured ? "正在整理" : "等待中央模型")
+                    : (store.apiKeyConfigured ? "正在整理" : "本地整理中"),
+                subtitle: "整理成可确认、可排除、可继续追问的卡片。"
             )
+
+            if store.isVNextModelLed && !store.apiKeyConfigured {
+                centralModelKeyRequiredSection
+            } else {
+                AIGenerationProgressView(
+                    isUsingAI: store.apiKeyConfigured,
+                    isModelLed: store.isVNextModelLed,
+                    cardCount: store.thinkingCards.count,
+                    streamingCards: store.streamingCards,
+                    statusText: store.streamingStatusText,
+                    activityStatus: store.aiActivityStatus,
+                    failureMessage: store.lastAIFailureMessage,
+                    canRetry: store.canRetryCurrentAI,
+                    retry: { store.retryCurrentAIStep() }
+                )
+            }
         }
+    }
+
+    private var centralModelKeyRequiredSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("需要配置中央模型", systemImage: "key.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+            Text("整理成事项需要中央模型 API Key。当前原始记录已保留，不会改用本地整理；配置完成后返回今日，再重试整理。")
+                .font(.subheadline)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                store.selectedTab = .settings
+            } label: {
+                Label("进入设置", systemImage: "gearshape")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(DS.accent)
+            .accessibilityIdentifier(TodayAutomationID.centralModelKeySettingsAction)
+        }
+        .padding(14)
+        .summarySurface()
     }
 
     // MARK: - Review Cards
 
     // Purpose: User reviews AI-extracted cards, confirms what's real
     // Design: Cards stacked with type color dot, minimal chrome, focus on content
+    @ViewBuilder
     private var reviewCardsSection: some View {
+        if store.showsTrainingCaseConfirmation {
+            trainingCaseConfirmationSection
+        } else {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("思考卡片", subtitle: "先确认哪些材料是真的、重要的、值得继续追问。")
 
@@ -724,6 +1854,99 @@ struct TodayView: View {
                     exclude: { store.excludeCard(card.id) },
                     delete: { store.deleteCard(card.id) }
                 )
+            }
+        }
+        }
+    }
+
+    private var trainingCaseConfirmationSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            stepLabel("确认事项", subtitle: "调整名称和卡片归属后，再逐件推进。")
+
+            ForEach(store.trainingCases.filter { $0.status != .merged }) { trainingCase in
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField(
+                        "事项名称",
+                        text: Binding(
+                            get: {
+                                store.trainingCases.first(where: { $0.id == trainingCase.id })?.title
+                                    ?? trainingCase.title
+                            },
+                            set: { value in
+                                Task { await store.updateTrainingCaseTitle(trainingCase.id, title: value) }
+                            }
+                        )
+                    )
+                    .font(.headline)
+                    .textFieldStyle(.plain)
+
+                    ForEach(store.thinkingCards.filter { $0.trainingCaseId == trainingCase.id }) { card in
+                        ThinkingCardRow(
+                            card: card,
+                            update: { type, title, body, priority, sensitivity in
+                                store.updateCard(
+                                    card.id,
+                                    type: type,
+                                    title: title,
+                                    body: body,
+                                    priority: priority,
+                                    sensitivity: sensitivity
+                                )
+                            },
+                            confirm: { store.confirmCard(card.id) },
+                            exclude: { store.excludeCard(card.id) },
+                            delete: { store.deleteCard(card.id) }
+                        )
+
+                        if store.trainingCases.count > 1 {
+                            Menu {
+                                ForEach(store.trainingCases.filter { $0.id != trainingCase.id && $0.status != .merged }) { target in
+                                    Button(target.title) {
+                                        Task { await store.moveCard(card.id, to: target.id) }
+                                    }
+                                }
+                            } label: {
+                                Label("调整归属", systemImage: "arrowshape.turn.up.right")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+
+                    if store.trainingCases.count > 1 {
+                        Menu {
+                            ForEach(store.trainingCases.filter { $0.id != trainingCase.id && $0.status != .merged }) { target in
+                                Button("合并到「\(target.title)」") {
+                                    Task { await store.mergeTrainingCase(trainingCase.id, into: target.id) }
+                                }
+                            }
+                        } label: {
+                            Label("合并事项", systemImage: "arrow.triangle.merge")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.vertical, 10)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+
+            HStack(spacing: 10) {
+                TextField("新增一个拆分事项", text: $newCaseTitle)
+                    .textFieldStyle(.roundedBorder)
+                Button {
+                    let title = newCaseTitle
+                    newCaseTitle = ""
+                    Task { await store.addManualTrainingCase(title: title) }
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                }
+                .buttonStyle(.bordered)
+                .disabled(newCaseTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("新增拆分事项")
             }
         }
     }
@@ -842,6 +2065,28 @@ struct TodayView: View {
                     answerMaterialObservation: store.coachAnswerMaterialObservation,
                     includesTeachingRoute: false
                 )
+            }
+
+            if store.canContinueAnswerQuestionsWithCoachGapOverride {
+                Button {
+                    store.continueAnswerQuestionsWithCoachGapOverride()
+                } label: {
+                    Label("带着缺口继续", systemImage: "arrow.right.circle")
+                        .font(.footnote.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.accent)
+                .accessibilityIdentifier(TodayAutomationID.answerQuestionsOverrideGapAction)
+            }
+
+            if store.isVNextModelLed,
+               store.hasAnsweredReflectionQuestion,
+               store.coachAnswerTrainingFeedback == nil {
+                Text("提交后，明思会基于当前事项复盘一次你的回答。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let suggestion = store.coachReferenceSuggestion {
@@ -1383,7 +2628,8 @@ struct TodayView: View {
                 .buttonStyle(.bordered)
                 .tint(DS.caution)
                 .accessibilityIdentifier(TodayAutomationID.cancelCurrentAIAction)
-            } else if let blocker = store.todayPrimaryActionBlocker,
+            } else if store.todayDraft.state != .answerQuestions,
+                      let blocker = store.todayPrimaryActionBlocker,
                       !store.canContinueAnswerQuestionsWithCoachGapOverride {
                 Text(blocker)
                     .font(.caption)
@@ -1392,7 +2638,8 @@ struct TodayView: View {
                     .accessibilityIdentifier(TodayAutomationID.primaryActionHint)
             }
 
-            if store.canContinueAnswerQuestionsWithCoachGapOverride {
+            if store.canContinueAnswerQuestionsWithCoachGapOverride,
+               store.todayDraft.state != .answerQuestions {
                 Button {
                     store.continueAnswerQuestionsWithCoachGapOverride()
                 } label: {
@@ -1405,7 +2652,11 @@ struct TodayView: View {
                 .accessibilityIdentifier(TodayAutomationID.answerQuestionsOverrideGapAction)
             }
 
-            HStack(spacing: 18) {
+            // The answer editor uses the fixed action bar as its primary
+            // navigation surface. Removing the secondary row for that step
+            // keeps the first answer field above the bar on compact screens.
+            if store.todayDraft.state != .answerQuestions {
+                HStack(spacing: 18) {
                 if canNavigateToPreviousUserStep {
                     Button("上一步") {
                         store.navigateTodayLoopToPreviousUserStep()
@@ -1453,12 +2704,13 @@ struct TodayView: View {
                 .foregroundStyle(DS.mutedInk)
                 .accessibilityLabel("更多操作")
                 .accessibilityIdentifier(TodayAutomationID.moreActions)
+                }
             }
         }
         .padding(.horizontal, DS.pagePadding)
         .padding(.top, 10)
         .padding(.bottom, 8)
-        .background(.regularMaterial)
+        .background(DS.background)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Color.primary.opacity(0.06))
@@ -1474,13 +2726,22 @@ struct TodayView: View {
         switch store.todayDraft.state {
         case .verifyYesterday: return "保存校准结果"
         case .capture:
-            let mode = store.todayDraft.hasSelectedSessionMode ? store.todayDraft.sessionMode.title : "选择模式"
-            return "\(mode) 整理成卡片"
+            guard store.todayDraft.hasSelectedSessionMode else { return "选择复盘方式" }
+            switch store.todayDraft.sessionMode {
+            case .quick: return "快速整理成卡片"
+            case .standard: return "整理成卡片"
+            case .deep: return "深入整理成卡片"
+            }
         case .organizing: return "查看卡片"
-        case .reviewCards: return "确认卡片"
+        case .reviewCards: return store.showsTrainingCaseConfirmation ? "确认事项" : "确认卡片"
         case .selectMode: return "确认模式"
         case .selectLens: return "进入今日复盘"
         case .answerQuestions:
+            if store.isVNextModelLed,
+               store.hasAnsweredReflectionQuestion,
+               store.coachAnswerTrainingFeedback == nil {
+                return "提交回答复盘"
+            }
             return store.canContinueAnswerQuestionsWithCoachGapOverride ? "先修补追问" : "设计明日验证"
         case .reviewQuests: return "保存明日验证"
         case .extractPrinciple: return "保存原则"
@@ -1613,7 +2874,7 @@ struct TodayView: View {
                     .frame(width: 28)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(mode.title)
+                    Text(mode.displayTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(description)
@@ -1641,7 +2902,7 @@ struct TodayView: View {
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
                 Spacer()
-                Text("\(store.todayDraft.sessionMode.title) · \(confirmedCount) 已确认")
+                Text("\(store.todayDraft.sessionMode.displayTitle) · \(confirmedCount) 已确认")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
             }
@@ -1688,7 +2949,7 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("COACH · \(String(format: "%.0f%%", prescription.confidence * 100))")
+                Text("教练建议 · \(String(format: "%.0f%%", prescription.confidence * 100))")
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(lensTint(for: item))
                 Spacer()
@@ -1976,7 +3237,7 @@ struct TodayView: View {
         Button(action: { selectLensItem(item) }) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("METHOD \(String(format: "%02d", item.methodIndex)) · 推荐")
+                    Text("透镜 \(String(format: "%02d", item.methodIndex)) · 推荐")
                         .font(.caption.monospacedDigit().weight(.bold))
                         .foregroundStyle(lensTint(for: item))
                     Spacer()
@@ -2215,11 +3476,6 @@ struct TodayView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-
-                        Text("Custom Lens Card")
-                            .font(.caption2.monospaced().weight(.semibold))
-                            .foregroundStyle(DS.mutedInk)
-                            .textCase(.uppercase)
                     }
                     .padding(DS.cardInnerPadding)
                     .background(DS.surfaceStrong, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
@@ -2452,6 +3708,21 @@ struct TodayView: View {
     }
 }
 
+func sideQuestRationaleDisplayText(for run: SideQuestRun) -> String? {
+    guard run.origin == .aiGenerated,
+          let rationale = run.decisionRationale?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !rationale.isEmpty,
+          !rationale.contains("{")
+    else {
+        return nil
+    }
+    let prohibitedFragments = ["grounding_", "scene_", "availability_", "context_", "constraint_"]
+    guard !prohibitedFragments.contains(where: { rationale.localizedCaseInsensitiveContains($0) }) else {
+        return nil
+    }
+    return String(rationale.prefix(160))
+}
+
 // MARK: - Card Sub-Views
 
 private enum TodayScrollAnchor {
@@ -2654,6 +3925,7 @@ private enum ThreePetalSpiralGeometry {
 
 private struct AIGenerationProgressView: View {
     let isUsingAI: Bool
+    let isModelLed: Bool
     let cardCount: Int
     let streamingCards: [StreamingCardDraft]
     let statusText: String
@@ -2670,7 +3942,7 @@ private struct AIGenerationProgressView: View {
                         .frame(width: 56, height: 56)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(organizingProgressTitle(isUsingOnlineModel: isUsingAI))
+                        Text(organizingProgressTitle(isUsingOnlineModel: isUsingAI || isModelLed))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DS.ink)
                         Text(currentStatusText)
@@ -2706,8 +3978,8 @@ private struct AIGenerationProgressView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 generationStep(
-                    title: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).title,
-                    subtitle: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI).subtitle,
+                    title: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI || isModelLed).title,
+                    subtitle: organizingProgressSourceStepCopy(isUsingOnlineModel: isUsingAI || isModelLed).subtitle,
                     state: streamingCards.isEmpty && cardCount == 0 ? .active : .done
                 )
                 generationStep(
@@ -2724,7 +3996,10 @@ private struct AIGenerationProgressView: View {
 
             if let failureMessage, !failureMessage.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(organizingProgressLocalDraftLabel, systemImage: "exclamationmark.triangle")
+                    Label(
+                        isModelLed ? "中央模型未完成" : organizingProgressLocalDraftLabel,
+                        systemImage: "exclamationmark.triangle"
+                    )
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.caution)
                     Text(failureMessage)

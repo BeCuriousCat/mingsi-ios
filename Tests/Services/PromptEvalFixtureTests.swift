@@ -297,6 +297,49 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(principleRun?.caseResults.contains { $0.caseId == "principle.quality_gate_blocks_appeasing_output" } ?? false)
     }
 
+    func testCareerSynthesisFixtures_coverStudentProgrammerAndFinanceWithoutStereotypes() throws {
+        for scenario in CareerPromptEvalScenario.all {
+            let cards = try parser.parseCards(from: fixtureData(scenario.cardsJSON))
+            let cardTypes = Set(cards.map(\.type))
+            XCTAssertGreaterThanOrEqual(cards.count, 3, scenario.caseID)
+            XCTAssertEqual(Set(cards.map(\.title)).count, cards.count, scenario.caseID)
+            XCTAssertTrue(cardTypes.contains(.fact), "\(scenario.caseID): fact card missing")
+            XCTAssertTrue(cardTypes.contains(.task), "\(scenario.caseID): task card missing")
+            let cardText = cards.map { "\($0.title) \($0.body)" }.joined(separator: " ")
+            XCTAssertTrue(cardText.contains("事实"), "\(scenario.caseID): fact/interpretation boundary missing")
+            XCTAssertTrue(cardText.contains("判断") || cardText.contains("推测"), "\(scenario.caseID): interpretation boundary missing")
+
+            let questions = try parser.parseQuestions(from: fixtureData(scenario.questionsJSON))
+            let questionIssues = PromptCoachingQualityPolicy.evaluateQuestions(questions)
+            XCTAssertTrue(questionIssues.isEmpty, "\(scenario.caseID): question gate issues \(questionIssues)")
+            XCTAssertTrue(questions.contains { $0.evidenceGapType == .missingCounterexample || $0.evidenceGapType == .missingCalibrationSignal }, "\(scenario.caseID): evidence gap missing")
+            XCTAssertTrue(questions.allSatisfy { !$0.sourceCardTitles.isEmpty && $0.answerUse != nil && $0.lensMove != nil }, "\(scenario.caseID): question grounding missing")
+
+            let quests = try parser.parseQuests(from: fixtureData(scenario.questsJSON))
+            let questIssues = PromptCoachingQualityPolicy.evaluateQuests(quests)
+            XCTAssertTrue(questIssues.isEmpty, "\(scenario.caseID): quest gate issues \(questIssues)")
+            XCTAssertEqual(quests.first?.type, .main, scenario.caseID)
+            XCTAssertTrue(quests.allSatisfy { $0.completionCriteria.count >= 16 && !$0.sourceCardTitles.isEmpty }, "\(scenario.caseID): quest criteria/source missing")
+            XCTAssertTrue(quests.contains { $0.completionCriteria.contains("记录") || $0.completionCriteria.contains("确认") || $0.completionCriteria.contains("可观察") }, "\(scenario.caseID): observable completion missing")
+
+            let principles = try parser.parsePrinciples(from: fixtureData(scenario.principleJSON))
+            if scenario.expectsGroundedPrinciple {
+                XCTAssertEqual(principles.count, 1, scenario.caseID)
+                XCTAssertTrue(PromptCoachingQualityPolicy.evaluatePrinciples(principles).isEmpty, "\(scenario.caseID): principle gate should pass")
+                XCTAssertGreaterThanOrEqual(principles[0].actions.count, 2, scenario.caseID)
+                XCTAssertFalse(principles[0].sourceCardTitles.isEmpty, "\(scenario.caseID): principle source missing")
+            } else {
+                let reasons = Set(PromptCoachingQualityPolicy.evaluatePrinciples(principles).map(\.reason))
+                XCTAssertTrue(principles.isEmpty || reasons.contains(.missingPrincipleSourceGrounding), "\(scenario.caseID): unsupported principle should be rejected")
+            }
+
+            let outputText = [cardText, questions.map { "\($0.question) \($0.whyItMatters)" }.joined(separator: " "), quests.map { "\($0.title) \($0.completionCriteria)" }.joined(separator: " "), principles.map { "\($0.title) \($0.summary)" }.joined(separator: " ")].joined(separator: " ")
+            for phrase in CareerPromptEvalScenario.forbiddenOutputPhrases {
+                XCTAssertFalse(outputText.localizedCaseInsensitiveContains(phrase), "\(scenario.caseID): forbidden stereotype or direct-answer phrase \(phrase)")
+            }
+        }
+    }
+
     func testPromptCoachingQualityPolicy_flagsGenericQuestionsVagueTargetsAndAvoidedMoves() throws {
         let avoidedFeedback = [
             PromptContextPayload.LensFeedbackContext(
@@ -1508,6 +1551,92 @@ final class PromptEvalFixtureTests: XCTestCase {
     private func fixtureData(_ json: String) -> Data {
         Data(json.utf8)
     }
+}
+
+private struct CareerPromptEvalScenario {
+    let caseID: String
+    let cardsJSON: String
+    let questionsJSON: String
+    let questsJSON: String
+    let principleJSON: String
+    let expectsGroundedPrinciple: Bool
+
+    static let forbiddenOutputPhrases = [
+        "因为你是学生", "学生天生", "作为学生你应该", "程序员天生", "因为你是程序员",
+        "金融人都", "因为你的职业", "答案是", "直接照做", "加油", "你一定可以", "继续努力"
+    ]
+
+    static let all: [CareerPromptEvalScenario] = [
+        CareerPromptEvalScenario(
+            caseID: "career.student.synthesis.v1",
+            cardsJSON: """
+            {"cards":[
+              {"type":"fact","title":"练习提交记录","body":"周三18:00提交练习，系统记录3次编译失败；这是可观察事实。","importance":"medium","sensitivity":"normal","confidence":"high"},
+              {"type":"problem","title":"把失败归因于粗心","body":"我判断失败来自粗心，但还没有逐条检查日志，解释与事实需要分开。","importance":"high","sensitivity":"normal","confidence":"medium"},
+              {"type":"task","title":"补一条反例证据","body":"查看一次失败日志，记录触发条件，并写下什么结果会推翻当前判断。","importance":"high","sensitivity":"normal","confidence":"high"}
+            ]}
+            """,
+            questionsJSON: """
+            {"questions":[
+              {"question":"哪些提交记录是事实，哪些是把失败解释成粗心的判断？","why_this_matters":"先分离事实和解释，避免把单次失败当成稳定原因。","why_now":"日志证据还缺一条，今天可以先补观察。","expected_update":"若日志显示环境错误，就调整对粗心的判断。","proceed_when":"记录日志触发条件后再决定是否改练习方法。","evidence_gap_type":"missing_observation","answer_use":"collect_evidence","lens_move":"fact_interpretation_split","source_card_titles":["练习提交记录","把失败归因于粗心"],"calibration_target":"编译失败主要由粗心造成"},
+              {"question":"哪条日志结果最可能推翻‘失败来自粗心’这个判断？","why_this_matters":"反例能检验解释是否过早收敛。","why_now":"当前没有反例记录，需要一个可复核信号。","expected_update":"若连续两次是同一环境错误，就降低粗心解释的可信度。","proceed_when":"完成一次日志对照并写下支持或推翻判断的结果。","evidence_gap_type":"missing_counterexample","answer_use":"test_assumption","lens_move":"alternative_explanation","source_card_titles":["把失败归因于粗心"],"calibration_target":"日志中的环境错误是否足以推翻粗心解释"}
+            ]}
+            """,
+            questsJSON: """
+            {"main_quest":{"type":"main","title":"对照一次失败日志并记录触发条件","why_it_matters":"用一条可复核记录检验失败原因，而不是凭感觉改方法。","completion_criteria":"明天完成一次日志对照，记录失败时间、触发条件和一条支持或推翻判断的证据，并写下更新后的判断。","expected_resistance":"可能会直接重跑练习而跳过日志。","reflection_question":"日志证据支持、调整还是推翻了失败归因？","calibration_target":"编译失败主要由粗心造成","lens_move":"prediction_calibration","linked_cards":["练习提交记录","把失败归因于粗心"]},"side_quests":[],"observation_quest":null}
+            """,
+            principleJSON: """
+            {"principle_candidate":null}
+            """,
+            expectsGroundedPrinciple: false
+        ),
+        CareerPromptEvalScenario(
+            caseID: "career.programmer.synthesis.v1",
+            cardsJSON: """
+            {"cards":[
+              {"type":"fact","title":"接口测试结果","body":"接口测试在本地通过，但集成环境有2次超时；这是可观察事实，不是原因结论。","importance":"high","sensitivity":"normal","confidence":"high"},
+              {"type":"risk","title":"猜测缓存导致超时","body":"我推测缓存失效是主因，但尚未比较请求耗时和依赖服务状态，仍有证据缺口。","importance":"high","sensitivity":"normal","confidence":"medium"},
+              {"type":"task","title":"做一次最小对照","body":"固定请求参数，对比命中缓存与未命中缓存的耗时和超时次数。","importance":"high","sensitivity":"normal","confidence":"high"}
+            ]}
+            """,
+            questionsJSON: """
+            {"questions":[
+              {"question":"测试日志中哪些是事实，哪些是把超时解释为缓存失效的判断？","why_this_matters":"分开事实与解释，避免只沿着熟悉的故障原因排查。","why_now":"集成环境仍缺少依赖状态和请求耗时的基线。","expected_update":"若未命中缓存并不更慢，就调整缓存主因的判断。","proceed_when":"补齐一组命中与未命中的耗时记录后再改代码。","evidence_gap_type":"missing_baseline","answer_use":"collect_evidence","lens_move":"fact_interpretation_split","source_card_titles":["接口测试结果","猜测缓存导致超时"],"calibration_target":"缓存命中状态是否解释集成环境超时"},
+              {"question":"什么对照结果会推翻缓存是主因的解释？","why_this_matters":"反例可以把排查从单一假设拉回可验证比较。","why_now":"当前只有本地通过记录，没有集成环境反例。","expected_update":"若依赖服务延迟在两组都相同，则转向检查依赖链路。","proceed_when":"记录两组耗时、超时次数和依赖状态。","evidence_gap_type":"missing_counterexample","answer_use":"test_assumption","lens_move":"alternative_explanation","source_card_titles":["猜测缓存导致超时"],"calibration_target":"依赖服务延迟是否能在缓存对照中推翻主因解释"}
+            ]}
+            """,
+            questsJSON: """
+            {"main_quest":{"type":"main","title":"完成缓存命中与未命中的最小对照","why_it_matters":"用同一请求比较耗时，减少凭经验改动代码的风险。","completion_criteria":"明天固定同一请求参数各运行3次，记录两组耗时、超时次数和依赖状态，并写出支持或推翻缓存解释的判断更新。","expected_resistance":"可能直接调整缓存配置而不保留对照数据。","reflection_question":"对照数据支持、调整还是推翻缓存主因？","calibration_target":"缓存命中状态是否解释集成环境超时","lens_move":"alternative_explanation","linked_cards":["接口测试结果","猜测缓存导致超时"]},"side_quests":[],"observation_quest":null}
+            """,
+            principleJSON: """
+            {"principle_candidate":{"title":"先做最小对照再改动系统","summary":"遇到环境差异时，先固定输入比较关键条件，再根据结果选择改动。","trigger_context":"本地结果与集成结果不一致时。","actions":["固定同一请求和测试数据","分别记录关键条件下的耗时与失败次数","根据对照结果更新故障解释"],"success_criteria":"复盘记录包含两组可比较数据、依赖状态和明确的判断更新。","exceptions":"紧急安全修复可先止血，但要补做对照记录。","source_card_titles":["接口测试结果","猜测缓存导致超时"]}}
+            """,
+            expectsGroundedPrinciple: true
+        ),
+        CareerPromptEvalScenario(
+            caseID: "career.finance.synthesis.v1",
+            cardsJSON: """
+            {"cards":[
+              {"type":"fact","title":"报表差异记录","body":"月度报表与明细表相差1.8%，差异集中在两个日期；这是核对事实。","importance":"high","sensitivity":"possibly_sensitive","confidence":"high"},
+              {"type":"problem","title":"推测为汇率口径差异","body":"我推测汇率口径造成差异，但还没有核对汇率来源、日期和四舍五入规则。","importance":"high","sensitivity":"possibly_sensitive","confidence":"medium"},
+              {"type":"task","title":"补齐口径核对证据","body":"抽取两个差异日期，逐项记录汇率来源、计算口径和舍入结果。","importance":"high","sensitivity":"possibly_sensitive","confidence":"high"}
+            ]}
+            """,
+            questionsJSON: """
+            {"questions":[
+              {"question":"哪些数字和日期是事实，哪些是把差异解释成汇率口径问题的判断？","why_this_matters":"先保留事实与解释边界，避免凭职业经验直接下结论。","why_now":"还缺少两个差异日期的汇率来源和舍入基线。","expected_update":"若来源和舍入一致仍有差异，就降低汇率解释的可信度。","proceed_when":"完成两日期口径核对并保留可复查记录。","evidence_gap_type":"missing_baseline","answer_use":"collect_evidence","lens_move":"fact_interpretation_split","source_card_titles":["报表差异记录","推测为汇率口径差异"],"calibration_target":"汇率来源与舍入规则是否解释报表差异"},
+              {"question":"哪个核对结果最可能推翻汇率口径是主因的判断？","why_this_matters":"反例能避免把熟悉的财务解释当成结论。","why_now":"当前差异尚未与另一种来源或口径比较。","expected_update":"若同一口径下仍有差异，就转查明细入账日期。","proceed_when":"记录支持、反例和下一步核对对象。","evidence_gap_type":"missing_counterexample","answer_use":"test_assumption","lens_move":"alternative_explanation","source_card_titles":["推测为汇率口径差异"],"calibration_target":"同口径核对结果是否推翻汇率主因判断"}
+            ]}
+            """,
+            questsJSON: """
+            {"main_quest":{"type":"main","title":"核对两个差异日期的汇率口径","why_it_matters":"把报表差异归因建立在可追溯的数字和来源上。","completion_criteria":"明天完成两个差异日期的逐项核对，记录汇率来源、计算口径、舍入结果，并写出支持或推翻汇率解释的判断更新。","expected_resistance":"可能只检查总额而跳过来源和日期明细。","reflection_question":"逐项证据支持、调整还是推翻汇率主因？","calibration_target":"汇率来源与舍入规则是否解释报表差异","lens_move":"prediction_calibration","linked_cards":["报表差异记录","推测为汇率口径差异"]},"side_quests":[],"observation_quest":null}
+            """,
+            principleJSON: """
+            {"principle_candidate":{"title":"先追溯口径再解释数字差异","summary":"发现汇总差异时，先固定日期、来源和计算规则，再判断差异原因。","trigger_context":"汇总表与明细表出现可重复差异时。","actions":["列出差异日期和对应明细","记录数据来源与计算口径","用逐项结果更新差异解释"],"success_criteria":"核对记录包含来源、口径、舍入结果和可复查的判断更新。","exceptions":"仅用于展示的四舍五入差异可单独标注，不改变原始明细。","source_card_titles":["报表差异记录","推测为汇率口径差异"]}}
+            """,
+            expectsGroundedPrinciple: true
+        )
+    ]
 }
 
 private struct RollbackFixturePromptProvider: PromptProvider {

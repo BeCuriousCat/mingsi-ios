@@ -48,13 +48,14 @@ struct GrowthAIService {
         let template = promptProvider.template(for: promptID, mode: .standard)
         let contextPayload = buildContextPayload(from: context)
 
+        let sourceRecordIDs = Array(Set(context.historyRecords.map { $0.dailyEntryId.uuidString })).sorted()
         let request = LLMRequest(
             prompt: template,
             inputSummary: "period=\(context.period); loops=\(context.completeLoopCount); records=\(context.historyRecords.count)",
             contextPayload: contextPayload,
-            sourceRecordIDs: context.historyRecords.map { $0.dailyEntryId.uuidString },
+            sourceRecordIDs: sourceRecordIDs,
             contextVersion: 1,
-            contextRecordIDs: context.historyRecords.map { $0.dailyEntryId.uuidString }
+            contextRecordIDs: sourceRecordIDs
         )
 
         let data = try await llmClient.complete(request)
@@ -74,13 +75,14 @@ struct GrowthAIService {
         let template = promptProvider.template(for: promptID, mode: .standard)
         let contextPayload = buildContextPayload(from: context)
 
+        let sourceRecordIDs = Array(Set(context.historyRecords.map { $0.dailyEntryId.uuidString })).sorted()
         let request = LLMRequest(
             prompt: template,
             inputSummary: "period=\(context.period); loops=\(context.completeLoopCount); records=\(context.historyRecords.count)",
             contextPayload: contextPayload,
-            sourceRecordIDs: context.historyRecords.map { $0.dailyEntryId.uuidString },
+            sourceRecordIDs: sourceRecordIDs,
             contextVersion: 1,
-            contextRecordIDs: context.historyRecords.map { $0.dailyEntryId.uuidString }
+            contextRecordIDs: sourceRecordIDs
         )
 
         let data = try await llmClient.complete(request)
@@ -89,6 +91,69 @@ struct GrowthAIService {
             period: context.period,
             completeLoopCount: context.completeLoopCount
         )
+    }
+
+    func generateWeeklyGuidanceReview(
+        verifications: [Verification],
+        catalog: [GuidanceCatalogItem] = BuiltinGuidanceCatalog.items,
+        now: Date = .now
+    ) async throws -> WeeklyGuidanceReviewSelection? {
+        let policy = WeeklyGuidanceReviewPolicy()
+        guard policy.isEligible(verifications: verifications, now: now) else { return nil }
+        let recent = verifications.filter { $0.createdAt >= Calendar.current.date(byAdding: .day, value: -7, to: now)! }
+        let refs = Set(recent.map { $0.id.uuidString })
+        let base = promptProvider.template(for: .weeklyCalibration, mode: .standard)
+        let template = PromptTemplate(
+            id: base.id, version: base.version,
+            systemPolicyVersion: base.systemPolicyVersion, contextPolicyVersion: base.contextPolicyVersion,
+            evalSuiteVersion: base.evalSuiteVersion, rollbackTargetVersion: base.rollbackTargetVersion,
+            systemText: base.systemText,
+            userText: """
+            Review only the supplied verification evidence. Return JSON only:
+            {"training_focus":"one concrete next-week focus","hint_ids":["existing hint id"],"evidence_refs":["verification id"]}
+            You may select only from these existing hint IDs: \(catalog.map(\.hintId).joined(separator: ", ")).
+            Do not create UI copy, scores, metric contributions, personality claims, or new hint IDs.
+            """,
+            outputSchemaVersion: 1
+        )
+        let payload = PromptContextPayload(
+            currentInput: .init(dailyEntryId: nil, rawText: recent.map { "\($0.id.uuidString): \($0.evidenceText) \($0.calibrationNote)" }.joined(separator: "\n")),
+            userChoice: .init(sessionMode: SessionMode.standard.rawValue),
+            privacy: .init(rules: "Use only supplied verification evidence."),
+            growth: .init(
+                period: "weekly_guidance",
+                completeLoopCount: recent.count,
+                records: [],
+                dismissedContributionTitles: []
+            )
+        )
+        let data = try await llmClient.complete(LLMRequest(
+            prompt: template, inputSummary: "verification_count=\(recent.count)", contextPayload: payload,
+            sourceRecordIDs: refs.sorted(), contextVersion: 1, contextRecordIDs: refs.sorted()
+        ))
+        let selection = try Self.parseWeeklyGuidanceSelection(data)
+        guard policy.validate(selection, catalog: catalog, allowedEvidenceRefs: refs) else {
+            throw TodayAIParsingError.qualityGateFailed(["周复盘必须只选择已有提示和真实验证证据。"])
+        }
+        return selection
+    }
+
+    private static func parseWeeklyGuidanceSelection(_ data: Data) throws -> WeeklyGuidanceReviewSelection {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let raw = String(decoding: data, as: UTF8.self)
+        let text: String
+        if let envelope = try? decoder.decode(WeeklyEnvelope.self, from: data), let content = envelope.choices.first?.message?.content {
+            text = content
+        } else { text = raw }
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}") else { throw TodayAIParsingError.invalidJSON }
+        let dto = try decoder.decode(WeeklyGuidanceReviewSelection.self, from: Data(text[start...end].utf8))
+        return dto
+    }
+
+    private struct WeeklyEnvelope: Decodable {
+        struct Choice: Decodable { struct Message: Decodable { var content: String? }; var message: Message? }
+        var choices: [Choice]
     }
 
     private func insufficientResult(period: String, completeLoopCount: Int) -> GrowthReportResult {

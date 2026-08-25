@@ -25,7 +25,7 @@ assert_not_contains() {
 
 dry_output="$("$SCRIPT" \
   --dry-run \
-  --destination "platform=iOS Simulator,name=iPhone 17" \
+  --destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" \
   --derived-data-path "$TMP_DIR/dd" \
   --result-bundle-path "$TMP_DIR/ui.xcresult" \
   --only-testing "MingSiUITests/MingSiUITests/testTodayReviewCardsSeedCanDriveRenderedLoopToCompletion")"
@@ -37,7 +37,7 @@ assert_contains "MingSi.xcodeproj" "$dry_output"
 assert_contains "-scheme" "$dry_output"
 assert_contains "MingSi" "$dry_output"
 assert_contains "-destination" "$dry_output"
-assert_contains "platform=iOS Simulator,name=iPhone 17" "$dry_output"
+assert_contains "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" "$dry_output"
 assert_contains "-derivedDataPath" "$dry_output"
 assert_contains "$TMP_DIR/dd" "$dry_output"
 assert_contains "-resultBundlePath" "$dry_output"

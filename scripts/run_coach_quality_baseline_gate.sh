@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DESTINATION="platform=iOS Simulator,name=iPhone 17"
+source "$ROOT_DIR/scripts/fixed_simulator_guard.sh"
+DESTINATION="$MINGSI_FIXED_SIMULATOR_DESTINATION"
 PHONE_TRIAL_FILE="$ROOT_DIR/docs/coach-quality-phone-trial.md"
 SUMMARY_JSON=""
 SKIP_UI=0
@@ -26,7 +27,7 @@ The gate checks:
   6. the real-phone trial evidence file says Status: PASSED and has filled evidence
 
 Options:
-  --destination VALUE             xcodebuild destination. Default: iPhone 17 simulator.
+  --destination VALUE             xcodebuild destination. Default: fixed iPhone 17 UDID.
   --phone-trial-file PATH         Phone trial evidence file.
   --summary-json PATH             Write a JSON summary.
   --skip-ui                       Skip UI tests.
@@ -36,6 +37,7 @@ Options:
   --self-test                     Test phone-trial evidence parsing and exit.
   -h, --help                      Show this help.
 USAGE
+  mingsi_fixed_simulator_usage
 }
 
 while [[ $# -gt 0 ]]; do
@@ -83,6 +85,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+mingsi_validate_simulator_destination "$DESTINATION"
 
 json_escape() {
   local value="$1"
@@ -357,6 +361,8 @@ PLAN
   write_summary "dry_run" "$(phone_trial_status || true)"
   exit 0
 fi
+
+mingsi_validate_fixed_simulator
 
 if [[ "$ALLOW_PENDING_PHONE_TRIAL" == "0" ]]; then
   if ! run_step "Phone-day trial evidence preflight" check_phone_trial; then

@@ -5,8 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRECHECK="$ROOT_DIR/scripts/check_alpha_prerequisites.sh"
 UI_RUNNER="$ROOT_DIR/scripts/run_ui_automation.sh"
 LIVE_GLM_RUNNER="$ROOT_DIR/scripts/run_live_glm_acceptance.sh"
+source "$ROOT_DIR/scripts/fixed_simulator_guard.sh"
 
-DESTINATION="platform=iOS Simulator,name=iPhone 17"
+DESTINATION="$MINGSI_FIXED_SIMULATOR_DESTINATION"
 UI_DERIVED_DATA_PATH="${TMPDIR:-/tmp}/mingsi-alpha-ui-dd"
 UI_RESULT_BUNDLE_PATH="${TMPDIR:-/tmp}/mingsi-alpha-ui.xcresult"
 UI_ONLY_TESTING="MingSiUITests"
@@ -27,7 +28,7 @@ Run MingSi's post-MVP Alpha acceptance gate:
   3. opt-in live BYOK GLM XCTest harness
 
 Options:
-  --destination VALUE             xcodebuild destination. Default: iPhone 17 simulator.
+  --destination VALUE             xcodebuild destination. Default: fixed iPhone 17 UDID.
   --ui-derived-data-path PATH     DerivedData path for UI automation.
   --ui-result-bundle-path PATH    UI automation xcresult output path.
   --ui-only-testing VALUE         XCTest selector for UI automation. Default: MingSiUITests.
@@ -44,6 +45,7 @@ Accepted BYOK key env vars, in precedence order:
 If those are absent, the runner also checks the app Keychain item:
   service com.codex.mingsi.glm, account glm_api_key
 USAGE
+  mingsi_fixed_simulator_usage
 }
 
 while [[ $# -gt 0 ]]; do
@@ -99,6 +101,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+mingsi_validate_simulator_destination "$DESTINATION"
 
 if [[ -z "$LIVE_OUTPUT_XCTESTRUN" ]]; then
   LIVE_OUTPUT_XCTESTRUN="$LIVE_DERIVED_DATA_PATH/Build/Products/MingSi_MingSi_alpha-live-glm.xctestrun"
@@ -197,9 +201,11 @@ print_plan() {
   printf 'skip_ui: %s\n' "$([[ "$SKIP_UI" == "1" ]] && printf true || printf false)"
   printf '\n'
   printf '1. scripts/check_alpha_prerequisites.sh'
-  for arg in "${precheck_args[@]}"; do
-    printf ' %s' "$arg"
-  done
+  if (( ${#precheck_args[@]} > 0 )); then
+    for arg in "${precheck_args[@]}"; do
+      printf ' %s' "$arg"
+    done
+  fi
   printf '\n'
   if [[ "$SKIP_UI" == "1" ]]; then
     printf '2. scripts/run_ui_automation.sh skipped by --skip-ui\n'
@@ -229,8 +235,14 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
+mingsi_validate_fixed_simulator
+
 set +e
-precheck_output="$("$PRECHECK" "${precheck_args[@]}" 2>&1)"
+if (( ${#precheck_args[@]} > 0 )); then
+  precheck_output="$("$PRECHECK" "${precheck_args[@]}" 2>&1)"
+else
+  precheck_output="$("$PRECHECK" 2>&1)"
+fi
 precheck_status=$?
 set -e
 

@@ -1,5 +1,18 @@
 # 明思 PRD
 
+## vNext Product Contract (2026-07-15)
+
+The current product contract supersedes the original one-DailyEntry/one-training assumption. A day can contain multiple user-confirmed matters (`TrainingCase`), while only one matter may be actively coached at a time.
+
+```text
+Today Overview -> confirm matters -> train one matter -> verifiable action
+-> due verification -> evidence settlement -> project closure -> reusable principle
+```
+
+Today keeps the existing three user-visible stages. Verification is non-blocking, settlement contains evidence rather than a score change, and Projects use a required closure review. Meaningful coaching and life decisions are routed through the central LLM decision layer; local code only enforces consent, safety, rate limits and durable state. Alongside this active thinking loop, side quests are occasional, dismissible life invitations visible by default. Completing one earns a separate positive life-experience reward and continuity record; declining, deferring, expiring, or skipping never deducts experience or changes the five evidence-based coaching metrics. System notifications require explicit permission. Full scope and acceptance gates are defined in `docs/vnext-final-execution-plan.md`.
+
+Provider Profile Foundation, account/sync, collaboration, remote markets, and a new scoring system are explicitly out of the current milestone.
+
 ## Overview
 
 明思是一款面向个人知识工作者的 iOS 思维训练 App。它把每日输入、结构化整理、深度追问、明日任务、次日验证和长期原则沉淀连接成一个闭环。
@@ -77,7 +90,7 @@ GLM 连接测试通过只代表 Key、Base URL、模型名和基础协议可用�
 要求：
 
 - 任一 AI 调用失败时，必须展示可读失败原因，不能静默替换成假装正常的结果。
-- 初次失败时可以生成本地 fallback，让用户不中断流程，但该结果必须被标记为可补跑。
+- vNext 正式运行的任何实质判断都必须经过中央 LLM。未配置 API Key、模型不可用或质量门失败时，只保留用户材料并进入可补跑状态；本地 fallback 仅允许显式测试、预览和旧流程夹具，不能成为生产判断。
 - 用户可以在当前步骤点击“重试当前步骤”，用同一份本地资料再次请求模型。
 - 重试失败时保留现有内容，不重复叠加待补跑数量。
 - 重试成功后，对应待补跑项必须消失，并用 AI 结果替换对应草稿。

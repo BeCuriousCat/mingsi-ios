@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import UIKit
+#if DEBUG
+import GRDB
+#endif
 
 private struct HistoricalRetryCandidatePayload: Codable {
     var cards: [HistoricalRetryCardPayload]
@@ -11,6 +14,16 @@ private enum AIStreamProgress: Equatable {
     case connected
     case receivedEvent
     case receivingContent
+}
+
+private struct GrowthEvidenceScope {
+    var dailyEntryId: UUID
+    var trainingCaseId: UUID?
+    var cards: [ThinkingCard]
+    var quests: [Quest]
+    var verifications: [Verification]
+    var lensSession: LensSession?
+    var trainingPrescription: TrainingPrescription?
 }
 
 struct PreparedDataExport: Identifiable, Equatable {
@@ -103,6 +116,7 @@ private struct PromptAssetPackProvider: PromptProvider {
 @MainActor
 final class AppStore: ObservableObject {
     static let principlePracticeAttributionPolicyVersion = "principle-practice-attribution.local-match.v1"
+    let trainingCasesVNextEnabled: Bool
 
     @Published var selectedTab: AppTab = .today
     @Published var todayDraft: DailyEntryDraft
@@ -134,6 +148,33 @@ final class AppStore: ObservableObject {
     @Published private(set) var referencedPrinciples: [PrincipleAsset] = []
     @Published private(set) var principleTrainingSummaries: [PrincipleTrainingSummary] = []
     @Published var historyRecords: [HistoryRecord] = []
+    @Published private(set) var trainingCases: [TrainingCase] = []
+    @Published private(set) var trainingCaseMerges: [TrainingCaseMerge] = []
+    @Published private(set) var activeTrainingCase: TrainingCase?
+    @Published var isTodayOverviewPresented: Bool
+    @Published private(set) var dueVerificationQuests: [Quest] = []
+    @Published private(set) var latestGrowthSettlement: GrowthSettlement?
+    @Published private(set) var growthSettlements: [GrowthSettlement] = []
+    @Published private(set) var weeklyGuidanceReview: WeeklyGuidanceReviewSelection?
+    @Published private(set) var activeGuidance: GuidanceCatalogItem?
+    @Published private(set) var guidanceStates: [UserGuidanceState] = []
+    @Published private(set) var projectClosureReviews: [UUID: ProjectClosureReview] = [:]
+    @Published private(set) var isGeneratingProjectClosureSummary = false
+    @Published private(set) var projectClosureSummaryMessage = ""
+    @Published private(set) var sideQuestPreference = SideQuestPreference()
+    @Published private(set) var sideQuestLifeContextProfile = SideQuestLifeContextProfile()
+    @Published private(set) var activeSideQuestSeason: SideQuestExplorationSeason?
+    @Published private(set) var sideQuestSeasonReview: SideQuestExplorationSeason?
+    @Published private(set) var sideQuestSeasonCategories: [SideQuestCategory: Int] = [:]
+    @Published private(set) var sideQuestRun: SideQuestRun?
+    @Published private(set) var sideQuestPhotoMemories: [SideQuestPhotoMemory] = []
+    @Published private(set) var latestSideQuestExperience: SideQuestExperienceEvent?
+    @Published private(set) var sideQuestExperienceSummary = SideQuestExperienceSummary.empty
+    @Published private(set) var sideQuestTrialMetrics: SideQuestTrialMetrics?
+    @Published private(set) var sideQuestContextSnapshot = SideQuestContextSnapshot.empty
+    @Published private(set) var sideQuestManualSceneContext: SideQuestManualSceneContext?
+    @Published private(set) var sideQuestMessage = ""
+    @Published private(set) var isSideQuestActionInFlight = false
     @Published var projectNames: [UUID: String] = [:]
     @Published var projectsById: [UUID: Project] = [:]
     @Published var growthSnapshot: MetricSnapshot
@@ -157,6 +198,7 @@ final class AppStore: ObservableObject {
     @Published var recentPromptRuns: [PromptRun] = []
     @Published var promptRunStats: PromptRunStats?
     @Published var promptAssetRunQualitySummaries: [PromptAssetRunQualitySummary] = []
+    @Published private(set) var coachPromptQualitySummaries: [CoachPromptQualitySummary] = []
     @Published var promptAssetQualityGate: PromptAssetQualityGate = PromptAssetQualityGate.evaluate(summaries: [])
     @Published var promptRunAuditMessage: String = ""
     @Published var recentPromptEvalRuns: [PromptEvalRun] = []
@@ -225,11 +267,22 @@ final class AppStore: ObservableObject {
     private let promptAssetSelectionRepository: PromptAssetSelectionRepository?
     private let promptAssetPackRepository: PromptAssetPackRepository?
     private let assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository?
+    let sideQuestContextProvider: SideQuestContextProviding
     private let assetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository?
     private let dataExportRepository: DataExportRepository?
     private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
     private let principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository?
     private let principlePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository?
+    private let trainingCaseRepository: TrainingCaseRepository?
+    private let trainingCaseSessionRepository: TrainingCaseSessionRepository?
+    private let trainingCaseRelationshipRepository: TrainingCaseRelationshipRepository?
+    private let projectClosureReviewRepository: ProjectClosureReviewRepository?
+    private let growthSettlementRepository: GrowthSettlementRepository?
+    private let verificationSettlementRepository: VerificationSettlementRepository?
+    private let guidanceRepository: GuidanceRepository?
+    private let weeklyGuidanceReviewRepository: WeeklyGuidanceReviewRepository?
+    private let coachPromptTurnRepository: CoachPromptTurnRepository?
+    private let sideQuestRepository: SideQuestRepository?
     private let reminderService: ReminderService?
     private let promptProvider: PromptProvider
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
@@ -243,7 +296,26 @@ final class AppStore: ObservableObject {
     private let refreshesAIServiceFromKeychain: Bool
     private var todayAIService: TodayAIService?
     private var growthAIService: GrowthAIService?
+    private var sideQuestAIService: SideQuestAIService?
+    private var guidanceAIService: GuidanceAIService?
+    private var coachDecisionAIService: CoachDecisionAIService?
+    private var coachAnswerReviewAIService: CoachAnswerReviewAIService?
+    private var centralDecisionCenter: CentralLLMDecisionCenter?
+    private var guidanceDecisionTask: Task<Void, Never>?
+    private var guidanceDecisionToken = UUID()
+    private var coachDecisionTask: Task<Void, Never>?
+    private var coachDecisionToken = UUID()
+    private var coachAnswerReviewTask: Task<Void, Never>?
+    private var coachAnswerReviewToken = UUID()
+    private var coachAnswerReviewPromptRunId: UUID?
+    private var modelCoachAnswerTurn: CoachTurnState?
+    private var modelCoachAnswerFeedback: CoachAnswerTrainingFeedback?
+    private var modelCoachReferenceSuggestion: CoachReferenceSuggestion?
+    private var coachAnswerGapOverrideRequested = false
+    private var weeklyGuidanceReviewWeekKey: String?
     private let usesInjectedTodayAIService: Bool
+    private let usesInjectedSideQuestAIService: Bool
+    private let usesInjectedGuidanceAIService: Bool
     private var runtimePromptProvider: PromptProvider {
         PromptAssetPackProvider(base: promptProvider, packs: runtimePromptAssetPacks)
     }
@@ -254,7 +326,10 @@ final class AppStore: ObservableObject {
     private var glmConnectionMessage: String = ""
     private let principleNeedsReviewNegativeFeedbackThreshold = 2
     private var referencedPrincipleRetrievals: [UUID: RetrievedPrinciple] = [:]
+    private var caseCardsCache: [UUID: [ThinkingCard]] = [:]
+    private var caseQuestsCache: [UUID: [Quest]] = [:]
     private var scheduledReminderIDs: Set<String> = []
+    private var isLoadingSideQuestState = false
     private var persistenceChain: Task<Void, Never>?
     private var persistenceChainGeneration = 0
     private var pendingAIRepairPrompts: Set<PromptID> = [] {
@@ -326,6 +401,16 @@ final class AppStore: ObservableObject {
         historicalRetryCandidateRepository: HistoricalRetryCandidateRepository? = nil,
         principleRecallFeedbackRepository: PrincipleRecallFeedbackRepository? = nil,
         principlePracticeEvidenceRepository: PrinciplePracticeEvidenceRepository? = nil,
+        trainingCaseRepository: TrainingCaseRepository? = nil,
+        trainingCaseSessionRepository: TrainingCaseSessionRepository? = nil,
+        trainingCaseRelationshipRepository: TrainingCaseRelationshipRepository? = nil,
+        projectClosureReviewRepository: ProjectClosureReviewRepository? = nil,
+        growthSettlementRepository: GrowthSettlementRepository? = nil,
+        verificationSettlementRepository: VerificationSettlementRepository? = nil,
+        guidanceRepository: GuidanceRepository? = nil,
+        weeklyGuidanceReviewRepository: WeeklyGuidanceReviewRepository? = nil,
+        coachPromptTurnRepository: CoachPromptTurnRepository? = nil,
+        sideQuestRepository: SideQuestRepository? = nil,
         reminderService: ReminderService? = nil,
         promptProvider: PromptProvider = LocalPromptProvider(),
         promptEvalSchedulePolicy: PromptEvalSchedulePolicy = PromptEvalSchedulePolicy(),
@@ -337,8 +422,16 @@ final class AppStore: ObservableObject {
         todayAIService: TodayAIService? = nil,
         persistenceUnavailableMessage: String? = nil,
         refreshesAIServiceFromKeychain: Bool = true,
-        growthAIService: GrowthAIService? = nil
+        growthAIService: GrowthAIService? = nil,
+        sideQuestAIService: SideQuestAIService? = nil,
+        guidanceAIService: GuidanceAIService? = nil,
+        sideQuestContextProvider: SideQuestContextProviding = SystemSideQuestContextProvider.system(),
+        // Manually constructed stores remain legacy-compatible for previews
+        // and older fixtures. The live store passes the feature flag
+        // explicitly, so production vNext stays enabled by default.
+        trainingCasesVNextEnabled: Bool = false
     ) {
+        self.trainingCasesVNextEnabled = trainingCasesVNextEnabled
         self.apiKeyStore = apiKeyStore
         self.dailyEntryRepository = dailyEntryRepository
         self.thinkingCardRepository = thinkingCardRepository
@@ -364,6 +457,16 @@ final class AppStore: ObservableObject {
         self.historicalRetryCandidateRepository = historicalRetryCandidateRepository
         self.principleRecallFeedbackRepository = principleRecallFeedbackRepository
         self.principlePracticeEvidenceRepository = principlePracticeEvidenceRepository
+        self.trainingCaseRepository = trainingCaseRepository
+        self.trainingCaseSessionRepository = trainingCaseSessionRepository
+        self.trainingCaseRelationshipRepository = trainingCaseRelationshipRepository
+        self.projectClosureReviewRepository = projectClosureReviewRepository
+        self.growthSettlementRepository = growthSettlementRepository
+        self.verificationSettlementRepository = verificationSettlementRepository
+        self.guidanceRepository = guidanceRepository
+        self.weeklyGuidanceReviewRepository = weeklyGuidanceReviewRepository
+        self.coachPromptTurnRepository = coachPromptTurnRepository
+        self.sideQuestRepository = sideQuestRepository
         self.reminderService = reminderService
         self.promptProvider = promptProvider
         self.promptEvalSchedulePolicy = promptEvalSchedulePolicy
@@ -375,6 +478,11 @@ final class AppStore: ObservableObject {
         self.persistenceUnavailableMessage = persistenceUnavailableMessage
         self.refreshesAIServiceFromKeychain = refreshesAIServiceFromKeychain
         self.growthAIService = growthAIService
+        self.sideQuestAIService = sideQuestAIService
+        self.guidanceAIService = guidanceAIService
+        self.sideQuestContextProvider = sideQuestContextProvider
+        self.usesInjectedSideQuestAIService = sideQuestAIService != nil
+        self.usesInjectedGuidanceAIService = guidanceAIService != nil
         let initialDraft = todayDraft ?? DailyEntryDraft()
         self.todayDraft = initialDraft
         self.trainingPrescription = initialDraft.trainingPrescription
@@ -384,6 +492,7 @@ final class AppStore: ObservableObject {
         self.principles = principles ?? []
         self.activePrinciples = principles?.filter { $0.status == .active } ?? []
         self.historyRecords = historyRecords ?? []
+        self.isTodayOverviewPresented = trainingCasesVNextEnabled
         self.growthSnapshot = growthSnapshot ?? Self.makeEmptyGrowth()
         self.customLensItems = self.todayDraft.customLensItems
         self.promptEvalReleaseGate = PromptEvalReleaseGate.blocked(promptProvider: effectivePromptProvider)
@@ -394,44 +503,99 @@ final class AppStore: ObservableObject {
         let apiKeyStore = KeychainAPIKeyStore()
 
         do {
-            let database = try AppDatabase(url: AppDatabase.defaultURL())
-            let promptRunRepository = SQLitePromptRunRepository(database: database)
-            let promptEvalRunRepository = SQLitePromptEvalRunRepository(database: database)
-            return AppStore(
-                apiKeyStore: apiKeyStore,
-                dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
-                thinkingCardRepository: SQLiteThinkingCardRepository(database: database),
-                questRepository: SQLiteQuestRepository(database: database),
-                principleRepository: SQLitePrincipleRepository(database: database),
-                verificationRepository: SQLiteVerificationRepository(database: database),
-                lensSessionRepository: SQLiteLensSessionRepository(database: database),
-                lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
-                metricSnapshotRepository: SQLiteMetricSnapshotRepository(database: database),
-                metricContributionRepository: SQLiteMetricContributionRepository(database: database),
-                projectLinkRepository: SQLiteProjectLinkRepository(database: database),
-                projectRepository: SQLiteProjectRepository(database: database),
-                projectCandidateRepository: SQLiteProjectCandidateRepository(database: database),
-                projectMergeCandidateRepository: SQLiteProjectMergeCandidateRepository(database: database),
-                projectInsightRepository: SQLiteProjectInsightRepository(database: database),
-                promptRunRepository: promptRunRepository,
-                promptEvalRunRepository: promptEvalRunRepository,
-                promptAssetSelectionRepository: SQLitePromptAssetSelectionRepository(database: database),
-                promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
-                assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
-                assetPackRegistrySubscriptionRepository: SQLiteAssetPackRegistrySubscriptionRepository(database: database),
-                dataExportRepository: SQLiteDataExportRepository(database: database),
-                historicalRetryCandidateRepository: SQLiteHistoricalRetryCandidateRepository(database: database),
-                principleRecallFeedbackRepository: SQLitePrincipleRecallFeedbackRepository(database: database),
-                principlePracticeEvidenceRepository: SQLitePrinciplePracticeEvidenceRepository(database: database),
-                reminderService: LocalNotificationReminder()
-            )
+            let databaseURL = try AppDatabase.defaultURL()
+            do {
+                let database = try AppDatabase(url: databaseURL)
+                return persistentStore(database: database, apiKeyStore: apiKeyStore, trainingCasesVNextEnabled: FeatureFlags.trainingCasesVNextEnabled)
+            } catch AppDatabaseBootstrapError.preVNextBackupUnavailable {
+                return try legacyPersistentStore(
+                    at: databaseURL,
+                    apiKeyStore: apiKeyStore,
+                    message: "vNext 数据备份未完成，已保留原有数据库并继续使用旧流程。"
+                )
+            } catch AppDatabaseBootstrapError.vNextMigrationFailed {
+                _ = try AppDatabase.restorePreVNextDatabaseIfAvailable(at: databaseURL)
+                return try legacyPersistentStore(
+                    at: databaseURL,
+                    apiKeyStore: apiKeyStore,
+                    message: "vNext 数据迁移未完成，已恢复原有数据库并继续使用旧流程。"
+                )
+            }
         } catch {
             return AppStore(
                 apiKeyStore: apiKeyStore,
                 reminderService: LocalNotificationReminder(),
-                persistenceUnavailableMessage: "本地数据库初始化失败，当前使用临时内存数据。"
+                persistenceUnavailableMessage: "本地数据库初始化失败，当前使用临时内存数据。",
+                trainingCasesVNextEnabled: false
             )
         }
+    }
+
+    private static func legacyPersistentStore(
+        at databaseURL: URL,
+        apiKeyStore: KeychainAPIKeyStore,
+        message: String
+    ) throws -> AppStore {
+        let database = try AppDatabase(url: databaseURL, includesVNextMigrations: false)
+        return persistentStore(
+            database: database,
+            apiKeyStore: apiKeyStore,
+            trainingCasesVNextEnabled: false,
+            persistenceUnavailableMessage: message
+        )
+    }
+
+    private static func persistentStore(
+        database: AppDatabase,
+        apiKeyStore: KeychainAPIKeyStore,
+        trainingCasesVNextEnabled: Bool,
+        persistenceUnavailableMessage: String? = nil
+    ) -> AppStore {
+        let promptRunRepository = SQLitePromptRunRepository(database: database)
+        let promptEvalRunRepository = SQLitePromptEvalRunRepository(database: database)
+        let coachPromptTurnRepository = trainingCasesVNextEnabled
+            ? SQLiteCoachPromptTurnRepository(database: database)
+            : nil
+        return AppStore(
+            apiKeyStore: apiKeyStore,
+            dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
+            thinkingCardRepository: SQLiteThinkingCardRepository(database: database),
+            questRepository: SQLiteQuestRepository(database: database),
+            principleRepository: SQLitePrincipleRepository(database: database),
+            verificationRepository: SQLiteVerificationRepository(database: database),
+            lensSessionRepository: SQLiteLensSessionRepository(database: database),
+            lensAssetPackRepository: SQLiteLensAssetPackRepository(database: database),
+            metricSnapshotRepository: SQLiteMetricSnapshotRepository(database: database),
+            metricContributionRepository: SQLiteMetricContributionRepository(database: database),
+            projectLinkRepository: SQLiteProjectLinkRepository(database: database),
+            projectRepository: SQLiteProjectRepository(database: database),
+            projectCandidateRepository: SQLiteProjectCandidateRepository(database: database),
+            projectMergeCandidateRepository: SQLiteProjectMergeCandidateRepository(database: database),
+            projectInsightRepository: SQLiteProjectInsightRepository(database: database),
+            promptRunRepository: promptRunRepository,
+            promptEvalRunRepository: promptEvalRunRepository,
+            promptAssetSelectionRepository: SQLitePromptAssetSelectionRepository(database: database),
+            promptAssetPackRepository: SQLitePromptAssetPackRepository(database: database),
+            assetPackTrustPolicyRepository: SQLiteAssetPackTrustPolicyRepository(database: database),
+            assetPackRegistrySubscriptionRepository: SQLiteAssetPackRegistrySubscriptionRepository(database: database),
+            dataExportRepository: SQLiteDataExportRepository(database: database),
+            historicalRetryCandidateRepository: SQLiteHistoricalRetryCandidateRepository(database: database),
+            principleRecallFeedbackRepository: SQLitePrincipleRecallFeedbackRepository(database: database),
+            principlePracticeEvidenceRepository: SQLitePrinciplePracticeEvidenceRepository(database: database),
+            trainingCaseRepository: trainingCasesVNextEnabled ? SQLiteTrainingCaseRepository(database: database) : nil,
+            trainingCaseSessionRepository: trainingCasesVNextEnabled ? SQLiteTrainingCaseSessionRepository(database: database) : nil,
+            trainingCaseRelationshipRepository: trainingCasesVNextEnabled ? SQLiteTrainingCaseRelationshipRepository(database: database) : nil,
+            projectClosureReviewRepository: trainingCasesVNextEnabled ? SQLiteProjectClosureReviewRepository(database: database) : nil,
+            growthSettlementRepository: trainingCasesVNextEnabled ? SQLiteGrowthSettlementRepository(database: database) : nil,
+            verificationSettlementRepository: trainingCasesVNextEnabled ? SQLiteVerificationSettlementRepository(database: database) : nil,
+            guidanceRepository: trainingCasesVNextEnabled ? SQLiteGuidanceRepository(database: database) : nil,
+            weeklyGuidanceReviewRepository: trainingCasesVNextEnabled ? SQLiteWeeklyGuidanceReviewRepository(database: database) : nil,
+            coachPromptTurnRepository: coachPromptTurnRepository,
+            sideQuestRepository: trainingCasesVNextEnabled ? SQLiteSideQuestRepository(database: database) : nil,
+            reminderService: LocalNotificationReminder(),
+            persistenceUnavailableMessage: persistenceUnavailableMessage,
+            trainingCasesVNextEnabled: trainingCasesVNextEnabled
+        )
     }
 
     static var preview: AppStore {
@@ -447,6 +611,81 @@ final class AppStore: ObservableObject {
 
 #if DEBUG
     nonisolated static let visualQAMarkerFileName = ".visual_qa_project_detail"
+
+    static func shouldUseVisualQASideQuestV2Fixture(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_SIDE_QUEST_V2"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_SIDE_QUEST_V2"] != nil
+    }
+
+    /// A self-contained visual fixture for the v2 practical-place flow. Its
+    /// database never reaches the user's persistent store or a model service.
+    static func visualQASideQuestV2() -> AppStore {
+        let database: AppDatabase
+        do {
+            database = try AppDatabase(dbQueue: DatabaseQueue())
+        } catch {
+            fatalError("Unable to create the in-memory Side Quest visual QA database: \(error)")
+        }
+
+        let now = Date(timeIntervalSince1970: 1_786_492_800)
+        let profile = SideQuestLifeContextProfile(
+            homePracticalContext: .init(floorLevel: 12, stairsAvailable: false),
+            workplacePracticalContext: .init(floorLevel: 7, stairsAvailable: true),
+            transitionWindows: [.afterLunch, .leavingWork, .arrivingHome],
+            createdAt: now,
+            updatedAt: now
+        )
+        let run = SideQuestRun(
+            catalogId: "ai.visual-qa.workplace-stairs",
+            catalogVersion: "visual-qa.v2",
+            origin: .aiGenerated,
+            promptRunId: UUID(uuidString: "4EFA44A6-8E9F-47A8-85DA-8F014BF4B9BA"),
+            decisionRationale: "你已确认在工作地点，且这里设置了第 7 层和楼梯可用；离开工作地点前适合一段可随时停下的短行动。",
+            category: .vitality,
+            title: "下班前走一段楼梯",
+            invitation: "在工作地点结束前，如果身体舒服且楼梯可用，走一层楼梯后再回到原计划。",
+            evidencePrompt: "完成后记下：走完这一层时，身体和注意力有什么变化？",
+            prerequisites: [.bodyAppropriate],
+            minimumMinutes: 5,
+            maximumMinutes: 10,
+            reward: SideQuestReward(track: .vitality, completionExperience: 12, reflectionBonusExperience: 3),
+            offeredAt: now,
+            notificationTitle: nil,
+            notificationBody: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        let store = AppStore(
+            sideQuestRepository: SQLiteSideQuestRepository(database: database),
+            refreshesAIServiceFromKeychain: false,
+            sideQuestContextProvider: StaticSideQuestContextProvider(
+                snapshot: .init(scene: .work, availability: .shortWindow, knownContext: [], constraints: [])
+            ),
+            trainingCasesVNextEnabled: true
+        )
+        store.selectedTab = .today
+        store.sideQuestPreference = SideQuestPreference(
+            isEnabled: true,
+            enabledCategories: [.vitality],
+            rotationSeed: "visual-qa-side-quest-v2",
+            createdAt: now,
+            updatedAt: now
+        )
+        store.sideQuestLifeContextProfile = profile
+        store.sideQuestRun = run
+        store.sideQuestContextSnapshot = .init(
+            scene: .work,
+            availability: .shortWindow,
+            knownContext: [],
+            constraints: []
+        )
+        store.sideQuestManualSceneContext = .throughEndOfDay(scene: .work)
+        store.isTodayOverviewPresented = true
+        store.loadsPersistedStateOnLaunch = false
+        return store
+    }
 
     static func resolveVisualQATab(
         environment: [String: String] = ProcessInfo.processInfo.environment
@@ -678,6 +917,13 @@ final class AppStore: ObservableObject {
             environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_MISSING_CALIBRATION_TARGET"] != nil
     }
 
+    static func shouldSeedVisualQAActiveTrainingCase(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_TODAY_ACTIVE_CASE"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_TODAY_ACTIVE_CASE"] != nil
+    }
+
     func applyVisualQATodaySeed(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
@@ -694,10 +940,34 @@ final class AppStore: ObservableObject {
             Self.resolveVisualQATodayStage(environment: environment),
             input: seedInput
         )
+        if Self.shouldSeedVisualQAActiveTrainingCase(environment: environment) {
+            seedVisualQAActiveTrainingCase()
+        }
         if Self.shouldSeedMissingVisualQACalibrationTarget(environment: environment) {
             clearVisualQAMainQuestCalibrationTarget()
         }
         loadsPersistedStateOnLaunch = false
+    }
+
+    private func seedVisualQAActiveTrainingCase() {
+        let trainingCase = TrainingCase(
+            dailyEntryId: todayDraft.id,
+            title: "Visual QA：判断首屏",
+            status: .inProgress,
+            sortOrder: 0
+        )
+        trainingCases = [trainingCase]
+        activeTrainingCase = trainingCase
+        isTodayOverviewPresented = false
+        thinkingCards = thinkingCards.map { card in
+            var updated = card
+            updated.trainingCaseId = trainingCase.id
+            return updated
+        }
+        caseCardsCache[trainingCase.id] = thinkingCards
+        activeGuidance = BuiltinGuidanceCatalog.items.first {
+            $0.hintId == "judgment.observable_evidence"
+        }
     }
 
     private func applyVisualQATodayStageSeed(_ stage: VisualQATodayStage, input: String) {
@@ -900,6 +1170,154 @@ final class AppStore: ObservableObject {
             defaults: defaults,
             markerFileExists: markerFileExists
         )
+    }
+
+    static func shouldUseVisualQAHistoryCaseSettlementFixture(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_HISTORY_CASE_SETTLEMENT"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_HISTORY_CASE_SETTLEMENT"] != nil
+    }
+
+    static func visualQAHistoryCaseSettlement() -> AppStore {
+        let entry = DailyEntryDraft(
+            rawText: "验证会议结论是否能减少后续返工。",
+            sessionMode: .standard,
+            hasSelectedSessionMode: true,
+            state: .sessionComplete
+        )
+        let trainingCase = TrainingCase(
+            dailyEntryId: entry.id,
+            title: "明确会议结论",
+            status: .completed
+        )
+        let card = ThinkingCard(
+            trainingCaseId: trainingCase.id,
+            type: .problem,
+            title: "会议结论没有被明确记录",
+            body: "会后各方对负责人和验收口径理解不一致。",
+            isConfirmed: true
+        )
+        let quest = Quest(
+            trainingCaseId: trainingCase.id,
+            type: .main,
+            title: "发出带负责人的会议结论",
+            whyItMatters: "让下一步和验收口径可追溯。",
+            completionCriteria: "会后记录包含唯一负责人和验收标准。",
+            expectedResistance: "参与方可能延迟确认。",
+            reflectionQuestion: "实际结果是否减少了追问？",
+            status: .completed
+        )
+        let verification = Verification(
+            questId: quest.id,
+            questTitle: quest.title,
+            sourceDailyEntryId: entry.id,
+            completion: .done,
+            valueRating: .high,
+            judgmentUpdate: .adjusted,
+            evidenceText: "会后记录当天发出，负责人在记录中确认了验收口径。",
+            calibrationNote: "结论记录有效，但仍需要提前确认参与方。"
+        )
+        let settlement = GrowthSettlement(
+            verificationId: verification.id,
+            caseId: trainingCase.id,
+            originalJudgment: "只要会后补发结论，就能避免后续返工。",
+            actualResult: "返工追问减少，但关键参与方仍需在会前参与确认。",
+            judgmentUpdate: .adjusted,
+            evidenceItems: [
+                GrowthSettlementEvidenceItem(
+                    category: .judgment,
+                    metric: .calibration,
+                    title: "用实际反馈调整了原判断。",
+                    sourceRefs: [verification.id.uuidString]
+                )
+            ]
+        )
+        let record = HistoryRecord(
+            draft: entry,
+            cards: [card],
+            quests: [quest],
+            principles: [],
+            verification: verification,
+            lensSession: nil,
+            projectLinks: [],
+            growthContributions: [],
+            caseRecords: [
+                TrainingCaseRecord(
+                    trainingCase: trainingCase,
+                    cards: [card],
+                    quests: [quest],
+                    lensSession: nil,
+                    verifications: [verification],
+                    growthSettlements: [settlement]
+                )
+            ]
+        )
+        let store = AppStore(
+            historyRecords: [record],
+            growthSnapshot: makeEmptyGrowth(),
+            refreshesAIServiceFromKeychain: false
+        )
+        store.selectedTab = .history
+        store.loadsPersistedStateOnLaunch = false
+        return store
+    }
+
+    static func shouldSeedVisualQAVNextOverview(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        environment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] != nil
+    }
+
+    /// A vNext overview fixture backed only by an in-memory database. Visual
+    /// QA must never open the user's persistent database or write user data.
+    static func visualQAVNextOverview() -> AppStore {
+        let database: AppDatabase
+        do {
+            database = try AppDatabase(dbQueue: DatabaseQueue())
+        } catch {
+            fatalError("Unable to create the in-memory vNext overview visual QA database: \(error)")
+        }
+
+        let store = persistentStore(
+            database: database,
+            apiKeyStore: KeychainAPIKeyStore(),
+            trainingCasesVNextEnabled: true
+        )
+        store.loadsPersistedStateOnLaunch = false
+        return store
+    }
+
+    func applyVisualQAVNextOverviewSeed(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        guard Self.shouldSeedVisualQAVNextOverview(environment: environment) else { return }
+        selectedTab = .today
+        todayDraft.rawText = "三个互不相关的事项"
+        let cases = [
+            TrainingCase(dailyEntryId: todayDraft.id, title: "事项 A：明确验收负责人", status: .ready, sortOrder: 0),
+            TrainingCase(dailyEntryId: todayDraft.id, title: "事项 B：验证注册问题", status: .ready, sortOrder: 1),
+            TrainingCase(dailyEntryId: todayDraft.id, title: "事项 C：准备项目复盘", status: .pendingConfirmation, sortOrder: 2)
+        ]
+        trainingCases = cases
+        caseCardsCache = Dictionary(uniqueKeysWithValues: cases.map { item in
+            (item.id, [ThinkingCard(trainingCaseId: item.id, type: .problem, title: item.title, body: "Visual QA 事项证据", isConfirmed: true)])
+        })
+        if environment["MINGSI_VISUAL_QA_SIDE_QUEST"] != nil ||
+            environment["SIMCTL_CHILD_MINGSI_VISUAL_QA_SIDE_QUEST"] != nil {
+            let item = BuiltinSideQuestCatalog.items.first { $0.id == "making.ten-minute-artifact" }
+                ?? BuiltinSideQuestCatalog.items[0]
+            sideQuestPreference = SideQuestPreference(
+                isEnabled: true,
+                enabledCategories: [.making],
+                rotationSeed: "visual-qa"
+            )
+            sideQuestRun = SideQuestRun.offered(from: item)
+            sideQuestMessage = ""
+        }
+        isTodayOverviewPresented = true
+        loadsPersistedStateOnLaunch = false
     }
 
     static func visualQAProjectDetail() -> AppStore {
@@ -1375,6 +1793,16 @@ final class AppStore: ObservableObject {
     }
 #endif
 
+#if !DEBUG
+    // The visual-QA fixture is a Debug-only launch aid. Keep the shared
+    // Settings view buildable in Release without exposing or enabling it.
+    static func shouldUseVisualQASettingsAssetPackManifestFixture(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        false
+    }
+#endif
+
     nonisolated static func makePreviewDraft() -> DailyEntryDraft {
         DailyEntryDraft(
             rawText: "今天开了一个会议，但还没把明天最重要的动作想清楚。",
@@ -1514,6 +1942,12 @@ final class AppStore: ObservableObject {
         todayDraft.state != .sessionComplete
     }
 
+    var weeklyGuidanceReviewReadiness: WeeklyGuidanceReviewReadiness {
+        WeeklyGuidanceReviewPolicy().readiness(
+            verifications: historyRecords.flatMap(\.allVerifications)
+        )
+    }
+
     var hasAnsweredReflectionQuestion: Bool {
         questions.contains { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
@@ -1542,6 +1976,7 @@ final class AppStore: ObservableObject {
 
     var coachAnswerFeedbackPreview: CoachTurnState? {
         guard todayDraft.state == .answerQuestions, hasAnsweredReflectionQuestion else { return nil }
+        if requiresCentralDecisionCenter { return modelCoachAnswerTurn }
         return CoachTurnPolicy().updateAfterAnswers(
             cards: confirmedCardsForAI,
             questions: questions,
@@ -1550,6 +1985,7 @@ final class AppStore: ObservableObject {
     }
 
     var coachAnswerTrainingFeedback: CoachAnswerTrainingFeedback? {
+        if requiresCentralDecisionCenter { return modelCoachAnswerFeedback }
         guard let preview = coachAnswerFeedbackPreview else { return nil }
         return CoachAnswerFeedbackPolicy().makeFeedback(
             turn: preview,
@@ -1561,6 +1997,7 @@ final class AppStore: ObservableObject {
     }
 
     var coachReferenceSuggestion: CoachReferenceSuggestion? {
+        if requiresCentralDecisionCenter { return modelCoachReferenceSuggestion }
         guard let feedback = coachAnswerTrainingFeedback else { return nil }
         return CoachReferenceSuggestionPolicy().make(
             cards: confirmedCardsForAI,
@@ -1570,10 +2007,11 @@ final class AppStore: ObservableObject {
     }
 
     var canContinueAnswerQuestionsWithCoachGapOverride: Bool {
-        guard !isAIRunning else { return false }
+        guard !isAIRunning, coachAnswerReviewTask == nil else { return false }
         guard todayDraft.state == .answerQuestions else { return false }
         guard availableCalibrationTarget != nil else { return false }
         guard hasAnsweredReflectionQuestion else { return true }
+        if requiresCentralDecisionCenter, modelCoachAnswerTurn == nil { return true }
         guard let feedback = coachAnswerFeedbackPreview else { return false }
         return feedback.readiness != .ready
     }
@@ -1605,6 +2043,7 @@ final class AppStore: ObservableObject {
     }
 
     var coachAnswerMaterialObservation: String? {
+        guard !requiresCentralDecisionCenter else { return nil }
         guard todayDraft.state == .answerQuestions else { return nil }
         guard let answer = firstNonEmptyAnswerText else { return nil }
 
@@ -1635,11 +2074,13 @@ final class AppStore: ObservableObject {
     }
 
     var coachCaptureMaterialObservation: String? {
+        guard !requiresCentralDecisionCenter else { return nil }
         guard todayDraft.state == .capture else { return nil }
         return Self.materialObservationLine(for: todayDraft.rawText)
     }
 
     var coachCaptureMaterialTrainingFeedback: CoachMaterialTrainingFeedback? {
+        guard !requiresCentralDecisionCenter else { return nil }
         guard todayDraft.state == .capture else { return nil }
         return Self.materialTrainingFeedback(for: todayDraft.rawText)
     }
@@ -1932,10 +2373,15 @@ final class AppStore: ObservableObject {
         await loadRuntimePromptAssetPacks()
         await loadPromptAssetSelections()
         await loadRuntimeLensPacks()
+        await loadGuidanceState()
+        await loadWeeklyGuidanceReview()
+        await loadGrowthSettlements()
+        await refreshDueVerificationQueue()
         await runScheduledPromptEvalIfNeeded()
         await runScheduledAssetPackRegistrySubscriptionSyncIfNeeded()
 
         guard let dailyEntryRepository else {
+            await loadSideQuestState()
             updateSettingsMessage()
             return
         }
@@ -1950,6 +2396,8 @@ final class AppStore: ObservableObject {
                 await loadPendingProjectCandidates()
                 await loadPendingProjectMergeCandidates()
                 await loadLatestGrowthSnapshot()
+                await loadTrainingCases(for: todayDraft.id)
+                await loadSideQuestState()
                 return
             }
 
@@ -1969,6 +2417,10 @@ final class AppStore: ObservableObject {
                 await loadPendingProjectCandidates()
                 await loadPendingProjectMergeCandidates()
                 await loadLatestGrowthSnapshot()
+                await loadProjectClosureReviews()
+                await generateLocalGrowthSnapshotFromHistoryIfNeeded()
+                await loadTrainingCases(for: todayDraft.id)
+                await loadSideQuestState()
                 updateSettingsMessage()
                 return
             }
@@ -1976,6 +2428,7 @@ final class AppStore: ObservableObject {
             todayDraft = draft
             trainingPrescription = draft.trainingPrescription
             customLensItems = draft.customLensItems
+            await loadTrainingCases(for: draft.id)
             if draft.selectedCustomLensId != nil, !draft.customLensQuestions.isEmpty {
                 questions = draft.customLensQuestions
             }
@@ -2005,8 +2458,10 @@ final class AppStore: ObservableObject {
             await loadPendingProjectCandidates()
             await loadPendingProjectMergeCandidates()
             await loadLatestGrowthSnapshot()
+            await loadProjectClosureReviews()
             await generateLocalGrowthSnapshotFromHistoryIfNeeded()
             await restorePendingAIRepairsFromPromptRuns()
+            await loadSideQuestState()
         } catch {
             todayLoopMessage = "读取本地复盘记录失败，已继续使用当前内存数据。"
         }
@@ -2044,6 +2499,656 @@ final class AppStore: ObservableObject {
         if !draft.customLensItems.isEmpty || !draft.customLensQuestions.isEmpty { return true }
         if draft.yesterdayCompletion != nil || draft.yesterdayValueRating != nil || draft.yesterdayJudgmentUpdate != nil { return true }
         return draft.state != .verifyYesterday && draft.state != .capture
+    }
+
+    private func loadTrainingCases(for dailyEntryId: UUID) async {
+        guard trainingCasesVNextEnabled, let trainingCaseRepository else { return }
+        do {
+            trainingCases = try await trainingCaseRepository.cases(for: dailyEntryId)
+            trainingCaseMerges = try await trainingCaseRelationshipRepository?.activeMerges(for: dailyEntryId) ?? []
+            for trainingCase in trainingCases {
+                let cards = try await thinkingCardRepository?.cards(forTrainingCaseId: trainingCase.id) ?? []
+                let scopedQuests = try await questRepository?.quests(forTrainingCaseId: trainingCase.id) ?? []
+                caseCardsCache[trainingCase.id] = cards
+                caseQuestsCache[trainingCase.id] = scopedQuests
+            }
+            activeTrainingCase = nil
+            isTodayOverviewPresented = true
+        } catch {
+            todayLoopMessage = "读取今日事项失败，已保留原始记录。"
+        }
+    }
+
+    private func loadGuidanceState() async {
+        guard let guidanceRepository else { return }
+        do {
+            guidanceStates = try await guidanceRepository.allStates()
+        } catch {
+            guidanceStates = []
+        }
+    }
+
+    private func loadSideQuestState(now: Date = .now) async {
+        guard let sideQuestRepository else { return }
+        guard !isLoadingSideQuestState else { return }
+        isLoadingSideQuestState = true
+        defer { isLoadingSideQuestState = false }
+        do {
+            sideQuestPreference = try await sideQuestRepository.preference()
+            sideQuestLifeContextProfile = try await sideQuestRepository.lifeContextProfile()
+            activeSideQuestSeason = try await sideQuestRepository.activeSeason(at: now)
+            if let activeSideQuestSeason {
+                sideQuestSeasonReview = activeSideQuestSeason
+            } else {
+                sideQuestSeasonReview = try await sideQuestRepository.latestSeason()
+            }
+            if let season = sideQuestSeasonReview {
+                sideQuestSeasonCategories = try await sideQuestRepository.seasonCategorySummary(id: season.id)
+            } else {
+                sideQuestSeasonCategories = [:]
+            }
+            let trialStart = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
+            sideQuestTrialMetrics = try await sideQuestRepository.trialMetrics(since: trialStart, through: now)
+            guard sideQuestPreference.isEnabled else {
+                sideQuestContextSnapshot = .empty
+                sideQuestManualSceneContext = nil
+                sideQuestRun = nil
+                sideQuestPhotoMemories = []
+                latestSideQuestExperience = nil
+                return
+            }
+            if sideQuestManualSceneContext?.isActive(at: now) == false {
+                sideQuestManualSceneContext = nil
+            }
+            let systemSnapshot = await sideQuestContextProvider.snapshot(now: now)
+            sideQuestContextSnapshot = systemSnapshot.applying(
+                manualScene: sideQuestManualSceneContext,
+                now: now
+            )
+            sideQuestExperienceSummary = try await sideQuestRepository.experienceSummary(now: now)
+            if let openRun = try await sideQuestRepository.openRun() {
+                sideQuestRun = openRun
+                sideQuestPhotoMemories = try await sideQuestRepository.photoMemories(for: openRun.id)
+                latestSideQuestExperience = nil
+                return
+            }
+
+            let recentRuns = try await sideQuestRepository.recentRuns(limit: 12)
+            let recentCorrections = try await sideQuestRepository.recentCorrections(limit: 8)
+            if let latestRun = recentRuns.first,
+               latestRun.status == .completed,
+               Calendar.current.isDate(latestRun.completedAt ?? latestRun.updatedAt, inSameDayAs: now) {
+                sideQuestRun = latestRun
+                sideQuestPhotoMemories = try await sideQuestRepository.photoMemories(for: latestRun.id)
+                latestSideQuestExperience = try await sideQuestRepository.experience(for: latestRun.id)
+                return
+            }
+
+            // A persisted hold has no run to short-circuit on. Consult the
+            // day-level audit before calling the model so an app restart or
+            // overlapping refresh cannot make a second decision today.
+            let planningDayKey = SideQuestPlanningRecord.dayKey(for: now)
+            if try await sideQuestRepository.planningRecord(forDayKey: planningDayKey) != nil {
+                sideQuestMessage = ""
+                return
+            }
+
+            sideQuestRun = nil
+            sideQuestPhotoMemories = []
+            latestSideQuestExperience = nil
+            guard SideQuestPlanningEligibility().permitsPlanning(
+                preference: sideQuestPreference,
+                mostRecentRun: recentRuns.first,
+                now: now
+            ) else { return }
+            guard let sideQuestAIService else {
+                sideQuestMessage = "连接模型后，明思会判断今天是否适合出现一件生活奇遇。"
+                return
+            }
+            let plan = try await sideQuestAIService.plan(
+                for: SideQuestPlanningContext(
+                    preference: sideQuestPreference,
+                    lifeContextProfile: sideQuestLifeContextProfile,
+                    now: now,
+                    rawTodayText: todayDraft.rawText,
+                    trainingCases: trainingCases,
+                    recentRuns: recentRuns,
+                    recentCorrections: recentCorrections,
+                    experienceSummary: sideQuestExperienceSummary,
+                    contextSnapshot: sideQuestContextSnapshot,
+                    season: activeSideQuestSeason
+                )
+            )
+            var updatedPreference = sideQuestPreference
+            updatedPreference.lastAIPlanningAt = now
+            updatedPreference.lastAIPlanningPromptRunId = plan.promptRunId
+            updatedPreference.updatedAt = now
+            let planningRecord = SideQuestPlanningRecord(
+                dayKey: planningDayKey,
+                decision: plan.shouldOffer ? .offer : .hold,
+                promptRunId: plan.promptRunId,
+                plannedAt: now
+            )
+            let didRecordPlanningResult = try await sideQuestRepository.recordPlanningResult(
+                preference: updatedPreference,
+                planningRecord: planningRecord,
+                offeredRun: plan.run
+            )
+            guard didRecordPlanningResult else {
+                sideQuestPreference = try await sideQuestRepository.preference()
+                sideQuestRun = try await sideQuestRepository.openRun()
+                latestSideQuestExperience = nil
+                sideQuestMessage = ""
+                return
+            }
+            sideQuestPreference = updatedPreference
+            guard let run = plan.run else {
+                sideQuestMessage = ""
+                return
+            }
+            sideQuestRun = run
+            sideQuestPhotoMemories = []
+            await scheduleSideQuestNotificationIfNeeded(for: run, preference: updatedPreference, now: now)
+        } catch PersistenceError.validationFailed {
+            sideQuestMessage = "今日奇遇暂时无法由模型判断，主线事项不受影响。"
+        } catch {
+            sideQuestMessage = "今日奇遇暂时无法由模型判断，主线事项不受影响。"
+        }
+    }
+
+    func refreshSideQuestInvitation() async {
+        await loadSideQuestState()
+    }
+
+    func startSideQuestSeason(title: String, intent: String?) async {
+        guard let sideQuestRepository, !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            activeSideQuestSeason = try await sideQuestRepository.startSeason(title: title, intent: intent, at: .now)
+            var preference = try await sideQuestRepository.preference()
+            if !preference.isEnabled {
+                preference.consentStatus = .enabled
+                if preference.enabledCategories.isEmpty {
+                    preference.enabledCategories = Set(SideQuestCategory.allCases)
+                }
+                preference.updatedAt = .now
+                try await sideQuestRepository.savePreference(preference)
+            }
+            sideQuestPreference = preference
+            sideQuestSeasonReview = activeSideQuestSeason
+            sideQuestSeasonCategories = [:]
+            sideQuestMessage = "已开启 30 天探索季，奇遇仍会由模型按情境决定是否出现。"
+            await loadSideQuestState()
+            if sideQuestMessage.isEmpty {
+                sideQuestMessage = "已开启 30 天探索季，奇遇仍会由模型按情境决定是否出现。"
+            }
+        } catch {
+            sideQuestMessage = "探索季需要一个简洁主题后才能开启。"
+        }
+    }
+
+    func closeSideQuestSeason(early: Bool) async {
+        guard let sideQuestRepository, !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            _ = try await sideQuestRepository.closeSeason(status: early ? .abandoned : .completed, at: .now)
+            activeSideQuestSeason = try await sideQuestRepository.activeSeason(at: .now)
+            sideQuestSeasonReview = try await sideQuestRepository.latestSeason()
+            if let season = sideQuestSeasonReview {
+                sideQuestSeasonCategories = try await sideQuestRepository.seasonCategorySummary(id: season.id)
+            }
+            sideQuestMessage = early ? "探索季已结束，已保留这段经历的统计。" : "探索季已完成，已保留这段经历的统计。"
+        } catch {
+            sideQuestMessage = "结束探索季失败，请稍后重试。"
+        }
+    }
+
+    /// This changes only the context for a future model request. It never
+    /// rewrites an invitation that has already been offered today.
+    func setSideQuestManualScene(
+        _ scene: SideQuestContextSnapshot.Scene?,
+        now: Date = .now
+    ) {
+        guard sideQuestPreference.isEnabled else { return }
+        if let scene {
+            sideQuestManualSceneContext = SideQuestManualSceneContext.throughEndOfDay(scene: scene, now: now)
+            sideQuestContextSnapshot = sideQuestContextSnapshot.applying(
+                manualScene: sideQuestManualSceneContext,
+                now: now
+            )
+            sideQuestMessage = "当前情境已设为\(scene.manualSelectionTitle)，将在今天结束后失效。"
+        } else {
+            sideQuestManualSceneContext = nil
+            sideQuestMessage = "已清除当前情境。"
+        }
+    }
+
+    func requestSideQuestLocationPermission() {
+        sideQuestContextProvider.requestLocationAuthorization()
+    }
+
+    func requestSideQuestCalendarPermission() {
+        sideQuestContextProvider.requestCalendarAuthorization()
+    }
+
+    func requestSideQuestHealthPermission() {
+        sideQuestContextProvider.requestHealthAuthorization()
+    }
+
+    var sideQuestLocationAuthorizationStatus: SideQuestAuthorizationStatus {
+        sideQuestContextProvider.locationAuthorizationStatus
+    }
+
+    var sideQuestCalendarAuthorizationStatus: SideQuestAuthorizationStatus {
+        sideQuestContextProvider.calendarAuthorizationStatus
+    }
+
+    var sideQuestHealthAuthorizationStatus: SideQuestAuthorizationStatus {
+        sideQuestContextProvider.healthAuthorizationStatus
+    }
+
+    func saveSideQuestLifeContextProfile(_ profile: SideQuestLifeContextProfile) async {
+        guard let sideQuestRepository else { return }
+        do {
+            try await sideQuestRepository.saveLifeContextProfile(profile)
+            sideQuestLifeContextProfile = try await sideQuestRepository.lifeContextProfile()
+            sideQuestMessage = "生活情境已更新，只会按你填写的内容使用。"
+        } catch {
+            sideQuestMessage = "更新生活情境失败，请检查填写内容后再试。"
+        }
+    }
+
+    func enableSideQuestInvitations() async {
+        await setSideQuestInvitationsEnabled(
+            true,
+            confirmationMessage: "已开启。明思会结合你的记录判断，偶尔发出一件生活奇遇。"
+        )
+    }
+
+    func setSideQuestInvitationsEnabled(_ isEnabled: Bool) async {
+        await setSideQuestInvitationsEnabled(isEnabled, confirmationMessage: nil)
+    }
+
+    private func setSideQuestInvitationsEnabled(
+        _ isEnabled: Bool,
+        confirmationMessage: String?
+    ) async {
+        guard let sideQuestRepository else {
+            sideQuestMessage = "今日奇遇暂时不可用。"
+            return
+        }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            var preference = try await sideQuestRepository.preference()
+            preference.consentStatus = isEnabled ? .enabled : .disabled
+            if isEnabled && preference.enabledCategories.isEmpty {
+                preference.enabledCategories = Set(SideQuestCategory.allCases)
+            }
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            sideQuestPreference = preference
+            if !isEnabled, let run = sideQuestRun {
+                await cancelSideQuestNotification(for: run)
+            }
+            sideQuestMessage = confirmationMessage ?? (isEnabled ? "已开启生活奇遇。" : "已停止接收新的生活奇遇。")
+            if isEnabled {
+                await loadSideQuestState()
+            }
+        } catch {
+            sideQuestMessage = "更新生活奇遇设置失败，请稍后再试。"
+        }
+    }
+
+    func setSideQuestCategory(_ category: SideQuestCategory, isEnabled: Bool) async {
+        guard let sideQuestRepository else { return }
+        do {
+            var preference = try await sideQuestRepository.preference()
+            if isEnabled {
+                preference.enabledCategories.insert(category)
+            } else {
+                preference.enabledCategories.remove(category)
+            }
+            if preference.isEnabled && preference.enabledCategories.isEmpty {
+                preference.consentStatus = .disabled
+            }
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            sideQuestPreference = preference
+            if !isEnabled, sideQuestRun?.category == category, let run = sideQuestRun {
+                if run.status.occupiesInvitationSlot {
+                    _ = try await sideQuestRepository.decline(runId: run.id, at: .now)
+                }
+                await cancelSideQuestNotification(for: run)
+                sideQuestRun = nil
+            }
+        } catch {
+            sideQuestMessage = "更新生活奇遇类别失败，请稍后再试。"
+        }
+    }
+
+    func setSideQuestFrequency(_ frequency: SideQuestOfferFrequency) async {
+        guard let sideQuestRepository else { return }
+        do {
+            var preference = try await sideQuestRepository.preference()
+            preference.frequency = frequency
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            sideQuestPreference = preference
+        } catch {
+            sideQuestMessage = "更新生活奇遇频率失败，请稍后再试。"
+        }
+    }
+
+    func setSideQuestNotificationsEnabled(_ isEnabled: Bool) async {
+        guard let sideQuestRepository else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            if isEnabled {
+                guard let reminderService else {
+                    sideQuestMessage = "本地通知暂时不可用。"
+                    return
+                }
+                let permission = try await reminderService.requestPermission()
+                guard permission.allowsScheduling else {
+                    sideQuestMessage = "通知权限未开启，生活奇遇仍可在应用内查看。"
+                    return
+                }
+            }
+            var preference = try await sideQuestRepository.preference()
+            preference.notificationsEnabled = isEnabled
+            preference.notificationSchedule = isEnabled
+                ? (preference.notificationSchedule ?? SideQuestNotificationScheduleOption.default.schedule)
+                : nil
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            sideQuestPreference = preference
+            if isEnabled, let run = sideQuestRun {
+                await scheduleSideQuestNotificationIfNeeded(for: run, preference: preference, now: .now)
+            } else if let run = sideQuestRun {
+                await cancelSideQuestNotification(for: run)
+            }
+        } catch {
+            sideQuestMessage = "更新生活奇遇通知失败，请稍后再试。"
+        }
+    }
+
+    func setSideQuestNotificationSchedule(_ schedule: SideQuestNotificationSchedule) async {
+        guard let sideQuestRepository else { return }
+        do {
+            var preference = try await sideQuestRepository.preference()
+            preference.notificationSchedule = schedule
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            sideQuestPreference = preference
+            if let run = sideQuestRun {
+                await cancelSideQuestNotification(for: run)
+                await scheduleSideQuestNotificationIfNeeded(for: run, preference: preference, now: .now)
+            }
+        } catch {
+            sideQuestMessage = "更新提醒时段失败，请稍后再试。"
+        }
+    }
+
+    func acceptCurrentSideQuest() async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            // Visual QA and previews may seed an in-memory invitation. Persist it
+            // before the state transition so acceptance always has one durable row.
+            if try await sideQuestRepository.run(id: run.id) == nil {
+#if DEBUG
+                if Self.shouldSeedVisualQAVNextOverview() {
+                    try await sideQuestRepository.clearOpenRunsForVisualQA()
+                }
+#endif
+                try await sideQuestRepository.offer(run)
+            }
+            sideQuestRun = try await sideQuestRepository.accept(runId: run.id, at: .now)
+            activeSideQuestSeason = try await sideQuestRepository.activeSeason(at: .now)
+            if let season = activeSideQuestSeason {
+                sideQuestSeasonReview = season
+                sideQuestSeasonCategories = try await sideQuestRepository.seasonCategorySummary(id: season.id)
+            }
+            await cancelSideQuestNotification(for: run)
+            sideQuestMessage = "已接下。完成后可以留下观察并获得生活成长经验。"
+        } catch {
+            sideQuestMessage = "这次奇遇没有保存成功，请稍后重试。"
+        }
+    }
+
+    func moveCurrentSideQuestToNextTime() async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            _ = try await sideQuestRepository.decline(runId: run.id, at: .now)
+            activeSideQuestSeason = try await sideQuestRepository.activeSeason(at: .now)
+            if let season = activeSideQuestSeason {
+                sideQuestSeasonReview = season
+                sideQuestSeasonCategories = try await sideQuestRepository.seasonCategorySummary(id: season.id)
+            }
+            await cancelSideQuestNotification(for: run)
+            sideQuestRun = nil
+            latestSideQuestExperience = nil
+            sideQuestMessage = "这次先不接下。它会回到候选池，但不会频繁重复出现。"
+        } catch {
+            sideQuestMessage = "暂存这次奇遇失败，请稍后重试。"
+        }
+    }
+
+    func recordSideQuestCorrection(_ kind: SideQuestCorrectionKind, note: String? = nil) async {
+        guard let sideQuestRepository else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            let run = sideQuestRun
+            let correction = SideQuestCorrectionEvent(sideQuestRunId: run?.id, kind: kind, note: note)
+            try await sideQuestRepository.saveCorrection(correction, resolvingRunId: run?.id)
+            if let run { await cancelSideQuestNotification(for: run) }
+            sideQuestRun = nil
+            latestSideQuestExperience = nil
+            sideQuestMessage = "已记下反馈，之后会据此调整生活奇遇。"
+        } catch {
+            sideQuestMessage = "反馈暂时没有保存成功，请稍后重试。"
+        }
+    }
+
+    func completeCurrentSideQuest(reflection: String?) async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            let event = try await sideQuestRepository.complete(runId: run.id, reflection: reflection, at: .now)
+            sideQuestRun = try await sideQuestRepository.run(id: run.id)
+            sideQuestPhotoMemories = try await sideQuestRepository.photoMemories(for: run.id)
+            latestSideQuestExperience = event
+            sideQuestExperienceSummary = try await sideQuestRepository.experienceSummary(now: .now)
+            activeSideQuestSeason = try await sideQuestRepository.activeSeason(at: .now)
+            if let season = activeSideQuestSeason {
+                sideQuestSeasonReview = season
+                sideQuestSeasonCategories = try await sideQuestRepository.seasonCategorySummary(id: season.id)
+            }
+            await cancelSideQuestNotification(for: run)
+            sideQuestMessage = reflection?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? "已记下这次经历和额外观察。"
+                : "已记下这次经历。"
+        } catch {
+            sideQuestMessage = "这次完成记录没有保存成功，请稍后重试。"
+        }
+    }
+
+    func attachPhotoMemoryToCurrentSideQuest(
+        assetLocalIdentifier: String,
+        addToSharedAlbum: Bool = true
+    ) async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            let mediaService = PhotoMemoryMediaService()
+            guard (await mediaService.requestPhotoLibraryAddOnlyPermission()).permitsPhotoSelection else {
+                throw PhotoMemoryMediaError.photoLibraryAddPermissionRequired
+            }
+            if addToSharedAlbum {
+                try await mediaService.addSelectedAssetToSharedAlbum(
+                    assetLocalIdentifier: assetLocalIdentifier
+                )
+            }
+            let memory = SideQuestPhotoMemory(
+                assetLocalIdentifier: assetLocalIdentifier,
+                runId: run.id
+            )
+            try await sideQuestRepository.savePhotoMemory(memory)
+            sideQuestPhotoMemories = try await sideQuestRepository.photoMemories(for: run.id)
+            sideQuestMessage = "已把这张照片留在这次奇遇里。"
+        } catch {
+            sideQuestMessage = error.localizedDescription.isEmpty
+                ? "这张照片暂时没有附上，请稍后重试。"
+                : error.localizedDescription
+        }
+    }
+
+    func markSideQuestPhotoMemoryUnavailable(id: UUID) async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        do {
+            try await sideQuestRepository.markPhotoMemoryUnavailable(id: id)
+            sideQuestPhotoMemories = try await sideQuestRepository.photoMemories(for: run.id)
+        } catch {
+            sideQuestMessage = "照片状态暂时没有更新。"
+        }
+    }
+
+    func disableCurrentSideQuestCategory() async {
+        guard let sideQuestRepository, let run = sideQuestRun else { return }
+        guard !isSideQuestActionInFlight else { return }
+        isSideQuestActionInFlight = true
+        defer { isSideQuestActionInFlight = false }
+        do {
+            var preference = try await sideQuestRepository.preference()
+            preference.enabledCategories.remove(run.category)
+            if preference.enabledCategories.isEmpty {
+                preference.consentStatus = .disabled
+            }
+            preference.updatedAt = .now
+            try await sideQuestRepository.savePreference(preference)
+            if run.status.occupiesInvitationSlot {
+                _ = try await sideQuestRepository.decline(runId: run.id, at: .now)
+            }
+            await cancelSideQuestNotification(for: run)
+            sideQuestPreference = preference
+            sideQuestRun = nil
+            latestSideQuestExperience = nil
+            sideQuestMessage = "已关闭“\(run.category.title)”类奇遇。"
+        } catch {
+            sideQuestMessage = "更新奇遇偏好失败，请稍后重试。"
+        }
+    }
+
+    private func scheduleSideQuestNotificationIfNeeded(
+        for run: SideQuestRun,
+        preference: SideQuestPreference,
+        now: Date
+    ) async {
+        guard run.origin == .aiGenerated,
+              run.status == .offered,
+              preference.notificationsEnabled,
+              let schedule = preference.notificationSchedule,
+              schedule.isValid,
+              let reminderService
+        else { return }
+
+        let request = ReminderRequest(
+            id: sideQuestReminderID(for: run),
+            title: run.notificationTitle ?? "今日奇遇",
+            body: run.notificationBody ?? run.title,
+            fireDate: sideQuestReminderDate(schedule: schedule, now: now)
+        )
+        do {
+            try await reminderService.schedule(request)
+        } catch {
+            sideQuestMessage = "奇遇已保留，但本地通知未能安排。"
+        }
+    }
+
+    private func cancelSideQuestNotification(for run: SideQuestRun) async {
+        await reminderService?.cancel(id: sideQuestReminderID(for: run))
+    }
+
+    private func sideQuestReminderID(for run: SideQuestRun) -> String {
+        "side-quest-\(run.id.uuidString)"
+    }
+
+    private func sideQuestReminderDate(schedule: SideQuestNotificationSchedule, now: Date) -> Date {
+        let calendar = Calendar.current
+        let hour = schedule.startMinute / 60
+        let minute = schedule.startMinute % 60
+        let today = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: now) ?? now
+        if today > now { return today }
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) ?? now
+        return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: tomorrow) ?? tomorrow
+    }
+
+    private func loadWeeklyGuidanceReview(now: Date = .now) async {
+        guard let weeklyGuidanceReviewRepository else { return }
+        let weekKey = WeeklyGuidanceReviewPolicy().weekKey(for: now)
+        do {
+            let record = try await weeklyGuidanceReviewRepository.review(forWeekKey: weekKey)
+            weeklyGuidanceReview = record?.selection
+            weeklyGuidanceReviewWeekKey = record?.weekKey
+        } catch {
+            weeklyGuidanceReview = nil
+            weeklyGuidanceReviewWeekKey = nil
+        }
+    }
+
+    private func loadGrowthSettlements() async {
+        guard let growthSettlementRepository else { return }
+        growthSettlements = (try? await growthSettlementRepository.recentSettlements(limit: 100)) ?? []
+    }
+
+    private func loadProjectClosureReviews() async {
+        guard let projectClosureReviewRepository else { return }
+        var reviews: [UUID: ProjectClosureReview] = [:]
+        for projectId in projectsById.keys {
+            if let review = try? await projectClosureReviewRepository.review(for: projectId) {
+                reviews[projectId] = review
+            }
+        }
+        projectClosureReviews = reviews
+    }
+
+    func refreshDueVerificationQueue(now: Date = .now) async {
+        guard let questRepository else { return }
+        do {
+            let active = try await questRepository.activeQuests()
+            var existingVerifications: [Verification] = []
+            if let verificationRepository {
+                for quest in active {
+                    if let verification = try await verificationRepository.verification(forQuestId: quest.id) {
+                        existingVerifications.append(verification)
+                    }
+                }
+            }
+            dueVerificationQuests = VerificationCoordinator().dueQuests(
+                from: active,
+                verifications: existingVerifications,
+                now: now
+            )
+        } catch {
+            dueVerificationQuests = []
+        }
     }
 
     private func runScheduledAssetPackRegistrySubscriptionSyncIfNeeded(now: Date = .now) async {
@@ -2931,6 +4036,7 @@ final class AppStore: ObservableObject {
                 userDeniedCount: 0
             )
             promptAssetRunQualitySummaries = PromptAssetRunQualitySummary.summaries(for: recentPromptRuns)
+            coachPromptQualitySummaries = []
             refreshPromptAssetQualityGate()
             promptRunAuditMessage = ""
             return
@@ -2941,6 +4047,7 @@ final class AppStore: ObservableObject {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
+            coachPromptQualitySummaries = []
             refreshPromptAssetQualityGate()
             promptRunAuditMessage = "AI 调用记录暂不可用。"
             return
@@ -2950,14 +4057,29 @@ final class AppStore: ObservableObject {
             recentPromptRuns = try await promptRunRepository.recentPromptRuns(limit: limit)
             promptRunStats = try await promptRunRepository.promptRunStats(limit: limit)
             promptAssetRunQualitySummaries = try await promptRunRepository.promptAssetRunQualitySummaries(limit: limit)
+            await loadCoachPromptQualitySummaries()
             refreshPromptAssetQualityGate()
             promptRunAuditMessage = recentPromptRuns.isEmpty ? "还没有 AI 调用记录。" : ""
         } catch {
             recentPromptRuns = []
             promptRunStats = nil
             promptAssetRunQualitySummaries = []
+            coachPromptQualitySummaries = []
             refreshPromptAssetQualityGate()
             promptRunAuditMessage = "读取 AI 调用记录失败。"
+        }
+    }
+
+    func loadCoachPromptQualitySummaries(limit: Int = 200) async {
+        guard let coachPromptTurnRepository else {
+            coachPromptQualitySummaries = []
+            return
+        }
+
+        do {
+            coachPromptQualitySummaries = try await coachPromptTurnRepository.qualitySummaries(limit: limit)
+        } catch {
+            coachPromptQualitySummaries = []
         }
     }
 
@@ -3130,10 +4252,8 @@ final class AppStore: ObservableObject {
             let dailyEntryId = dailyEntryId.uuidString
             return try await promptRunRepository.unresolvedFailures(limit: limit)
                 .filter { run in
-                    guard let prompt = PromptID(rawValue: run.promptId),
-                          Self.canRepairPrompt(prompt)
-                    else { return false }
-                    return run.sourceRecordIds.contains(dailyEntryId)
+                    PromptID(rawValue: run.promptId) == .organizeCards &&
+                        run.sourceRecordIds.contains(dailyEntryId)
                 }
         } catch {
             return []
@@ -3143,7 +4263,9 @@ final class AppStore: ObservableObject {
     func historicalRetryCandidates(for dailyEntryId: UUID) async -> [HistoricalRetryCandidate] {
         guard let historicalRetryCandidateRepository else { return [] }
         do {
-            return try await historicalRetryCandidateRepository.candidates(for: dailyEntryId)
+            return try await historicalRetryCandidateRepository
+                .candidates(for: dailyEntryId)
+                .filter { $0.status.needsHistoryRepairAttention }
         } catch {
             return []
         }
@@ -3284,7 +4406,7 @@ final class AppStore: ObservableObject {
         switch prompt {
         case .organizeCards, .generateQuestions, .generateQuests, .extractPrinciple:
             return true
-        case .recommendLenses, .verifyQuest, .weeklyCalibration, .monthlyGrowth, .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges:
+        case .recommendLenses, .verifyQuest, .weeklyCalibration, .monthlyGrowth, .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
             return false
         }
     }
@@ -3329,13 +4451,61 @@ final class AppStore: ObservableObject {
                 let cards = try await thinkingCardRepository?.cards(for: entry.id) ?? []
                 let entryQuests = try await questRepository?.quests(for: entry.id) ?? []
                 let entryPrinciples = try await principleRepository?.principles(for: entry.id) ?? []
-                let verification = try await verificationRepository?.verification(for: entry.id)
+                let sourceDayVerifications = try await verificationRepository?.verifications(for: entry.id) ?? []
+                var verificationsByID: [UUID: Verification] = [:]
+                if let verificationRepository {
+                    for quest in entryQuests {
+                        if let verification = try await verificationRepository.verification(forQuestId: quest.id) {
+                            verificationsByID[verification.id] = verification
+                        }
+                    }
+                }
+                for verification in sourceDayVerifications {
+                    let questSourceEntryID: UUID?
+                    if let questRepository {
+                        questSourceEntryID = try await questRepository.sourceDailyEntryId(forQuestId: verification.questId)
+                    } else {
+                        questSourceEntryID = nil
+                    }
+                    guard questSourceEntryID == nil || questSourceEntryID == entry.id else { continue }
+                    verificationsByID[verification.id] = verification
+                }
+                let entryVerifications = verificationsByID.values.sorted { $0.createdAt < $1.createdAt }
+                let verification = entryVerifications.first
                 let lensSession = try await lensSessionRepository?.lensSession(for: entry.id)
+                let entryCases = try await trainingCaseRepository?.cases(for: entry.id) ?? []
+                var caseRecords: [TrainingCaseRecord] = []
+                for trainingCase in entryCases {
+                    let caseCards = cards.filter { $0.trainingCaseId == trainingCase.id }
+                    let caseQuests = entryQuests.filter { $0.trainingCaseId == trainingCase.id }
+                    let questIds = Set(caseQuests.map(\.id))
+                    let caseVerifications = entryVerifications.filter { questIds.contains($0.questId) }
+                    var settlements: [GrowthSettlement] = []
+                    for verification in caseVerifications {
+                        if let settlement = try await growthSettlementRepository?.settlement(for: verification.id) {
+                            settlements.append(settlement)
+                        }
+                    }
+                    let caseSession = try await trainingCaseSessionRepository?.session(for: trainingCase.id)
+                    let caseLens = try await lensSessionRepository?.lensSession(forTrainingCaseId: trainingCase.id)
+                    caseRecords.append(
+                        TrainingCaseRecord(
+                            trainingCase: trainingCase,
+                            session: caseSession,
+                            cards: caseCards,
+                            quests: caseQuests,
+                            lensSession: caseLens,
+                            verifications: caseVerifications,
+                            growthSettlements: settlements
+                        )
+                    )
+                }
 
                 var sourceIds: [String] = [entry.id.uuidString]
+                sourceIds.append(contentsOf: entryCases.map { $0.id.uuidString })
                 sourceIds.append(contentsOf: cards.map { $0.id.uuidString })
                 sourceIds.append(contentsOf: entryQuests.map { $0.id.uuidString })
-                if let verification { sourceIds.append(verification.id.uuidString) }
+                sourceIds.append(contentsOf: entryVerifications.map { $0.id.uuidString })
                 sourceIds.append(contentsOf: entryPrinciples.map { $0.id.uuidString })
 
                 let projectLinks = (try? await projectLinkRepository?.links(forSourceIds: sourceIds)) ?? []
@@ -3350,7 +4520,8 @@ final class AppStore: ObservableObject {
                         verification: verification,
                         lensSession: lensSession,
                         projectLinks: projectLinks,
-                        growthContributions: growthContributions
+                        growthContributions: growthContributions,
+                        caseRecords: caseRecords
                     )
                 )
             }
@@ -3411,7 +4582,7 @@ final class AppStore: ObservableObject {
 
     private func displayableGrowthContributions(for snapshot: MetricSnapshot) async throws -> [MetricContribution] {
         guard let metricContributionRepository, snapshot.canDisplayScores else { return [] }
-        return try await metricContributionRepository
+        let contributions = try await metricContributionRepository
             .contributions(for: snapshot.id)
             .filter { contribution in
                 contribution.candidateStatus != .rejected &&
@@ -3419,6 +4590,7 @@ final class AppStore: ObservableObject {
                 contribution.userFeedback != .dismissed &&
                 !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
+        return MetricContribution.latestVersionsForHistory(contributions)
     }
 
     func loadMetricContributions(for metric: GrowthMetric) async {
@@ -3427,7 +4599,7 @@ final class AppStore: ObservableObject {
             return
         }
         do {
-            metricContributions = try await metricContributionRepository
+            let contributions = try await metricContributionRepository
                 .contributions(for: growthSnapshot.id)
                 .filter { contribution in
                     contribution.metric == metric &&
@@ -3435,6 +4607,7 @@ final class AppStore: ObservableObject {
                     contribution.userFeedback != .dismissed &&
                     !contribution.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 }
+            metricContributions = MetricContribution.latestVersionsForHistory(contributions)
         } catch {
             metricContributions = []
         }
@@ -3460,6 +4633,12 @@ final class AppStore: ObservableObject {
     }
 
     private func generateLocalGrowthSnapshotFromHistoryIfNeeded() async {
+        // In production vNext, growth meaning and scores are authored by the
+        // central decision center. Keep any already-loaded LLM snapshot intact
+        // and wait for an explicit model-authored report instead of fabricating
+        // local contributions from fixed heuristics.
+        guard !requiresCentralDecisionCenter else { return }
+
         guard let metricSnapshotRepository, let metricContributionRepository else { return }
 
         let completedRecords = historyRecords
@@ -3470,7 +4649,7 @@ final class AppStore: ObservableObject {
             return
         }
 
-        let verifiedRecords = completedRecords.filter { $0.verification != nil }
+        let verifiedRecords = completedRecords.filter { !$0.allVerifications.isEmpty }
         guard !verifiedRecords.isEmpty else {
             growthSnapshot = MetricSnapshot(
                 period: "weekly",
@@ -3488,11 +4667,7 @@ final class AppStore: ObservableObject {
         }
 
         let evidenceIds = completedRecords.flatMap { record in
-            var ids = [record.draft.id.uuidString]
-            if let verificationId = record.verification?.id.uuidString {
-                ids.append(verificationId)
-            }
-            return ids
+            [record.draft.id.uuidString] + record.allVerifications.map { $0.id.uuidString }
         }
         if growthSnapshot.canDisplayScores,
            growthSnapshot.completeLoopCount >= completedRecords.count,
@@ -3571,173 +4746,155 @@ final class AppStore: ObservableObject {
         var contributions: [MetricContribution] = []
 
         for record in records {
-            if let mainQuest = record.mainQuest,
-               !mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                contributions.append(
-                    MetricContribution(
-                        snapshotId: snapshotID,
-                        metric: .clarity,
-                        direction: .positive,
-                        delta: 0.08,
-                        title: "验证行动完成标准更具体",
-                        reason: "明日验证包含可验证的完成标准。",
-                        sourceType: .quest,
-                        sourceId: mainQuest.id.uuidString,
-                        sourceDailyEntryId: record.draft.id,
-                        candidateStatus: .accepted,
-                        practiceRole: .secondaryPractice
-                    )
-                )
-            }
-
-            if let verification = record.verification {
-                switch verification.completion {
-                case .done:
+            for scope in growthEvidenceScopes(for: record) {
+                for mainQuest in scope.quests where mainQuest.type == .main {
+                    guard !mainQuest.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        continue
+                    }
                     contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .executionReliability,
+                        makeLocalGrowthContribution(
+                            snapshotID: snapshotID,
+                            scope: scope,
+                            metric: .clarity,
                             direction: .positive,
-                            delta: 0.14,
-                            title: "验证行动完成",
-                            reason: "结果校准显示验证行动已完成。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
-                        )
-                    )
-                case .partial:
-                    contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .executionReliability,
-                            direction: .positive,
-                            delta: 0.05,
-                            title: "验证行动部分完成",
-                            reason: "结果校准显示验证行动有推进但未完全闭合。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
-                        )
-                    )
-                case .missed:
-                    contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .executionReliability,
-                            direction: .negative,
-                            delta: 0.12,
-                            title: "验证行动未完成",
-                            reason: "结果校准显示验证行动没有完成，需要校准行动大小或阻力判断。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
+                            delta: 0.08,
+                            title: "验证行动完成标准更具体",
+                            reason: "明日验证包含可验证的完成标准。",
+                            sourceType: .quest,
+                            sourceId: mainQuest.id.uuidString,
                             practiceRole: .secondaryPractice
                         )
                     )
                 }
 
-                switch verification.valueRating {
-                case .high:
+                for verification in scope.verifications {
+                    switch verification.completion {
+                    case .done:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .executionReliability, direction: .positive, delta: 0.14, title: "验证行动完成", reason: "结果校准显示验证行动已完成。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    case .partial:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .executionReliability, direction: .positive, delta: 0.05, title: "验证行动部分完成", reason: "结果校准显示验证行动有推进但未完全闭合。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    case .missed:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .executionReliability, direction: .negative, delta: 0.12, title: "验证行动未完成", reason: "结果校准显示验证行动没有完成，需要校准行动大小或阻力判断。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    }
+
+                    switch verification.valueRating {
+                    case .high:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .valueJudgment, direction: .positive, delta: 0.14, title: "完成了高价值验证行动", reason: "结果校准显示验证行动实际价值高。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    case .medium:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .valueJudgment, direction: .positive, delta: 0.05, title: "验证行动价值中等", reason: "验证行动产生了一定价值，但仍有校准空间。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    case .low:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .valueJudgment, direction: .negative, delta: 0.12, title: "验证行动完成但价值偏低", reason: "结果校准显示验证行动实际价值低，需要重新判断优先级。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    case .uncertain:
+                        contributions.append(makeLocalGrowthContribution(snapshotID: snapshotID, scope: scope, metric: .calibration, direction: .negative, delta: 0.06, title: "验证行动价值仍不确定", reason: "结果校准无法判断实际价值，需要更清晰的结果证据。", sourceType: .verification, sourceId: verification.id.uuidString, practiceRole: .secondaryPractice))
+                    }
+                }
+
+                if let lensSession = scope.lensSession,
+                   lensSession.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
                     contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .valueJudgment,
+                        makeLocalGrowthContribution(
+                            snapshotID: snapshotID,
+                            scope: scope,
+                            metric: .reflectionDepth,
                             direction: .positive,
-                            delta: 0.14,
-                            title: "完成了高价值验证行动",
-                            reason: "结果校准显示验证行动实际价值高。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
-                        )
-                    )
-                case .medium:
-                    contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .valueJudgment,
-                            direction: .positive,
-                            delta: 0.05,
-                            title: "验证行动价值中等",
-                            reason: "验证行动产生了一定价值，但仍有校准空间。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
-                        )
-                    )
-                case .low:
-                    contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .valueJudgment,
-                            direction: .negative,
-                            delta: 0.12,
-                            title: "验证行动完成但价值偏低",
-                            reason: "结果校准显示验证行动实际价值低，需要重新判断优先级。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
-                        )
-                    )
-                case .uncertain:
-                    contributions.append(
-                        MetricContribution(
-                            snapshotId: snapshotID,
-                            metric: .calibration,
-                            direction: .negative,
-                            delta: 0.06,
-                            title: "验证行动价值仍不确定",
-                            reason: "结果校准无法判断实际价值，需要更清晰的结果证据。",
-                            sourceType: .verification,
-                            sourceId: verification.id.uuidString,
-                            sourceDailyEntryId: record.draft.id,
-                            candidateStatus: .accepted,
-                            practiceRole: .secondaryPractice
+                            delta: 0.07,
+                            title: "完成透镜追问",
+                            reason: "用户回答了透镜问题，形成了可追溯的思考过程。",
+                            sourceType: .dailyEntry,
+                            sourceId: scope.dailyEntryId.uuidString,
+                            practiceRole: lensPracticeRole(for: scope, lensSession: lensSession)
                         )
                     )
                 }
-            }
-
-            if let lensSession = record.lensSession,
-               lensSession.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-                contributions.append(
-                    MetricContribution(
-                        snapshotId: snapshotID,
-                        metric: .reflectionDepth,
-                        direction: .positive,
-                        delta: 0.07,
-                        title: "完成透镜追问",
-                        reason: "用户回答了透镜问题，形成了可追溯的思考过程。",
-                        sourceType: .dailyEntry,
-                        sourceId: record.draft.id.uuidString,
-                        sourceDailyEntryId: record.draft.id,
-                        candidateStatus: .accepted,
-                        practiceRole: lensPracticeRole(for: record, lensSession: lensSession)
-                    )
-                )
             }
         }
 
         return contributions
     }
 
+    private func growthEvidenceScopes(for record: HistoryRecord) -> [GrowthEvidenceScope] {
+        let caseScopes = record.caseRecords.map { item in
+            GrowthEvidenceScope(
+                dailyEntryId: record.draft.id,
+                trainingCaseId: item.trainingCase.id,
+                cards: item.cards,
+                quests: item.quests,
+                verifications: item.verifications,
+                lensSession: item.lensSession,
+                trainingPrescription: item.session?.trainingPrescription ?? record.draft.trainingPrescription
+            )
+        }
+
+        guard !caseScopes.isEmpty else {
+            return [
+                GrowthEvidenceScope(
+                    dailyEntryId: record.draft.id,
+                    trainingCaseId: nil,
+                    cards: record.cards,
+                    quests: record.quests,
+                    verifications: record.allVerifications,
+                    lensSession: record.lensSession,
+                    trainingPrescription: record.draft.trainingPrescription
+                )
+            ]
+        }
+
+        let assignedQuestIDs = Set(caseScopes.flatMap { $0.quests.map(\.id) })
+        let assignedVerificationIDs = Set(caseScopes.flatMap { $0.verifications.map(\.id) })
+        let legacyQuests = record.quests.filter { !assignedQuestIDs.contains($0.id) }
+        let legacyVerifications = record.allVerifications.filter { !assignedVerificationIDs.contains($0.id) }
+        let legacyLensSession = record.lensSession?.trainingCaseId == nil
+            ? record.lensSession
+            : nil
+        if !legacyQuests.isEmpty || !legacyVerifications.isEmpty || legacyLensSession != nil {
+            return caseScopes + [
+                GrowthEvidenceScope(
+                    dailyEntryId: record.draft.id,
+                    trainingCaseId: nil,
+                    cards: record.cards.filter { $0.trainingCaseId == nil },
+                    quests: legacyQuests,
+                    verifications: legacyVerifications,
+                    lensSession: legacyLensSession,
+                    trainingPrescription: record.draft.trainingPrescription
+                )
+            ]
+        }
+        return caseScopes
+    }
+
+    private func makeLocalGrowthContribution(
+        snapshotID: UUID,
+        scope: GrowthEvidenceScope,
+        metric: GrowthMetric,
+        direction: MetricContributionDirection,
+        delta: Double,
+        title: String,
+        reason: String,
+        sourceType: MetricContributionSourceType,
+        sourceId: String,
+        practiceRole: MetricContributionPracticeRole
+    ) -> MetricContribution {
+        MetricContribution(
+            snapshotId: snapshotID,
+            metric: metric,
+            direction: direction,
+            delta: delta,
+            title: title,
+            reason: reason,
+            sourceType: sourceType,
+            sourceId: sourceId,
+            sourceDailyEntryId: scope.dailyEntryId,
+            sourceCaseId: scope.trainingCaseId,
+            candidateStatus: .accepted,
+            practiceRole: practiceRole
+        )
+    }
+
     private func lensPracticeRole(
-        for record: HistoryRecord,
+        for scope: GrowthEvidenceScope,
         lensSession: LensSession
     ) -> MetricContributionPracticeRole {
-        guard let prescription = record.draft.trainingPrescription else {
+        guard let prescription = scope.trainingPrescription else {
             return .possibleSignal
         }
         if prescription.finalLensId == lensSession.selectedLens.rawValue {
@@ -3993,7 +5150,14 @@ final class AppStore: ObservableObject {
         case .selectLens:
             confirmSelectedLens()
         case .answerQuestions:
-            generateQuestsFromAnswers()
+            if requiresCentralDecisionCenter,
+               hasAnsweredReflectionQuestion,
+               modelCoachAnswerTurn == nil,
+               !coachAnswerGapOverrideRequested {
+                submitCoachAnswerReview()
+            } else {
+                generateQuestsFromAnswers()
+            }
         case .reviewQuests:
             saveReviewedQuests()
         case .extractPrinciple:
@@ -4214,6 +5378,668 @@ final class AppStore: ObservableObject {
         updateTodayCapture(text)
     }
 
+    var hasPendingCaseConfirmation: Bool {
+        trainingCasesVNextEnabled &&
+            activeTrainingCase == nil &&
+            !trainingCases.isEmpty &&
+            trainingCases.contains { $0.status == .pendingConfirmation }
+    }
+
+    var showsTrainingCaseConfirmation: Bool {
+        hasPendingCaseConfirmation && !isTodayOverviewPresented && todayDraft.state == .reviewCards
+    }
+
+    var hasTodayOverload: Bool {
+        let unfinishedCount = trainingCases.filter {
+            ![TrainingCaseStatus.completed, .merged].contains($0.status)
+        }.count
+        return unfinishedCount >= 3 || dueVerificationQuests.count >= 3
+    }
+
+    func resumeTrainingCaseConfirmation() {
+        guard hasPendingCaseConfirmation else { return }
+        activeTrainingCase = nil
+        todayDraft.state = .reviewCards
+        isTodayOverviewPresented = false
+        todayLoopMessage = "继续确认事项和卡片归属。"
+        persistDraft()
+    }
+
+    func organizeOverviewCapture() {
+        guard trainingCasesVNextEnabled else {
+            submitTodayStep()
+            return
+        }
+        if !todayDraft.hasSelectedSessionMode {
+            todayDraft.sessionMode = .standard
+            todayDraft.hasSelectedSessionMode = true
+        }
+        activeTrainingCase = nil
+        isTodayOverviewPresented = false
+        todayDraft.state = .capture
+        persistDraft()
+        organizeCapture()
+    }
+
+    func addManualTrainingCase(title: String) async {
+        guard let trainingCaseRepository,
+              let trainingCase = TrainingCaseCoordinator().makeManualCase(
+                dailyEntryId: todayDraft.id,
+                title: title,
+                sortOrder: trainingCases.count
+              )
+        else {
+            todayLoopMessage = "事项名称不能为空。"
+            return
+        }
+        do {
+            try await trainingCaseRepository.saveCase(trainingCase)
+            let card = ThinkingCard(
+                trainingCaseId: trainingCase.id,
+                type: .problem,
+                title: trainingCase.title,
+                body: trainingCase.title,
+                priority: .medium,
+                confidence: 1,
+                isConfirmed: true
+            )
+            // A manually created matter still needs a model-led training
+            // decision. Keep the session empty until the central coach has
+            // evaluated its confirmed card; only the no-key path may use the
+            // local policy as a visible fallback.
+            let prescription: TrainingPrescription? = requiresCentralDecisionCenter
+                ? nil
+                : LocalTrainingPrescriptionPolicy().prescribe(
+                    cards: [card],
+                    mode: .standard,
+                    userSelectedLens: nil
+                )
+            let session = TrainingCaseSession(
+                caseId: trainingCase.id,
+                loopState: .selectLens,
+                trainingPrescription: prescription
+            )
+            try await trainingCaseSessionRepository?.saveSession(session)
+            try await thinkingCardRepository?.saveCards(
+                [card],
+                dailyEntryId: todayDraft.id,
+                trainingCaseId: trainingCase.id
+            )
+            trainingCases.append(trainingCase)
+            caseCardsCache[trainingCase.id] = [card]
+            caseQuestsCache[trainingCase.id] = []
+            if !isTodayOverviewPresented { thinkingCards.append(card) }
+            todayLoopMessage = "已新增事项。"
+        } catch {
+            todayLoopMessage = "新增事项失败。"
+        }
+    }
+
+    func updateTrainingCaseTitle(_ caseId: UUID, title: String) async {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = trainingCases.firstIndex(where: { $0.id == caseId }),
+              let trainingCaseRepository
+        else { return }
+        var updated = trainingCases[index]
+        updated.title = String(trimmed.prefix(60))
+        updated.updatedAt = .now
+        do {
+            try await trainingCaseRepository.saveCase(updated)
+            trainingCases[index] = updated
+            if activeTrainingCase?.id == caseId { activeTrainingCase = updated }
+        } catch {
+            todayLoopMessage = "事项名称保存失败。"
+        }
+    }
+
+    func moveCard(_ cardId: UUID, to caseId: UUID) async {
+        guard trainingCases.contains(where: { $0.id == caseId }),
+              let card = thinkingCards.first(where: { $0.id == cardId })
+        else { return }
+
+        let originalCaseId = card.trainingCaseId
+        var movedCard = card
+        movedCard.trainingCaseId = caseId
+        thinkingCards = thinkingCards.map { $0.id == cardId ? movedCard : $0 }
+        if let originalCaseId {
+            caseCardsCache[originalCaseId]?.removeAll { $0.id == cardId }
+        }
+        caseCardsCache[caseId, default: []].removeAll { $0.id == cardId }
+        caseCardsCache[caseId, default: []].append(movedCard)
+
+        do {
+            try await trainingCaseRepository?.assignCards([cardId], to: caseId)
+            if let originalCaseId,
+               let originalCards = caseCardsCache[originalCaseId] {
+                try await thinkingCardRepository?.saveCards(
+                    originalCards,
+                    dailyEntryId: todayDraft.id,
+                    trainingCaseId: originalCaseId
+                )
+            }
+            try await thinkingCardRepository?.saveCards(
+                caseCardsCache[caseId] ?? [],
+                dailyEntryId: todayDraft.id,
+                trainingCaseId: caseId
+            )
+        } catch {
+            todayLoopMessage = "卡片归属保存失败。"
+        }
+    }
+
+    func confirmTrainingCaseSuggestions() async {
+        guard let trainingCaseRepository else {
+            isTodayOverviewPresented = true
+            return
+        }
+        do {
+            for index in trainingCases.indices {
+                guard trainingCases[index].status == .pendingConfirmation else { continue }
+                let cards = caseCardsCache[trainingCases[index].id]
+                    ?? thinkingCards.filter { $0.trainingCaseId == trainingCases[index].id }
+                trainingCases[index].status = cards.contains { $0.isConfirmed && !$0.isExcludedFromModel }
+                    ? .ready
+                    : .completed
+                trainingCases[index].updatedAt = .now
+                try await trainingCaseRepository.saveCase(trainingCases[index])
+                try await thinkingCardRepository?.saveCards(
+                    cards,
+                    dailyEntryId: todayDraft.id,
+                    trainingCaseId: trainingCases[index].id
+                )
+            }
+            thinkingCards = []
+            isTodayOverviewPresented = true
+            todayLoopMessage = "事项已确认，可以选择一件继续。"
+        } catch {
+            todayLoopMessage = "事项确认保存失败。"
+        }
+    }
+
+    func openTrainingCase(_ caseId: UUID) async {
+        guard trainingCasesVNextEnabled,
+              let selected = trainingCases.first(where: { $0.id == caseId }),
+              selected.status != .merged
+        else { return }
+
+        invalidateCoachAnswerReview(reason: "case_switched")
+        await persistCurrentTrainingCaseImmediately()
+        do {
+            let session: TrainingCaseSession
+            if let persistedSession = try await trainingCaseSessionRepository?.session(for: caseId) {
+                session = persistedSession
+            } else {
+                let newSession = TrainingCaseSession(caseId: caseId, loopState: .reviewCards)
+                try await trainingCaseSessionRepository?.saveSession(newSession)
+                session = newSession
+            }
+            let ownCards = try await thinkingCardRepository?.cards(forTrainingCaseId: caseId)
+                ?? caseCardsCache[caseId]
+                ?? []
+            var visibleCards = ownCards
+            let merges = try await trainingCaseRelationshipRepository?.activeMerges(for: todayDraft.id) ?? []
+            for merge in merges where merge.targetCaseId == caseId {
+                let sourceCards = try await thinkingCardRepository?.cards(forTrainingCaseId: merge.sourceCaseId)
+                    ?? caseCardsCache[merge.sourceCaseId]
+                    ?? []
+                visibleCards.append(contentsOf: sourceCards.filter { source in
+                    !visibleCards.contains(where: { $0.id == source.id })
+                })
+            }
+            thinkingCards = visibleCards
+            quests = try await questRepository?.quests(forTrainingCaseId: caseId)
+                ?? caseQuestsCache[caseId]
+                ?? []
+            todayDraft.selectedLens = nil
+            todayDraft.selectedCustomLensId = nil
+            if let lens = try await lensSessionRepository?.lensSession(forTrainingCaseId: caseId) {
+                questions = lens.questions
+                todayDraft.selectedLens = lens.selectedLens
+            } else {
+                questions = []
+                if session.loopState.hasCompletedLensSelection,
+                   let selectedLensId = session.selectedLensId {
+                    if let selectedLens = ThinkingLens(rawValue: selectedLensId) {
+                        todayDraft.selectedLens = selectedLens
+                    } else if (customLensItems + runtimeLensItems).contains(where: { $0.lensId == selectedLensId }) {
+                        todayDraft.selectedCustomLensId = selectedLensId
+                    }
+                }
+            }
+            trainingPrescription = session.trainingPrescription
+            todayDraft.sessionMode = session.sessionMode
+            todayDraft.hasSelectedSessionMode = true
+            todayDraft.state = session.loopState == .capture || session.loopState == .organizing
+                ? .reviewCards
+                : session.loopState
+            activeTrainingCase = selected
+            isTodayOverviewPresented = false
+            coachDiagnosis = nil
+            coachTurnState = nil
+            if todayDraft.state == .selectLens, trainingPrescription == nil, !confirmedCardsForAI.isEmpty {
+                prepareTrainingPrescriptionForCurrentCards()
+                let repairedSession = TrainingCaseSession(
+                    caseId: caseId,
+                    loopState: todayDraft.state,
+                    sessionMode: todayDraft.sessionMode,
+                    trainingPrescription: trainingPrescription
+                )
+                try await trainingCaseSessionRepository?.saveSession(repairedSession)
+            } else if trainingPrescription != nil {
+                // A restored session must go through the same central coach
+                // decision path as a newly confirmed case. Keep the persisted
+                // prescription visible while the model re-evaluates it.
+                if requiresCentralDecisionCenter {
+                    coachDiagnosis = nil
+                    coachTurnState = nil
+                } else {
+                    let diagnosis = CoachEngine().diagnose(cards: confirmedCardsForAI)
+                    coachDiagnosis = diagnosis
+                    coachTurnState = CoachTurnPolicy().makeInitialTurn(
+                        cards: confirmedCardsForAI,
+                        diagnosis: diagnosis
+                    )
+                }
+                requestCoachDecisionForCurrentCards()
+            }
+            await setTrainingCaseStatus(.inProgress, caseId: caseId)
+            refreshActiveGuidance()
+        } catch {
+            todayLoopMessage = "打开事项失败，当前内容未被覆盖。"
+        }
+    }
+
+    func returnToTodayOverview() async {
+        invalidateCoachAnswerReview(reason: "returned_to_overview")
+        await persistCurrentTrainingCaseImmediately()
+        activeTrainingCase = nil
+        thinkingCards = []
+        questions = []
+        quests = []
+        trainingPrescription = nil
+        isTodayOverviewPresented = true
+        await refreshDueVerificationQueue()
+    }
+
+    func beginVerification(_ quest: Quest) async {
+        await persistCurrentTrainingCaseImmediately()
+        activeTrainingCase = quest.trainingCaseId.flatMap { id in trainingCases.first { $0.id == id } }
+        quests = [quest]
+        todayDraft.yesterdayCompletion = nil
+        todayDraft.yesterdayValueRating = nil
+        todayDraft.yesterdayJudgmentUpdate = nil
+        todayDraft.yesterdayEvidence = ""
+        todayDraft.state = .verifyYesterday
+        isTodayOverviewPresented = false
+        refreshActiveGuidance()
+    }
+
+    func deferVerification(_ quest: Quest, days: Int = 1) async {
+        let date = Calendar.current.date(byAdding: .day, value: max(days, 1), to: .now)
+        do {
+            try await questRepository?.deferVerification(for: quest.id, until: date)
+            dueVerificationQuests.removeAll { $0.id == quest.id }
+            todayLoopMessage = "已暂缓，之后会再次提醒。"
+        } catch {
+            todayLoopMessage = "暂缓保存失败。"
+        }
+    }
+
+    func mergeTrainingCase(_ sourceCaseId: UUID, into targetCaseId: UUID) async {
+        guard sourceCaseId != targetCaseId,
+              let source = trainingCases.first(where: { $0.id == sourceCaseId }),
+              let target = trainingCases.first(where: { $0.id == targetCaseId }),
+              source.dailyEntryId == target.dailyEntryId
+        else {
+            todayLoopMessage = "只有同一天的两个事项可以合并。"
+            return
+        }
+        do {
+            let sourceQuests = try await questRepository?.quests(forTrainingCaseId: sourceCaseId) ?? []
+            let targetQuests = try await questRepository?.quests(forTrainingCaseId: targetCaseId) ?? []
+            for quest in sourceQuests + targetQuests {
+                if try await verificationRepository?.verification(forQuestId: quest.id) != nil {
+                    todayLoopMessage = "已有验证结果的事项不能合并，可以改为建立关联。"
+                    return
+                }
+            }
+            let merge = TrainingCaseMerge(sourceCaseId: sourceCaseId, targetCaseId: targetCaseId)
+            try await trainingCaseRelationshipRepository?.saveMerge(merge)
+            await setTrainingCaseStatus(.merged, caseId: sourceCaseId)
+            trainingCaseMerges.append(merge)
+            todayLoopMessage = "事项已合并，目标事项会读取双方证据。"
+        } catch {
+            todayLoopMessage = "事项合并失败。"
+        }
+    }
+
+    func undoTrainingCaseMerge(_ mergeId: UUID) async {
+        guard let merge = trainingCaseMerges.first(where: { $0.id == mergeId }) else { return }
+        do {
+            try await trainingCaseRelationshipRepository?.revertMerge(id: mergeId)
+            await setTrainingCaseStatus(.ready, caseId: merge.sourceCaseId)
+            trainingCaseMerges.removeAll { $0.id == mergeId }
+            todayLoopMessage = "已撤销合并，来源事项恢复。"
+        } catch {
+            todayLoopMessage = "撤销合并失败。"
+        }
+    }
+
+    func linkTrainingCase(
+        _ sourceCaseId: UUID,
+        to targetCaseId: UUID,
+        kind: TrainingCaseLinkKind
+    ) async {
+        guard sourceCaseId != targetCaseId else { return }
+        do {
+            try await trainingCaseRelationshipRepository?.saveLink(
+                TrainingCaseLink(sourceCaseId: sourceCaseId, targetCaseId: targetCaseId, kind: kind)
+            )
+            todayLoopMessage = "事项关联已保存，历史证据保持不变。"
+        } catch {
+            todayLoopMessage = "事项关联保存失败。"
+        }
+    }
+
+    func dismissLatestGrowthSettlement() {
+        latestGrowthSettlement = nil
+    }
+
+    func snoozeActiveGuidance(days: Int = 7) async {
+        guard let item = activeGuidance else { return }
+        var state = guidanceStates.first(where: { $0.hintId == item.hintId })
+            ?? UserGuidanceState(hintId: item.hintId)
+        state.snoozedUntil = Calendar.current.date(byAdding: .day, value: max(1, days), to: .now)
+        state.lastShownAt = .now
+        state.updatedAt = .now
+        await saveGuidanceState(state)
+        activeGuidance = nil
+    }
+
+    func markActiveGuidanceMastered() async {
+        guard let item = activeGuidance else { return }
+        var state = guidanceStates.first(where: { $0.hintId == item.hintId })
+            ?? UserGuidanceState(hintId: item.hintId)
+        state.status = .mastered
+        state.counterexampleCount = 0
+        state.lastShownAt = .now
+        state.updatedAt = .now
+        await saveGuidanceState(state)
+        activeGuidance = nil
+    }
+
+    func recordCoachTurnFeedback(_ value: CoachTurnFeedbackValue, note: String? = nil) async {
+        guard !Task.isCancelled,
+              let activeTrainingCase,
+              let trainingCaseSessionRepository,
+              let coachPromptTurnRepository,
+              let guidanceRepository,
+              let promptID = coachFeedbackPromptID(for: todayDraft.state),
+              let outputFingerprint = coachFeedbackOutputFingerprint(for: todayDraft.state)
+        else { return }
+
+        let caseID = activeTrainingCase.id
+        let stateAtFeedback = todayDraft.state
+        do {
+            let session: TrainingCaseSession
+            if let persistedSession = try await trainingCaseSessionRepository.session(for: caseID) {
+                session = persistedSession
+            } else {
+                // A restored or manually-created case can predate its session
+                // row. Create the row before resolving the presented turn so
+                // feedback remains attributable without falling back to the
+                // newest PromptRun.
+                let newSession = TrainingCaseSession(
+                    caseId: caseID,
+                    loopState: todayDraft.state,
+                    sessionMode: todayDraft.sessionMode
+                )
+                try await trainingCaseSessionRepository.saveSession(newSession)
+                session = newSession
+            }
+
+            guard !Task.isCancelled,
+                  self.activeTrainingCase?.id == caseID,
+                  todayDraft.state == stateAtFeedback,
+                  coachFeedbackOutputFingerprint(for: stateAtFeedback) == outputFingerprint,
+                  let presentedTurn = try await coachPromptTurnRepository.presentedTurn(
+                      caseSessionId: session.id,
+                      promptId: promptID,
+                      outputFingerprint: outputFingerprint
+                  ),
+                  !Task.isCancelled,
+                  self.activeTrainingCase?.id == caseID,
+                  todayDraft.state == stateAtFeedback,
+                  coachFeedbackOutputFingerprint(for: stateAtFeedback) == outputFingerprint
+            else { return }
+
+            try await guidanceRepository.saveFeedback(
+                CoachTurnFeedback(
+                    caseSessionId: session.id,
+                    promptRunId: presentedTurn.promptRunId,
+                    value: value,
+                    note: note?.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            )
+
+            if value != .useful {
+                try await promptRunRepository?.updatePromptRunFeedback(.denied, runId: presentedTurn.promptRunId)
+            }
+            await loadRecentPromptRuns()
+            todayLoopMessage = "已记录这次教练反馈。"
+        } catch {
+            todayLoopMessage = "教练反馈保存失败。"
+        }
+    }
+
+    private func coachFeedbackPromptID(for state: DailyLoopState) -> PromptID? {
+        switch state {
+        case .answerQuestions:
+            return modelCoachAnswerTurn == nil ? .generateQuestions : .reviewCoachAnswer
+        case .reviewQuests:
+            return .generateQuests
+        default:
+            // Lens selection is driven by local coaching policy, not an LLM response.
+            return nil
+        }
+    }
+
+    private func coachFeedbackOutputFingerprint(for state: DailyLoopState) -> String? {
+        switch state {
+        case .answerQuestions:
+            if let turn = modelCoachAnswerTurn, let feedback = modelCoachAnswerFeedback {
+                return CoachPromptOutputFingerprint.answerReview(
+                    questions: questions,
+                    turn: turn,
+                    feedback: feedback,
+                    referenceSuggestion: modelCoachReferenceSuggestion
+                )
+            }
+            return CoachPromptOutputFingerprint.questions(questions)
+        case .reviewQuests:
+            return CoachPromptOutputFingerprint.quests(quests)
+        default:
+            return nil
+        }
+    }
+
+    private func markCoachPromptTurnPresented(
+        _ promptRunId: UUID?,
+        promptID: PromptID,
+        caseID: UUID,
+        outputFingerprint: String
+    ) async -> Bool {
+        guard let promptRunId,
+              trainingCasesVNextEnabled,
+              !Task.isCancelled,
+              activeTrainingCase?.id == caseID,
+              let trainingCaseSessionRepository,
+              let coachPromptTurnRepository
+        else { return false }
+
+        do {
+            guard let session = try await trainingCaseSessionRepository.session(for: caseID),
+                  !Task.isCancelled,
+                  activeTrainingCase?.id == caseID
+            else {
+                await markCoachPromptTurnDiscarded(
+                    promptRunId,
+                    promptID: promptID,
+                    reason: "case_session_unavailable_before_presentation"
+                )
+                return false
+            }
+
+            try await coachPromptTurnRepository.markPresented(
+                promptRunId: promptRunId,
+                caseSessionId: session.id,
+                caseId: caseID,
+                promptId: promptID,
+                outputFingerprint: outputFingerprint
+            )
+            return true
+        } catch {
+            await markCoachPromptTurnDiscarded(
+                promptRunId,
+                promptID: promptID,
+                reason: "presentation_persistence_failed"
+            )
+            return false
+        }
+    }
+
+    private func markCoachPromptTurnDiscarded(
+        _ promptRunId: UUID?,
+        promptID: PromptID,
+        reason: String
+    ) async {
+        guard let promptRunId, let coachPromptTurnRepository else { return }
+        try? await coachPromptTurnRepository.recordOutcome(
+            promptRunId: promptRunId,
+            promptId: promptID,
+            outcome: .discarded,
+            detail: reason
+        )
+    }
+
+    private func refreshActiveGuidance() {
+        guard trainingCasesVNextEnabled else {
+            activeGuidance = nil
+            return
+        }
+        let stage: GuidanceStage
+        var triggers: Set<String> = []
+        switch todayDraft.state {
+        case .capture, .organizing, .reviewCards:
+            stage = .capture
+        case .selectMode, .selectLens, .answerQuestions:
+            stage = .judgment
+            if !thinkingCards.contains(where: { $0.isConfirmed && $0.type == .fact }) {
+                triggers.insert("missing_observable_evidence")
+            }
+        case .reviewQuests, .extractPrinciple, .sessionComplete:
+            stage = .action
+            if quests.contains(where: { $0.completionCriteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                triggers.insert("missing_completion_criteria")
+            }
+        case .verifyYesterday:
+            stage = .verification
+            let evidence = todayDraft.yesterdayEvidence.trimmingCharacters(in: .whitespacesAndNewlines)
+            if evidence.isEmpty || evidence == "完成" || evidence == "做完了" {
+                triggers.insert("completion_without_result")
+            }
+        }
+        let candidates = GuidanceEngine().eligibleRecommendations(
+            stage: stage,
+            triggerKeys: triggers,
+            states: guidanceStates
+        )
+        guidanceDecisionTask?.cancel()
+        guidanceDecisionToken = UUID()
+        activeGuidance = nil
+        guard !candidates.isEmpty,
+              let guidanceAIService
+        else { return }
+
+        let token = guidanceDecisionToken
+        let candidatePayload = candidates.map {
+            GuidanceDecisionCandidate(
+                hintId: $0.hintId,
+                copy: $0.copy,
+                explanation: $0.explanation,
+                stage: $0.stage,
+                triggerKey: $0.triggerKey
+            )
+        }
+        let context = GuidanceDecisionContext(
+            stage: stage,
+            triggerKeys: Array(triggers).sorted(),
+            candidates: candidatePayload,
+            states: guidanceStates.filter { state in
+                candidates.contains(where: { $0.hintId == state.hintId })
+            },
+            currentCaseId: activeTrainingCase?.id.uuidString,
+            currentCaseTitle: activeTrainingCase?.title,
+            evidenceSummary: [
+                thinkingCards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+                    .map { "card:\($0.title) \($0.body)" }
+                    .joined(separator: "\n"),
+                quests.map { "quest:\($0.title); criteria:\($0.completionCriteria)" }
+                    .joined(separator: "\n"),
+                todayDraft.yesterdayEvidence
+            ]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+        )
+        guidanceDecisionTask = Task { [weak self] in
+            do {
+                let decision = try await guidanceAIService.choose(context: context)
+                guard !Task.isCancelled else { return }
+                guard let self,
+                      self.guidanceDecisionToken == token,
+                      self.trainingCasesVNextEnabled
+                else { return }
+                if decision.action == .show,
+                   let hintId = decision.hintId {
+                    self.activeGuidance = candidates.first { $0.hintId == hintId }
+                }
+            } catch {
+                // A failed guidance decision must not silently become a local recommendation.
+            }
+        }
+    }
+
+    private func saveGuidanceState(_ state: UserGuidanceState) async {
+        do {
+            try await guidanceRepository?.saveState(state)
+            guidanceStates.removeAll { $0.hintId == state.hintId }
+            guidanceStates.append(state)
+        } catch {
+            todayLoopMessage = "提示状态保存失败。"
+        }
+    }
+
+    private func recordGuidanceEvidenceAfterVerification(quest: Quest, verification: Verification) async {
+        guard let guidanceAIService else { return }
+        let engine = GuidanceEngine()
+        for item in BuiltinGuidanceCatalog.items {
+            guard let decision = try? await guidanceAIService.evaluateEvidence(
+                item: item,
+                quest: quest,
+                verification: verification
+            ), decision.result != .insufficient else { continue }
+            let existing = guidanceStates.first { $0.hintId == item.hintId }
+            let updated = engine.recordingEvidence(
+                for: item,
+                state: existing,
+                evidenceRef: verification.id.uuidString,
+                isCounterexample: decision.result == .counterexample
+            )
+            await saveGuidanceState(updated)
+        }
+    }
+
     func supplementTodayCapture(_ text: String) {
         let supplement = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !supplement.isEmpty else {
@@ -4282,7 +6108,23 @@ final class AppStore: ObservableObject {
     }
 
     func acceptTrainingPrescription() {
-        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        guard let base = trainingPrescription else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            let fallback = makeCoachTrainingPrescription()
+            applyTrainingPrescription(
+                updatedTrainingPrescription(
+                    from: fallback,
+                    finalLensId: fallback.recommendedLensId,
+                    userSelectedLensId: nil,
+                    source: .coachRecommended,
+                    overrideBoundary: ""
+                )
+            )
+            return
+        }
         applyTrainingPrescription(
             updatedTrainingPrescription(
                 from: base,
@@ -4299,7 +6141,23 @@ final class AppStore: ObservableObject {
     }
 
     func skipTrainingPrescription() {
-        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        guard let base = trainingPrescription else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            let fallback = makeCoachTrainingPrescription()
+            applyTrainingPrescription(
+                updatedTrainingPrescription(
+                    from: fallback,
+                    finalLensId: fallback.recommendedLensId,
+                    userSelectedLensId: nil,
+                    source: .skipped,
+                    overrideBoundary: "用户跳过显式训练选择；本次仍使用教练推荐 \(fallback.recommendedLensId) 作为主训练焦点，并保留基础思维检查。"
+                )
+            )
+            return
+        }
         applyTrainingPrescription(
             updatedTrainingPrescription(
                 from: base,
@@ -4312,7 +6170,18 @@ final class AppStore: ObservableObject {
     }
 
     func acceptCoachDiagnosis() {
-        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        guard var diagnosis = coachDiagnosis else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            var fallback = CoachEngine().diagnose(cards: confirmedCardsForAI)
+            fallback.source = .coachAccepted
+            coachDiagnosis = fallback
+            syncCoachTurnState(with: fallback)
+            clearTodayLoopMessage()
+            return
+        }
         diagnosis.source = .coachAccepted
         coachDiagnosis = diagnosis
         syncCoachTurnState(with: diagnosis)
@@ -4320,7 +6189,20 @@ final class AppStore: ObservableObject {
     }
 
     func slowDownCoachDiagnosis() {
-        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        guard var diagnosis = coachDiagnosis else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            var fallback = CoachEngine().diagnose(cards: confirmedCardsForAI)
+            fallback.source = .userSlowDown
+            fallback.readiness = .notReady
+            fallback.recommendedMove = .slowDownConvergence
+            coachDiagnosis = fallback
+            syncCoachTurnState(with: fallback)
+            todayLoopMessage = "已按教练建议减缓收敛，先补齐关键证据。"
+            return
+        }
         diagnosis.source = .userSlowDown
         diagnosis.readiness = .notReady
         diagnosis.recommendedMove = .slowDownConvergence
@@ -4330,7 +6212,20 @@ final class AppStore: ObservableObject {
     }
 
     func overrideCoachDiagnosisToProgress() {
-        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        guard var diagnosis = coachDiagnosis else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            var fallback = CoachEngine().diagnose(cards: confirmedCardsForAI)
+            fallback.source = .userOverrideProgress
+            fallback.readiness = .ready
+            fallback.recommendedMove = .generateQuest
+            coachDiagnosis = fallback
+            syncCoachTurnState(with: fallback)
+            todayLoopMessage = "已记录为用户主动推进；后续仍保留证据缺口提示。"
+            return
+        }
         diagnosis.source = .userOverrideProgress
         diagnosis.readiness = .ready
         diagnosis.recommendedMove = .generateQuest
@@ -4361,13 +6256,22 @@ final class AppStore: ObservableObject {
             return
         }
 
-        refreshCoachTurnStateAfterAnswers()
-        if let coachTurnState, coachTurnState.readiness != .ready {
+        if requiresCentralDecisionCenter, modelCoachAnswerTurn == nil {
+            coachAnswerGapOverrideRequested = true
             recordCoachGapOverrideForProgress(
                 from: coachTurnState,
                 reason: "用户选择带着教练缺口继续；后续仍保留证据缺口提示。"
             )
             todayLoopMessage = "已记录为用户主动带着缺口继续；后续仍保留证据缺口提示。"
+        } else {
+            refreshCoachTurnStateAfterAnswers()
+            if let coachTurnState, coachTurnState.readiness != .ready {
+                recordCoachGapOverrideForProgress(
+                    from: coachTurnState,
+                    reason: "用户选择带着教练缺口继续；后续仍保留证据缺口提示。"
+                )
+                todayLoopMessage = "已记录为用户主动带着缺口继续；后续仍保留证据缺口提示。"
+            }
         }
         generateQuestsFromAnswers()
     }
@@ -4376,7 +6280,24 @@ final class AppStore: ObservableObject {
         from turn: CoachTurnState? = nil,
         reason: String
     ) {
-        var diagnosis = coachDiagnosis ?? CoachEngine().diagnose(cards: confirmedCardsForAI)
+        guard var diagnosis = coachDiagnosis else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            var fallback = CoachEngine().diagnose(cards: confirmedCardsForAI)
+            fallback.source = .userOverrideProgress
+            fallback.readiness = .ready
+            fallback.recommendedMove = .generateQuest
+            fallback.reason = reason
+            coachDiagnosis = fallback
+            let baseTurn = turn ?? coachTurnState ?? CoachTurnPolicy().makeInitialTurn(
+                cards: confirmedCardsForAI,
+                diagnosis: fallback
+            )
+            coachTurnState = CoachTurnPolicy().applyingUserDecision(.userOverrideProgress, to: baseTurn)
+            return
+        }
         diagnosis.source = .userOverrideProgress
         diagnosis.readiness = .ready
         diagnosis.recommendedMove = .generateQuest
@@ -4484,13 +6405,161 @@ final class AppStore: ObservableObject {
     }
 
     private func prepareTrainingPrescriptionForCurrentCards() {
-        let diagnosis = CoachEngine().diagnose(cards: confirmedCardsForAI)
-        coachDiagnosis = diagnosis
-        coachTurnState = CoachTurnPolicy().makeInitialTurn(
-            cards: confirmedCardsForAI,
-            diagnosis: diagnosis
+        if requiresCentralDecisionCenter {
+            // Do not surface a local interpretation when the central model is
+            // available. The select-lens screen remains in a waiting state
+            // until the model returns an auditable decision.
+            trainingPrescription = nil
+            coachDiagnosis = nil
+            coachTurnState = nil
+            requestCoachDecisionForCurrentCards()
+        } else {
+            // With no configured model, preserve the usable offline fallback.
+            let diagnosis = CoachEngine().diagnose(cards: confirmedCardsForAI)
+            coachDiagnosis = diagnosis
+            coachTurnState = CoachTurnPolicy().makeInitialTurn(
+                cards: confirmedCardsForAI,
+                diagnosis: diagnosis
+            )
+            trainingPrescription = makeCoachTrainingPrescription()
+        }
+    }
+
+    /// Runs the global coach decision for the currently active case. This is
+    /// intentionally callable when reopening a persisted session so a cached
+    /// local diagnosis never becomes the authoritative decision.
+    private func requestCoachDecisionForCurrentCards() {
+        guard requiresCentralDecisionCenter,
+              let coachDecisionAIService,
+              !confirmedCardsForAI.isEmpty
+        else { return }
+
+        coachDecisionTask?.cancel()
+        coachDecisionToken = UUID()
+        let token = coachDecisionToken
+        let context = CoachDecisionContext(
+            caseId: activeTrainingCase?.id,
+            caseTitle: activeTrainingCase?.title,
+            mode: todayDraft.sessionMode,
+            cards: confirmedCardsForAI
         )
-        trainingPrescription = makeCoachTrainingPrescription()
+        coachDecisionTask = Task { [weak self] in
+            do {
+                let decision = try await coachDecisionAIService.decide(context: context)
+                guard !Task.isCancelled else { return }
+                guard let self,
+                      self.coachDecisionToken == token
+                else { return }
+                if let caseId = context.caseId, self.activeTrainingCase?.id != caseId { return }
+                self.coachDiagnosis = decision.diagnosis
+                self.coachTurnState = CoachTurnPolicy().makeInitialTurn(
+                    cards: self.confirmedCardsForAI,
+                    diagnosis: decision.diagnosis
+                )
+                self.trainingPrescription = decision.prescription
+                self.persistTrainingCaseSession()
+            } catch {
+                // There is no local interpretation to promote when the model
+                // is configured. Leave the step waiting and expose retry.
+                guard let self, self.coachDecisionToken == token else { return }
+                self.todayLoopMessage = "明思暂时无法完成当前判断，请重试后再选择训练重点。"
+            }
+        }
+    }
+
+    /// Runs only when the user submits their answer. Typing remains local and
+    /// therefore cannot create a stream of model calls.
+    func submitCoachAnswerReview() {
+        guard requiresCentralDecisionCenter,
+              let coachAnswerReviewAIService,
+              todayDraft.state == .answerQuestions,
+              hasAnsweredReflectionQuestion,
+              let previousTurn = coachTurnState
+        else { return }
+
+        guard coachAnswerReviewTask == nil else {
+            todayLoopMessage = "正在复盘当前回答。"
+            return
+        }
+        coachAnswerReviewToken = UUID()
+        let token = coachAnswerReviewToken
+        let caseID = activeTrainingCase?.id
+        let answerFingerprint = questions.map { "\($0.id.uuidString):\($0.answer)" }.joined(separator: "\n")
+        let context = CoachAnswerReviewContext(
+            caseId: caseID,
+            caseTitle: activeTrainingCase?.title,
+            mode: todayDraft.sessionMode,
+            cards: confirmedCardsForAI,
+            questions: questions,
+            previousTurn: previousTurn
+        )
+        coachAnswerReviewTask = Task { [weak self] in
+            do {
+                let decision = try await coachAnswerReviewAIService.review(context: context)
+                guard !Task.isCancelled,
+                      let self,
+                      self.coachAnswerReviewToken == token,
+                      self.todayDraft.state == .answerQuestions,
+                      self.activeTrainingCase?.id == caseID,
+                      self.questions.map({ "\($0.id.uuidString):\($0.answer)" }).joined(separator: "\n") == answerFingerprint
+                else {
+                    await self?.markCoachPromptTurnDiscarded(
+                        decision.promptRunId,
+                        promptID: .reviewCoachAnswer,
+                        reason: "answer_or_case_changed_before_presentation"
+                    )
+                    return
+                }
+                self.coachAnswerReviewPromptRunId = decision.promptRunId
+                let fingerprint = CoachPromptOutputFingerprint.answerReview(
+                    questions: self.questions,
+                    turn: decision.turn,
+                    feedback: decision.feedback,
+                    referenceSuggestion: decision.referenceSuggestion
+                )
+                if let caseID {
+                    let wasPersisted = await self.markCoachPromptTurnPresented(
+                        decision.promptRunId,
+                        promptID: .reviewCoachAnswer,
+                        caseID: caseID,
+                        outputFingerprint: fingerprint
+                    )
+                    guard wasPersisted,
+                          self.coachAnswerReviewToken == token,
+                          self.activeTrainingCase?.id == caseID,
+                          self.todayDraft.state == .answerQuestions
+                    else { return }
+                }
+                self.modelCoachAnswerTurn = decision.turn
+                self.modelCoachAnswerFeedback = decision.feedback
+                self.modelCoachReferenceSuggestion = decision.referenceSuggestion
+                self.coachAnswerReviewTask = nil
+                self.todayLoopMessage = "已复盘当前回答。确认后可设计明日验证。"
+            } catch {
+                guard let self, self.coachAnswerReviewToken == token else { return }
+                // The previous model diagnosis remains visible. A failed
+                // answer review must not become a locally inferred judgment.
+                self.modelCoachAnswerTurn = nil
+                self.modelCoachAnswerFeedback = nil
+                self.modelCoachReferenceSuggestion = nil
+                self.coachAnswerReviewTask = nil
+                self.todayLoopMessage = "当前回答复盘未完成，请重试或选择带着缺口继续。"
+            }
+        }
+    }
+
+    private func invalidateCoachAnswerReview(reason: String) {
+        coachAnswerReviewTask?.cancel()
+        coachAnswerReviewTask = nil
+        coachAnswerReviewToken = UUID()
+        let promptRunId = coachAnswerReviewPromptRunId
+        coachAnswerReviewPromptRunId = nil
+        modelCoachAnswerTurn = nil
+        modelCoachAnswerFeedback = nil
+        modelCoachReferenceSuggestion = nil
+        if let promptRunId {
+            Task { await markCoachPromptTurnDiscarded(promptRunId, promptID: .reviewCoachAnswer, reason: reason) }
+        }
     }
 
     private func syncCoachTurnState(with diagnosis: CoachDiagnosis) {
@@ -4503,6 +6572,18 @@ final class AppStore: ObservableObject {
     }
 
     private func refreshCoachTurnStateAfterAnswers() {
+        if requiresCentralDecisionCenter, let reviewed = modelCoachAnswerTurn {
+            coachTurnState = reviewed
+            coachDiagnosis = CoachDiagnosis(
+                phase: reviewed.phase,
+                readiness: reviewed.readiness,
+                recommendedMove: reviewed.recommendedMove,
+                reason: reviewed.reason,
+                source: reviewed.decisionSource,
+                policyVersion: reviewed.policyVersion
+            )
+            return
+        }
         coachTurnState = CoachTurnPolicy().updateAfterAnswers(
             cards: confirmedCardsForAI,
             questions: questions,
@@ -4540,7 +6621,18 @@ final class AppStore: ObservableObject {
     }
 
     private func applyFinalTrainingLens(_ finalLensId: String) {
-        let base = trainingPrescription ?? makeCoachTrainingPrescription()
+        guard let base = trainingPrescription else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .diagnoseTrainingCase)
+                return
+            }
+            applyFinalTrainingLens(finalLensId, base: makeCoachTrainingPrescription())
+            return
+        }
+        applyFinalTrainingLens(finalLensId, base: base)
+    }
+
+    private func applyFinalTrainingLens(_ finalLensId: String, base: TrainingPrescription) {
         let source: TrainingPrescriptionSource = finalLensId == base.recommendedLensId ? .coachRecommended : .userOverride
         let userSelectedLensId = source == .userOverride ? finalLensId : nil
         applyTrainingPrescription(
@@ -4609,8 +6701,12 @@ final class AppStore: ObservableObject {
             todayDraft.customLensQuestions = questions
             persistDraft()
         }
+        invalidateCoachAnswerReview(reason: "answer_changed")
         if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             clearTodayLoopMessage()
+            coachAnswerGapOverrideRequested = false
+        } else if requiresCentralDecisionCenter {
+            coachAnswerGapOverrideRequested = false
         }
         persistLensSession()
     }
@@ -4636,7 +6732,11 @@ final class AppStore: ObservableObject {
 
     func questTrainingTarget(for questID: Quest.ID) -> QuestTrainingTarget? {
         guard let quest = quests.first(where: { $0.id == questID }) else { return nil }
-        return Self.questTrainingTarget(for: quest, principles: activePrinciples)
+        return Self.questTrainingTarget(
+            for: quest,
+            principles: activePrinciples,
+            trainingCasesVNextEnabled: trainingCasesVNextEnabled
+        )
     }
 
     @discardableResult
@@ -4855,6 +6955,7 @@ final class AppStore: ObservableObject {
     }
 
     func resetTodayLoop() {
+        invalidateCoachAnswerReview(reason: "loop_reset")
         todayDraft = DailyEntryDraft()
         trainingPrescription = nil
         thinkingCards = []
@@ -4906,7 +7007,7 @@ final class AppStore: ObservableObject {
 
         todayLoopMessage = "正在保存昨日验证。"
         Task {
-            await persistVerification(
+            let didSave = await persistVerification(
                 quest: quest,
                 completion: completion,
                 rating: rating,
@@ -4914,7 +7015,21 @@ final class AppStore: ObservableObject {
                 evidence: evidence,
                 draftID: draftID
             )
-            moveTodayLoop(to: .capture)
+            guard didSave else { return }
+            if trainingCasesVNextEnabled {
+                if let caseId = quest.trainingCaseId {
+                    await setTrainingCaseStatus(.completed, caseId: caseId)
+                }
+                activeTrainingCase = nil
+                quests = []
+                questions = []
+                thinkingCards = []
+                isTodayOverviewPresented = true
+                todayLoopMessage = "验证已保存，并形成新的成长证据。"
+                await refreshDueVerificationQueue()
+            } else {
+                moveTodayLoop(to: .capture)
+            }
         }
     }
 
@@ -4925,21 +7040,36 @@ final class AppStore: ObservableObject {
         judgmentUpdate: YesterdayJudgmentUpdate,
         evidence: String,
         draftID: UUID
-    ) async {
+    ) async -> Bool {
         var calibrationNote = "本地校准：用户自评完成度 \(completion.title)，价值 \(rating.title)，判断更新 \(judgmentUpdate.title)。"
         var likelyIssue: String?
         var recommendation: String?
+        var modelGrowthEvidenceItems: [GrowthSettlementEvidenceItem] = []
+        let verificationID = UUID()
+
+        guard canUseTodayAIServiceForTodayFlow || !requiresCentralDecisionCenter else {
+            recordCentralDecisionUnavailable(for: .verifyQuest)
+            return false
+        }
 
         if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let result = try await todayAIService.verifyQuest(
                     input: VerifyQuestInput(
-                        sourceRecordIDs: [quest.id.uuidString, draftID.uuidString],
+                        verificationId: verificationID,
+                        sourceRecordIDs: [quest.id.uuidString, verificationID.uuidString] + [quest.trainingCaseId?.uuidString].compactMap { $0 },
+                        currentTrainingCase: quest.trainingCaseId.flatMap { caseId in
+                            trainingCases.first { $0.id == caseId }
+                        },
                         questTitle: quest.title,
                         completionCriteria: quest.completionCriteria,
                         targetJudgment: quest.calibrationTarget,
                         trainingPrinciple: Self.verificationTrainingPrincipleContext(
-                            from: Self.questTrainingTarget(for: quest, principles: activePrinciples)
+                            from: Self.questTrainingTarget(
+                                for: quest,
+                                principles: activePrinciples,
+                                trainingCasesVNextEnabled: trainingCasesVNextEnabled
+                            )
                         ),
                         completion: completion.rawValue,
                         valueRating: rating.rawValue,
@@ -4951,7 +7081,17 @@ final class AppStore: ObservableObject {
                 calibrationNote = result.calibrationNote
                 likelyIssue = result.likelyIssue
                 recommendation = result.recommendation
+                modelGrowthEvidenceItems = result.growthEvidenceItems
             } catch {
+                // With a configured key, the central model remains the
+                // authority for verification judgment. Persisting a local
+                // calibration note here would create a plausible-looking
+                // result that never came from the model and would also allow
+                // a GrowthSettlement to be written from that false authority.
+                if requiresCentralDecisionCenter {
+                    todayLoopMessage = "结果校准需要明思完成模型判断：\(aiFailureMessage(for: error)) 请重试。"
+                    return false
+                }
                 calibrationNote = "本地校准（AI 校准失败）：用户自评完成度 \(completion.title)，价值 \(rating.title)，判断更新 \(judgmentUpdate.title)。"
             }
         }
@@ -4964,6 +7104,7 @@ final class AppStore: ObservableObject {
         }
 
         let verification = Verification(
+            id: verificationID,
             questId: quest.id,
             questTitle: quest.title,
             sourceDailyEntryId: sourceDailyEntryId,
@@ -4975,25 +7116,46 @@ final class AppStore: ObservableObject {
             likelyIssue: likelyIssue,
             recommendation: recommendation
         )
+        let resolvedStatus = questStatus(for: completion)
+        let settlement = GrowthSettlementPolicy().make(
+            verification: verification,
+            quest: quest,
+            caseId: quest.trainingCaseId,
+            modelEvidenceItems: modelGrowthEvidenceItems
+        )
 
         do {
-            try await verificationRepository?.saveVerification(verification)
-            let resolvedStatus = questStatus(for: completion)
+            if let verificationSettlementRepository {
+                try await verificationSettlementRepository.saveVerification(
+                    verification,
+                    questStatus: resolvedStatus,
+                    settlement: settlement
+                )
+            } else {
+                try await verificationRepository?.saveVerification(verification)
+                try await questRepository?.updateQuestStatus(resolvedStatus, questId: quest.id)
+                try await growthSettlementRepository?.saveSettlement(settlement)
+            }
             quests = quests.map { current in
                 guard current.id == quest.id else { return current }
                 var updated = current
                 updated.status = resolvedStatus
                 return updated
             }
-            try await questRepository?.updateQuestStatus(resolvedStatus, questId: quest.id)
             await recordPrinciplePracticeEvidenceIfNeeded(
                 quest: quest,
                 verification: verification,
                 sourceDailyEntryId: sourceDailyEntryId
             )
             await refreshGrowthEvidenceAfterTodayChange()
+            latestGrowthSettlement = settlement
+            growthSettlements.removeAll { $0.verificationId == settlement.verificationId }
+            growthSettlements.insert(settlement, at: 0)
+            await recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+            return true
         } catch {
-            todayLoopMessage = "校准记录保存失败，但已继续下一步。"
+            todayLoopMessage = "校准记录保存失败，当前内容仍保留，请重试。"
+            return false
         }
     }
 
@@ -5036,6 +7198,10 @@ final class AppStore: ObservableObject {
         let evidenceTargets: [(principle: PrincipleAsset, matchSignal: String, practiceRole: MetricContributionPracticeRole)]
         if let selectedPrinciple {
             evidenceTargets = [(selectedPrinciple, selectedMatchSignal, .targetedPractice)]
+        } else if trainingCasesVNextEnabled {
+            // vNext keeps local matching as retrieval material only. Without
+            // an explicit user selection, it cannot create durable attribution.
+            evidenceTargets = []
         } else {
             evidenceTargets = candidatePrinciples.compactMap { principle in
                 guard let practiceMatch = Self.practiceMatch(in: practiceText, principle: principle) else {
@@ -5100,7 +7266,8 @@ final class AppStore: ObservableObject {
 
     private static func questTrainingTarget(
         for quest: Quest,
-        principles: [PrincipleAsset]
+        principles: [PrincipleAsset],
+        trainingCasesVNextEnabled: Bool
     ) -> QuestTrainingTarget? {
         if let selectedPrinciple = quest.trainingPrincipleId.flatMap({ selectedID in
             principles.first { $0.id == selectedID && $0.status == .active }
@@ -5111,6 +7278,10 @@ final class AppStore: ObservableObject {
                 matchSignal: "用户选择"
             )
         }
+
+        // In vNext, keyword/fragment matches are candidate retrieval only.
+        // Semantic principle attribution remains with the verification model.
+        guard !trainingCasesVNextEnabled else { return nil }
 
         let questText = [
             quest.title,
@@ -5234,7 +7405,12 @@ final class AppStore: ObservableObject {
         canRetryCurrentAI = false
         moveTodayLoop(to: .organizing, message: "正在生成结构化卡片。")
         guard canUseTodayAIServiceForTodayFlow else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .organizeCards)
+                return
+            }
             generateLocalCards(from: trimmedInput)
+            materializeTrainingCases(from: .singleCase(cards: thinkingCards))
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地整理。")
             persistCards()
             return
@@ -5255,6 +7431,10 @@ final class AppStore: ObservableObject {
     private func confirmReviewedCards() {
         guard thinkingCards.contains(where: { $0.isConfirmed }) else {
             todayLoopMessage = "至少确认一张卡片，才能进入思考透镜选择。"
+            return
+        }
+        if showsTrainingCaseConfirmation {
+            Task { await confirmTrainingCaseSuggestions() }
             return
         }
         prepareTrainingPrescriptionForCurrentCards()
@@ -5279,12 +7459,16 @@ final class AppStore: ObservableObject {
             let draftID = todayDraft.id
             todayLoopMessage = "正在生成追问。"
             if todayDraft.selectedCustomLensId != nil {
-                generateLocalQuestions(from: todayDraft.rawText)
+                generateLocalQuestions(from: localQuestionInput)
                 moveTodayLoop(to: .answerQuestions)
                 return
             }
             guard canUseTodayAIServiceForTodayFlow else {
-                generateLocalQuestions(from: todayDraft.rawText)
+                if requiresCentralDecisionCenter {
+                    recordCentralDecisionUnavailable(for: .generateQuestions)
+                    return
+                }
+                generateLocalQuestions(from: localQuestionInput)
                 Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
                 persistLensSession()
                 moveTodayLoop(to: .answerQuestions)
@@ -5308,7 +7492,15 @@ final class AppStore: ObservableObject {
             return
         }
         if hasAnsweredReflectionQuestion {
-            refreshCoachTurnStateAfterAnswers()
+            if requiresCentralDecisionCenter, modelCoachAnswerTurn == nil, !coachAnswerGapOverrideRequested {
+                todayLoopMessage = coachAnswerReviewTask == nil
+                    ? "请先提交当前回答复盘，或选择带着缺口继续。"
+                    : "正在复盘当前回答，请稍候；也可以选择带着缺口继续。"
+                return
+            }
+            if !requiresCentralDecisionCenter || modelCoachAnswerTurn != nil {
+                refreshCoachTurnStateAfterAnswers()
+            }
             if let coachTurnState, coachTurnState.readiness != .ready {
                 recordCoachGapOverrideForProgress(
                     from: coachTurnState,
@@ -5330,6 +7522,10 @@ final class AppStore: ObservableObject {
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         guard canUseTodayAIServiceForTodayFlow else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .generateQuests)
+                return
+            }
             generateLocalQuests()
             Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests) }
             moveTodayLoop(to: .reviewQuests)
@@ -5357,15 +7553,24 @@ final class AppStore: ObservableObject {
         quests = quests.map { quest in
             var updated = quest
             updated.status = quest.type == .main ? .active : quest.status
+            if quest.type == .main {
+                updated.trainingCaseId = activeTrainingCase?.id ?? quest.trainingCaseId
+                updated.verificationDueAt = updated.verificationDueAt
+                    ?? Calendar.current.date(byAdding: .day, value: 1, to: .now)
+            }
             return updated
         }
         persistQuests()
-        scheduleTomorrowMainQuestReminderIfNeeded(for: mainQuest)
+        scheduleTomorrowMainQuestReminderIfNeeded(for: self.mainQuest ?? mainQuest)
         let draftID = todayDraft.id
         todayLoopMessage = "正在沉淀原则候选。"
         lastAIFailureMessage = nil
         canRetryCurrentAI = false
         guard canUseTodayAIServiceForTodayFlow else {
+            if requiresCentralDecisionCenter {
+                recordCentralDecisionUnavailable(for: .extractPrinciple)
+                return
+            }
             generateLocalPrinciple()
             moveTodayLoop(to: .extractPrinciple)
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地原则候选。")
@@ -5389,13 +7594,27 @@ final class AppStore: ObservableObject {
         todayDraft.state = state
         todayLoopMessage = message
         persistDraft()
+        persistTrainingCaseSession()
+        refreshActiveGuidance()
     }
 
     private func completeTodayLoop(message: String) {
         moveTodayLoop(to: .sessionComplete, message: message)
         Task {
             await waitForPendingPersistence()
+            if let caseId = activeTrainingCase?.id, trainingCasesVNextEnabled {
+                await setTrainingCaseStatus(.awaitingVerification, caseId: caseId)
+                await persistCurrentTrainingCaseImmediately()
+                activeTrainingCase = nil
+                thinkingCards = []
+                questions = []
+                quests = []
+                trainingPrescription = nil
+                isTodayOverviewPresented = true
+                todayLoopMessage = "事项已保存，等待真实结果验证。"
+            }
             await refreshGrowthEvidenceAfterTodayChange()
+            await refreshDueVerificationQueue()
         }
     }
 
@@ -5407,48 +7626,62 @@ final class AppStore: ObservableObject {
 
     func generateWeeklyGrowthReport() async {
         guard !isGeneratingGrowthReport else { return }
-        guard let metricSnapshotRepository, let metricContributionRepository else {
-            growthReportMessage = "本地成长存储暂不可用。"
+        isGeneratingGrowthReport = true
+        growthReportMessage = "正在整理下周训练重点。"
+        defer { isGeneratingGrowthReport = false }
+
+        let policy = WeeklyGuidanceReviewPolicy()
+        let weekKey = policy.weekKey()
+        if weeklyGuidanceReviewWeekKey == weekKey, weeklyGuidanceReview != nil {
+            growthReportMessage = "本周训练重点已生成，继续沿用。"
+            return
+        }
+        if let weeklyGuidanceReviewRepository {
+            do {
+                if let record = try await weeklyGuidanceReviewRepository.review(forWeekKey: weekKey) {
+                    weeklyGuidanceReview = record.selection
+                    weeklyGuidanceReviewWeekKey = record.weekKey
+                    growthReportMessage = "本周训练重点已生成，继续沿用。"
+                    return
+                }
+            } catch {
+                growthReportMessage = "无法确认本周复盘状态，未重复调用 AI。"
+                return
+            }
+        }
+
+        let verifications = historyRecords.flatMap(\.allVerifications)
+        guard policy.isEligible(verifications: verifications) else {
+            weeklyGuidanceReview = nil
+            growthReportMessage = "最近 7 天需要至少 3 次验证、覆盖至少 2 天，才会生成下周训练重点。"
             return
         }
 
-        isGeneratingGrowthReport = true
-        growthReportMessage = "正在生成周度校准报告。"
-        defer { isGeneratingGrowthReport = false }
-
-        let completedRecords = historyRecords
-            .filter { $0.draft.state == .sessionComplete }
-            .sorted { $0.draft.date < $1.draft.date }
-        let dismissedContributionTitles = await dismissedGrowthContributionTitles()
-
-        let context = buildGrowthReportContext(
-            period: "weekly",
-            completedRecords: completedRecords,
-            dismissedContributionTitles: dismissedContributionTitles
-        )
-
         guard let growthAIService else {
-            growthReportMessage = "AI 成长报告服务暂不可用，已保留当前本地快照。"
+            growthReportMessage = "AI 周复盘服务暂不可用。"
             return
         }
 
         do {
-            let result = try await growthAIService.generateWeeklyReport(context: context)
-            try await metricSnapshotRepository.saveSnapshot(result.snapshot)
-            let reviewableContributions = result.contributions.map { contribution in
-                reviewableGrowthContribution(contribution)
+            guard let selection = try await growthAIService.generateWeeklyGuidanceReview(verifications: verifications) else {
+                growthReportMessage = "证据不足，未调用 AI。"
+                return
             }
-            for contribution in reviewableContributions {
-                try await metricContributionRepository.saveContribution(contribution)
+            weeklyGuidanceReview = selection
+            weeklyGuidanceReviewWeekKey = weekKey
+            if let weeklyGuidanceReviewRepository {
+                do {
+                    try await weeklyGuidanceReviewRepository.saveReview(
+                        WeeklyGuidanceReviewRecord(weekKey: weekKey, selection: selection)
+                    )
+                } catch {
+                    growthReportMessage = "下周训练重点已生成，但本地保存失败；本次打开期间不会重复调用。"
+                    return
+                }
             }
-            growthSnapshot = result.snapshot
-            metricContributions = reviewableContributions
-            growthReportReviewContributions = result.snapshot.canDisplayScores ? reviewableContributions : []
-            growthReportMessage = result.snapshot.canDisplayScores
-                ? "周度校准报告已生成。"
-                : "证据不足，已记录周度证据积累状态。"
+            growthReportMessage = "下周训练重点已生成。"
         } catch {
-            growthReportMessage = "AI 成长报告生成失败，已保留当前本地快照。"
+            growthReportMessage = "下周训练重点生成失败，未修改成长趋势。"
         }
     }
 
@@ -5504,20 +7737,24 @@ final class AppStore: ObservableObject {
         completedRecords: [HistoryRecord],
         dismissedContributionTitles: [String]
     ) -> GrowthReportContext {
-        let summaries = completedRecords.map { record -> GrowthRecordSummary in
-            GrowthRecordSummary(
-                dailyEntryId: record.draft.id,
-                date: record.draft.date,
-                confirmedCardCount: record.confirmedCards.count,
-                hasMainQuest: record.mainQuest != nil,
-                mainQuestTitle: record.mainQuest?.title,
-                mainQuestCompletionCriteria: record.mainQuest?.completionCriteria,
-                verificationCompletion: record.verification?.completion.rawValue,
-                verificationValueRating: record.verification?.valueRating.rawValue,
-                calibrationNote: record.verification?.calibrationNote,
-                hasLensSessionAnswers: record.lensSession?.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? false,
-                principleTitles: record.principles.map(\.title)
-            )
+        let summaries = completedRecords.flatMap { record in
+            growthEvidenceScopes(for: record).map { scope in
+                let mainQuest = scope.quests.first { $0.type == .main }
+                let verification = scope.verifications.first
+                return GrowthRecordSummary(
+                    dailyEntryId: record.draft.id,
+                    date: record.draft.date,
+                    confirmedCardCount: scope.cards.filter { $0.isConfirmed && !$0.isExcludedFromModel }.count,
+                    hasMainQuest: mainQuest != nil,
+                    mainQuestTitle: mainQuest?.title,
+                    mainQuestCompletionCriteria: mainQuest?.completionCriteria,
+                    verificationCompletion: verification?.completion.rawValue,
+                    verificationValueRating: verification?.valueRating.rawValue,
+                    calibrationNote: verification?.calibrationNote,
+                    hasLensSessionAnswers: scope.lensSession?.questions.contains(where: { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? false,
+                    principleTitles: record.principles.map(\.title)
+                )
+            }
         }
 
         return GrowthReportContext(
@@ -5666,6 +7903,13 @@ final class AppStore: ObservableObject {
         error: Error,
         fallback: () -> Void
     ) {
+        // A configured model is the authority for thinking decisions. A
+        // transport, parsing, or quality-gate failure must remain retryable
+        // instead of silently replacing the model result with local heuristics.
+        guard !requiresCentralDecisionCenter else {
+            recordAIRepairFailure(prompt: prompt, reason: aiFailureMessage(for: error))
+            return
+        }
         fallback()
         recordAIFallback(prompt: prompt, reason: aiFailureMessage(for: error), canRetry: true)
     }
@@ -5756,6 +8000,10 @@ final class AppStore: ObservableObject {
         case .active:
             isAppInBackground = false
             endAIBackgroundTaskIfNeeded()
+#if DEBUG
+            guard loadsPersistedStateOnLaunch else { return }
+#endif
+            Task { await refreshSideQuestInvitation() }
         case .background:
             isAppInBackground = true
             guard isAIRunning else { return }
@@ -5793,6 +8041,12 @@ final class AppStore: ObservableObject {
     }
 
     func cancelCurrentAIRequest() {
+        if coachAnswerReviewTask != nil {
+            invalidateCoachAnswerReview(reason: "user_cancelled")
+            canRetryCurrentAI = true
+            todayLoopMessage = "已取消当前回答复盘。当前回答已保留，可重新提交或带着缺口继续。"
+            return
+        }
         guard isAIRunning else { return }
         let prompt = activeTodayAIPrompt ?? retryablePromptForCurrentState
         guard let prompt else { return }
@@ -6024,6 +8278,15 @@ final class AppStore: ObservableObject {
     private func updateCard(_ cardID: ThinkingCard.ID, mutate: (inout ThinkingCard) -> Void) {
         guard let index = thinkingCards.firstIndex(where: { $0.id == cardID }) else { return }
         mutate(&thinkingCards[index])
+        if let caseId = thinkingCards[index].trainingCaseId {
+            var cards = caseCardsCache[caseId] ?? []
+            if let cachedIndex = cards.firstIndex(where: { $0.id == cardID }) {
+                cards[cachedIndex] = thinkingCards[index]
+            } else {
+                cards.append(thinkingCards[index])
+            }
+            caseCardsCache[caseId] = cards
+        }
         clearTodayLoopMessage()
         persistCards()
     }
@@ -6041,7 +8304,7 @@ final class AppStore: ObservableObject {
             do {
                 streamingCards = []
                 streamingStatusText = organizingStreamingConnectingStatusText
-                thinkingCards = try await todayAIService.streamOrganizedCards(
+                let organized = try await todayAIService.streamOrganizedCapture(
                     for: TodayAIContext(draft: todayDraft),
                     onUpdate: { [weak self] drafts in
                         await self?.publishStreamingDrafts(drafts, draftID: draftID)
@@ -6050,7 +8313,8 @@ final class AppStore: ObservableObject {
                         await self?.recordAIStreamProgress(event)
                     }
                 )
-                streamingStatusText = "已生成 \(thinkingCards.count) 张候选卡片，请查看并确认。"
+                materializeTrainingCases(from: organized)
+                streamingStatusText = "已生成 \(thinkingCards.count) 张候选卡片，请查看并确认事项。"
                 recordAISuccess(prompt: .organizeCards, message: "已生成结构化卡片，请查看并确认。")
                 persistCards()
                 return
@@ -6066,6 +8330,7 @@ final class AppStore: ObservableObject {
                             thinkingCards = streamedCards
                             streamingStatusText = organizingStreamingInterruptedStatusText(closedCount: streamedCards.count)
                         }
+                        materializeTrainingCases(from: .singleCase(cards: thinkingCards))
                         persistCards()
                     }
                 } else {
@@ -6075,10 +8340,45 @@ final class AppStore: ObservableObject {
             }
         }
 
-        if allowsFallback {
+        if allowsFallback && !requiresCentralDecisionCenter {
             generateLocalCards(from: input)
+            materializeTrainingCases(from: .singleCase(cards: thinkingCards))
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地整理。")
             persistCards()
+        } else {
+            recordCentralDecisionUnavailable(for: .organizeCards)
+        }
+    }
+
+    private func materializeTrainingCases(from result: OrganizedCaptureResult) {
+        guard trainingCasesVNextEnabled else {
+            thinkingCards = result.cards
+            return
+        }
+        let materialized = TrainingCaseCoordinator().materialize(
+            suggestions: result.caseSuggestions,
+            cards: result.cards,
+            dailyEntryId: todayDraft.id
+        )
+        trainingCases = materialized.cases
+        thinkingCards = materialized.cards
+        caseCardsCache = Dictionary(grouping: materialized.cards) { card in
+            card.trainingCaseId ?? materialized.cases.first?.id ?? UUID()
+        }
+        caseQuestsCache = [:]
+
+        for trainingCase in materialized.cases {
+            let cards = caseCardsCache[trainingCase.id] ?? []
+            let session = TrainingCaseSession(caseId: trainingCase.id, loopState: .reviewCards)
+            enqueuePersistence(errorMessage: "保存事项候选失败。") { [trainingCaseRepository, trainingCaseSessionRepository, thinkingCardRepository] in
+                try await trainingCaseRepository?.saveCase(trainingCase)
+                try await trainingCaseSessionRepository?.saveSession(session)
+                try await thinkingCardRepository?.saveCards(
+                    cards,
+                    dailyEntryId: trainingCase.dailyEntryId,
+                    trainingCaseId: trainingCase.id
+                )
+            }
         }
     }
 
@@ -6130,16 +8430,18 @@ final class AppStore: ObservableObject {
         guard todayDraft.id == draftID else { return }
         beginAIActivity("正在生成追问。")
         defer { endAIActivity() }
-        let input = todayDraft.rawText
+        let fallbackInput = localQuestionInput
+        let requestedCaseID = activeTrainingCase?.id
 
         if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
                 let lensFeedback = lensFeedbackForAI()
-                questions = try await todayAIService.generateQuestions(
+                let generated = try await todayAIService.generateQuestionsWithTrace(
                     for: TodayAIContext(
                         draft: todayDraft,
+                        currentTrainingCase: activeTrainingCase,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
                         principles: contextPrinciples,
@@ -6155,16 +8457,45 @@ final class AppStore: ObservableObject {
                         await self?.recordAIStreamProgress(event)
                     }
                 )
+                guard !Task.isCancelled,
+                      todayDraft.id == draftID,
+                      !trainingCasesVNextEnabled || activeTrainingCase?.id == requestedCaseID
+                else {
+                    await markCoachPromptTurnDiscarded(
+                        generated.promptRunId,
+                        promptID: .generateQuestions,
+                        reason: Task.isCancelled
+                            ? "cancelled_before_presentation"
+                            : "case_or_draft_changed_before_presentation"
+                    )
+                    return
+                }
+                questions = generated.value
+                let fingerprint = CoachPromptOutputFingerprint.questions(questions)
                 refreshReferencedPrinciples(promptID: .generateQuestions, from: contextPrinciples)
                 persistLensSession()
                 moveTodayLoop(to: .answerQuestions)
+                if let requestedCaseID {
+                    _ = await markCoachPromptTurnPresented(
+                        generated.promptRunId,
+                        promptID: .generateQuestions,
+                        caseID: requestedCaseID,
+                        outputFingerprint: fingerprint
+                    )
+                } else {
+                    await markCoachPromptTurnDiscarded(
+                        generated.promptRunId,
+                        promptID: .generateQuestions,
+                        reason: "legacy_flow_has_no_case_session"
+                    )
+                }
                 recordAISuccess(prompt: .generateQuestions)
                 return
             } catch {
                 guard !Task.isCancelled else { return }
                 if allowsFallback {
                     handleAIFailure(prompt: .generateQuestions, error: error) {
-                        generateLocalQuestions(from: input)
+                        generateLocalQuestions(from: fallbackInput)
                         Task { await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions) }
                         persistLensSession()
                         moveTodayLoop(to: .answerQuestions)
@@ -6176,12 +8507,14 @@ final class AppStore: ObservableObject {
             }
         }
 
-        if allowsFallback {
-            generateLocalQuestions(from: input)
+        if allowsFallback && !requiresCentralDecisionCenter {
+            generateLocalQuestions(from: fallbackInput)
             await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuestions)
             persistLensSession()
             moveTodayLoop(to: .answerQuestions)
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地追问。")
+        } else {
+            recordCentralDecisionUnavailable(for: .generateQuestions)
         }
     }
 
@@ -6192,15 +8525,17 @@ final class AppStore: ObservableObject {
         guard todayDraft.id == draftID else { return }
         beginAIActivity("正在设计明日验证。")
         defer { endAIActivity() }
+        let requestedCaseID = activeTrainingCase?.id
 
         if canUseTodayAIServiceForTodayFlow, let todayAIService {
             do {
                 let contextPrinciples = await contextPrinciplesForAI()
                 let recallFeedback = await principleRecallFeedbackForAI(principles: contextPrinciples)
                 let lensFeedback = lensFeedbackForAI()
-                quests = try await todayAIService.generateQuests(
+                let generated = try await todayAIService.generateQuestsWithTrace(
                     for: TodayAIContext(
                         draft: todayDraft,
+                        currentTrainingCase: activeTrainingCase,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
                         principles: contextPrinciples,
@@ -6216,9 +8551,38 @@ final class AppStore: ObservableObject {
                         await self?.recordAIStreamProgress(event)
                     }
                 )
+                guard !Task.isCancelled,
+                      todayDraft.id == draftID,
+                      !trainingCasesVNextEnabled || activeTrainingCase?.id == requestedCaseID
+                else {
+                    await markCoachPromptTurnDiscarded(
+                        generated.promptRunId,
+                        promptID: .generateQuests,
+                        reason: Task.isCancelled
+                            ? "cancelled_before_presentation"
+                            : "case_or_draft_changed_before_presentation"
+                    )
+                    return
+                }
+                quests = generated.value
+                let fingerprint = CoachPromptOutputFingerprint.quests(quests)
                 refreshReferencedPrinciples(promptID: .generateQuests, from: contextPrinciples)
                 persistQuests()
                 moveTodayLoop(to: .reviewQuests)
+                if let requestedCaseID {
+                    _ = await markCoachPromptTurnPresented(
+                        generated.promptRunId,
+                        promptID: .generateQuests,
+                        caseID: requestedCaseID,
+                        outputFingerprint: fingerprint
+                    )
+                } else {
+                    await markCoachPromptTurnDiscarded(
+                        generated.promptRunId,
+                        promptID: .generateQuests,
+                        reason: "legacy_flow_has_no_case_session"
+                    )
+                }
                 recordAISuccess(prompt: .generateQuests)
                 return
             } catch {
@@ -6236,11 +8600,13 @@ final class AppStore: ObservableObject {
             }
         }
 
-        if allowsFallback {
+        if allowsFallback && !requiresCentralDecisionCenter {
             generateLocalQuests()
             await refreshReferencedPrinciplesForCurrentContext(promptID: .generateQuests)
             moveTodayLoop(to: .reviewQuests)
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地明日验证。")
+        } else {
+            recordCentralDecisionUnavailable(for: .generateQuests)
         }
     }
 
@@ -6257,6 +8623,7 @@ final class AppStore: ObservableObject {
                 principles = try await todayAIService.extractPrinciple(
                     for: TodayAIContext(
                         draft: todayDraft,
+                        currentTrainingCase: activeTrainingCase,
                         confirmedCards: confirmedCardsForAI,
                         questions: questions,
                         quests: quests,
@@ -6287,10 +8654,12 @@ final class AppStore: ObservableObject {
             }
         }
 
-        if allowsFallback {
+        if allowsFallback && !requiresCentralDecisionCenter {
             generateLocalPrinciple()
             moveTodayLoop(to: .extractPrinciple)
             recordLocalTrainingResult(message: "未配置 GLM，已使用本地原则候选。")
+        } else {
+            recordCentralDecisionUnavailable(for: .extractPrinciple)
         }
     }
 
@@ -6699,8 +9068,22 @@ final class AppStore: ObservableObject {
 
     private func persistCards() {
         guard let thinkingCardRepository else { return }
-        let cards = thinkingCards.filter { $0.isConfirmed || $0.isExcludedFromModel }
+        let cards = trainingCasesVNextEnabled && (!trainingCases.isEmpty || activeTrainingCase != nil)
+            ? thinkingCards
+            : thinkingCards.filter { $0.isConfirmed || $0.isExcludedFromModel }
         let draftID = todayDraft.id
+        if let caseId = activeTrainingCase?.id {
+            let ownCards = cards.filter { $0.trainingCaseId == caseId }
+            caseCardsCache[caseId] = ownCards
+            enqueuePersistence(errorMessage: "保存事项卡片失败。") {
+                try await thinkingCardRepository.saveCards(
+                    ownCards,
+                    dailyEntryId: draftID,
+                    trainingCaseId: caseId
+                )
+            }
+            return
+        }
         enqueuePersistence(errorMessage: "保存思考卡片失败。") {
             try await thinkingCardRepository.saveCards(cards, dailyEntryId: draftID)
         }
@@ -6717,10 +9100,51 @@ final class AppStore: ObservableObject {
         todayAIService != nil && (usesInjectedTodayAIService || apiKeyConfigured)
     }
 
+    /// vNext production never promotes a local heuristic to a thinking
+    /// decision. Injected services are explicit test/preview seams; the live
+    /// store therefore requires the central model even when its key is absent
+    /// or the service has not finished bootstrapping.
+    private var requiresCentralDecisionCenter: Bool {
+        trainingCasesVNextEnabled && !usesInjectedTodayAIService
+    }
+
+    /// Production vNext remains model-led while the central model is missing
+    /// or a failed request is waiting for retry. Views use this to distinguish
+    /// an unavailable model from an intentional local preview.
+    var isVNextModelLed: Bool {
+        requiresCentralDecisionCenter
+    }
+
+    private func recordCentralDecisionUnavailable(for prompt: PromptID) {
+        recordAIRepairFailure(
+            prompt: prompt,
+            reason: apiKeyConfigured
+                ? "中央模型暂时不可用"
+                : "请先配置中央模型 API Key"
+        )
+    }
+
     private func persistQuests() {
         guard let questRepository else { return }
-        let quests = quests
+        let caseId = activeTrainingCase?.id
+        let quests = quests.map { quest -> Quest in
+            var updated = quest
+            if let caseId { updated.trainingCaseId = caseId }
+            return updated
+        }
+        self.quests = quests
         let draftID = todayDraft.id
+        if let caseId {
+            caseQuestsCache[caseId] = quests
+            enqueuePersistence(errorMessage: "保存事项验证行动失败。") {
+                try await questRepository.saveQuests(
+                    quests,
+                    sourceDailyEntryId: draftID,
+                    trainingCaseId: caseId
+                )
+            }
+            return
+        }
         enqueuePersistence(errorMessage: "保存明日验证失败。") {
             try await questRepository.saveQuests(quests, sourceDailyEntryId: draftID)
         }
@@ -6741,11 +9165,82 @@ final class AppStore: ObservableObject {
         let currentQuestions = questions
         let session = LensSession(
             dailyEntryId: draftID,
+            trainingCaseId: activeTrainingCase?.id,
             selectedLens: lens,
             questions: currentQuestions
         )
         enqueuePersistence(errorMessage: "保存透镜会话失败。") {
             try await lensSessionRepository.saveLensSession(session)
+        }
+    }
+
+    private func persistTrainingCaseSession() {
+        guard let trainingCaseSessionRepository, let activeTrainingCase else { return }
+        let selectedLensId = trainingPrescription?.finalLensId
+            ?? todayDraft.selectedCustomLensId
+            ?? todayDraft.selectedLens?.rawValue
+        let session = TrainingCaseSession(
+            caseId: activeTrainingCase.id,
+            loopState: todayDraft.state,
+            sessionMode: todayDraft.sessionMode,
+            selectedLensId: selectedLensId,
+            trainingPrescription: trainingPrescription
+        )
+        enqueuePersistence(errorMessage: "保存事项训练进度失败。") {
+            try await trainingCaseSessionRepository.saveSession(session)
+        }
+    }
+
+    private func persistCurrentTrainingCaseImmediately() async {
+        guard let activeTrainingCase else { return }
+        await waitForPendingPersistence()
+        let caseId = activeTrainingCase.id
+        let ownCards = thinkingCards.filter { $0.trainingCaseId == caseId }
+        let scopedQuests = quests.map { quest -> Quest in
+            var updated = quest
+            updated.trainingCaseId = caseId
+            return updated
+        }
+        caseCardsCache[caseId] = ownCards
+        caseQuestsCache[caseId] = scopedQuests
+        let selectedLensId = trainingPrescription?.finalLensId
+            ?? todayDraft.selectedCustomLensId
+            ?? todayDraft.selectedLens?.rawValue
+        let session = TrainingCaseSession(
+            caseId: caseId,
+            loopState: todayDraft.state,
+            sessionMode: todayDraft.sessionMode,
+            selectedLensId: selectedLensId,
+            trainingPrescription: trainingPrescription
+        )
+        do {
+            try await thinkingCardRepository?.saveCards(ownCards, dailyEntryId: todayDraft.id, trainingCaseId: caseId)
+            try await questRepository?.saveQuests(scopedQuests, sourceDailyEntryId: todayDraft.id, trainingCaseId: caseId)
+            try await trainingCaseSessionRepository?.saveSession(session)
+            if let lens = todayDraft.selectedLens {
+                try await lensSessionRepository?.saveLensSession(
+                    LensSession(
+                        dailyEntryId: todayDraft.id,
+                        trainingCaseId: caseId,
+                        selectedLens: lens,
+                        questions: questions
+                    )
+                )
+            }
+        } catch {
+            todayLoopMessage = "事项进度保存失败，已保留当前页面。"
+        }
+    }
+
+    private func setTrainingCaseStatus(_ status: TrainingCaseStatus, caseId: UUID) async {
+        guard let index = trainingCases.firstIndex(where: { $0.id == caseId }) else { return }
+        trainingCases[index].status = status
+        trainingCases[index].updatedAt = .now
+        if activeTrainingCase?.id == caseId { activeTrainingCase = trainingCases[index] }
+        do {
+            try await trainingCaseRepository?.saveCase(trainingCases[index])
+        } catch {
+            todayLoopMessage = "事项状态保存失败。"
         }
     }
 
@@ -6799,6 +9294,24 @@ final class AppStore: ObservableObject {
 
     private var confirmedCardsForAI: [ThinkingCard] {
         thinkingCards.filter { $0.isConfirmed && !$0.isExcludedFromModel }
+    }
+
+    private var localQuestionInput: String {
+        let caseEvidence = confirmedCardsForAI
+            .map { card in
+                let title = card.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let body = card.body.trimmingCharacters(in: .whitespacesAndNewlines)
+                if title.isEmpty { return body }
+                if body.isEmpty || body == title { return title }
+                return "\(title)：\(body)"
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        if !caseEvidence.isEmpty { return caseEvidence }
+        if let activeTrainingCase {
+            return activeTrainingCase.title
+        }
+        return todayDraft.rawText
     }
 
     private func contextPrinciplesForAI() async -> [PrincipleAsset] {
@@ -7016,6 +9529,7 @@ final class AppStore: ObservableObject {
     ) {
         let context = TodayAIContext(
             draft: todayDraft,
+            currentTrainingCase: activeTrainingCase,
             confirmedCards: confirmedCardsForAI,
             questions: questions,
             quests: quests,
@@ -7115,41 +9629,56 @@ final class AppStore: ObservableObject {
     }
 
     private static func makeTodayAIService(
-        apiKeyStore: KeychainAPIKeyStore,
-        promptRunRepository: PromptRunRepository?,
+        llmClient: LLMClient,
+        coachPromptTurnRepository: CoachPromptTurnRepository?,
         promptProvider: PromptProvider = LocalPromptProvider()
     ) -> TodayAIService {
         TodayAIService(
             promptProvider: promptProvider,
-            llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+            llmClient: llmClient,
+            coachPromptTurnRepository: coachPromptTurnRepository
         )
     }
 
     private static func makeGrowthAIService(
-        apiKeyStore: KeychainAPIKeyStore,
-        promptRunRepository: PromptRunRepository?,
+        llmClient: LLMClient,
         promptProvider: PromptProvider = LocalPromptProvider()
     ) -> GrowthAIService {
         GrowthAIService(
             promptProvider: promptProvider,
-            llmClient: makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+            llmClient: llmClient
+        )
+    }
+
+    private static func makeSideQuestAIService(
+        llmClient: LLMClient,
+        promptProvider: PromptProvider = LocalPromptProvider()
+    ) -> SideQuestAIService {
+        SideQuestAIService(
+            promptProvider: promptProvider,
+            llmClient: llmClient
         )
     }
 
     private static func makeLLMClient(
         apiKeyStore: KeychainAPIKeyStore,
         promptRunRepository: PromptRunRepository?
-    ) -> LLMClient {
+    ) -> CentralLLMDecisionCenter {
         let key = (try? apiKeyStore.loadAPIKey())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !key.isEmpty else {
             let missingKeyClient = MissingAPIKeyLLMClient()
-            guard let promptRunRepository else { return missingKeyClient }
-            return PromptTracingLLMClient(
-                base: missingKeyClient,
-                repository: promptRunRepository,
-                modelProvider: "GLM",
-                modelName: "missing-api-key"
-            )
+            let traced: LLMClient
+            if let promptRunRepository {
+                traced = PromptTracingLLMClient(
+                    base: missingKeyClient,
+                    repository: promptRunRepository,
+                    modelProvider: "GLM",
+                    modelName: "missing-api-key"
+                )
+            } else {
+                traced = missingKeyClient
+            }
+            return CentralLLMDecisionCenter(base: traced)
         }
 
         var config = GLMClientConfiguration()
@@ -7178,26 +9707,56 @@ final class AppStore: ObservableObject {
         }
 
         let directClient = DirectGLMClient(apiKey: key, configuration: config)
-        guard let promptRunRepository else { return directClient }
-        return PromptTracingLLMClient(
-            base: directClient,
-            repository: promptRunRepository,
-            modelProvider: "GLM",
-            modelName: config.model
-        )
+        let traced: LLMClient
+        if let promptRunRepository {
+            traced = PromptTracingLLMClient(
+                base: directClient,
+                repository: promptRunRepository,
+                modelProvider: "GLM",
+                modelName: config.model
+            )
+        } else {
+            traced = directClient
+        }
+        return CentralLLMDecisionCenter(base: traced)
     }
 
     private func refreshAIServiceFromKeychainIfNeeded() {
         guard refreshesAIServiceFromKeychain else { return }
-        todayAIService = Self.makeTodayAIService(
+        let center = Self.makeLLMClient(
             apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository,
+            promptRunRepository: promptRunRepository
+        )
+        centralDecisionCenter = center
+        todayAIService = Self.makeTodayAIService(
+            llmClient: center,
+            coachPromptTurnRepository: coachPromptTurnRepository,
             promptProvider: effectivePromptProvider
         )
         growthAIService = Self.makeGrowthAIService(
-            apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository,
+            llmClient: center,
             promptProvider: effectivePromptProvider
+        )
+        if !usesInjectedSideQuestAIService {
+            sideQuestAIService = Self.makeSideQuestAIService(
+                llmClient: center,
+                promptProvider: effectivePromptProvider
+            )
+        }
+        if !usesInjectedGuidanceAIService {
+            guidanceAIService = GuidanceAIService(
+                promptProvider: effectivePromptProvider,
+                llmClient: center
+            )
+        }
+        coachDecisionAIService = CoachDecisionAIService(
+            promptProvider: effectivePromptProvider,
+            llmClient: center
+        )
+        coachAnswerReviewAIService = CoachAnswerReviewAIService(
+            promptProvider: effectivePromptProvider,
+            llmClient: center,
+            coachPromptTurnRepository: coachPromptTurnRepository
         )
     }
 
@@ -7205,12 +9764,15 @@ final class AppStore: ObservableObject {
         do {
             let key = try apiKeyStore.loadAPIKey()
             apiKeyConfigured = key?.isEmpty == false
-            refreshAIServiceFromKeychainIfNeeded()
             apiKeyStatusMessage = apiKeyConfigured ? "GLM API Key 已配置。" : "尚未配置 GLM API Key。"
         } catch {
             apiKeyConfigured = false
             apiKeyStatusMessage = "读取 Keychain 失败。"
         }
+        // Keep the audited missing-key client available even when the platform
+        // Keychain is temporarily unreadable (for example, an unsigned test host).
+        // Otherwise failed AI actions lose their PromptRun audit trail entirely.
+        refreshAIServiceFromKeychainIfNeeded()
         updateSettingsMessage()
     }
 
@@ -7392,7 +9954,10 @@ final class AppStore: ObservableObject {
             baseMessage = apiKeyStatusMessage
         }
         let connection = glmConnectionMessage.isEmpty ? "" : "\n\(glmConnectionMessage)"
-        settingsMessage = "\(baseMessage)\(connection)\n\(reminderStatusMessage)"
+        // Keep model diagnostics separate from notification status. The latter
+        // already has its own Settings row and should not hide a connection
+        // failure in a long, truncated message.
+        settingsMessage = "\(baseMessage)\(connection)"
     }
 
     // MARK: - Project AI Candidate Review
@@ -7608,10 +10173,11 @@ final class AppStore: ObservableObject {
 
         for record in historyRecords {
             if record.draft.id.uuidString == sourceId { return .dailyEntry }
+            if record.caseRecords.contains(where: { $0.id.uuidString == sourceId }) { return .trainingCase }
             if record.cards.contains(where: { $0.id.uuidString == sourceId }) { return .thinkingCard }
             if record.quests.contains(where: { $0.id.uuidString == sourceId }) { return .quest }
             if record.principles.contains(where: { $0.id.uuidString == sourceId }) { return .principle }
-            if record.verification?.id.uuidString == sourceId { return .verification }
+            if record.allVerifications.contains(where: { $0.id.uuidString == sourceId }) { return .verification }
         }
 
         return .dailyEntry
@@ -7746,6 +10312,14 @@ final class AppStore: ObservableObject {
 
     private func buildProjectInsightEvidence(from sourceId: String, sourceType: ProjectSourceType) async -> ProjectInsightEvidenceContext? {
         switch sourceType {
+        case .trainingCase:
+            for record in historyRecords {
+                if let item = record.caseRecords.first(where: { $0.id.uuidString == sourceId }) {
+                    let body = item.cards.map { $0.title }.joined(separator: "、")
+                    return .init(id: item.id.uuidString, type: "training_case", title: item.trainingCase.title, body: body)
+                }
+            }
+            return nil
         case .thinkingCard:
             guard let card = thinkingCards.first(where: { $0.id.uuidString == sourceId }) else {
                 for record in historyRecords {
@@ -7770,7 +10344,7 @@ final class AppStore: ObservableObject {
 
         case .verification:
             for record in historyRecords {
-                if let verification = record.verification, verification.id.uuidString == sourceId {
+                if let verification = record.allVerifications.first(where: { $0.id.uuidString == sourceId }) {
                     return .init(id: verification.id.uuidString, type: "verification", title: "任务验证", body: verification.calibrationNote)
                 }
             }
@@ -7805,7 +10379,8 @@ final class AppStore: ObservableObject {
 
         return ProjectAIService(
             promptProvider: effectivePromptProvider,
-            llmClient: Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+            llmClient: centralDecisionCenter
+                ?? Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
         )
     }
 
@@ -7875,8 +10450,135 @@ final class AppStore: ObservableObject {
         await updateProjectStatus(projectId, status: .archived, message: "长期议题已归档。")
     }
 
+    @discardableResult
+    func closeProject(
+        _ projectId: UUID,
+        reason: ProjectClosureReason,
+        outcome: String,
+        evidenceRefs: [String] = [],
+        transferredItems: String? = nil,
+        reviewNote: String? = nil
+    ) async -> Bool {
+        let trimmedOutcome = outcome.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOutcome.isEmpty else {
+            projectSuggestionMessage = "结束项目需要填写实际结果。"
+            return false
+        }
+        guard let projectRepository, let projectClosureReviewRepository else {
+            projectSuggestionMessage = "项目结束复盘暂不可用。"
+            return false
+        }
+        do {
+            guard var project = try await projectRepository.project(id: projectId) ?? projectsById[projectId] else {
+                projectSuggestionMessage = "没有找到这个项目。"
+                return false
+            }
+            let existing = try await projectClosureReviewRepository.review(for: projectId)
+            let review = try ProjectClosureCoordinator().makeReview(
+                project: project,
+                existing: existing,
+                reason: reason,
+                outcome: trimmedOutcome,
+                evidenceRefs: evidenceRefs,
+                transferredItems: transferredItems?.trimmingCharacters(in: .whitespacesAndNewlines),
+                reviewNote: reviewNote?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            recordProjectRevision(&project, field: "status", oldValue: project.status.rawValue, newValue: ProjectStatus.archived.rawValue)
+            project.status = .archived
+            project.updatedAt = .now
+            try await projectClosureReviewRepository.closeProject(project, review: review)
+            projectClosureReviews[projectId] = review
+            projectsById[projectId] = project
+            projectNames[projectId] = project.name
+            projectSuggestionMessage = "项目已结束，复盘记录已保留。"
+            return true
+        } catch {
+            projectSuggestionMessage = "结束项目失败：\(error.localizedDescription)"
+            return false
+        }
+    }
+
     func restoreProject(_ projectId: UUID) async {
-        await updateProjectStatus(projectId, status: .active, message: "长期议题已恢复为 active。")
+        let restoredStatus = projectClosureReviews[projectId]?.previousStatus ?? .active
+        await updateProjectStatus(projectId, status: restoredStatus, message: "项目已恢复，结束复盘继续保留。")
+    }
+
+    func generateProjectClosureSummary(for projectId: UUID, projectAIService: ProjectAIService? = nil) async {
+        guard !isGeneratingProjectClosureSummary,
+              let project = projectsById[projectId],
+              let review = projectClosureReviews[projectId],
+              let projectLinkRepository,
+              let projectClosureReviewRepository
+        else { return }
+        guard let service = projectAIService ?? self.projectAIService else {
+            projectClosureSummaryMessage = "AI 项目总结服务暂不可用。"
+            return
+        }
+        isGeneratingProjectClosureSummary = true
+        projectClosureSummaryMessage = "正在根据已确认项目证据生成总结。"
+        defer { isGeneratingProjectClosureSummary = false }
+        do {
+            let links = try await projectLinkRepository.links(for: projectId).filter { $0.isUserConfirmed }
+            var evidence: [ProjectInsightEvidenceContext] = []
+            for link in links {
+                if let item = await buildProjectInsightEvidence(from: link.sourceId, sourceType: link.sourceType) {
+                    evidence.append(item)
+                }
+            }
+            let result = try await service.generateClosureReview(project: project, closure: review, confirmedEvidence: evidence)
+            if let reason = result.insufficientEvidenceReason {
+                projectClosureSummaryMessage = reason
+                return
+            }
+            var updated = review
+            updated.aiSummary = result.summary
+            updated.principleCandidates = result.principleCandidates
+            updated.updatedAt = .now
+            try await projectClosureReviewRepository.saveReview(updated)
+            projectClosureReviews[projectId] = updated
+            projectClosureSummaryMessage = result.principleCandidates.isEmpty
+                ? "总结已生成；当前证据不足以提出可复用原则。"
+                : "总结已生成，请逐条确认原则候选。"
+        } catch {
+            projectClosureSummaryMessage = "生成项目总结失败：\(error.localizedDescription)"
+        }
+    }
+
+    func acceptProjectClosurePrinciple(_ candidateId: UUID, projectId: UUID) async {
+        guard var review = projectClosureReviews[projectId],
+              let candidate = review.principleCandidates.first(where: { $0.id == candidateId }),
+              let principleRepository
+        else { return }
+        let sourceEntryId = historyRecords.first { record in
+            let ids = Set(record.cards.map { $0.id.uuidString })
+                .union(record.quests.map { $0.id.uuidString })
+                .union(record.caseRecords.map { $0.id.uuidString })
+                .union(record.allVerifications.map { $0.id.uuidString })
+            return !ids.isDisjoint(with: candidate.evidenceRefs)
+        }?.draft.id ?? todayDraft.id
+        do {
+            let principle = candidate.principle()
+            try await principleRepository.savePrinciple(principle, sourceDailyEntryId: sourceEntryId)
+            if let projectLinkRepository {
+                try await projectLinkRepository.saveLink(ProjectLink(
+                    projectId: projectId,
+                    sourceType: .principle,
+                    sourceId: principle.id.uuidString,
+                    linkType: .principle,
+                    isUserConfirmed: true
+                ))
+            }
+            review.principleCandidates.removeAll { $0.id == candidateId }
+            review.updatedAt = .now
+            try await projectClosureReviewRepository?.saveReview(review)
+            projectClosureReviews[projectId] = review
+            principles.append(principle)
+            activePrinciples = principles.filter { $0.status == .active }
+            projectClosureSummaryMessage = "原则已保存，并关联到该项目。"
+            await loadHistoryRecords()
+        } catch {
+            projectClosureSummaryMessage = "保存项目原则失败：\(error.localizedDescription)"
+        }
     }
 
     private func updateProjectStatus(_ projectId: UUID, status: ProjectStatus, message: String) async {
@@ -8037,6 +10739,17 @@ final class AppStore: ObservableObject {
             try await projectMergeCandidateRepository.updateMergeCandidateStatus(.dismissed, candidateId: candidateId)
             await loadPendingProjectMergeCandidates()
         } catch {
+        }
+    }
+}
+
+private extension DailyLoopState {
+    var hasCompletedLensSelection: Bool {
+        switch self {
+        case .answerQuestions, .reviewQuests, .extractPrinciple, .sessionComplete:
+            return true
+        case .verifyYesterday, .capture, .organizing, .reviewCards, .selectMode, .selectLens:
+            return false
         }
     }
 }
