@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0488F94A589BD0CE19F45F46 /* CaptureIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B086B439CA85A75D6A46E7 /* CaptureIntent.swift */; };
+		07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */; };
 		0DE633A74E1A2F7334510BEF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = C9A0CF3E56523CA50EB41DB2 /* GRDB */; };
 		12F0EDDF57FD8A6D28D10C46 /* SingleNudgeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF956BBDC2D43F308B122BFE /* SingleNudgeModels.swift */; };
 		16522709C3B31FAEEBCA6911 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743E18DE6B198844B50711E6 /* TodayView.swift */; };
@@ -21,6 +22,7 @@
 		49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */; };
 		4F8852152107C5A2EFC929B1 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890E4F32AA3030AD7B049750 /* AppStore.swift */; };
 		5A11C654564863D8121B5E54 /* SideQuestAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */; };
+		609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */; };
 		7116ACDAAEEBDEE7432855F3 /* CaptureDigestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 831494666A2CE930CA9837F0 /* CaptureDigestModels.swift */; };
 		72C905B0830552DF8D3DDE55 /* CoreProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C764CB14212DEF1533C0FB /* CoreProtocols.swift */; };
 		77F18F8B99867060A51EC282 /* AppStoreStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0A3136CA642507995691F7 /* AppStoreStateMachineTests.swift */; };
@@ -105,6 +107,7 @@
 		56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectGLMClientTests.swift; sourceTree = "<group>"; };
 		5A8A8D72635DF2DA16D79B6E /* XMLStreamingCardAssemblerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLStreamingCardAssemblerTests.swift; sourceTree = "<group>"; };
 		5F8BAEF3B2D103761300F129 /* KeychainAPIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAPIKeyStore.swift; sourceTree = "<group>"; };
+		63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorPersistence.swift; sourceTree = "<group>"; };
 		68290AC2698E3FE10F16D3B0 /* MentorLessonCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorLessonCatalogTests.swift; sourceTree = "<group>"; };
 		6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideQuestAIService.swift; sourceTree = "<group>"; };
 		743E18DE6B198844B50711E6 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
@@ -131,6 +134,7 @@
 		DD972A22ECB9F1DD3ECEC9A2 /* XMLStreamingCardAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLStreamingCardAssembler.swift; sourceTree = "<group>"; };
 		DDCC17B00D186631B914C1EB /* DirectGLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectGLMClient.swift; sourceTree = "<group>"; };
 		E13EAC1CF8D4DB7FC664E043 /* SideQuestContextProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideQuestContextProviders.swift; sourceTree = "<group>"; };
+		EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorPersistenceTests.swift; sourceTree = "<group>"; };
 		F3A039C9C7E818935809BC6A /* CaptureDigestService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDigestService.swift; sourceTree = "<group>"; };
 		F8658334444C5886A2AC844B /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		FB352E2CC19588314AD98872 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -274,6 +278,7 @@
 				DDCC17B00D186631B914C1EB /* DirectGLMClient.swift */,
 				8D3BD7ABA37178962198D905 /* GrowthAIService.swift */,
 				5F8BAEF3B2D103761300F129 /* KeychainAPIKeyStore.swift */,
+				63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */,
 				35993467B43FF5E9C4147855 /* MockLLMClient.swift */,
 				423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */,
 				01A37981F9DE1233506E6DDB /* PhotoMemoryMediaService.swift */,
@@ -327,6 +332,7 @@
 				FFB950525A17C702B66D37AA /* LiveGLMAcceptanceTests.swift */,
 				0BBC269BFC4C140D49F82ECC /* LocalPromptProviderTests.swift */,
 				68290AC2698E3FE10F16D3B0 /* MentorLessonCatalogTests.swift */,
+				EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */,
 				4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */,
 				2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */,
 				2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */,
@@ -489,6 +495,7 @@
 				31B5A670F22271C9E35D4509 /* LiveGLMAcceptanceTests.swift in Sources */,
 				E0E0D15117BD3F36245533F8 /* LocalPromptProviderTests.swift in Sources */,
 				D988BDC690C9AD3C7E4B5994 /* MentorLessonCatalogTests.swift in Sources */,
+				609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */,
 				972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */,
 				4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */,
 				C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */,
@@ -515,6 +522,7 @@
 				D7F685F570186BD030D0148C /* GrowthAIService.swift in Sources */,
 				8C5A1794302AEA95A61E0D3C /* KeychainAPIKeyStore.swift in Sources */,
 				BFC462F0F634AC1A38B6243A /* MentorLessonModels.swift in Sources */,
+				07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */,
 				842077D34FB6E1C3E590252F /* MingSiApp.swift in Sources */,
 				E673294D5A0FC29ABB3406A1 /* MockLLMClient.swift in Sources */,
 				AFCBD37EA4C5C6DEF322A382 /* Models.swift in Sources */,

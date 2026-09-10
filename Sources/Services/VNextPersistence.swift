@@ -616,6 +616,205 @@ extension AppDatabase {
                 table.foreignKey(["run_id"], references: "side_quest_runs", columns: ["id"], onDelete: .cascade)
             }
         }
+
+        migrator.registerMigration("v48_capture_fragments_daily_digests") { db in
+            try db.create(table: "capture_fragments", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("raw_text", .text).notNull()
+                table.column("source", .text).notNull()
+                table.column("status", .text).notNull().indexed()
+                table.column("day_key", .text).notNull().indexed()
+                table.column("source_id", .text)
+                table.column("created_at", .text).notNull().indexed()
+                table.column("updated_at", .text).notNull()
+            }
+            try db.create(table: "daily_capture_digests", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("day_key", .text).notNull().indexed()
+                table.column("status", .text).notNull().indexed()
+                table.column("summary", .text).notNull()
+                table.column("themes_json", .text).notNull().defaults(to: "[]")
+                table.column("recommended_question", .text)
+                table.column("source_fragment_ids_json", .text).notNull().defaults(to: "[]")
+                table.column("created_at", .text).notNull().indexed()
+                table.column("updated_at", .text).notNull()
+            }
+            try db.execute(sql: "CREATE UNIQUE INDEX IF NOT EXISTS daily_capture_one_current_digest_idx ON daily_capture_digests(day_key) WHERE status = 'current'")
+            try db.execute(sql: "CREATE UNIQUE INDEX IF NOT EXISTS capture_fragment_source_id_idx ON capture_fragments(source, source_id) WHERE source_id IS NOT NULL")
+        }
+        migrator.registerMigration("v49_single_nudge_sessions") { db in
+            try db.create(table: "single_nudge_sessions", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("day_key", .text).notNull().indexed()
+                table.column("input", .text).notNull().defaults(to: "")
+                table.column("question", .text)
+                table.column("diagnosis", .text)
+                table.column("before_text", .text)
+                table.column("after_text", .text)
+                table.column("cognitive_shift", .text)
+                table.column("thinking_action", .text)
+                table.column("unresolved_uncertainty", .text)
+                table.column("transition_to_verification", .boolean)
+                table.column("prompt_run_id", .text)
+                table.column("source_refs", .text)
+                table.column("lifecycle", .text).notNull()
+                table.column("result", .text).notNull()
+                table.column("feedback", .text)
+                table.column("created_at", .text).notNull()
+                table.column("updated_at", .text).notNull().indexed()
+            }
+            // Multiple nudges may be captured per day; day_key is only a query index.
+        }
+        migrator.registerMigration("v50_single_nudge_fields") { db in
+            let existing = try Row.fetchAll(db, sql: "PRAGMA table_info(single_nudge_sessions)").compactMap { $0["name"] as String? }
+            for (name, definition) in [("diagnosis", "TEXT"), ("cognitive_shift", "TEXT"), ("thinking_action", "TEXT"), ("unresolved_uncertainty", "TEXT"), ("transition_to_verification", "INTEGER"), ("prompt_run_id", "TEXT"), ("source_refs", "TEXT")] where !existing.contains(name) {
+                try db.execute(sql: "ALTER TABLE single_nudge_sessions ADD COLUMN \(name) \(definition)")
+            }
+        }
+        migrator.registerMigration("v51_single_nudge_audit_rounds") { db in
+            let existing = try Row.fetchAll(db, sql: "PRAGMA table_info(single_nudge_sessions)").compactMap { $0["name"] as String? }
+            for (name, definition) in [("review_prompt_run_id", "TEXT"), ("review_source_refs", "TEXT")] where !existing.contains(name) {
+                try db.execute(sql: "ALTER TABLE single_nudge_sessions ADD COLUMN \(name) \(definition)")
+            }
+        }
+        migrator.registerMigration("v52_single_nudge_round_lineage") { db in
+            let existing = try Row.fetchAll(db, sql: "PRAGMA table_info(single_nudge_sessions)").compactMap { $0["name"] as String? }
+            for (name, definition) in [
+                ("parent_session_id", "TEXT"),
+                ("root_session_id", "TEXT"),
+                ("continuation_kind", "TEXT NOT NULL DEFAULT 'initial'")
+            ] where !existing.contains(name) {
+                try db.execute(sql: "ALTER TABLE single_nudge_sessions ADD COLUMN \(name) \(definition)")
+            }
+            // Existing independent rows are roots. Keeping their own ID makes
+            // exports and restores compatible with the pre-lineage shape.
+            try db.execute(sql: "UPDATE single_nudge_sessions SET root_session_id = id WHERE root_session_id IS NULL OR root_session_id = ''")
+            try db.create(index: "idx_single_nudge_parent_session", on: "single_nudge_sessions", columns: ["parent_session_id"], ifNotExists: true)
+            try db.create(index: "idx_single_nudge_root_session", on: "single_nudge_sessions", columns: ["root_session_id"], ifNotExists: true)
+        }
+        migrator.registerMigration("v53_mentor_m1_foundation") { db in
+            try db.create(table: "mentor_sessions", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("initial_entry", .text).notNull()
+                t.column("lifecycle", .text).notNull()
+                t.column("draft_text", .text).notNull().defaults(to: "")
+                t.column("draft_revision", .integer).notNull().defaults(to: 0)
+                t.column("activity_at", .text).notNull().indexed()
+            }
+            try db.create(table: "mentor_items", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed().references("mentor_sessions", onDelete: .cascade)
+                t.column("sequence", .integer).notNull()
+                t.column("kind", .text).notNull()
+                t.column("payload_json", .text).notNull()
+                t.uniqueKey(["session_id", "sequence"])
+            }
+            try db.create(table: "mentor_requests", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed().references("mentor_sessions", onDelete: .cascade)
+                t.column("state", .text).notNull()
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(table: "mentor_understandings", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed().references("mentor_sessions", onDelete: .cascade)
+                t.column("group_id", .text).notNull()
+                t.column("revision", .integer).notNull()
+                t.column("state", .text).notNull()
+                t.column("text", .text).notNull()
+                t.uniqueKey(["group_id", "revision"])
+            }
+            try db.create(table: "mentor_feedback", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed().references("mentor_sessions", onDelete: .cascade)
+                t.column("item_id", .text)
+                t.column("lesson_id", .text)
+                t.column("kind", .text).notNull()
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(table: "mentor_source_links", ifNotExists: true) { t in
+                t.column("id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed().references("mentor_sessions", onDelete: .cascade)
+                t.column("owner_id", .text).notNull()
+                t.column("source_kind", .text).notNull()
+                t.column("source_id", .text).notNull()
+            }
+        }
+    }
+}
+
+final class SQLiteCaptureFragmentRepository: CaptureFragmentRepository {
+    private let database: AppDatabase
+    init(database: AppDatabase) { self.database = database }
+
+    func save(_ fragment: CaptureFragment) async throws -> CaptureFragment {
+        try await database.dbQueue.write { db in
+            if let sourceID = fragment.sourceID,
+               let row = try CaptureFragmentRow.filter(Column("source") == fragment.source.rawValue && Column("source_id") == sourceID).fetchOne(db) {
+                return try row.domainModel()
+            }
+            try CaptureFragmentRow(fragment).insert(db)
+            return fragment
+        }
+    }
+
+    func fragments(forDayKey dayKey: String, statuses: [CaptureFragment.Status]?) async throws -> [CaptureFragment] {
+        try await database.dbQueue.read { db in
+            var request = CaptureFragmentRow.filter(Column("day_key") == dayKey)
+            if let statuses { request = request.filter(statuses.map(\.rawValue).contains(Column("status"))) }
+            return try request.order(Column("created_at").asc).fetchAll(db).map { try $0.domainModel() }
+        }
+    }
+
+    func archive(id: UUID) async throws {
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "UPDATE capture_fragments SET status = ?, updated_at = ? WHERE id = ?", arguments: [CaptureFragment.Status.archived.rawValue, VNextStorage.string(from: .now), id.uuidString])
+        }
+    }
+
+    func saveDigest(_ digest: DailyCaptureDigest, markingIncluded fragmentIDs: [UUID]) async throws {
+        try await database.dbQueue.write { db in
+            let requestedIDs = Set(fragmentIDs.map(\.uuidString))
+            let digestIDs = Set(digest.sourceFragmentIDs.map(\.uuidString))
+            let fragments = try CaptureFragmentRow
+                .filter(requestedIDs.contains(Column("id")))
+                .fetchAll(db)
+            guard !requestedIDs.isEmpty,
+                  requestedIDs.count == fragmentIDs.count,
+                  digestIDs == requestedIDs,
+                  fragments.count == requestedIDs.count,
+                  fragments.allSatisfy({
+                      $0.dayKey == digest.dayKey && $0.status == CaptureFragment.Status.pending.rawValue
+                  })
+            else {
+                throw PersistenceError.validationFailed("capture digest sources must be pending fragments from the same day")
+            }
+
+            let updatedAt = VNextStorage.string(from: .now)
+            try db.execute(
+                sql: "UPDATE daily_capture_digests SET status = ?, updated_at = ? WHERE day_key = ? AND status = ?",
+                arguments: [DailyCaptureDigest.Status.ignored.rawValue, updatedAt, digest.dayKey, DailyCaptureDigest.Status.current.rawValue]
+            )
+            try DailyCaptureDigestRow(digest).insert(db)
+            for id in fragmentIDs {
+                try db.execute(
+                    sql: "UPDATE capture_fragments SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+                    arguments: [CaptureFragment.Status.included.rawValue, updatedAt, id.uuidString, CaptureFragment.Status.pending.rawValue]
+                )
+            }
+        }
+    }
+
+    func currentDigest(forDayKey dayKey: String) async throws -> DailyCaptureDigest? {
+        try await database.dbQueue.read { db in
+            try DailyCaptureDigestRow.filter(Column("day_key") == dayKey && Column("status") == DailyCaptureDigest.Status.current.rawValue).fetchOne(db).map { try $0.domainModel() }
+        }
+    }
+
+    func updateDigestStatus(_ status: DailyCaptureDigest.Status, id: UUID) async throws {
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "UPDATE daily_capture_digests SET status = ?, updated_at = ? WHERE id = ?", arguments: [status.rawValue, VNextStorage.string(from: .now), id.uuidString])
+        }
     }
 }
 
@@ -1647,6 +1846,38 @@ final class SQLiteCoachPromptTurnRepository: CoachPromptTurnRepository {
     }
 }
 
+private struct CaptureFragmentRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "capture_fragments"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    var id, rawText, source, status, dayKey, createdAt, updatedAt: String
+    var sourceId: String?
+    init(_ value: CaptureFragment) {
+        id = value.id.uuidString; rawText = value.rawText; source = value.source.rawValue; status = value.status.rawValue; dayKey = value.dayKey; sourceId = value.sourceID; createdAt = VNextStorage.string(from: value.createdAt); updatedAt = VNextStorage.string(from: value.updatedAt)
+    }
+    func domainModel() throws -> CaptureFragment {
+        guard let id = UUID(uuidString: id), let source = CaptureFragment.Source(rawValue: source), let status = CaptureFragment.Status(rawValue: status) else { throw PersistenceError.invalidStoredValue("capture_fragments") }
+        return CaptureFragment(id: id, rawText: rawText, source: source, status: status, dayKey: dayKey, sourceID: sourceId, createdAt: VNextStorage.date(from: createdAt), updatedAt: VNextStorage.date(from: updatedAt))
+    }
+}
+
+private struct DailyCaptureDigestRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "daily_capture_digests"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
+    var id, dayKey, status, summary, themesJson, sourceFragmentIdsJson, createdAt, updatedAt: String
+    var recommendedQuestion: String?
+    init(_ value: DailyCaptureDigest) {
+        id = value.id.uuidString; dayKey = value.dayKey; status = value.status.rawValue; summary = value.summary; themesJson = (try? VNextStorage.encode(value.themes)) ?? "[]"; recommendedQuestion = value.recommendedQuestion; sourceFragmentIdsJson = (try? VNextStorage.encode(value.sourceFragmentIDs.map(\.uuidString))) ?? "[]"; createdAt = VNextStorage.string(from: value.createdAt); updatedAt = VNextStorage.string(from: value.updatedAt)
+    }
+    func domainModel() throws -> DailyCaptureDigest {
+        guard let id = UUID(uuidString: id), let status = DailyCaptureDigest.Status(rawValue: status) else { throw PersistenceError.invalidStoredValue("daily_capture_digests") }
+        let themes: [String] = try VNextStorage.decode(themesJson) ?? []
+        let sourceIDs: [String] = try VNextStorage.decode(sourceFragmentIdsJson) ?? []
+        return DailyCaptureDigest(id: id, dayKey: dayKey, status: status, summary: summary, themes: themes, recommendedQuestion: recommendedQuestion, sourceFragmentIDs: sourceIDs.compactMap(UUID.init(uuidString:)), createdAt: VNextStorage.date(from: createdAt), updatedAt: VNextStorage.date(from: updatedAt))
+    }
+}
+
 private struct TrainingCaseRow: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "training_cases"
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
@@ -2223,6 +2454,99 @@ private struct CoachPromptTurnRow: Codable, FetchableRecord, PersistableRecord {
             createdAt: VNextStorage.date(from: createdAt),
             updatedAt: VNextStorage.date(from: updatedAt)
         )
+    }
+}
+
+final class SQLiteSingleNudgeSessionRepository: SingleNudgeSessionRepository {
+    private let database: AppDatabase
+    init(database: AppDatabase) { self.database = database }
+
+    func save(_ session: SingleNudgeSession) async throws {
+        try await database.dbQueue.write { db in
+            var row = SingleNudgeSessionRow(session)
+            if let existing = try SingleNudgeSessionRow.fetchOne(db, key: row.id) { row.createdAt = existing.createdAt }
+            try row.upsert(db)
+        }
+    }
+
+    func session(for dayKey: String) async throws -> SingleNudgeSession? {
+        try await database.dbQueue.read { db in
+            let rows = try SingleNudgeSessionRow.filter(Column("day_key") == dayKey)
+                .order(Column("updated_at").desc)
+                .fetchAll(db)
+            if let unfinished = rows.first(where: { $0.lifecycle != SingleNudgeLifecycle.completed.rawValue }) {
+                return try unfinished.domainModel()
+            }
+            return try rows.first?.domainModel()
+        }
+    }
+
+    func latest() async throws -> SingleNudgeSession? {
+        try await database.dbQueue.read { db in
+            try SingleNudgeSessionRow.order(Column("updated_at").desc).fetchOne(db)?.domainModel()
+        }
+    }
+
+    func session(id: UUID) async throws -> SingleNudgeSession? {
+        try await database.dbQueue.read { db in
+            try SingleNudgeSessionRow.fetchOne(db, key: id.uuidString)?.domainModel()
+        }
+    }
+}
+
+private struct SingleNudgeSessionRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "single_nudge_sessions"
+    static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
+    var id, dayKey, input, lifecycle, result, createdAt, updatedAt: String
+    var question, diagnosis, beforeText, afterText, cognitiveShift, thinkingAction, unresolvedUncertainty, feedback: String?
+    var transitionToVerification: Bool?
+    var promptRunID: String?
+    var reviewPromptRunID: String?
+    var sourceRefs: String?
+    var reviewSourceRefs: String?
+    var parentSessionID: String?
+    var rootSessionID: String?
+    var continuationKind: String?
+    enum CodingKeys: String, CodingKey {
+        case id
+        case dayKey = "day_key"
+        case input, question, diagnosis
+        case beforeText = "before_text"
+        case afterText = "after_text"
+        case cognitiveShift = "cognitive_shift"
+        case thinkingAction = "thinking_action"
+        case unresolvedUncertainty = "unresolved_uncertainty"
+        case transitionToVerification = "transition_to_verification"
+        case promptRunID = "prompt_run_id"
+        case reviewPromptRunID = "review_prompt_run_id"
+        case sourceRefs = "source_refs"
+        case reviewSourceRefs = "review_source_refs"
+        case parentSessionID = "parent_session_id"
+        case rootSessionID = "root_session_id"
+        case continuationKind = "continuation_kind"
+        case lifecycle, result, feedback
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+    init(_ value: SingleNudgeSession) {
+        id = value.id.uuidString; dayKey = value.dayKey; input = value.input
+        question = value.question; diagnosis = value.diagnosis; beforeText = value.before; afterText = value.after
+        cognitiveShift = value.cognitiveShift; thinkingAction = value.thinkingAction; unresolvedUncertainty = value.unresolvedUncertainty
+        transitionToVerification = value.transitionToVerification; promptRunID = value.promptRunID?.uuidString
+        reviewPromptRunID = value.reviewPromptRunID?.uuidString
+        sourceRefs = try? String(data: JSONEncoder().encode(value.sourceRefs), encoding: .utf8)
+        reviewSourceRefs = try? String(data: JSONEncoder().encode(value.reviewSourceRefs), encoding: .utf8)
+        parentSessionID = value.parentSessionID?.uuidString
+        rootSessionID = value.rootSessionID.uuidString
+        continuationKind = value.continuationKind.rawValue
+        lifecycle = value.lifecycle.rawValue; result = value.result.rawValue; feedback = value.feedback?.rawValue
+        createdAt = VNextStorage.string(from: value.createdAt); updatedAt = VNextStorage.string(from: value.updatedAt)
+    }
+    func domainModel() throws -> SingleNudgeSession {
+        guard let uuid = UUID(uuidString: id), let lifecycle = SingleNudgeLifecycle(rawValue: lifecycle), let result = SingleNudgeResult(rawValue: result) else { throw PersistenceError.invalidStoredValue("single_nudge_sessions") }
+        let refs = (sourceRefs?.data(using: .utf8)).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+        let reviewRefs = (reviewSourceRefs?.data(using: .utf8)).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+        return SingleNudgeSession(id: uuid, dayKey: dayKey, input: input, question: question, diagnosis: diagnosis, before: beforeText, after: afterText, cognitiveShift: cognitiveShift, thinkingAction: thinkingAction, unresolvedUncertainty: unresolvedUncertainty, transitionToVerification: transitionToVerification, promptRunID: promptRunID.flatMap(UUID.init(uuidString:)), reviewPromptRunID: reviewPromptRunID.flatMap(UUID.init(uuidString:)), parentSessionID: parentSessionID.flatMap(UUID.init(uuidString:)), rootSessionID: rootSessionID.flatMap(UUID.init(uuidString:)) ?? uuid, continuationKind: continuationKind.flatMap(SingleNudgeContinuationKind.init(rawValue:)) ?? .initial, sourceRefs: refs, reviewSourceRefs: reviewRefs, lifecycle: lifecycle, result: result, feedback: feedback.flatMap(SingleNudgeFeedback.init(rawValue:)), createdAt: VNextStorage.date(from: createdAt), updatedAt: VNextStorage.date(from: updatedAt))
     }
 }
 
