@@ -812,6 +812,21 @@ extension AppDatabase {
                 t.column("created_at", .text).notNull()
             }
         }
+        migrator.registerMigration("v62_mentor_understanding_versions") { db in
+            try db.alter(table: "mentor_understandings") { t in
+                t.add(column: "previous_revision_id", .text).references("mentor_understandings")
+                // Existing rows have no proven authorship or confirmation timestamp.
+                t.add(column: "origin", .text).notNull().defaults(to: "legacy")
+                t.add(column: "confirmed_at", .text)
+                t.add(column: "edit_revision", .integer).notNull().defaults(to: 0)
+            }
+            try db.execute(sql: """
+                CREATE TRIGGER mentor_confirmed_immutable
+                BEFORE UPDATE ON mentor_understandings WHEN OLD.state = 'confirmed'
+                BEGIN SELECT RAISE(ABORT, 'confirmed understanding is immutable'); END
+                """)
+        }
+
     }
 }
 

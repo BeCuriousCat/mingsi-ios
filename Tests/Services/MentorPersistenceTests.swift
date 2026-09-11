@@ -3,6 +3,114 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testUserUnderstandingConfirmationAndVersionHistory() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID(), draftID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "listen", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let empty = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: draftID)
+        XCTAssertEqual(empty.origin, "user_note")
+        XCTAssertEqual(empty.state, .draft)
+        let emptyList = try await repo.recentSessions()
+        XCTAssertTrue(emptyList.sessions.isEmpty)
+        do { _ = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 0); XCTFail("Empty note must not confirm") } catch {}
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draftID, editRevision: 1, text: "改完不等于效果变好")
+        let confirmed = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 1)
+        let replay = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 1)
+        XCTAssertEqual(confirmed, replay)
+        XCTAssertNotNil(confirmed.confirmedAt)
+        let lateBegin = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: draftID)
+        XCTAssertEqual(lateBegin, confirmed)
+        do { _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draftID, editRevision: 2, text: "overwrite"); XCTFail("Confirmed text must be immutable") } catch {}
+        let nextID = UUID()
+        let next = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: nextID, previousRevisionID: draftID)
+        XCTAssertEqual(next.revision, 2)
+        XCTAssertEqual(next.text, confirmed.text)
+        XCTAssertEqual(next.groupID, confirmed.groupID)
+        XCTAssertEqual(next.previousRevisionID, draftID)
+        do { _ = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: draftID); XCTFail("Must not branch from old revision") } catch {}
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: nextID, editRevision: 1, text: "先明确希望谁的哪一步变容易")
+        // Leaving editing preserves the draft without changing the previous confirmation.
+        let restored = try await SQLiteMentorRepository(database: db).understandings(sessionID: sessionID)
+        XCTAssertEqual(restored.map(\.state), [.confirmed, .draft])
+        XCTAssertEqual(restored.first, confirmed)
+        _ = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: nextID, expectedEditRevision: 1)
+        let history = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(history.map(\.revision), [1, 2])
+        XCTAssertEqual(history.map(\.state), [.confirmed, .confirmed])
+        let recent = try await repo.recentSessions()
+        XCTAssertEqual(recent.sessions.first?.id, sessionID)
+        XCTAssertEqual(recent.sessions.first?.preview, "先明确希望谁的哪一步变容易")
+        let requests = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(requests, 0, "Handwritten understanding does not require model work")
+        try await repo.deleteSession(id: sessionID)
+        let deleted = try await repo.understandings(sessionID: sessionID)
+        XCTAssertTrue(deleted.isEmpty)
+    }
+
+    func testUnderstandingRejectsStaleEditsAndForeignCommands() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID(), otherID = UUID(), draftID = UUID()
+        for id in [sessionID, otherID] {
+            try await repo.createSession(MentorSession(id: id, initialEntry: "listen", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        }
+        _ = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: draftID)
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draftID, editRevision: 2, text: "new")
+        for (id, revision, text) in [(sessionID, 1, "old"), (sessionID, 2, "conflict"), (otherID, 3, "foreign")] {
+            do { _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: draftID, editRevision: revision, text: text); XCTFail("Must reject invalid edit") } catch {}
+        }
+        for (id, revision) in [(sessionID, 1), (otherID, 2)] {
+            do { _ = try await repo.confirmUnderstanding(sessionID: id, draftID: draftID, expectedEditRevision: revision); XCTFail("Must reject invalid confirmation") } catch {}
+        }
+        do { _ = try await repo.beginUserUnderstanding(sessionID: otherID, draftID: draftID); XCTFail("Must reject foreign command replay") } catch {}
+        _ = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 2)
+        do { _ = try await repo.beginUserUnderstanding(sessionID: otherID, draftID: UUID(), previousRevisionID: draftID); XCTFail("Must reject foreign predecessor") } catch {}
+        do {
+            try await db.dbQueue.write { try $0.execute(sql: "UPDATE mentor_understandings SET text = 'overwrite' WHERE id = ?", arguments: [draftID.uuidString]) }
+            XCTFail("Database must reject in-place changes to confirmed revisions")
+        } catch {}
+        let rows = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(rows.first?.text, "new")
+    }
+
+    func testUnderstandingConfirmationRollsBackWithSessionWriteFailure() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID(), draftID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "listen", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        _ = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: draftID)
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draftID, editRevision: 1, text: "preserve")
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_understanding_activity BEFORE UPDATE ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { _ = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 1); XCTFail("Expected transaction failure") } catch {}
+        do { _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draftID, editRevision: 2, text: "unsaved"); XCTFail("Expected transaction failure") } catch {}
+        let unchanged = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(unchanged.first?.state, .draft)
+        XCTAssertEqual(unchanged.first?.text, "preserve")
+        XCTAssertEqual(unchanged.first?.editRevision, 1)
+        XCTAssertNil(unchanged.first?.confirmedAt)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_understanding_activity") }
+        let confirmed = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draftID, expectedEditRevision: 1)
+        XCTAssertEqual(confirmed.state, .confirmed)
+    }
+
+    func testUnderstandingMigrationPreservesUnknownLegacyProvenance() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v61_mentor_recall_continuations")
+        let sessionID = UUID(), understandingID = UUID()
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO mentor_sessions (id, initial_entry, lifecycle, draft_text, draft_revision, activity_at) VALUES (?, 'listen', 'ended', '', 0, '2026-09-10T10:00:00Z')", arguments: [sessionID.uuidString])
+            try db.execute(sql: "INSERT INTO mentor_understandings (id, session_id, group_id, revision, state, text) VALUES (?, ?, ?, 1, 'confirmed', 'legacy text')", arguments: [understandingID.uuidString, sessionID.uuidString, understandingID.uuidString])
+        }
+        let db = try AppDatabase(dbQueue: queue)
+        let repo = SQLiteMentorRepository(database: db)
+        let rows = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(rows.first?.text, "legacy text")
+        XCTAssertEqual(rows.first?.origin, "legacy")
+        XCTAssertNil(rows.first?.confirmedAt, "Migration must not invent confirmation evidence")
+        do { _ = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: understandingID); XCTFail("Must not silently label legacy content user-authored") } catch {}
+    }
+
     func testSessionDraftItemsAndCascadeDelete() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

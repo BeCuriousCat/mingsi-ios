@@ -44,7 +44,26 @@ struct MentorSessionPage: Equatable {
     let nextCursor: MentorSessionCursor?
 }
 
+enum MentorUnderstandingState: String, Codable { case draft, confirmed }
+
+struct MentorUnderstanding: Equatable, Identifiable {
+    let id: UUID
+    let sessionID: UUID
+    let groupID: UUID
+    let revision: Int
+    let previousRevisionID: UUID?
+    let state: MentorUnderstandingState
+    let text: String
+    let origin: String
+    let editRevision: Int
+    let confirmedAt: Date?
+}
+
 protocol MentorRepository {
+    func beginUserUnderstanding(sessionID: UUID, draftID: UUID, previousRevisionID: UUID?) async throws -> MentorUnderstanding
+    func saveUnderstandingDraft(sessionID: UUID, draftID: UUID, editRevision: Int, text: String) async throws -> MentorUnderstanding
+    func confirmUnderstanding(sessionID: UUID, draftID: UUID, expectedEditRevision: Int) async throws -> MentorUnderstanding
+    func understandings(sessionID: UUID) async throws -> [MentorUnderstanding]
     func createSession(_ session: MentorSession) async throws
     func session(id: UUID) async throws -> MentorSession?
     func acknowledgePresentation(sessionID: UUID, itemID: UUID, at date: Date, timeZone: TimeZone) async throws
@@ -77,6 +96,90 @@ struct MentorSubmitTurn: Equatable {
 final class SQLiteMentorRepository: MentorRepository {
     private let database: AppDatabase
     init(database: AppDatabase) { self.database = database }
+
+    /// Stable draft identity makes repeated UI commands harmless, including after confirmation.
+    /// This entry point is exclusively for user-authored notes, never model-generated text.
+    func beginUserUnderstanding(sessionID: UUID, draftID: UUID, previousRevisionID: UUID? = nil) async throws -> MentorUnderstanding {
+        try await database.dbQueue.write { db in
+            guard try MentorSessionRow.fetchOne(db, key: sessionID.uuidString) != nil else {
+                throw PersistenceError.validationFailed("mentor session missing")
+            }
+            if let existing = try MentorUnderstandingRow.fetchOne(db, key: draftID.uuidString) {
+                guard existing.sessionID == sessionID.uuidString,
+                      existing.previousRevisionID == previousRevisionID?.uuidString,
+                      existing.origin == "user_note" else {
+                    throw PersistenceError.validationFailed("understanding command conflict")
+                }
+                return try existing.model()
+            }
+            var groupID = draftID.uuidString
+            var revision = 1
+            var text = ""
+            if let previousRevisionID {
+                guard let previous = try MentorUnderstandingRow.fetchOne(db, key: previousRevisionID.uuidString),
+                      previous.sessionID == sessionID.uuidString, previous.state == "confirmed",
+                      previous.origin == "user_note",
+                      try Int.fetchOne(db, sql: "SELECT MAX(revision) FROM mentor_understandings WHERE group_id = ?", arguments: [previous.groupID]) == previous.revision else {
+                    throw PersistenceError.validationFailed("understanding requires latest confirmed user note")
+                }
+                groupID = previous.groupID
+                revision = previous.revision + 1
+                text = previous.text
+            }
+            let row = MentorUnderstandingRow(id: draftID.uuidString, sessionID: sessionID.uuidString,
+                groupID: groupID, revision: revision, state: "draft", text: text,
+                previousRevisionID: previousRevisionID?.uuidString, origin: "user_note", confirmedAt: nil, editRevision: 0)
+            try row.insert(db)
+            return try row.model()
+        }
+    }
+
+    func saveUnderstandingDraft(sessionID: UUID, draftID: UUID, editRevision: Int, text: String) async throws -> MentorUnderstanding {
+        try await database.dbQueue.write { db in
+            guard var row = try MentorUnderstandingRow.fetchOne(db, key: draftID.uuidString),
+                  row.sessionID == sessionID.uuidString, row.state == "draft", row.origin == "user_note",
+                  editRevision >= 0, editRevision >= row.editRevision else {
+                throw PersistenceError.validationFailed("stale or closed understanding draft")
+            }
+            if editRevision == row.editRevision {
+                guard text == row.text else { throw PersistenceError.validationFailed("understanding edit conflict") }
+                return try row.model()
+            }
+            row.text = text
+            row.editRevision = editRevision
+            try row.update(db)
+            try db.execute(sql: "UPDATE mentor_sessions SET activity_at = ? WHERE id = ?",
+                           arguments: [ISO8601DateFormatter().string(from: .now), sessionID.uuidString])
+            return try row.model()
+        }
+    }
+
+    /// Confirmation is local and explicit. Frozen revisions can only be changed by copying a new draft.
+    func confirmUnderstanding(sessionID: UUID, draftID: UUID, expectedEditRevision: Int) async throws -> MentorUnderstanding {
+        try await database.dbQueue.write { db in
+            guard var row = try MentorUnderstandingRow.fetchOne(db, key: draftID.uuidString),
+                  row.sessionID == sessionID.uuidString, row.origin == "user_note",
+                  row.editRevision == expectedEditRevision,
+                  !row.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw PersistenceError.validationFailed("understanding confirmation conflict")
+            }
+            if row.state == "confirmed" { return try row.model() }
+            guard row.state == "draft" else { throw PersistenceError.validationFailed("invalid understanding state") }
+            row.state = "confirmed"
+            row.confirmedAt = ISO8601DateFormatter().string(from: .now)
+            try row.update(db)
+            try db.execute(sql: "UPDATE mentor_sessions SET activity_at = ? WHERE id = ?",
+                           arguments: [row.confirmedAt, sessionID.uuidString])
+            return try row.model()
+        }
+    }
+
+    func understandings(sessionID: UUID) async throws -> [MentorUnderstanding] {
+        try await database.dbQueue.read { db in
+            try MentorUnderstandingRow.filter(Column("session_id") == sessionID.uuidString)
+                .order(Column("group_id"), Column("revision")).fetchAll(db).map { try $0.model() }
+        }
+    }
 
     func createSession(_ session: MentorSession) async throws {
         guard session.draftRevision >= 0, session.semanticRevision == 0, session.requestEpoch == 0, session.recallCount == 0 else { throw PersistenceError.validationFailed("negative mentor draft revision") }
@@ -112,10 +215,16 @@ final class SQLiteMentorRepository: MentorRepository {
                                  ELSE i.payload_json END, 1, 80)
                              FROM mentor_items i WHERE i.session_id = s.id AND i.kind IN ('user', 'lesson')
                              ORDER BY i.sequence LIMIT 1
+                         ), (
+                             SELECT substr(u.text, 1, 80) FROM mentor_understandings u
+                             WHERE u.session_id = s.id AND length(trim(u.text)) > 0
+                             ORDER BY u.revision DESC, u.id DESC LIMIT 1
                          ), '') END AS preview
                 FROM mentor_sessions s
                 WHERE (length(trim(s.draft_text)) > 0 OR EXISTS (
                     SELECT 1 FROM mentor_items i WHERE i.session_id = s.id
+                ) OR EXISTS (
+                    SELECT 1 FROM mentor_understandings u WHERE u.session_id = s.id AND length(trim(u.text)) > 0
                 )) \(boundary)
                 ORDER BY s.activity_at DESC, s.id DESC LIMIT ?
                 """, arguments: arguments)
@@ -460,4 +569,30 @@ private struct MentorItemRow: Codable, FetchableRecord, PersistableRecord {
     enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", sequence, kind, payloadJSON = "payload_json", supersedesItemID = "supersedes_item_id" }
     init(_ value: MentorTimelineItem) { id = value.id.uuidString; sessionID = value.sessionID.uuidString; sequence = value.sequence; kind = value.kind.rawValue; payloadJSON = value.payloadJSON; supersedesItemID = value.supersedesItemID?.uuidString }
     func model() throws -> MentorTimelineItem { guard let id = UUID(uuidString: id), let sessionID = UUID(uuidString: sessionID), let kind = MentorItemKind(rawValue: kind) else { throw PersistenceError.invalidStoredValue("mentor_items") }; return MentorTimelineItem(id: id, sessionID: sessionID, sequence: sequence, kind: kind, payloadJSON: payloadJSON, supersedesItemID: supersedesItemID.flatMap(UUID.init(uuidString:))) }
+}
+
+private struct MentorUnderstandingRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "mentor_understandings"
+    var id, sessionID, groupID: String
+    var revision: Int
+    var state, text: String
+    var previousRevisionID: String?
+    var origin: String
+    var confirmedAt: String?
+    var editRevision: Int
+    enum CodingKeys: String, CodingKey {
+        case id, sessionID = "session_id", groupID = "group_id", revision, state, text
+        case previousRevisionID = "previous_revision_id", origin, confirmedAt = "confirmed_at", editRevision = "edit_revision"
+    }
+    func model() throws -> MentorUnderstanding {
+        guard let id = UUID(uuidString: id), let sessionID = UUID(uuidString: sessionID),
+              let groupID = UUID(uuidString: groupID), let state = MentorUnderstandingState(rawValue: state),
+              previousRevisionID == nil || UUID(uuidString: previousRevisionID!) != nil,
+              confirmedAt == nil || ISO8601DateFormatter().date(from: confirmedAt!) != nil else {
+            throw PersistenceError.invalidStoredValue("mentor understanding")
+        }
+        return MentorUnderstanding(id: id, sessionID: sessionID, groupID: groupID, revision: revision,
+            previousRevisionID: previousRevisionID.flatMap(UUID.init(uuidString:)), state: state, text: text,
+            origin: origin, editRevision: editRevision, confirmedAt: confirmedAt.flatMap { ISO8601DateFormatter().date(from: $0) })
+    }
 }
