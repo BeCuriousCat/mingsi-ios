@@ -785,6 +785,9 @@ extension AppDatabase {
                 t.foreignKey(["session_id", "item_id"], references: "mentor_items", columns: ["session_id", "id"], onDelete: .cascade)
             }
         }
+        migrator.registerMigration("v58_mentor_recent_sessions_index") { db in
+            try db.execute(sql: "CREATE INDEX mentor_sessions_activity_identity ON mentor_sessions(activity_at DESC, id DESC)")
+        }
     }
 }
 

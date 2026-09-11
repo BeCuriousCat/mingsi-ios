@@ -24,9 +24,29 @@ struct MentorTimelineItem: Codable, Equatable, Identifiable {
     var supersedesItemID: UUID? = nil
 }
 
+/// Cursor retains the exact stored timestamp, avoiding date round-trip drift.
+struct MentorSessionCursor: Equatable {
+    fileprivate let storedActivityAt: String
+    fileprivate let id: String
+}
+
+struct MentorSessionSummary: Equatable, Identifiable {
+    let id: UUID
+    let initialEntry: String
+    let lifecycle: MentorSessionLifecycle
+    let activityAt: Date
+    let preview: String
+}
+
+struct MentorSessionPage: Equatable {
+    let sessions: [MentorSessionSummary]
+    let nextCursor: MentorSessionCursor?
+}
+
 protocol MentorRepository {
     func createSession(_ session: MentorSession) async throws
     func session(id: UUID) async throws -> MentorSession?
+    func recentSessions(after cursor: MentorSessionCursor?, limit: Int) async throws -> MentorSessionPage
     func saveDraft(sessionID: UUID, revision: Int, text: String) async throws
     func appendItem(_ item: MentorTimelineItem) async throws
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
@@ -57,6 +77,57 @@ final class SQLiteMentorRepository: MentorRepository {
 
     func session(id: UUID) async throws -> MentorSession? {
         try await database.dbQueue.read { db in try MentorSessionRow.fetchOne(db, key: id.uuidString)?.model() }
+    }
+
+    /// Keyset pagination over live records. Refresh from the first page after
+    /// edits; records whose activity changes may move ahead of an existing cursor.
+    func recentSessions(after cursor: MentorSessionCursor? = nil, limit: Int = 20) async throws -> MentorSessionPage {
+        guard (1...20).contains(limit) else {
+            throw PersistenceError.validationFailed("mentor page size must be between 1 and 20")
+        }
+        return try await database.dbQueue.read { db in
+            var arguments: StatementArguments = []
+            var boundary = ""
+            if let cursor {
+                boundary = "AND (s.activity_at, s.id) < (?, ?)"
+                arguments += [cursor.storedActivityAt, cursor.id]
+            }
+            arguments += [limit + 1]
+            // Never load complete conversation, draft or request JSON into a list.
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT s.id, s.initial_entry, s.lifecycle, s.activity_at,
+                    CASE WHEN length(trim(s.draft_text)) > 0
+                         THEN substr(s.draft_text, 1, 80)
+                         ELSE COALESCE((
+                             SELECT substr(CASE WHEN json_valid(i.payload_json)
+                                 THEN COALESCE(json_extract(i.payload_json, '$.text'), json_extract(i.payload_json, '$.title'), '')
+                                 ELSE i.payload_json END, 1, 80)
+                             FROM mentor_items i WHERE i.session_id = s.id AND i.kind IN ('user', 'lesson')
+                             ORDER BY i.sequence LIMIT 1
+                         ), '') END AS preview
+                FROM mentor_sessions s
+                WHERE (length(trim(s.draft_text)) > 0 OR EXISTS (
+                    SELECT 1 FROM mentor_items i WHERE i.session_id = s.id
+                )) \(boundary)
+                ORDER BY s.activity_at DESC, s.id DESC LIMIT ?
+                """, arguments: arguments)
+            let visible = Array(rows.prefix(limit))
+            let summaries = try visible.map { row -> MentorSessionSummary in
+                let rawID: String = row["id"]
+                let rawLifecycle: String = row["lifecycle"]
+                let timestamp: String = row["activity_at"]
+                guard let id = UUID(uuidString: rawID),
+                      let lifecycle = MentorSessionLifecycle(rawValue: rawLifecycle),
+                      let date = ISO8601DateFormatter().date(from: timestamp) else {
+                    throw PersistenceError.invalidStoredValue("mentor session summary")
+                }
+                return MentorSessionSummary(id: id, initialEntry: row["initial_entry"], lifecycle: lifecycle, activityAt: date, preview: row["preview"])
+            }
+            let next = rows.count > limit ? visible.last.map {
+                MentorSessionCursor(storedActivityAt: $0["activity_at"], id: $0["id"])
+            } : nil
+            return MentorSessionPage(sessions: summaries, nextCursor: next)
+        }
     }
 
     func saveDraft(sessionID: UUID, revision: Int, text: String) async throws {

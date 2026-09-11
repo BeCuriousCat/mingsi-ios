@@ -249,4 +249,45 @@ final class MentorPersistenceTests: XCTestCase {
         do { _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 1, text: "fork"); XCTFail("Correction fork accepted") } catch {}
     }
 
+    func testRecentSessionPaginationHandlesTiesAndDeletedCursor() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        var ids: [UUID] = []
+        for index in 1...43 {
+            let id = UUID(uuidString: String(format: "00000000-0000-4000-8000-%012d", index))!
+            ids.append(id)
+            try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .paused, draftText: "draft", draftRevision: 1, activityAt: date))
+        }
+        let first = try await repo.recentSessions()
+        XCTAssertEqual(first.sessions.map(\.id), Array(ids.reversed().prefix(20)))
+        let cursor = try XCTUnwrap(first.nextCursor)
+        try await repo.deleteSession(id: first.sessions.last!.id)
+        let second = try await repo.recentSessions(after: cursor)
+        let third = try await repo.recentSessions(after: try XCTUnwrap(second.nextCursor))
+        XCTAssertEqual(first.sessions.count, 20)
+        XCTAssertEqual(second.sessions.count, 20)
+        XCTAssertEqual(third.sessions.count, 3)
+        XCTAssertNil(third.nextCursor)
+        XCTAssertEqual((first.sessions + second.sessions + third.sessions).map(\.id), ids.reversed())
+    }
+
+    func testRecentSessionPreviewIncludesDraftOrContentButNotEmptyEntry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let empty = UUID(), draft = UUID(), lesson = UUID()
+        for id in [empty, draft, lesson] {
+            try await repo.createSession(MentorSession(id: id, initialEntry: "listen", lifecycle: .draft, draftText: id == draft ? String(repeating: "文", count: 200) : "", draftRevision: 0, activityAt: .now))
+        }
+        try await repo.appendItem(MentorTimelineItem(id: UUID(), sessionID: lesson, sequence: 1, kind: .lesson, payloadJSON: "{\"title\":\"观察和解释\"}"))
+        let page = try await repo.recentSessions(limit: 3)
+        XCTAssertEqual(Set(page.sessions.map(\.id)), Set([draft, lesson]))
+        XCTAssertEqual(page.sessions.first { $0.id == draft }?.preview.count, 80)
+        XCTAssertEqual(page.sessions.first { $0.id == lesson }?.preview, "观察和解释")
+        XCTAssertNil(page.nextCursor)
+        for limit in [0, -1, 21, Int.max] {
+            do { _ = try await repo.recentSessions(limit: limit); XCTFail("Invalid limit accepted") } catch {}
+        }
+    }
+
 }
