@@ -858,6 +858,17 @@ extension AppDatabase {
             try db.create(index: "prompt_runs_mentor_request_idx", on: "prompt_runs", columns: ["mentor_session_id", "mentor_request_id"], unique: false, ifNotExists: true)
         }
 
+        migrator.registerMigration("v65_mentor_source_link_ownership") { db in
+            try db.alter(table: "mentor_source_links") { t in
+                t.add(column: "owner_kind", .text).notNull().defaults(to: "legacy")
+                t.add(column: "owner_uuid", .text)
+                t.add(column: "source_version", .text)
+                t.add(column: "content_hash", .text)
+                t.add(column: "availability", .text).notNull().defaults(to: "available")
+            }
+            try db.create(index: "mentor_source_links_owner_idx", on: "mentor_source_links", columns: ["session_id", "owner_kind", "owner_uuid"], unique: false, ifNotExists: true)
+        }
+
     }
 }
 

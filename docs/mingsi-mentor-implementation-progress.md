@@ -176,6 +176,16 @@ DirectGLM 为导师请求把 URLSession `timeoutInterval` 限制到策略截止�
 
 剩余范围：PromptRun 与 mentor_requests 已有逻辑关联字段，但尚未建立数据库级外键（两张表在不同迁移层管理，删除治理仍需 F15 统一）；模型输出协议验证仍需调用方先执行 MentorResponseParser；并发提交与暂停的更完整竞态测试、Store 接入和真实请求链路尚待 F10 / F11 集成门禁。当前模块不改变用户可见行为，无需用户发布说明。
 
+## 2026-09-12：F03 / F09 来源链接结构化所有权
+
+v65 为 mentor_source_links 增加 owner_kind、owner_uuid、source_version、content_hash 和 availability，并建立会话 / owner 索引。新增 MentorSourceLink、MentorSourceOwnerKind 与 MentorSourceAvailability；保存前在同一事务内验证 owner 是当前会话实际拥有的 request、item 或 understanding，拒绝随机 UUID、跨会话 owner 和空来源。sourceLinks 按结构化 owner 查询，不再依赖 JSON 或字符串前缀推断关系。历史旧行保留 legacy owner_kind，不能自动转换成可信作者关系。
+
+导师来源审计、教材快照、用户理解和时间线现在都有显式 UUID 归属字段；来源版本与内容哈希可供后续校验。终态请求仍可挂载来源作为已发生事实，但已删除会话通过级联清理；F15 仍需将可用性、删除和导出白名单统一处理。
+
+验证：MingSi Dev 模拟器 MentorPersistenceTests 新增来源链接测试 1 项通过、0 失败、0 跳过，覆盖 request owner 往返与重复命令、随机 / 跨会话 / 错误 kind owner 拒绝、终态历史 owner 保存以及重复主键保护。工程迁移至 v65 成功。
+
+剩余范围：来源 link 尚未被 MentorResponseParser 的每个返回 source_ref 强制逐项创建，source_id 的实际对象存在性与版本哈希核验仍需按 source_kind 实现；PromptRun 的 mentor 关联暂未建立数据库外键。不能据此声称完整来源审计或删除治理完成。内部实现无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。

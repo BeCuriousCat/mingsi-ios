@@ -70,6 +70,21 @@ struct MentorSavedLesson: Equatable, Identifiable {
     let readingRevision: Int
 }
 
+enum MentorSourceOwnerKind: String, Codable { case request, item, understanding }
+enum MentorSourceAvailability: String, Codable { case available, unavailable, deleted }
+
+struct MentorSourceLink: Codable, Equatable, Identifiable {
+    let id: UUID
+    let sessionID: UUID
+    let ownerKind: MentorSourceOwnerKind
+    let ownerID: UUID
+    let sourceKind: String
+    let sourceID: String
+    let sourceVersion: String?
+    let contentHash: String?
+    let availability: MentorSourceAvailability
+}
+
 protocol MentorRepository {
     func selectNextLesson(sessionID: UUID, itemID: UUID, expectedEpoch: Int, catalog: MentorLessonCatalog, at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
     func savedLesson(sessionID: UUID, itemID: UUID) async throws -> MentorSavedLesson?
@@ -81,6 +96,8 @@ protocol MentorRepository {
     func saveUnderstandingDraft(sessionID: UUID, draftID: UUID, editRevision: Int, text: String) async throws -> MentorUnderstanding
     func confirmUnderstanding(sessionID: UUID, draftID: UUID, expectedEditRevision: Int) async throws -> MentorUnderstanding
     func understandings(sessionID: UUID) async throws -> [MentorUnderstanding]
+    func saveSourceLink(_ link: MentorSourceLink) async throws
+    func sourceLinks(sessionID: UUID, ownerID: UUID) async throws -> [MentorSourceLink]
     func createSession(_ session: MentorSession) async throws
     func session(id: UUID) async throws -> MentorSession?
     func acknowledgePresentation(sessionID: UUID, itemID: UUID, at date: Date, timeZone: TimeZone) async throws
@@ -113,6 +130,40 @@ struct MentorSubmitTurn: Equatable {
 final class SQLiteMentorRepository: MentorRepository {
     private let database: AppDatabase
     init(database: AppDatabase) { self.database = database }
+
+    func saveSourceLink(_ link: MentorSourceLink) async throws {
+        guard !link.sourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("empty mentor source")
+        }
+        try await database.dbQueue.write { db in
+            guard try MentorSessionRow.fetchOne(db, key: link.sessionID.uuidString) != nil else {
+                throw PersistenceError.validationFailed("source link session missing")
+            }
+            let owned: Bool
+            switch link.ownerKind {
+            case .request:
+                owned = try MentorRequestRow.fetchOne(db, key: link.ownerID.uuidString).map { $0.sessionID == link.sessionID.uuidString } ?? false
+            case .item:
+                owned = try MentorItemRow.fetchOne(db, key: link.ownerID.uuidString).map { $0.sessionID == link.sessionID.uuidString } ?? false
+            case .understanding:
+                owned = try MentorUnderstandingRow.fetchOne(db, key: link.ownerID.uuidString).map { $0.sessionID == link.sessionID.uuidString } ?? false
+            }
+            guard owned else { throw PersistenceError.validationFailed("source link owner is not owned") }
+            try db.execute(sql: """
+                INSERT INTO mentor_source_links
+                (id, session_id, owner_id, source_kind, source_id, owner_kind, owner_uuid, source_version, content_hash, availability)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [link.id.uuidString, link.sessionID.uuidString, link.ownerID.uuidString,
+                    link.sourceKind, link.sourceID, link.ownerKind.rawValue, link.ownerID.uuidString,
+                    link.sourceVersion, link.contentHash, link.availability.rawValue])
+        }
+    }
+
+    func sourceLinks(sessionID: UUID, ownerID: UUID) async throws -> [MentorSourceLink] {
+        try await database.dbQueue.read { db in
+            try MentorSourceLinkRow.fetchAll(db, sql: "SELECT * FROM mentor_source_links WHERE session_id = ? AND owner_uuid = ? ORDER BY id", arguments: [sessionID.uuidString, ownerID.uuidString]).map { try $0.model() }
+        }
+    }
 
     /// Stable draft identity makes repeated UI commands harmless, including after confirmation.
     /// This entry point is exclusively for user-authored notes, never model-generated text.
@@ -652,6 +703,30 @@ private struct MentorUnderstandingRow: Codable, FetchableRecord, PersistableReco
         return MentorUnderstanding(id: id, sessionID: sessionID, groupID: groupID, revision: revision,
             previousRevisionID: previousRevisionID.flatMap(UUID.init(uuidString:)), state: state, text: text,
             origin: origin, editRevision: editRevision, confirmedAt: confirmedAt.flatMap { ISO8601DateFormatter().date(from: $0) })
+    }
+}
+
+private struct MentorSourceLinkRow: Codable, FetchableRecord {
+    var id, sessionID, ownerID, sourceKind, sourceID: String
+    var ownerKind: String
+    var ownerUUID: String?
+    var sourceVersion: String?
+    var contentHash: String?
+    var availability: String
+    enum CodingKeys: String, CodingKey {
+        case id, sessionID = "session_id", ownerID = "owner_id", sourceKind = "source_kind", sourceID = "source_id"
+        case ownerKind = "owner_kind", ownerUUID = "owner_uuid", sourceVersion = "source_version", contentHash = "content_hash", availability
+    }
+    func model() throws -> MentorSourceLink {
+        guard let id = UUID(uuidString: id), let sessionID = UUID(uuidString: sessionID),
+              let ownerID = UUID(uuidString: ownerUUID ?? ownerID),
+              let kind = MentorSourceOwnerKind(rawValue: ownerKind),
+              let availability = MentorSourceAvailability(rawValue: availability) else {
+            throw PersistenceError.invalidStoredValue("mentor_source_links")
+        }
+        return MentorSourceLink(id: id, sessionID: sessionID, ownerKind: kind, ownerID: ownerID,
+            sourceKind: sourceKind, sourceID: sourceID, sourceVersion: sourceVersion,
+            contentHash: contentHash, availability: availability)
     }
 }
 

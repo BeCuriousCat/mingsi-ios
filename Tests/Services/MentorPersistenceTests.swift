@@ -325,6 +325,29 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(savedRuns.count, 0)
     }
 
+    func testSourceLinksRequireOwnedTypedOwnerAndRoundTrip() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID, text: "事实", intent: "reply", contextSnapshotJSON: "{}"))
+        let valid = MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .request, ownerID: requestID,
+            sourceKind: "item", sourceID: UUID().uuidString, sourceVersion: nil, contentHash: nil, availability: .available)
+        try await repo.saveSourceLink(valid)
+        let replay = try await repo.sourceLinks(sessionID: sessionID, ownerID: requestID)
+        XCTAssertEqual(replay, [valid])
+        let cases: [MentorSourceLink] = [
+            MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .request, ownerID: UUID(), sourceKind: "item", sourceID: "x", sourceVersion: nil, contentHash: nil, availability: .available),
+            MentorSourceLink(id: UUID(), sessionID: UUID(), ownerKind: .request, ownerID: requestID, sourceKind: "item", sourceID: "x", sourceVersion: nil, contentHash: nil, availability: .available),
+            MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .item, ownerID: UUID(), sourceKind: "item", sourceID: "x", sourceVersion: nil, contentHash: nil, availability: .available)
+        ]
+        for link in cases { do { try await repo.saveSourceLink(link); XCTFail("Invalid owner must be rejected") } catch {} }
+        try await repo.finishRequest(sessionID: sessionID, requestID: requestID, reason: .cancelled)
+        let afterTerminal = MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .request, ownerID: requestID, sourceKind: "item", sourceID: "new", sourceVersion: nil, contentHash: nil, availability: .available)
+        try await repo.saveSourceLink(afterTerminal)
+        do { try await repo.saveSourceLink(MentorSourceLink(id: valid.id, sessionID: sessionID, ownerKind: .request, ownerID: requestID, sourceKind: "item", sourceID: "different", sourceVersion: nil, contentHash: nil, availability: .available)); XCTFail("Duplicate source link ID must fail") } catch {}
+    }
+
     func testSessionDraftItemsAndCascadeDelete() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
