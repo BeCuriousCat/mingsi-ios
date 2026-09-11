@@ -286,6 +286,13 @@ final class MentorPersistenceTests: XCTestCase {
         _ = try await client.complete(request)
         let savedRuns = try await promptRepo.recentPromptRuns(limit: 5)
         XCTAssertEqual(savedRuns.count, 1)
+        let auditRelation = try await db.dbQueue.read { db in
+            try Row.fetchOne(db, sql: "SELECT mentor_session_id, mentor_request_id, mentor_request_epoch, mentor_semantic_revision FROM prompt_runs WHERE id = ?", arguments: [request.traceID.uuidString])
+        }
+        XCTAssertEqual(auditRelation?["mentor_session_id"] as String?, sessionID.uuidString)
+        XCTAssertEqual(auditRelation?["mentor_request_id"] as String?, requestID.uuidString)
+        XCTAssertEqual(auditRelation?["mentor_request_epoch"] as Int?, 0)
+        XCTAssertEqual(auditRelation?["mentor_semantic_revision"] as Int?, 0)
         try await mentor.finishRequest(sessionID: sessionID, requestID: requestID, reason: .cancelled)
         do { _ = try await client.complete(request); XCTFail("Terminal request cannot be audited again") } catch {
             XCTAssertTrue(error is PromptTracingError || error is MingSi.PersistenceError)

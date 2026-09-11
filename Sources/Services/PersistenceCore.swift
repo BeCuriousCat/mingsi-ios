@@ -20,6 +20,12 @@ protocol DailyEntryRepository {
     func recentEntries(limit: Int) async throws -> [DailyEntryDraft]
 }
 
+protocol SingleNudgeSessionRepository {
+    func save(_ session: SingleNudgeSession) async throws
+    func session(for dayKey: String) async throws -> SingleNudgeSession?
+    func latest() async throws -> SingleNudgeSession?
+}
+
 protocol ThinkingCardRepository {
     func saveCards(_ cards: [ThinkingCard], dailyEntryId: UUID) async throws
     func cards(for dailyEntryId: UUID) async throws -> [ThinkingCard]
@@ -4711,6 +4717,9 @@ enum DataExportSectionName: String, CaseIterable {
     case sideQuestExperienceEvents = "side_quest_experience_events"
     case sideQuestPhotoMemories = "side_quest_photo_memories"
     case sideQuestCorrectionEvents = "side_quest_correction_events"
+    case captureFragments = "capture_fragments"
+    case dailyCaptureDigests = "daily_capture_digests"
+    case singleNudgeSessions = "single_nudge_sessions"
 }
 
 final class SQLiteDataExportRepository: DataExportRepository {
@@ -5209,6 +5218,10 @@ struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
     var error: String?
     var userFeedback: String
     var createdAt: String
+    var mentorSessionId: String?
+    var mentorRequestId: String?
+    var mentorRequestEpoch: Int?
+    var mentorSemanticRevision: Int?
 
     var resolutionKey: String {
         [
@@ -5247,6 +5260,10 @@ struct PromptRunRow: Codable, FetchableRecord, PersistableRecord {
         error = run.error
         userFeedback = run.userFeedback.rawValue
         createdAt = run.createdAt.mingsiStorageString
+        mentorSessionId = nil
+        mentorRequestId = nil
+        mentorRequestEpoch = nil
+        mentorSemanticRevision = nil
     }
 
     func domainModel() throws -> PromptRun {

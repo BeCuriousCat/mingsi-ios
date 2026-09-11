@@ -572,6 +572,27 @@ extension SQLiteMentorRepository: MentorPromptAudit {
             }
         }
     }
+
+    func savePromptRun(_ run: PromptRun, token: LLMRequest.MentorAuditToken) async throws {
+        try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: token.sessionID.uuidString),
+                  let request = try MentorRequestRow.fetchOne(db, key: token.requestID.uuidString),
+                  request.sessionID == session.id,
+                  ["prepared", "in_flight", "response_received"].contains(request.state),
+                  request.epoch == token.requestEpoch,
+                  request.expectedRevision == token.semanticRevision,
+                  session.requestEpoch == token.requestEpoch,
+                  session.semanticRevision == token.semanticRevision else {
+                throw PersistenceError.validationFailed("mentor prompt audit request is stale or not owned")
+            }
+            var row = PromptRunRow(run: run)
+            row.mentorSessionId = session.id
+            row.mentorRequestId = request.id
+            row.mentorRequestEpoch = token.requestEpoch
+            row.mentorSemanticRevision = token.semanticRevision
+            try row.upsert(db)
+        }
+    }
 }
 
 private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {

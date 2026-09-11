@@ -1356,6 +1356,7 @@ extension MissingAPIKeyLLMClient: StreamingLLMClient {
 
 protocol MentorPromptAudit {
     func validate(_ token: LLMRequest.MentorAuditToken) async throws
+    func savePromptRun(_ run: PromptRun, token: LLMRequest.MentorAuditToken) async throws
 }
 
 final class PromptTracingLLMClient: LLMClient {
@@ -1395,11 +1396,10 @@ final class PromptTracingLLMClient: LLMClient {
     }
 
     private func saveRun(for request: LLMRequest, responseData: Data?, error: Error?) async throws {
-        if let token = request.mentorAuditToken {
-            guard request.mentorExecutionPolicy != nil, let mentorAudit else {
+        if request.mentorAuditToken != nil {
+            guard request.mentorExecutionPolicy != nil, mentorAudit != nil else {
                 throw PromptTracingError.missingMentorAudit
             }
-            try await mentorAudit.validate(token)
         }
         let errorMessage: String?
         if let llmError = error as? LLMClientError {
@@ -1432,7 +1432,11 @@ final class PromptTracingLLMClient: LLMClient {
             error: errorMessage
         )
 
-        try await repository.savePromptRun(run)
+        if let token = request.mentorAuditToken, let mentorAudit {
+            try await mentorAudit.savePromptRun(run, token: token)
+        } else {
+            try await repository.savePromptRun(run)
+        }
     }
 
     private func sessionMode(from request: LLMRequest) -> String {

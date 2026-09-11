@@ -847,6 +847,17 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v64_mentor_prompt_audit_ownership") { db in
+            guard try db.tableExists("prompt_runs") else { return }
+            try db.alter(table: "prompt_runs") { t in
+                t.add(column: "mentor_session_id", .text)
+                t.add(column: "mentor_request_id", .text)
+                t.add(column: "mentor_request_epoch", .integer)
+                t.add(column: "mentor_semantic_revision", .integer)
+            }
+            try db.create(index: "prompt_runs_mentor_request_idx", on: "prompt_runs", columns: ["mentor_session_id", "mentor_request_id"], unique: false, ifNotExists: true)
+        }
+
     }
 }
 

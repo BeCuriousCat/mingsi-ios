@@ -168,6 +168,14 @@ DirectGLM 为导师请求把 URLSession `timeoutInterval` 限制到策略截止�
 
 剩余范围：当前是在 PromptRun 写入前做只读状态校验，尚未把“校验 + PromptRun + mentor_request 状态更新”合并成同一个数据库事务，也未将 source_links 逐项验证为真实所有权；并发暂停与审计之间仍依赖 SQLite 事务时序，需后续引入导师专用原子命令。模型响应仍需先通过 MentorResponseParser，不能因审计通过就视为协议或语义有效。内部实现无需用户发布说明。
 
+## 2026-09-12：F10 导师 PromptRun 原子关联审计
+
+将导师审计从“先读校验、再调用通用 PromptRun 保存”收敛为 SQLiteMentorRepository 的原子 `savePromptRun(run, token)`。同一写事务内重新读取并校验会话、请求所有权、可写状态、request_epoch 和 semantic_revision，然后把 `mentor_session_id`、`mentor_request_id`、`mentor_request_epoch`、`mentor_semantic_revision` 关联字段写入 PromptRun。v64 增加关联列与索引；普通 PromptRun 保持空关联字段和原有保存路径。PromptTracingLLMClient 对带 token 的请求强制要求 MentorPromptAudit，不再执行独立 read fence 后绕过原子命令。
+
+验证：MingSi Dev 模拟器 MentorPersistenceTests 2 项目标测试通过、0 失败、0 跳过；当前请求成功后 PromptRun 关联字段精确等于会话 / 请求 / 代次快照，终态、暂停后旧 epoch 及跨会话 token 均拒绝且 PromptRun 数量不变。此前 PromptTracing 审计失败测试继续覆盖写入故障传播。
+
+剩余范围：PromptRun 与 mentor_requests 已有逻辑关联字段，但尚未建立数据库级外键（两张表在不同迁移层管理，删除治理仍需 F15 统一）；模型输出协议验证仍需调用方先执行 MentorResponseParser；并发提交与暂停的更完整竞态测试、Store 接入和真实请求链路尚待 F10 / F11 集成门禁。当前模块不改变用户可见行为，无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。
