@@ -788,6 +788,17 @@ extension AppDatabase {
         migrator.registerMigration("v58_mentor_recent_sessions_index") { db in
             try db.execute(sql: "CREATE INDEX mentor_sessions_activity_identity ON mentor_sessions(activity_at DESC, id DESC)")
         }
+        migrator.registerMigration("v59_mentor_presentation_receipts") { db in
+            try db.alter(table: "mentor_sessions") { t in
+                t.add(column: "recall_count", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "mentor_items") { t in
+                t.add(column: "presented_at", .text)
+                t.add(column: "presentation_day", .text)
+                t.add(column: "presentation_time_zone", .text)
+                t.add(column: "requires_material", .boolean).notNull().defaults(to: false)
+            }
+        }
     }
 }
 

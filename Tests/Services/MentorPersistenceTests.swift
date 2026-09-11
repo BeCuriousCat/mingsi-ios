@@ -113,6 +113,7 @@ final class MentorPersistenceTests: XCTestCase {
         let result = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: "{\"body\":\"reply\"}")
         let replay = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: result.payloadJSON)
         XCTAssertEqual(result, replay)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: result.id, at: .now, timeZone: TimeZone(secondsFromGMT: 0)!)
         do { _ = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: "{}"); XCTFail("Conflicting replay") } catch {}
         let late = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "two", intent: "reply", contextSnapshotJSON: "{}"))
         try await repo.suspendSession(id: id, ending: false, draftRevision: 1, draftText: "saved")
@@ -288,6 +289,53 @@ final class MentorPersistenceTests: XCTestCase {
         for limit in [0, -1, 21, Int.max] {
             do { _ = try await repo.recentSessions(limit: limit); XCTFail("Invalid limit accepted") } catch {}
         }
+    }
+
+    func testPresentationAcknowledgementIsAtomicAndCountsOnlyOnce() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "busy", intent: "reply", contextSnapshotJSON: "{}"))
+        let payload = "{\"action\":\"explain\",\"question\":\"What happened?\",\"question_purpose\":\"material\"}"
+        let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: payload)
+        let saved = try await repo.session(id: id)
+        XCTAssertEqual(saved?.recallCount, 0)
+        do { _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "next", intent: "reply", contextSnapshotJSON: "{}")); XCTFail("Unacknowledged presentation") } catch {}
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_count BEFORE UPDATE OF recall_count ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let zone = TimeZone(secondsFromGMT: 28800)!
+        do { try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: date, timeZone: zone); XCTFail("Expected failure") } catch {}
+        let absent = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [item.id.uuidString]) }
+        XCTAssertNil(absent)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_count") }
+        try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: date, timeZone: zone)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: date.addingTimeInterval(86400), timeZone: zone)
+        let confirmed = try await repo.session(id: id)
+        XCTAssertEqual(confirmed?.recallCount, 1)
+        let stored = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [item.id.uuidString]) }
+        XCTAssertEqual(stored, ISO8601DateFormatter().string(from: date))
+        _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "next", intent: "reply", contextSnapshotJSON: "{}"))
+    }
+
+    func testMaterialBudgetAppliesAcrossActionsAndPresentationOwnership() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        for action in ["explain", "compare"] {
+            let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "unsure", intent: "reply", contextSnapshotJSON: "{}"))
+            let result = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{\"action\":\"\(action)\",\"question\":\"What happened?\",\"material_status\":\"missing\"}")
+            do { try await repo.acknowledgePresentation(sessionID: UUID(), itemID: result.id, at: .now, timeZone: .current); XCTFail("Wrong owner") } catch {}
+            try await repo.acknowledgePresentation(sessionID: id, itemID: result.id, at: .now, timeZone: .current)
+        }
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "unsure", intent: "reply", contextSnapshotJSON: "{}"))
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{\"question\":\"What else?\",\"question_purpose\":\"material\"}"); XCTFail("Third material question accepted") } catch {}
+        let final = try await repo.session(id: id)
+        XCTAssertEqual(final?.recallCount, 2)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 2)
+        do { try await repo.acknowledgePresentation(sessionID: id, itemID: items[0].id, at: .now, timeZone: .current); XCTFail("User input marked as teaching") } catch {}
     }
 
 }
