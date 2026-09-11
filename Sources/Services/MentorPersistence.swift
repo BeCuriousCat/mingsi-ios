@@ -58,6 +58,7 @@ protocol MentorRepository {
     func finishRequest(sessionID: UUID, requestID: UUID, reason: MentorRequestEndReason) async throws
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
     func resumeSession(id: UUID) async throws
+    func continueRecall(sessionID: UUID, commandID: UUID, expectedEpoch: Int) async throws
     func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
 }
@@ -240,6 +241,32 @@ final class SQLiteMentorRepository: MentorRepository {
             }
             try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [id.uuidString])
             try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = request_epoch + 1, lifecycle = ?, draft_revision = ?, draft_text = ?, activity_at = ? WHERE id = ?", arguments: [ending ? "ended" : "paused", draftRevision, draftText, ISO8601DateFormatter().string(from: .now), id.uuidString])
+        }
+    }
+
+    /// Only an explicit user choice may invoke this command, never a model action.
+    func continueRecall(sessionID: UUID, commandID: UUID, expectedEpoch: Int) async throws {
+        try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString) else {
+                throw PersistenceError.validationFailed("mentor session missing")
+            }
+            if let receipt = try Row.fetchOne(db, sql: "SELECT session_id, previous_epoch FROM mentor_recall_continuations WHERE command_id = ?", arguments: [commandID.uuidString]) {
+                let owner: String = receipt["session_id"]
+                let epoch: Int = receipt["previous_epoch"]
+                guard owner == session.id, epoch == expectedEpoch else {
+                    throw PersistenceError.validationFailed("conflicting recall continuation")
+                }
+                return
+            }
+            guard session.lifecycle == "active", session.requestEpoch == expectedEpoch,
+                  session.recallCount >= 2 else {
+                throw PersistenceError.validationFailed("recall continuation requires the current exhausted budget")
+            }
+            let unseen = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_request_results r JOIN mentor_items i ON i.id = r.item_id WHERE r.session_id = ? AND i.presented_at IS NULL", arguments: [session.id]) ?? 0
+            guard unseen == 0 else { throw PersistenceError.validationFailed("acknowledge prior content before continuing recall") }
+            try db.execute(sql: "INSERT INTO mentor_recall_continuations (command_id, session_id, previous_epoch, created_at) VALUES (?, ?, ?, ?)", arguments: [commandID.uuidString, session.id, expectedEpoch, ISO8601DateFormatter().string(from: .now)])
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [session.id])
+            try db.execute(sql: "UPDATE mentor_sessions SET recall_count = 0, request_epoch = request_epoch + 1 WHERE id = ?", arguments: [session.id])
         }
     }
 

@@ -804,6 +804,14 @@ extension AppDatabase {
                 t.add(column: "retry_of", .text).references("mentor_requests")
             }
         }
+        migrator.registerMigration("v61_mentor_recall_continuations") { db in
+            try db.create(table: "mentor_recall_continuations") { t in
+                t.column("command_id", .text).primaryKey()
+                t.column("session_id", .text).notNull().references("mentor_sessions", onDelete: .cascade)
+                t.column("previous_epoch", .integer).notNull()
+                t.column("created_at", .text).notNull()
+            }
+        }
     }
 }
 

@@ -381,4 +381,45 @@ final class MentorPersistenceTests: XCTestCase {
         do { _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "original", intent: "reply", contextSnapshotJSON: "{}", retryOf: request)); XCTFail("Obsolete context accepted") } catch {}
     }
 
+    func testExplicitRecallContinuationIsIdempotentAndDoesNotRecountHistory() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        do { try await repo.continueRecall(sessionID: id, commandID: UUID(), expectedEpoch: 0); XCTFail("Fresh budget reset") } catch {}
+        var shown: [MentorTimelineItem] = []
+        let question = "{\"question\":\"What happened?\",\"question_purpose\":\"material\"}"
+        for _ in 0..<2 {
+            let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "unsure", intent: "reply", contextSnapshotJSON: "{}"))
+            let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: question)
+            shown.append(item)
+            try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: .now, timeZone: .current)
+        }
+        let oldRequest = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "continue", intent: "reply", contextSnapshotJSON: "{}"))
+        let command = UUID()
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_recall BEFORE UPDATE OF recall_count ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { try await repo.continueRecall(sessionID: id, commandID: command, expectedEpoch: 0); XCTFail("Expected rollback") } catch {}
+        let unchanged = try await repo.session(id: id)
+        XCTAssertEqual(unchanged?.recallCount, 2)
+        let oldState = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [oldRequest.uuidString]) }
+        XCTAssertEqual(oldState, "prepared")
+        let noReceipt = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_recall_continuations") }
+        XCTAssertEqual(noReceipt, 0)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_recall") }
+        try await repo.continueRecall(sessionID: id, commandID: command, expectedEpoch: 0)
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: oldRequest, payloadJSON: question); XCTFail("Old request survived new segment") } catch {}
+        for item in shown { try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: .now, timeZone: .current) }
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "new segment", intent: "reply", contextSnapshotJSON: "{}"))
+        let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: question)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: .now, timeZone: .current)
+        try await repo.continueRecall(sessionID: id, commandID: command, expectedEpoch: 0)
+        let current = try await repo.session(id: id)
+        XCTAssertEqual(current?.recallCount, 1, "Replayed command must not clear new progress")
+        XCTAssertEqual(current?.requestEpoch, 1)
+        do { try await repo.continueRecall(sessionID: id, commandID: UUID(), expectedEpoch: 0); XCTFail("Stale continuation") } catch {}
+        try await repo.deleteSession(id: id)
+        let receipts = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_recall_continuations") }
+        XCTAssertEqual(receipts, 0)
+    }
+
 }
