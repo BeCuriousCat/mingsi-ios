@@ -271,6 +271,53 @@ final class MentorPersistenceTests: XCTestCase {
         do { _ = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: understandingID); XCTFail("Must not silently label legacy content user-authored") } catch {}
     }
 
+    func testMentorPromptAuditValidatesOwnedCurrentRequest() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let mentor = SQLiteMentorRepository(database: db)
+        let promptRepo = SQLitePromptRunRepository(database: db)
+        let sessionID = UUID()
+        try await mentor.createSession(MentorSession(id: sessionID, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await mentor.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID, text: "今天完成了一个改动", intent: "reply", contextSnapshotJSON: "{}"))
+        let token = LLMRequest.MentorAuditToken(sessionID: sessionID, requestID: requestID, requestEpoch: 0, semanticRevision: 0)
+        var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "audit", systemText: "Return JSON", userText: "{}", outputSchemaVersion: 1), inputSummary: "mentor audit")
+        request.mentorExecutionPolicy = .m1
+        request.mentorAuditToken = token
+        let client = PromptTracingLLMClient(base: MockLLMClient(), repository: promptRepo, modelProvider: "mock", modelName: "mentor-audit", mentorAudit: mentor)
+        _ = try await client.complete(request)
+        let savedRuns = try await promptRepo.recentPromptRuns(limit: 5)
+        XCTAssertEqual(savedRuns.count, 1)
+        try await mentor.finishRequest(sessionID: sessionID, requestID: requestID, reason: .cancelled)
+        do { _ = try await client.complete(request); XCTFail("Terminal request cannot be audited again") } catch {
+            XCTAssertTrue(error is PromptTracingError || error is MingSi.PersistenceError)
+        }
+        var foreign = request
+        foreign.mentorAuditToken = .init(sessionID: UUID(), requestID: requestID, requestEpoch: 0, semanticRevision: 0)
+        do { _ = try await client.complete(foreign); XCTFail("Foreign session cannot audit") } catch {
+            XCTAssertTrue(error is PromptTracingError || error is MingSi.PersistenceError)
+        }
+    }
+
+    func testMentorPromptAuditRejectsStaleEpochAndRevision() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let mentor = SQLiteMentorRepository(database: db)
+        let promptRepo = SQLitePromptRunRepository(database: db)
+        let sessionID = UUID()
+        try await mentor.createSession(MentorSession(id: sessionID, initialEntry: "review", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await mentor.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID, text: "原始事实", intent: "reply", contextSnapshotJSON: "{}"))
+        try await mentor.suspendSession(id: sessionID, ending: false, draftRevision: 0, draftText: "")
+        let token = LLMRequest.MentorAuditToken(sessionID: sessionID, requestID: requestID, requestEpoch: 0, semanticRevision: 0)
+        var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "audit", systemText: "Return JSON", userText: "{}", outputSchemaVersion: 1), inputSummary: "stale")
+        request.mentorExecutionPolicy = .m1; request.mentorAuditToken = token
+        do {
+            _ = try await PromptTracingLLMClient(base: MockLLMClient(), repository: promptRepo, modelProvider: "mock", modelName: "stale", mentorAudit: mentor).complete(request)
+            XCTFail("Suspended request epoch must be rejected")
+        } catch {
+            XCTAssertTrue(error is PromptTracingError || error is MingSi.PersistenceError)
+        }
+        let savedRuns = try await promptRepo.recentPromptRuns(limit: 5)
+        XCTAssertEqual(savedRuns.count, 0)
+    }
+
     func testSessionDraftItemsAndCascadeDelete() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

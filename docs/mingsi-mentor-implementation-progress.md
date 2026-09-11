@@ -160,6 +160,14 @@ DirectGLM 为导师请求把 URLSession `timeoutInterval` 限制到策略截止�
 
 剩余范围：PromptRunRepository 目前仍是通用表接口，PromptTracing 尚未查询导师会话是否存在、请求是否属于该会话、状态是否允许或代次是否匹配；需要新增导师专用审计命令和请求表关系，不能把“写入成功”当作所有权审计完成。现有普通请求的行为保持兼容。内部实现无需用户发布说明。
 
+## 2026-09-12：F10 导师 PromptRun 会话所有权与代次审计
+
+新增 `LLMRequest.MentorAuditToken`，携带 sessionID、requestID、requestEpoch 和 semanticRevision；PromptTracingLLMClient 可注入 MentorPromptAudit。导师请求启用策略却没有审计实现时直接失败。SQLiteMentorRepository 实现审计校验：会话和请求必须存在且同属一会话，请求状态必须仍为 prepared / in_flight / response_received，会话与请求的 epoch / semantic revision 必须同时匹配 token。暂停、取消、结束、删除或语义纠正后的迟到模型结果不能写入 PromptRun。普通请求无 token 时继续使用原有通用 PromptRun 路径。
+
+验证：MingSi Dev 模拟器 MentorPersistenceTests 新增 2 项通过，覆盖当前请求成功审计、PromptRun 落库、终态请求拒绝、跨会话 token 拒绝、暂停递增 epoch 后旧 token 拒绝，以及拒绝后 PromptRun 数量不变。此前审计写入失败测试仍通过，证明所有权校验错误会沿 PromptTracing 返回而不是静默吞掉。
+
+剩余范围：当前是在 PromptRun 写入前做只读状态校验，尚未把“校验 + PromptRun + mentor_request 状态更新”合并成同一个数据库事务，也未将 source_links 逐项验证为真实所有权；并发暂停与审计之间仍依赖 SQLite 事务时序，需后续引入导师专用原子命令。模型响应仍需先通过 MentorResponseParser，不能因审计通过就视为协议或语义有效。内部实现无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。

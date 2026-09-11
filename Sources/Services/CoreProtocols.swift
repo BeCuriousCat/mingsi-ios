@@ -113,6 +113,12 @@ struct PromptTemplate: Codable, Hashable {
 }
 
 struct LLMRequest: Hashable {
+    struct MentorAuditToken: Hashable {
+        let sessionID: UUID
+        let requestID: UUID
+        let requestEpoch: Int
+        let semanticRevision: Int
+    }
     /// Correlates transport auditing with the output that reaches a coach surface.
     let traceID: UUID
     let prompt: PromptTemplate
@@ -123,6 +129,7 @@ struct LLMRequest: Hashable {
     var contextRecordIDs: [String] = []
     /// Opt-in mentor transport policy; nil preserves existing client behavior.
     var mentorExecutionPolicy: MentorRequestPolicy? = nil
+    var mentorAuditToken: MentorAuditToken? = nil
 
     var decisionRoute: LLMDecisionRoute {
         prompt.id.decisionRoute
@@ -1347,22 +1354,29 @@ extension MissingAPIKeyLLMClient: StreamingLLMClient {
     }
 }
 
+protocol MentorPromptAudit {
+    func validate(_ token: LLMRequest.MentorAuditToken) async throws
+}
+
 final class PromptTracingLLMClient: LLMClient {
     private let base: LLMClient
     private let repository: PromptRunRepository
     private let modelProvider: String
     private let modelName: String
+    private let mentorAudit: MentorPromptAudit?
 
     init(
         base: LLMClient,
         repository: PromptRunRepository,
         modelProvider: String,
-        modelName: String
+        modelName: String,
+        mentorAudit: MentorPromptAudit? = nil
     ) {
         self.base = base
         self.repository = repository
         self.modelProvider = modelProvider
         self.modelName = modelName
+        self.mentorAudit = mentorAudit
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
@@ -1381,6 +1395,12 @@ final class PromptTracingLLMClient: LLMClient {
     }
 
     private func saveRun(for request: LLMRequest, responseData: Data?, error: Error?) async throws {
+        if let token = request.mentorAuditToken {
+            guard request.mentorExecutionPolicy != nil, let mentorAudit else {
+                throw PromptTracingError.missingMentorAudit
+            }
+            try await mentorAudit.validate(token)
+        }
         let errorMessage: String?
         if let llmError = error as? LLMClientError {
             errorMessage = llmError.userFacingMessage
@@ -1423,6 +1443,7 @@ final class PromptTracingLLMClient: LLMClient {
 
 enum PromptTracingError: Error, Equatable {
     case auditWriteFailed(String)
+    case missingMentorAudit
 }
 
 extension PromptTracingLLMClient: StreamingLLMClient {

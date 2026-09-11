@@ -554,6 +554,26 @@ final class SQLiteMentorRepository: MentorRepository {
     }
 }
 
+extension SQLiteMentorRepository: MentorPromptAudit {
+    /// Validates the request's ownership and semantic snapshot immediately before
+    /// PromptRun insertion. Prepared and in-flight requests are auditable; terminal,
+    /// deleted, or superseded requests cannot receive a late trace.
+    func validate(_ token: LLMRequest.MentorAuditToken) async throws {
+        try await database.dbQueue.read { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: token.sessionID.uuidString),
+                  let request = try MentorRequestRow.fetchOne(db, key: token.requestID.uuidString),
+                  request.sessionID == session.id,
+                  ["prepared", "in_flight", "response_received"].contains(request.state),
+                  request.epoch == token.requestEpoch,
+                  request.expectedRevision == token.semanticRevision,
+                  session.requestEpoch == token.requestEpoch,
+                  session.semanticRevision == token.semanticRevision else {
+                throw PersistenceError.validationFailed("mentor prompt audit request is stale or not owned")
+            }
+        }
+    }
+}
+
 private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "mentor_requests"
     var id, sessionID, commandID: String
