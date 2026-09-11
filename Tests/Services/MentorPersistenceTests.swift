@@ -199,4 +199,54 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(resumed?.draftText, "explicit continuation")
     }
 
+    func testCorrectionPreservesOriginalAndInvalidatesOldRequest() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "old fact", intent: "reply", contextSnapshotJSON: "{}"))
+        let before = try await repo.items(sessionID: id)
+        let command = UUID()
+        let correction = try await repo.correctUserItem(sessionID: id, itemID: before[0].id, commandID: command, expectedRevision: 0, text: "correct fact")
+        let replay = try await repo.correctUserItem(sessionID: id, itemID: before[0].id, commandID: command, expectedRevision: 0, text: "correct fact")
+        XCTAssertEqual(correction, replay)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0], before[0])
+        XCTAssertEqual(items[1].supersedesItemID, before[0].id)
+        let session = try await repo.session(id: id)
+        XCTAssertEqual(session?.semanticRevision, 1)
+        XCTAssertEqual(session?.requestEpoch, 1)
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}"); XCTFail("Old facts accepted") } catch {}
+        // Even an erroneous state reset cannot bypass the persisted revision check.
+        try await db.dbQueue.write { try $0.execute(sql: "UPDATE mentor_requests SET state = 'prepared' WHERE id = ?", arguments: [request.uuidString]) }
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}"); XCTFail("Revision mismatch accepted") } catch {}
+        try await db.dbQueue.write { try $0.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE id = ?", arguments: [request.uuidString]) }
+        let fresh = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: nil, intent: "explain", contextSnapshotJSON: "{}"))
+        _ = try await repo.commitResponse(sessionID: id, requestID: fresh, payloadJSON: "{}")
+        try await repo.deleteSession(id: id)
+        let remaining = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_corrections") }
+        XCTAssertEqual(remaining, 0)
+    }
+
+    func testCorrectionConflictAndFailureRollBackAllEffects() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "old", intent: "reply", contextSnapshotJSON: "{}"))
+        let original = try await repo.items(sessionID: id)[0]
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_correction BEFORE UPDATE ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 0, text: "new"); XCTFail("Failure ignored") } catch {}
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items, [original])
+        let current = try await repo.session(id: id)
+        XCTAssertEqual(current?.semanticRevision, 0)
+        let state = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [request.uuidString]) }
+        XCTAssertEqual(state, "prepared")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_correction") }
+        _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 0, text: "new")
+        do { _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 1, text: "fork"); XCTFail("Correction fork accepted") } catch {}
+    }
+
 }

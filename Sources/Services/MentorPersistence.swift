@@ -11,6 +11,8 @@ struct MentorSession: Codable, Equatable, Identifiable {
     var draftText: String
     var draftRevision: Int
     var activityAt: Date
+    var semanticRevision: Int = 0
+    var requestEpoch: Int = 0
 }
 
 struct MentorTimelineItem: Codable, Equatable, Identifiable {
@@ -19,6 +21,7 @@ struct MentorTimelineItem: Codable, Equatable, Identifiable {
     let sequence: Int
     let kind: MentorItemKind
     let payloadJSON: String
+    var supersedesItemID: UUID? = nil
 }
 
 protocol MentorRepository {
@@ -31,6 +34,7 @@ protocol MentorRepository {
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
     func resumeSession(id: UUID) async throws
+    func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
 }
 
@@ -47,7 +51,7 @@ final class SQLiteMentorRepository: MentorRepository {
     init(database: AppDatabase) { self.database = database }
 
     func createSession(_ session: MentorSession) async throws {
-        guard session.draftRevision >= 0 else { throw PersistenceError.validationFailed("negative mentor draft revision") }
+        guard session.draftRevision >= 0, session.semanticRevision == 0, session.requestEpoch == 0 else { throw PersistenceError.validationFailed("negative mentor draft revision") }
         try await database.dbQueue.write { db in try MentorSessionRow(session).insert(db) }
     }
 
@@ -94,6 +98,42 @@ final class SQLiteMentorRepository: MentorRepository {
         try await database.dbQueue.write { db in try MentorSessionRow.deleteOne(db, key: id.uuidString) }
     }
 
+    func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.validationFailed("empty mentor correction")
+        }
+        let payload = String(decoding: try JSONEncoder().encode(["text": text]), as: UTF8.self)
+        return try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString),
+                  let original = try MentorItemRow.fetchOne(db, key: itemID.uuidString),
+                  original.sessionID == session.id, original.kind == "user" else {
+                throw PersistenceError.validationFailed("correction requires owned user text")
+            }
+            if let row = try Row.fetchOne(db, sql: "SELECT session_id, item_id, expected_revision FROM mentor_corrections WHERE command_id = ?", arguments: [commandID.uuidString]) {
+                let owner: String = row["session_id"]
+                let revision: Int = row["expected_revision"]
+                let savedID: String = row["item_id"]
+                guard owner == session.id, revision == expectedRevision,
+                      let saved = try MentorItemRow.fetchOne(db, key: savedID),
+                      saved.supersedesItemID == original.id, saved.payloadJSON == payload else {
+                    throw PersistenceError.validationFailed("conflicting correction command")
+                }
+                return try saved.model()
+            }
+            guard session.lifecycle == "active", session.semanticRevision == expectedRevision,
+                  try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_items WHERE supersedes_item_id = ?", arguments: [original.id]) == 0 else {
+                throw PersistenceError.validationFailed("stale mentor correction")
+            }
+            let sequence = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mentor_items WHERE session_id = ?", arguments: [session.id]) ?? 1
+            let correction = MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: sequence, kind: .user, payloadJSON: payload, supersedesItemID: itemID)
+            try MentorItemRow(correction).insert(db)
+            try db.execute(sql: "INSERT INTO mentor_corrections (command_id, session_id, item_id, expected_revision) VALUES (?, ?, ?, ?)", arguments: [commandID.uuidString, session.id, correction.id.uuidString, expectedRevision])
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [session.id])
+            try db.execute(sql: "UPDATE mentor_sessions SET semantic_revision = semantic_revision + 1, request_epoch = request_epoch + 1, activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: .now), session.id])
+            return correction
+        }
+    }
+
     /// Explicit user continuation; cancelled requests remain terminal.
     func resumeSession(id: UUID) async throws {
         try await database.dbQueue.write { db in
@@ -121,7 +161,7 @@ final class SQLiteMentorRepository: MentorRepository {
                 return
             }
             try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [id.uuidString])
-            try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = ?, draft_revision = ?, draft_text = ?, activity_at = ? WHERE id = ?", arguments: [ending ? "ended" : "paused", draftRevision, draftText, ISO8601DateFormatter().string(from: .now), id.uuidString])
+            try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = request_epoch + 1, lifecycle = ?, draft_revision = ?, draft_text = ?, activity_at = ? WHERE id = ?", arguments: [ending ? "ended" : "paused", draftRevision, draftText, ISO8601DateFormatter().string(from: .now), id.uuidString])
         }
     }
 
@@ -147,6 +187,8 @@ final class SQLiteMentorRepository: MentorRepository {
                 return try item.model()
             }
             guard session.lifecycle == "active",
+                  request.epoch == session.requestEpoch,
+                  request.expectedRevision == session.semanticRevision,
                   ["prepared", "in_flight", "response_received"].contains(request.state) else {
                 throw PersistenceError.validationFailed("mentor response is no longer valid")
             }
@@ -162,7 +204,7 @@ final class SQLiteMentorRepository: MentorRepository {
 
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID {
         try await database.dbQueue.write { db in
-            guard try MentorSessionRow.fetchOne(db, key: command.sessionID.uuidString) != nil else { throw PersistenceError.validationFailed("mentor session missing") }
+            guard let session = try MentorSessionRow.fetchOne(db, key: command.sessionID.uuidString) else { throw PersistenceError.validationFailed("mentor session missing") }
             guard let contextData = command.contextSnapshotJSON.data(using: .utf8),
                   (try? JSONSerialization.jsonObject(with: contextData)) is [String: Any],
                   !command.intent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -194,7 +236,7 @@ final class SQLiteMentorRepository: MentorRepository {
                 try MentorItemRow(item).insert(db)
                 itemID = item.id.uuidString
             }
-            let request = MentorRequestRow(id: UUID().uuidString, sessionID: command.sessionID.uuidString, commandID: command.commandID.uuidString, userItemID: itemID, intent: command.intent, contextSnapshotJSON: command.contextSnapshotJSON, state: "prepared", createdAt: ISO8601DateFormatter().string(from: .now))
+            let request = MentorRequestRow(id: UUID().uuidString, sessionID: command.sessionID.uuidString, commandID: command.commandID.uuidString, userItemID: itemID, intent: command.intent, contextSnapshotJSON: command.contextSnapshotJSON, state: "prepared", createdAt: ISO8601DateFormatter().string(from: .now), expectedRevision: session.semanticRevision, epoch: session.requestEpoch)
             try request.insert(db)
             try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [request.createdAt, command.sessionID.uuidString])
             guard let requestID = UUID(uuidString: request.id) else { throw PersistenceError.invalidStoredValue("mentor request ID") }
@@ -208,7 +250,8 @@ private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {
     var id, sessionID, commandID: String
     var userItemID: String?
     var intent, contextSnapshotJSON, state, createdAt: String
-    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at" }
+    var expectedRevision, epoch: Int
+    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at", expectedRevision = "expected_revision", epoch }
 }
 
 private struct MentorSessionRow: Codable, FetchableRecord, PersistableRecord {
@@ -217,9 +260,10 @@ private struct MentorSessionRow: Codable, FetchableRecord, PersistableRecord {
     var id, initialEntry, lifecycle, draftText: String
     var draftRevision: Int
     var activityAt: String
-    enum CodingKeys: String, CodingKey { case id, initialEntry = "initial_entry", lifecycle, draftText = "draft_text", draftRevision = "draft_revision", activityAt = "activity_at" }
-    init(_ value: MentorSession) { id = value.id.uuidString; initialEntry = value.initialEntry; lifecycle = value.lifecycle.rawValue; draftText = value.draftText; draftRevision = value.draftRevision; activityAt = ISO8601DateFormatter().string(from: value.activityAt) }
-    func model() throws -> MentorSession { guard let id = UUID(uuidString: id), let lifecycle = MentorSessionLifecycle(rawValue: lifecycle), let date = ISO8601DateFormatter().date(from: activityAt) else { throw PersistenceError.invalidStoredValue("mentor_sessions") }; return MentorSession(id: id, initialEntry: initialEntry, lifecycle: lifecycle, draftText: draftText, draftRevision: draftRevision, activityAt: date) }
+    var semanticRevision, requestEpoch: Int
+    enum CodingKeys: String, CodingKey { case id, initialEntry = "initial_entry", lifecycle, draftText = "draft_text", draftRevision = "draft_revision", activityAt = "activity_at", semanticRevision = "semantic_revision", requestEpoch = "request_epoch" }
+    init(_ value: MentorSession) { id = value.id.uuidString; initialEntry = value.initialEntry; lifecycle = value.lifecycle.rawValue; draftText = value.draftText; draftRevision = value.draftRevision; activityAt = ISO8601DateFormatter().string(from: value.activityAt); semanticRevision = value.semanticRevision; requestEpoch = value.requestEpoch }
+    func model() throws -> MentorSession { guard let id = UUID(uuidString: id), let lifecycle = MentorSessionLifecycle(rawValue: lifecycle), let date = ISO8601DateFormatter().date(from: activityAt) else { throw PersistenceError.invalidStoredValue("mentor_sessions") }; return MentorSession(id: id, initialEntry: initialEntry, lifecycle: lifecycle, draftText: draftText, draftRevision: draftRevision, activityAt: date, semanticRevision: semanticRevision, requestEpoch: requestEpoch) }
 }
 
 private struct MentorItemRow: Codable, FetchableRecord, PersistableRecord {
@@ -228,7 +272,8 @@ private struct MentorItemRow: Codable, FetchableRecord, PersistableRecord {
     var id, sessionID: String
     var sequence: Int
     var kind, payloadJSON: String
-    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", sequence, kind, payloadJSON = "payload_json" }
-    init(_ value: MentorTimelineItem) { id = value.id.uuidString; sessionID = value.sessionID.uuidString; sequence = value.sequence; kind = value.kind.rawValue; payloadJSON = value.payloadJSON }
-    func model() throws -> MentorTimelineItem { guard let id = UUID(uuidString: id), let sessionID = UUID(uuidString: sessionID), let kind = MentorItemKind(rawValue: kind) else { throw PersistenceError.invalidStoredValue("mentor_items") }; return MentorTimelineItem(id: id, sessionID: sessionID, sequence: sequence, kind: kind, payloadJSON: payloadJSON) }
+    var supersedesItemID: String?
+    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", sequence, kind, payloadJSON = "payload_json", supersedesItemID = "supersedes_item_id" }
+    init(_ value: MentorTimelineItem) { id = value.id.uuidString; sessionID = value.sessionID.uuidString; sequence = value.sequence; kind = value.kind.rawValue; payloadJSON = value.payloadJSON; supersedesItemID = value.supersedesItemID?.uuidString }
+    func model() throws -> MentorTimelineItem { guard let id = UUID(uuidString: id), let sessionID = UUID(uuidString: sessionID), let kind = MentorItemKind(rawValue: kind) else { throw PersistenceError.invalidStoredValue("mentor_items") }; return MentorTimelineItem(id: id, sessionID: sessionID, sequence: sequence, kind: kind, payloadJSON: payloadJSON, supersedesItemID: supersedesItemID.flatMap(UUID.init(uuidString:))) }
 }

@@ -765,6 +765,26 @@ extension AppDatabase {
                 t.foreignKey(["session_id", "item_id"], references: "mentor_items", columns: ["session_id", "id"], onDelete: .cascade)
             }
         }
+        migrator.registerMigration("v57_mentor_semantic_revisions") { db in
+            try db.alter(table: "mentor_sessions") { t in
+                t.add(column: "semantic_revision", .integer).notNull().defaults(to: 0)
+                t.add(column: "request_epoch", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "mentor_requests") { t in
+                t.add(column: "expected_revision", .integer).notNull().defaults(to: 0)
+                t.add(column: "epoch", .integer).notNull().defaults(to: 0)
+            }
+            try db.alter(table: "mentor_items") { t in
+                t.add(column: "supersedes_item_id", .text).references("mentor_items")
+            }
+            try db.create(table: "mentor_corrections") { t in
+                t.column("command_id", .text).primaryKey()
+                t.column("session_id", .text).notNull().references("mentor_sessions", onDelete: .cascade)
+                t.column("item_id", .text).notNull().unique()
+                t.column("expected_revision", .integer).notNull()
+                t.foreignKey(["session_id", "item_id"], references: "mentor_items", columns: ["session_id", "id"], onDelete: .cascade)
+            }
+        }
     }
 }
 
