@@ -50,11 +50,13 @@
 		C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */; };
 		C7C6B1616BAEA066961CF1A0 /* VNextPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545A5FD25ED718BC0FA84F47 /* VNextPersistence.swift */; };
 		C9F9EF5CA842EA638FBCF6A9 /* test_ui_automation_runner_script.sh in Resources */ = {isa = PBXBuildFile; fileRef = D285BE8408A015ABEBFDBF39 /* test_ui_automation_runner_script.sh */; };
+		CA550D0099C30C625C40F05E /* MentorFeatureStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37177EDA6B0B62BEFD894132 /* MentorFeatureStoreTests.swift */; };
 		CC3E8EA58AC488277B625DF3 /* PromptSpecificationDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03D360D67582B7D9424B3FF7 /* PromptSpecificationDocumentTests.swift */; };
 		CD0CC571BEF715689807491C /* PhotoMemoryMediaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A37981F9DE1233506E6DDB /* PhotoMemoryMediaService.swift */; };
 		CF55CD9B63B0D193E4D8342B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FB352E2CC19588314AD98872 /* Assets.xcassets */; };
 		D31826207C325D841645BEE6 /* ProjectAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC5DF0F04313A3F701061FA /* ProjectAIService.swift */; };
 		D45C89BE5FBFBDA33F1BE072 /* SideQuestContextProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13EAC1CF8D4DB7FC664E043 /* SideQuestContextProviders.swift */; };
+		D5EABA0D1640862A77F5DD12 /* MentorFeatureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 683458105C8561F5F1C66E6F /* MentorFeatureStore.swift */; };
 		D7F685F570186BD030D0148C /* GrowthAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D3BD7ABA37178962198D905 /* GrowthAIService.swift */; };
 		D988BDC690C9AD3C7E4B5994 /* MentorLessonCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68290AC2698E3FE10F16D3B0 /* MentorLessonCatalogTests.swift */; };
 		DCB4DBEBF0E48CE273B4A6B5 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F875CD539723AF5C1CE047F2 /* GRDB */; };
@@ -105,6 +107,7 @@
 		32C5D52EA95184E3C35A976C /* SideQuestCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideQuestCatalog.swift; sourceTree = "<group>"; };
 		333288A6AEAC75F4F296DE98 /* MingSiUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MingSiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		35993467B43FF5E9C4147855 /* MockLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockLLMClient.swift; sourceTree = "<group>"; };
+		37177EDA6B0B62BEFD894132 /* MentorFeatureStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorFeatureStoreTests.swift; sourceTree = "<group>"; };
 		3D05560A573D382BC7E7992F /* TodayAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIService.swift; sourceTree = "<group>"; };
 		407113F4E10DA13FE28568B7 /* GRDB.swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GRDB.swift; path = Vendor/GRDB.swift; sourceTree = SOURCE_ROOT; };
 		423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCore.swift; sourceTree = "<group>"; };
@@ -119,6 +122,7 @@
 		5F8BAEF3B2D103761300F129 /* KeychainAPIKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAPIKeyStore.swift; sourceTree = "<group>"; };
 		63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorPersistence.swift; sourceTree = "<group>"; };
 		68290AC2698E3FE10F16D3B0 /* MentorLessonCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorLessonCatalogTests.swift; sourceTree = "<group>"; };
+		683458105C8561F5F1C66E6F /* MentorFeatureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorFeatureStore.swift; sourceTree = "<group>"; };
 		6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideQuestAIService.swift; sourceTree = "<group>"; };
 		743E18DE6B198844B50711E6 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		744D664F5D847C09A2809E68 /* MingSi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MingSi.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -217,6 +221,7 @@
 			isa = PBXGroup;
 			children = (
 				1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */,
+				37177EDA6B0B62BEFD894132 /* MentorFeatureStoreTests.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -237,6 +242,7 @@
 			isa = PBXGroup;
 			children = (
 				1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */,
+				683458105C8561F5F1C66E6F /* MentorFeatureStore.swift */,
 				279625DD8CF02641D8E5BC21 /* Today */,
 			);
 			path = Features;
@@ -533,6 +539,7 @@
 				31B5A670F22271C9E35D4509 /* LiveGLMAcceptanceTests.swift in Sources */,
 				E0E0D15117BD3F36245533F8 /* LocalPromptProviderTests.swift in Sources */,
 				E0BC578B67A943F68357EF60 /* MentorContextBuilderTests.swift in Sources */,
+				CA550D0099C30C625C40F05E /* MentorFeatureStoreTests.swift in Sources */,
 				D988BDC690C9AD3C7E4B5994 /* MentorLessonCatalogTests.swift in Sources */,
 				609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */,
 				AC4BEA024D283AAF734DB26D /* MentorRequestExecutorTests.swift in Sources */,
@@ -563,6 +570,7 @@
 				D7F685F570186BD030D0148C /* GrowthAIService.swift in Sources */,
 				8C5A1794302AEA95A61E0D3C /* KeychainAPIKeyStore.swift in Sources */,
 				3A47CAE75AF6E1AFB18849E0 /* MentorContextBuilder.swift in Sources */,
+				D5EABA0D1640862A77F5DD12 /* MentorFeatureStore.swift in Sources */,
 				BFC462F0F634AC1A38B6243A /* MentorLessonModels.swift in Sources */,
 				07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */,
 				73FB6477F6651F843AC07BAD /* MentorRequestExecutor.swift in Sources */,

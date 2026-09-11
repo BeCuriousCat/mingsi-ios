@@ -186,6 +186,14 @@ v65 为 mentor_source_links 增加 owner_kind、owner_uuid、source_version、co
 
 剩余范围：来源 link 尚未被 MentorResponseParser 的每个返回 source_ref 强制逐项创建，source_id 的实际对象存在性与版本哈希核验仍需按 source_kind 实现；PromptRun 的 mentor 关联暂未建立数据库外键。不能据此声称完整来源审计或删除治理完成。内部实现无需用户发布说明。
 
+## 2026-09-12：F05 / F08 导师前台流程 Store
+
+新增 `MentorFeatureStore`，协调 discuss / listen 入口、会话创建、教材离线选择、用户提交、结构化响应校验、时间线刷新、暂停与结束。提交前保存用户草稿修订号，结束或暂停时重新读取最新会话，避免请求提交递增代次后使用过期会话快照；前台请求任务可取消，迟到结果不会覆盖终态。新增 Store fixture 测试覆盖直接讨论的输入与回应落库、listen 无网络教材阅读、呈现确认及结束流程。
+
+验证：MingSi Dev 模拟器 `MentorFeatureStoreTests` 2 项通过、0 失败、0 跳过。测试使用合法 MentorResponse JSON fixture，未连接真实模型或网络。
+
+剩余范围：Store 尚未接入 Today 三入口真实 UI、App navigation、后台恢复 / 前台重建、本地保存失败界面、防抖与生命周期通知；正式 Prompt ID、真实 MentorRequestExecutor / PromptTracing 链路和模型 wiring 仍需后续 F08–F11 完成。内部实现无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。
