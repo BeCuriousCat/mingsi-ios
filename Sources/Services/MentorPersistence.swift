@@ -28,6 +28,15 @@ protocol MentorRepository {
     func appendItem(_ item: MentorTimelineItem) async throws
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
     func deleteSession(id: UUID) async throws
+    func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
+}
+
+struct MentorSubmitTurn: Equatable {
+    let commandID: UUID
+    let sessionID: UUID
+    let text: String?
+    let intent: String
+    let contextSnapshotJSON: String
 }
 
 final class SQLiteMentorRepository: MentorRepository {
@@ -68,6 +77,56 @@ final class SQLiteMentorRepository: MentorRepository {
     func deleteSession(id: UUID) async throws {
         try await database.dbQueue.write { db in try MentorSessionRow.deleteOne(db, key: id.uuidString) }
     }
+
+    func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID {
+        try await database.dbQueue.write { db in
+            guard try MentorSessionRow.fetchOne(db, key: command.sessionID.uuidString) != nil else { throw PersistenceError.validationFailed("mentor session missing") }
+            guard let contextData = command.contextSnapshotJSON.data(using: .utf8),
+                  (try? JSONSerialization.jsonObject(with: contextData)) is [String: Any],
+                  !command.intent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw PersistenceError.validationFailed("invalid mentor request context or intent")
+            }
+            let payload = try command.text.map { text -> String in
+                let data = try JSONEncoder().encode(["text": text])
+                return String(decoding: data, as: UTF8.self)
+            }
+            if let existing = try MentorRequestRow.filter(Column("session_id") == command.sessionID.uuidString && Column("command_id") == command.commandID.uuidString).fetchOne(db) {
+                let previousPayload = try existing.userItemID.flatMap { try MentorItemRow.fetchOne(db, key: $0)?.payloadJSON }
+                guard existing.intent == command.intent,
+                      existing.contextSnapshotJSON == command.contextSnapshotJSON,
+                      previousPayload == payload,
+                      let requestID = UUID(uuidString: existing.id) else {
+                    throw PersistenceError.validationFailed("mentor command reused with different content")
+                }
+                return requestID
+            }
+            let pending = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_requests WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [command.sessionID.uuidString]) ?? 0
+            guard pending == 0 else { throw PersistenceError.validationFailed("mentor request already pending") }
+            let next = (try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mentor_items WHERE session_id = ?", arguments: [command.sessionID.uuidString])) ?? 1
+            var itemID: String?
+            if let payload {
+                guard command.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                    throw PersistenceError.validationFailed("empty mentor submission")
+                }
+                let item = MentorTimelineItem(id: UUID(), sessionID: command.sessionID, sequence: next, kind: .user, payloadJSON: payload)
+                try MentorItemRow(item).insert(db)
+                itemID = item.id.uuidString
+            }
+            let request = MentorRequestRow(id: UUID().uuidString, sessionID: command.sessionID.uuidString, commandID: command.commandID.uuidString, userItemID: itemID, intent: command.intent, contextSnapshotJSON: command.contextSnapshotJSON, state: "prepared", createdAt: ISO8601DateFormatter().string(from: .now))
+            try request.insert(db)
+            try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [request.createdAt, command.sessionID.uuidString])
+            guard let requestID = UUID(uuidString: request.id) else { throw PersistenceError.invalidStoredValue("mentor request ID") }
+            return requestID
+        }
+    }
+}
+
+private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "mentor_requests"
+    var id, sessionID, commandID: String
+    var userItemID: String?
+    var intent, contextSnapshotJSON, state, createdAt: String
+    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at" }
 }
 
 private struct MentorSessionRow: Codable, FetchableRecord, PersistableRecord {

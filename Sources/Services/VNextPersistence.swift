@@ -740,6 +740,20 @@ extension AppDatabase {
                 t.column("source_id", .text).notNull()
             }
         }
+        migrator.registerMigration("v54_mentor_request_idempotency") { db in
+            try db.alter(table: "mentor_requests") { t in
+                t.add(column: "command_id", .text).notNull().defaults(to: "")
+                t.add(column: "user_item_id", .text)
+                t.add(column: "context_snapshot_json", .text).notNull().defaults(to: "{}")
+            }
+            try db.execute(sql: "UPDATE mentor_requests SET command_id = id WHERE command_id = ''")
+            try db.create(index: "mentor_requests_command_idx", on: "mentor_requests", columns: ["session_id", "command_id"], unique: true, ifNotExists: true)
+        }
+        migrator.registerMigration("v55_mentor_request_intent") { db in
+            try db.alter(table: "mentor_requests") { t in
+                t.add(column: "intent", .text).notNull().defaults(to: "legacy")
+            }
+        }
     }
 }
 
