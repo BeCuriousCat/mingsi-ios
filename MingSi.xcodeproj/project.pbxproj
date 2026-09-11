@@ -18,6 +18,7 @@
 		344FD5566DDE9C8ADB7044E9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D770BD95F9E48F6885FB10 /* Theme.swift */; };
 		3D9C8D91A8BC8DED63B3D70E /* VNextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26FEDE49ED5564881B924578 /* VNextTests.swift */; };
 		3FD730A3BC8B54F3C0FBB133 /* CaptureDigestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A039C9C7E818935809BC6A /* CaptureDigestService.swift */; };
+		45865065AEFF0EFD171685EA /* mentor-lessons-m1.draft.json in Resources */ = {isa = PBXBuildFile; fileRef = FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */; };
 		4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */; };
 		49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */; };
 		4F8852152107C5A2EFC929B1 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890E4F32AA3030AD7B049750 /* AppStore.swift */; };
@@ -138,6 +139,7 @@
 		F3A039C9C7E818935809BC6A /* CaptureDigestService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDigestService.swift; sourceTree = "<group>"; };
 		F8658334444C5886A2AC844B /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		FB352E2CC19588314AD98872 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mentor-lessons-m1.draft.json"; sourceTree = "<group>"; };
 		FFB950525A17C702B66D37AA /* LiveGLMAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGLMAcceptanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -246,6 +248,7 @@
 				111E1492379FDEFFB2C01FCF /* DesignSystem */,
 				CB82B6FBC02A67DC20E12272 /* Domain */,
 				6253A3E8B419FE37FED94161 /* Features */,
+				D38852B16A49A2E8A0FBC6FD /* Resources */,
 				B444008F4FF98653178DD04B /* Services */,
 			);
 			path = Sources;
@@ -294,6 +297,14 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		BAABD5F65A592FF1D075E2CB /* Mentor */ = {
+			isa = PBXGroup;
+			children = (
+				FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */,
+			);
+			path = Mentor;
+			sourceTree = "<group>";
+		};
 		C007FD19B65AD3BBF618CEEE /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -323,6 +334,14 @@
 				14F31675FA9F8D119F5B7944 /* VNextModels.swift */,
 			);
 			path = Domain;
+			sourceTree = "<group>";
+		};
+		D38852B16A49A2E8A0FBC6FD /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				BAABD5F65A592FF1D075E2CB /* Mentor */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		FFAF67C082B3C918D8603FA6 /* Services */ = {
@@ -459,6 +478,7 @@
 			files = (
 				CF55CD9B63B0D193E4D8342B /* Assets.xcassets in Resources */,
 				EFE60A2CF5C67E425113E731 /* LaunchScreen.storyboard in Resources */,
+				45865065AEFF0EFD171685EA /* mentor-lessons-m1.draft.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -646,6 +666,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = GQ6YS2M625;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) mentor-lessons-m1.draft.json";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "明思";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "明思仅使用日历忙闲状态生成可选生活奇遇。";

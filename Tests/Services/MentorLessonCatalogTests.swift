@@ -2,6 +2,33 @@ import XCTest
 @testable import MingSi
 
 final class MentorLessonCatalogTests: XCTestCase {
+    #if DEBUG
+    func testAppBundleContainsCompleteEditorialDraftButReleaseLoaderRejectsIt() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "mentor-lessons-m1.draft", withExtension: "json"))
+        let data = try Data(contentsOf: url)
+        let catalog = try MentorLessonCatalog(jsonData: data, mode: .editorialPreview)
+        XCTAssertEqual(catalog.pack.packID, "mingsi-mentor-m1")
+        XCTAssertEqual(catalog.pack.lessons.count, 24)
+        XCTAssertEqual(Set(catalog.pack.lessons.map(\.claim)).count, 24)
+        XCTAssertEqual(Set(catalog.pack.lessons.map(\.example)).count, 24)
+        XCTAssertEqual(Set(catalog.pack.lessons.map(\.boundary)).count, 24)
+        for lesson in catalog.pack.lessons {
+            let length = [lesson.claim, lesson.example, lesson.boundary, lesson.observation ?? ""].joined().unicodeScalars.count
+            XCTAssertTrue((250...400).contains(length), "Editorial reading budget: \(lesson.id)")
+            XCTAssertEqual(lesson.review.status, .draft)
+            XCTAssertNil(lesson.review.reviewedBy)
+            XCTAssertNil(lesson.review.reviewedAt)
+            XCTAssertEqual(lesson.sourceType, .teachingExample)
+            XCTAssertTrue(lesson.citations.isEmpty)
+        }
+        XCTAssertEqual(catalog.lesson(id: "L01", version: "1.0")?.title, "改动之前，先说清希望什么变好。")
+        XCTAssertEqual(catalog.lesson(id: "L02", version: "1.0")?.title, "给观察和解释各留一个位置。")
+        XCTAssertThrowsError(try MentorLessonCatalog.loadBundled(resource: "mentor-lessons-m1.draft")) {
+            XCTAssertEqual($0 as? MentorLessonValidationError, .unapprovedLesson("L01"))
+        }
+    }
+    #endif
+
     func testCatalogValidatesPackAndOrdersLessons() throws {
         let pack = makePack()
         let catalog = try MentorLessonCatalog(pack: pack, mode: .editorialPreview)

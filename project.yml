@@ -33,6 +33,9 @@ targets:
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: 明思不会写入健康数据。
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: GQ6YS2M625
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) mentor-lessons-m1.draft.json"
   MingSiTests:
     type: bundle.unit-test
     platform: iOS
