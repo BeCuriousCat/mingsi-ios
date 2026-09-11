@@ -54,11 +54,15 @@ protocol MentorRepository {
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
     func deleteSession(id: UUID) async throws
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
+    func recoverInterruptedRequests() async throws -> Int
+    func finishRequest(sessionID: UUID, requestID: UUID, reason: MentorRequestEndReason) async throws
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
     func resumeSession(id: UUID) async throws
     func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
 }
+
+enum MentorRequestEndReason: String { case failed, cancelled, timedOut = "timed_out" }
 
 struct MentorSubmitTurn: Equatable {
     let commandID: UUID
@@ -66,6 +70,7 @@ struct MentorSubmitTurn: Equatable {
     let text: String?
     let intent: String
     let contextSnapshotJSON: String
+    var retryOf: UUID? = nil
 }
 
 final class SQLiteMentorRepository: MentorRepository {
@@ -306,6 +311,33 @@ final class SQLiteMentorRepository: MentorRepository {
         }
     }
 
+    /// Call once at startup before allowing new transport work, never on ordinary
+    /// foreground entry while this process still owns a live request.
+    func recoverInterruptedRequests() async throws -> Int {
+        try await database.dbQueue.write { db in
+            let owners = try String.fetchAll(db, sql: "SELECT DISTINCT session_id FROM mentor_requests WHERE state IN ('prepared', 'in_flight', 'response_received')")
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'interrupted' WHERE state IN ('prepared', 'in_flight', 'response_received')")
+            let count = db.changesCount
+            for owner in owners {
+                try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = request_epoch + 1, lifecycle = CASE WHEN lifecycle = 'active' THEN 'paused' ELSE lifecycle END WHERE id = ?", arguments: [owner])
+            }
+            return count
+        }
+    }
+
+    func finishRequest(sessionID: UUID, requestID: UUID, reason: MentorRequestEndReason) async throws {
+        try await database.dbQueue.write { db in
+            guard let request = try MentorRequestRow.fetchOne(db, key: requestID.uuidString), request.sessionID == sessionID.uuidString else {
+                throw PersistenceError.validationFailed("mentor request owner missing")
+            }
+            if request.state == reason.rawValue { return }
+            guard ["prepared", "in_flight", "response_received"].contains(request.state) else {
+                throw PersistenceError.validationFailed("mentor request already terminal")
+            }
+            try db.execute(sql: "UPDATE mentor_requests SET state = ? WHERE id = ?", arguments: [reason.rawValue, request.id])
+        }
+    }
+
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID {
         try await database.dbQueue.write { db in
             guard let session = try MentorSessionRow.fetchOne(db, key: command.sessionID.uuidString) else { throw PersistenceError.validationFailed("mentor session missing") }
@@ -323,6 +355,7 @@ final class SQLiteMentorRepository: MentorRepository {
                 guard existing.intent == command.intent,
                       existing.contextSnapshotJSON == command.contextSnapshotJSON,
                       previousPayload == payload,
+                      existing.retryOf == command.retryOf?.uuidString,
                       let requestID = UUID(uuidString: existing.id) else {
                     throw PersistenceError.validationFailed("mentor command reused with different content")
                 }
@@ -332,9 +365,26 @@ final class SQLiteMentorRepository: MentorRepository {
             guard unacknowledged == 0 else { throw PersistenceError.validationFailed("mentor presentation must be acknowledged before continuing") }
             let pending = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_requests WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [command.sessionID.uuidString]) ?? 0
             guard pending == 0 else { throw PersistenceError.validationFailed("mentor request already pending") }
+            var retryItemID: String?
+            if let retryOf = command.retryOf {
+                guard let previous = try MentorRequestRow.fetchOne(db, key: retryOf.uuidString),
+                      previous.sessionID == session.id,
+                      ["failed", "cancelled", "timed_out", "interrupted"].contains(previous.state),
+                      previous.expectedRevision == session.semanticRevision,
+                      previous.intent == command.intent,
+                      previous.contextSnapshotJSON == command.contextSnapshotJSON else {
+                    throw PersistenceError.validationFailed("retry source no longer valid")
+                }
+                let original = try previous.userItemID.flatMap { try MentorItemRow.fetchOne(db, key: $0) }
+                guard original?.payloadJSON == payload,
+                      original == nil || (original?.sessionID == session.id && original?.kind == "user") else {
+                    throw PersistenceError.validationFailed("retry must preserve original user input")
+                }
+                retryItemID = previous.userItemID
+            }
             let next = (try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mentor_items WHERE session_id = ?", arguments: [command.sessionID.uuidString])) ?? 1
-            var itemID: String?
-            if let payload {
+            var itemID: String? = retryItemID
+            if let payload, command.retryOf == nil {
                 guard command.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                     throw PersistenceError.validationFailed("empty mentor submission")
                 }
@@ -342,7 +392,7 @@ final class SQLiteMentorRepository: MentorRepository {
                 try MentorItemRow(item).insert(db)
                 itemID = item.id.uuidString
             }
-            let request = MentorRequestRow(id: UUID().uuidString, sessionID: command.sessionID.uuidString, commandID: command.commandID.uuidString, userItemID: itemID, intent: command.intent, contextSnapshotJSON: command.contextSnapshotJSON, state: "prepared", createdAt: ISO8601DateFormatter().string(from: .now), expectedRevision: session.semanticRevision, epoch: session.requestEpoch)
+            let request = MentorRequestRow(id: UUID().uuidString, sessionID: command.sessionID.uuidString, commandID: command.commandID.uuidString, userItemID: itemID, intent: command.intent, contextSnapshotJSON: command.contextSnapshotJSON, state: "prepared", createdAt: ISO8601DateFormatter().string(from: .now), expectedRevision: session.semanticRevision, epoch: session.requestEpoch, retryOf: command.retryOf?.uuidString)
             try request.insert(db)
             try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [request.createdAt, command.sessionID.uuidString])
             guard let requestID = UUID(uuidString: request.id) else { throw PersistenceError.invalidStoredValue("mentor request ID") }
@@ -357,7 +407,8 @@ private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {
     var userItemID: String?
     var intent, contextSnapshotJSON, state, createdAt: String
     var expectedRevision, epoch: Int
-    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at", expectedRevision = "expected_revision", epoch }
+    var retryOf: String?
+    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at", expectedRevision = "expected_revision", epoch, retryOf = "retry_of" }
 }
 
 private struct MentorSessionRow: Codable, FetchableRecord, PersistableRecord {

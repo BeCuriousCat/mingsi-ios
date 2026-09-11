@@ -338,4 +338,47 @@ final class MentorPersistenceTests: XCTestCase {
         do { try await repo.acknowledgePresentation(sessionID: id, itemID: items[0].id, at: .now, timeZone: .current); XCTFail("User input marked as teaching") } catch {}
     }
 
+    func testStartupRecoveryAndExplicitRetryReuseOriginalUserItem() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "draft", draftRevision: 1, activityAt: .now))
+        let original = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "original", intent: "reply", contextSnapshotJSON: "{}"))
+        let recovered = try await repo.recoverInterruptedRequests()
+        let repeated = try await repo.recoverInterruptedRequests()
+        XCTAssertEqual(recovered, 1)
+        XCTAssertEqual(repeated, 0)
+        let paused = try await repo.session(id: id)
+        XCTAssertEqual(paused?.lifecycle, .paused)
+        XCTAssertEqual(paused?.requestEpoch, 1)
+        XCTAssertEqual(paused?.draftText, "draft")
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: original, payloadJSON: "{}"); XCTFail("Interrupted response accepted") } catch {}
+        let retryCommand = MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "original", intent: "reply", contextSnapshotJSON: "{}", retryOf: original)
+        let retried = try await repo.submitTurn(retryCommand)
+        let replay = try await repo.submitTurn(retryCommand)
+        XCTAssertNotEqual(retried, original)
+        XCTAssertEqual(retried, replay)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.count, 1)
+        _ = try await repo.commitResponse(sessionID: id, requestID: retried, payloadJSON: "{}")
+        try await repo.deleteSession(id: id)
+        let remaining = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(remaining, 0)
+    }
+
+    func testTerminalRequestCannotBeRevivedAndRetryMustMatchInput() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "original", intent: "reply", contextSnapshotJSON: "{}"))
+        try await repo.finishRequest(sessionID: id, requestID: request, reason: .timedOut)
+        try await repo.finishRequest(sessionID: id, requestID: request, reason: .timedOut)
+        do { try await repo.finishRequest(sessionID: id, requestID: request, reason: .failed); XCTFail("Terminal outcome changed") } catch {}
+        do { _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "different", intent: "reply", contextSnapshotJSON: "{}", retryOf: request)); XCTFail("Changed input accepted") } catch {}
+        let original = try await repo.items(sessionID: id)[0]
+        _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 0, text: "corrected")
+        do { _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "original", intent: "reply", contextSnapshotJSON: "{}", retryOf: request)); XCTFail("Obsolete context accepted") } catch {}
+    }
+
 }

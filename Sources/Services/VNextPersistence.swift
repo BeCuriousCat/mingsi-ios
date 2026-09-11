@@ -799,6 +799,11 @@ extension AppDatabase {
                 t.add(column: "requires_material", .boolean).notNull().defaults(to: false)
             }
         }
+        migrator.registerMigration("v60_mentor_request_retry_lineage") { db in
+            try db.alter(table: "mentor_requests") { t in
+                t.add(column: "retry_of", .text).references("mentor_requests")
+            }
+        }
     }
 }
 
