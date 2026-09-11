@@ -3440,6 +3440,28 @@ final class PersistenceCoreTests: XCTestCase {
         XCTAssertTrue(recent.allSatisfy { $0.contextRecordIds == ["entry-1", "principle-1"] })
     }
 
+    func testPromptTracingLLMClientSurfacesAuditWriteFailures() async throws {
+        let repo = SQLitePromptRunRepository(database: database)
+        let client = PromptTracingLLMClient(base: MockLLMClient(), repository: repo, modelProvider: "mock", modelName: "audit-test")
+        let request = LLMRequest(prompt: PromptTemplate(id: .organizeCards, version: "audit", systemText: "Return JSON", userText: "{}", outputSchemaVersion: 1), inputSummary: "audit failure")
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_prompt_audit BEFORE INSERT ON prompt_runs BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END")
+        }
+        defer { Task { try? await database.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_prompt_audit") } } }
+        do {
+            _ = try await client.complete(request)
+            XCTFail("A successful model response must not escape an audit failure")
+        } catch let error as PromptTracingError {
+            guard case .auditWriteFailed = error else { return XCTFail("Unexpected tracing error: \(error)") }
+        }
+        do {
+            _ = try await PromptTracingLLMClient(base: AlwaysFailingLLMClient(), repository: repo, modelProvider: "mock", modelName: "audit-test").complete(request)
+            XCTFail("A failed model response must surface audit failure")
+        } catch let error as PromptTracingError {
+            guard case .auditWriteFailed = error else { return XCTFail("Unexpected tracing error: \(error)") }
+        }
+    }
+
     func testPromptTracingLLMClient_recordsPromptAssetVersions() async throws {
         let repo = SQLitePromptRunRepository(database: database)
         let request = LLMRequest(

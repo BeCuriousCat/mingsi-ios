@@ -1368,15 +1368,19 @@ final class PromptTracingLLMClient: LLMClient {
     func complete(_ request: LLMRequest) async throws -> Data {
         do {
             let data = try await base.complete(request)
-            await saveRun(for: request, responseData: data, error: nil)
+            try await saveRun(for: request, responseData: data, error: nil)
             return data
         } catch {
-            await saveRun(for: request, responseData: nil, error: error)
+            // Preserve the transport error only when the failure audit was written.
+            // A failed audit is itself terminal: returning an apparently usable result
+            // would violate the mentor's traceability contract.
+            do { try await saveRun(for: request, responseData: nil, error: error) }
+            catch { throw PromptTracingError.auditWriteFailed(String(describing: error)) }
             throw error
         }
     }
 
-    private func saveRun(for request: LLMRequest, responseData: Data?, error: Error?) async {
+    private func saveRun(for request: LLMRequest, responseData: Data?, error: Error?) async throws {
         let errorMessage: String?
         if let llmError = error as? LLMClientError {
             errorMessage = llmError.userFacingMessage
@@ -1408,13 +1412,17 @@ final class PromptTracingLLMClient: LLMClient {
             error: errorMessage
         )
 
-        try? await repository.savePromptRun(run)
+        try await repository.savePromptRun(run)
     }
 
     private func sessionMode(from request: LLMRequest) -> String {
         request.contextPayload?.userChoice.sessionMode
             ?? "unknown"
     }
+}
+
+enum PromptTracingError: Error, Equatable {
+    case auditWriteFailed(String)
 }
 
 extension PromptTracingLLMClient: StreamingLLMClient {
@@ -1435,19 +1443,23 @@ extension PromptTracingLLMClient: StreamingLLMClient {
                         }
                         continuation.yield(event)
                     }
-                    await saveRun(
+                    try await saveRun(
                         for: request,
                         responseData: Data(rawStream.utf8),
                         error: nil
                     )
                     continuation.finish()
                 } catch {
-                    await saveRun(
-                        for: request,
-                        responseData: rawStream.isEmpty ? nil : Data(rawStream.utf8),
-                        error: error
-                    )
-                    continuation.finish(throwing: error)
+                    do {
+                        try await saveRun(
+                            for: request,
+                            responseData: rawStream.isEmpty ? nil : Data(rawStream.utf8),
+                            error: error
+                        )
+                        continuation.finish(throwing: error)
+                    } catch {
+                        continuation.finish(throwing: PromptTracingError.auditWriteFailed(String(describing: error)))
+                    }
                 }
             }
 

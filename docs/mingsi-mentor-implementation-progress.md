@@ -152,6 +152,14 @@ DirectGLM 为导师请求把 URLSession `timeoutInterval` 限制到策略截止�
 
 本轮修复也更正了 a0df546 的过宽表述：该提交只实现策略常量，随后 43c74f6 实现真正的 watchdog；本次才接入 DirectGLM。仍未完成 PromptTracing 的严格导师所有权审计、仓储 request_epoch 复核、Store 状态机与真实在线服务环境验证。内部实现无需用户发布说明。
 
+## 2026-09-12：F10 PromptTracing 审计写入失败不再静默
+
+复核发现 PromptTracingLLMClient 原先使用 `try?` 保存 PromptRun：模型结果即使没有审计记录也会返回，流式完成 / 失败路径同样会忽略写入错误。现改为保存 PromptRun 成功后才返回成功结果；模型失败时先写入失败审计，审计失败则返回明确的 PromptTracingError.auditWriteFailed。流式路径也处理审计错误并结束为失败，不能以一个无法追溯的响应继续向上游传播。
+
+验证：MingSi Dev 模拟器 PersistenceCoreTests 2 项目标测试通过、0 失败、0 跳过，覆盖成功响应审计触发器故障、失败响应审计触发器故障及原有成功 / 失败审计回归。此前 DirectGLMClientTests 19 项与 MentorRequestExecutorTests 8 项仍通过。此次验证证明静默失败已移除；尚未证明导师请求的会话所有权、request_epoch / semantic_revision 和 PromptRun 与 mentor_requests 的组合外键关系。
+
+剩余范围：PromptRunRepository 目前仍是通用表接口，PromptTracing 尚未查询导师会话是否存在、请求是否属于该会话、状态是否允许或代次是否匹配；需要新增导师专用审计命令和请求表关系，不能把“写入成功”当作所有权审计完成。现有普通请求的行为保持兼容。内部实现无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。
