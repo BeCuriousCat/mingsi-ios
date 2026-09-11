@@ -3,6 +3,166 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    private func lessonCatalog(version: String = "1.0", claim: String = "A concrete teaching claim") throws -> MentorLessonCatalog {
+        let lessons = (1...24).map { index -> MentorLesson in
+            func build(_ hash: String) -> MentorLesson {
+                MentorLesson(id: String(format: "L%02d", index), version: version, editorialOrder: index,
+                    title: "Lesson \(index)", theme: MentorLesson.Theme.allCases[(index - 1) / 4],
+                    applicableContexts: ["Test fixture"], claim: claim, example: "A concrete example", boundary: "A bounded application",
+                    observation: nil, sourceType: .teachingExample, citations: [], contentHash: hash,
+                    review: .init(status: .approved, reviewedBy: "Test fixture only", reviewedAt: Date(timeIntervalSince1970: 0), note: nil))
+            }
+            return build(MentorLessonCatalog.contentHash(for: build("")))
+        }
+        return try MentorLessonCatalog(pack: MentorLessonPack(schemaVersion: "1.0.0", packID: "fixture", version: "1.0", lessons: lessons))
+    }
+
+    private func listeningSession(_ repo: SQLiteMentorRepository) async throws -> UUID {
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "listen", lifecycle: .draft, draftText: "", draftRevision: 0, activityAt: .now))
+        return id
+    }
+
+    func testLessonSnapshotPresentationResumeAndPosition() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
+        let repo = SQLiteMentorRepository(database: db), timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = ISO8601DateFormatter().date(from: "2026-09-11T23:59:00Z")!
+        let session = try await listeningSession(repo), item = UUID()
+        let first = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: date, timeZone: timeZone)
+        XCTAssertEqual(first?.lesson.id, "L01")
+        let replay = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: date, timeZone: timeZone)
+        XCTAssertEqual(first, replay)
+        let foreignSession = try await listeningSession(repo)
+        let foreignRead = try await repo.savedLesson(sessionID: foreignSession, itemID: item)
+        XCTAssertNil(foreignRead)
+        do { _ = try await repo.selectNextLesson(sessionID: foreignSession, itemID: item, expectedEpoch: 0, catalog: catalog, at: date, timeZone: timeZone); XCTFail("Cannot replay another session's selection") } catch {}
+        do { try await repo.saveReadingPosition(sessionID: foreignSession, itemID: item, revision: 1, section: .claim); XCTFail("Cannot edit another session's reading position") } catch {}
+        let beforeDisplay = try await repo.listeningResume(at: date, timeZone: timeZone)
+        XCTAssertNil(beforeDisplay)
+        do { _ = try await repo.selectNextLesson(sessionID: session, itemID: UUID(), expectedEpoch: 0, catalog: catalog, at: date, timeZone: timeZone); XCTFail("Must acknowledge existing lesson") } catch {}
+        do { try await repo.recordLessonFeedback(sessionID: session, itemID: item, commandID: UUID(), kind: .alreadyKnown, at: date); XCTFail("Unseen lesson cannot have user feedback") } catch {}
+        try await repo.acknowledgePresentation(sessionID: session, itemID: item, at: date, timeZone: timeZone)
+        try await repo.saveReadingPosition(sessionID: session, itemID: item, revision: 2, section: .example)
+        do { try await repo.saveReadingPosition(sessionID: session, itemID: item, revision: 1, section: .claim); XCTFail("Must reject stale position") } catch {}
+        do { try await repo.saveReadingPosition(sessionID: session, itemID: item, revision: 2, section: .boundary); XCTFail("Must reject conflicting position") } catch {}
+        do { try await repo.saveReadingPosition(sessionID: session, itemID: item, revision: 3, section: .observation); XCTFail("Section must exist") } catch {}
+        try await repo.suspendSession(id: session, ending: true, draftRevision: 0, draftText: "")
+        let restored = try await SQLiteMentorRepository(database: db).listeningResume(at: date, timeZone: timeZone)
+        XCTAssertEqual(restored?.readingSection, .example)
+        XCTAssertEqual(restored?.lesson, first?.lesson)
+        let lifecycle = try await repo.session(id: session)?.lifecycle
+        XCTAssertEqual(lifecycle, .ended)
+        let nextDay = try await repo.listeningResume(at: date.addingTimeInterval(120), timeZone: timeZone)
+        XCTAssertNil(nextDay)
+        let requests = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(requests, 0)
+    }
+
+    func testLessonFeedbackScopesResetAndCascadeRebuild() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
+        let repo = SQLiteMentorRepository(database: db), zone = TimeZone(secondsFromGMT: 0)!
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let session = try await listeningSession(repo), firstID = UUID()
+        _ = try await repo.selectNextLesson(sessionID: session, itemID: firstID, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        try await repo.acknowledgePresentation(sessionID: session, itemID: firstID, at: now, timeZone: zone)
+        let feedbackID = UUID()
+        try await repo.recordLessonFeedback(sessionID: session, itemID: firstID, commandID: feedbackID, kind: .notRelevant, at: now)
+        try await repo.recordLessonFeedback(sessionID: session, itemID: firstID, commandID: feedbackID, kind: .notRelevant, at: now)
+        do { try await repo.recordLessonFeedback(sessionID: session, itemID: firstID, commandID: feedbackID, kind: .alreadyKnown, at: now); XCTFail("Feedback replay must match") } catch {}
+        let rejectedResume = try await repo.listeningResume(at: now, timeZone: zone)
+        XCTAssertNil(rejectedResume)
+        let nextID = UUID()
+        let next = try await repo.selectNextLesson(sessionID: session, itemID: nextID, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        XCTAssertEqual(next?.lesson.id, "L05", "Not relevant excludes this theme only in its session")
+        try await repo.acknowledgePresentation(sessionID: session, itemID: nextID, at: now, timeZone: zone)
+        let other = try await listeningSession(repo), otherItem = UUID()
+        let otherLesson = try await repo.selectNextLesson(sessionID: other, itemID: otherItem, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        XCTAssertEqual(otherLesson?.lesson.id, "L02")
+        try await repo.acknowledgePresentation(sessionID: other, itemID: otherItem, at: now, timeZone: zone)
+        try await repo.recordLessonFeedback(sessionID: other, itemID: otherItem, commandID: UUID(), kind: .alreadyKnown, at: now)
+        let reset = UUID()
+        try await repo.resetKnownLessonFeedback(commandID: reset, at: now)
+        try await repo.recordLessonFeedback(sessionID: other, itemID: otherItem, commandID: UUID(), kind: .alreadyKnown, at: now)
+        try await repo.resetKnownLessonFeedback(commandID: reset, at: now)
+        let known = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE kind = 'already_known' AND revoked_at IS NULL") }
+        XCTAssertEqual(known, 1, "Old reset replay must not revoke later feedback")
+        let fresh = try await listeningSession(repo)
+        let afterReset = try await repo.selectNextLesson(sessionID: fresh, itemID: UUID(), expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        XCTAssertEqual(afterReset?.lesson.id, "L03", "Reset cannot bypass recent presentation facts")
+        try await repo.deleteSession(id: session)
+        let afterDelete = try await listeningSession(repo)
+        let rebuilt = try await repo.selectNextLesson(sessionID: afterDelete, itemID: UUID(), expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        XCTAssertEqual(rebuilt?.lesson.id, "L01", "Deleting source session removes its exclusions")
+        let removed = try await repo.savedLesson(sessionID: session, itemID: firstID)
+        XCTAssertNil(removed)
+    }
+
+    func testLessonNaturalDayWindowVersionDedupAndClockRollback() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
+        let repo = SQLiteMentorRepository(database: db), zone = TimeZone(identifier: "Asia/Shanghai")!
+        let now = ISO8601DateFormatter().date(from: "2026-09-01T15:59:00Z")!
+        let session = try await listeningSession(repo), item = UUID()
+        _ = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        try await repo.acknowledgePresentation(sessionID: session, itemID: item, at: now, timeZone: zone)
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = zone
+        for offset in [-30, 13] {
+            let other = try await listeningSession(repo)
+            let date = calendar.date(byAdding: .day, value: offset, to: now)!
+            let selected = try await repo.selectNextLesson(sessionID: other, itemID: UUID(), expectedEpoch: 0, catalog: lessonCatalog(version: "1.1"), at: date, timeZone: zone)
+            XCTAssertEqual(selected?.lesson.id, "L02", "New version and clock rollback must not erase logical-ID exclusion")
+        }
+        let other = try await listeningSession(repo)
+        let afterWindow = calendar.date(byAdding: .day, value: 14, to: now)!
+        do { _ = try await repo.selectNextLesson(sessionID: other, itemID: UUID(), expectedEpoch: 0, catalog: lessonCatalog(claim: "Changed same version"), at: afterWindow, timeZone: zone); XCTFail("Must reject altered historical version") } catch {}
+        let selected = try await repo.selectNextLesson(sessionID: other, itemID: UUID(), expectedEpoch: 0, catalog: catalog, at: afterWindow, timeZone: zone)
+        XCTAssertEqual(selected?.lesson.id, "L01")
+        let history = try await repo.savedLesson(sessionID: session, itemID: item)
+        XCTAssertEqual(history?.lesson.claim, "A concrete teaching claim")
+        let differentZone = try await repo.listeningResume(at: now.addingTimeInterval(120), timeZone: TimeZone(secondsFromGMT: 0)!)
+        XCTAssertEqual(differentZone?.id, item, "Stored local presentation day is not rewritten on time-zone change")
+    }
+
+    func testLessonSnapshotAndFeedbackResetRollback() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
+        let repo = SQLiteMentorRepository(database: db), zone = TimeZone(secondsFromGMT: 0)!, now = Date()
+        let session = try await listeningSession(repo), item = UUID()
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_lesson BEFORE INSERT ON mentor_lesson_snapshots BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { _ = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone); XCTFail("Expected rollback") } catch {}
+        let items = try await repo.items(sessionID: session)
+        XCTAssertTrue(items.isEmpty)
+        let unchanged = try await repo.session(id: session)
+        XCTAssertEqual(unchanged?.lifecycle, .draft)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_lesson") }
+        _ = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        try await repo.acknowledgePresentation(sessionID: session, itemID: item, at: now, timeZone: zone)
+        try await repo.recordLessonFeedback(sessionID: session, itemID: item, commandID: UUID(), kind: .alreadyKnown, at: now)
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_feedback_reset BEFORE UPDATE ON mentor_feedback BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        let reset = UUID()
+        do { try await repo.resetKnownLessonFeedback(commandID: reset, at: now); XCTFail("Expected rollback") } catch {}
+        let receipts = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback_resets") }
+        XCTAssertEqual(receipts, 0)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_feedback_reset") }
+        try await repo.resetKnownLessonFeedback(commandID: reset, at: now)
+        let known = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE revoked_at IS NULL") }
+        XCTAssertEqual(known, 0)
+    }
+
+    func testLessonExhaustionDoesNotCreateEmptyTimelineItem() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
+        let repo = SQLiteMentorRepository(database: db), zone = TimeZone(secondsFromGMT: 0)!, now = Date()
+        let session = try await listeningSession(repo)
+        for expected in 1...24 {
+            let item = UUID()
+            let selected = try await repo.selectNextLesson(sessionID: session, itemID: item, expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+            XCTAssertEqual(selected?.lesson.editorialOrder, expected)
+            try await repo.acknowledgePresentation(sessionID: session, itemID: item, at: now, timeZone: zone)
+        }
+        let exhausted = try await repo.selectNextLesson(sessionID: session, itemID: UUID(), expectedEpoch: 0, catalog: catalog, at: now, timeZone: zone)
+        XCTAssertNil(exhausted)
+        let items = try await repo.items(sessionID: session)
+        XCTAssertEqual(items.count, 24)
+    }
+
     func testUserUnderstandingConfirmationAndVersionHistory() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

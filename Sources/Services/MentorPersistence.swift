@@ -59,7 +59,24 @@ struct MentorUnderstanding: Equatable, Identifiable {
     let confirmedAt: Date?
 }
 
+enum MentorLessonFeedback: String { case notRelevant = "not_relevant", alreadyKnown = "already_known" }
+enum MentorReadingSection: String, CaseIterable { case title, claim, example, boundary, observation }
+
+struct MentorSavedLesson: Equatable, Identifiable {
+    let id: UUID
+    let sessionID: UUID
+    let lesson: MentorLesson
+    let readingSection: MentorReadingSection
+    let readingRevision: Int
+}
+
 protocol MentorRepository {
+    func selectNextLesson(sessionID: UUID, itemID: UUID, expectedEpoch: Int, catalog: MentorLessonCatalog, at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
+    func savedLesson(sessionID: UUID, itemID: UUID) async throws -> MentorSavedLesson?
+    func listeningResume(at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
+    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws
+    func recordLessonFeedback(sessionID: UUID, itemID: UUID, commandID: UUID, kind: MentorLessonFeedback, at date: Date) async throws
+    func resetKnownLessonFeedback(commandID: UUID, at date: Date) async throws
     func beginUserUnderstanding(sessionID: UUID, draftID: UUID, previousRevisionID: UUID?) async throws -> MentorUnderstanding
     func saveUnderstandingDraft(sessionID: UUID, draftID: UUID, editRevision: Int, text: String) async throws -> MentorUnderstanding
     func confirmUnderstanding(sessionID: UUID, draftID: UUID, expectedEditRevision: Int) async throws -> MentorUnderstanding
@@ -594,5 +611,156 @@ private struct MentorUnderstandingRow: Codable, FetchableRecord, PersistableReco
         return MentorUnderstanding(id: id, sessionID: sessionID, groupID: groupID, revision: revision,
             previousRevisionID: previousRevisionID.flatMap(UUID.init(uuidString:)), state: state, text: text,
             origin: origin, editRevision: editRevision, confirmedAt: confirmedAt.flatMap { ISO8601DateFormatter().date(from: $0) })
+    }
+}
+
+extension SQLiteMentorRepository {
+    /// Selection and snapshot persistence share one transaction, so parallel selections cannot
+    /// consume stale eligibility. Actual presentation remains a separate view acknowledgement.
+    func selectNextLesson(sessionID: UUID, itemID: UUID, expectedEpoch: Int, catalog: MentorLessonCatalog, at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson? {
+        try MentorLessonCatalog.validate(catalog.pack)
+        let cutoff = try Self.lessonDay(date, timeZone: timeZone, offset: -13)
+        return try await database.dbQueue.write { db in
+            if let row = try Row.fetchOne(db, sql: "SELECT epoch FROM mentor_lesson_snapshots WHERE item_id = ?", arguments: [itemID.uuidString]) {
+                let epoch: Int = row["epoch"]
+                guard epoch == expectedEpoch, let saved = try Self.readLesson(db, sessionID: sessionID, itemID: itemID) else {
+                    throw PersistenceError.validationFailed("conflicting lesson selection replay")
+                }
+                return saved
+            }
+            guard let session = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString),
+                  ["draft", "active"].contains(session.lifecycle), session.requestEpoch == expectedEpoch else {
+                throw PersistenceError.validationFailed("lesson selection requires current active session")
+            }
+            let pendingRequests = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_requests WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [session.id]) ?? 0
+            let unpresented = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_items WHERE session_id = ? AND kind IN ('lesson', 'assistant') AND presented_at IS NULL", arguments: [session.id]) ?? 0
+            guard pendingRequests == 0, unpresented == 0 else { throw PersistenceError.validationFailed("finish pending mentor work before selecting a lesson") }
+            let excluded = try Self.excludedLessons(db, sessionID: sessionID, cutoff: cutoff)
+            let themes = try Self.excludedThemes(db, sessionID: sessionID)
+            var ordered = catalog.lessonsInEditorialOrder
+            let hasPresentedLesson = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_lesson_snapshots l JOIN mentor_items i ON i.id = l.item_id WHERE i.presented_at IS NOT NULL") != 0
+            if !hasPresentedLesson, let first = ordered.firstIndex(where: { $0.id == "L01" }) {
+                ordered.insert(ordered.remove(at: first), at: 0)
+            }
+            guard let lesson = ordered.first(where: { !excluded.contains($0.id) && !themes.contains($0.theme.rawValue) }) else { return nil }
+            let conflicting = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_lesson_snapshots WHERE lesson_id = ? AND version = ? AND content_hash != ?", arguments: [lesson.id, lesson.version, lesson.contentHash]) ?? 0
+            guard conflicting == 0 else { throw PersistenceError.validationFailed("lesson version changed since historical presentation") }
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let payload = String(decoding: try encoder.encode(lesson), as: UTF8.self)
+            let sequence = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mentor_items WHERE session_id = ?", arguments: [session.id]) ?? 1
+            try MentorItemRow(MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: sequence, kind: .lesson, payloadJSON: payload)).insert(db)
+            try db.execute(sql: "INSERT INTO mentor_lesson_snapshots (item_id, session_id, lesson_id, version, content_hash, theme, epoch) VALUES (?, ?, ?, ?, ?, ?, ?)", arguments: [itemID.uuidString, session.id, lesson.id, lesson.version, lesson.contentHash, lesson.theme.rawValue, expectedEpoch])
+            try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: date), session.id])
+            return MentorSavedLesson(id: itemID, sessionID: sessionID, lesson: lesson, readingSection: .title, readingRevision: 0)
+        }
+    }
+
+    /// History always reads the saved payload, independent of the installed content pack.
+    func savedLesson(sessionID: UUID, itemID: UUID) async throws -> MentorSavedLesson? {
+        try await database.dbQueue.read { try Self.readLesson($0, sessionID: sessionID, itemID: itemID) }
+    }
+
+    func listeningResume(at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson? {
+        let day = try Self.lessonDay(date, timeZone: timeZone)
+        return try await database.dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT l.item_id, l.session_id, l.lesson_id, l.theme
+                FROM mentor_lesson_snapshots l JOIN mentor_items i ON i.id = l.item_id
+                JOIN mentor_sessions s ON s.id = l.session_id
+                WHERE s.initial_entry = 'listen' AND i.presentation_day = ?
+                ORDER BY i.presented_at DESC, i.sequence DESC, i.id DESC LIMIT 1
+                """, arguments: [day]),
+                  let itemID = UUID(uuidString: row["item_id"]), let sessionID = UUID(uuidString: row["session_id"]) else { return nil }
+            let lessonID: String = row["lesson_id"], theme: String = row["theme"]
+            let known = try String.fetchAll(db, sql: "SELECT lesson_id FROM mentor_feedback WHERE kind = 'already_known' AND revoked_at IS NULL")
+            guard !known.contains(lessonID), try !Self.excludedThemes(db, sessionID: sessionID).contains(theme) else { return nil }
+            // Reading an ended session does not reactivate it or issue any model work.
+            return try Self.readLesson(db, sessionID: sessionID, itemID: itemID)
+        }
+    }
+
+    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws {
+        try await database.dbQueue.write { db in
+            guard let saved = try Self.readLesson(db, sessionID: sessionID, itemID: itemID),
+                  revision >= 0, revision >= saved.readingRevision,
+                  section != .observation || saved.lesson.observation != nil else {
+                throw PersistenceError.validationFailed("invalid reading position")
+            }
+            if revision == saved.readingRevision {
+                guard section == saved.readingSection else { throw PersistenceError.validationFailed("reading revision conflict") }
+                return
+            }
+            try db.execute(sql: "UPDATE mentor_lesson_snapshots SET reading_section = ?, reading_revision = ? WHERE item_id = ?", arguments: [section.rawValue, revision, itemID.uuidString])
+        }
+    }
+
+    func recordLessonFeedback(sessionID: UUID, itemID: UUID, commandID: UUID, kind: MentorLessonFeedback, at date: Date) async throws {
+        guard date.timeIntervalSince1970.isFinite else { throw PersistenceError.validationFailed("invalid feedback time") }
+        try await database.dbQueue.write { db in
+            guard let saved = try Self.readLesson(db, sessionID: sessionID, itemID: itemID),
+                  try String.fetchOne(db, sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [itemID.uuidString]) != nil else {
+                throw PersistenceError.validationFailed("feedback requires an owned, presented lesson")
+            }
+            if let old = try Row.fetchOne(db, sql: "SELECT session_id, item_id, kind FROM mentor_feedback WHERE id = ?", arguments: [commandID.uuidString]) {
+                let owner: String = old["session_id"], item: String? = old["item_id"], oldKind: String = old["kind"]
+                guard owner == sessionID.uuidString, item == itemID.uuidString, oldKind == kind.rawValue else {
+                    throw PersistenceError.validationFailed("conflicting lesson feedback")
+                }
+                return
+            }
+            try db.execute(sql: "INSERT INTO mentor_feedback (id, session_id, item_id, lesson_id, kind, created_at) VALUES (?, ?, ?, ?, ?, ?)", arguments: [commandID.uuidString, sessionID.uuidString, itemID.uuidString, saved.lesson.id, kind.rawValue, ISO8601DateFormatter().string(from: date)])
+        }
+    }
+
+    func resetKnownLessonFeedback(commandID: UUID, at date: Date) async throws {
+        guard date.timeIntervalSince1970.isFinite else { throw PersistenceError.validationFailed("invalid feedback reset time") }
+        try await database.dbQueue.write { db in
+            guard try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_feedback_resets WHERE command_id = ?", arguments: [commandID.uuidString]) == 0 else { return }
+            let timestamp = ISO8601DateFormatter().string(from: date)
+            try db.execute(sql: "INSERT INTO mentor_feedback_resets (command_id, created_at) VALUES (?, ?)", arguments: [commandID.uuidString, timestamp])
+            try db.execute(sql: "UPDATE mentor_feedback SET revoked_at = ? WHERE kind = 'already_known' AND revoked_at IS NULL", arguments: [timestamp])
+        }
+    }
+
+    private static func readLesson(_ db: Database, sessionID: UUID, itemID: UUID) throws -> MentorSavedLesson? {
+        guard let row = try Row.fetchOne(db, sql: """
+            SELECT i.payload_json, l.reading_section, l.reading_revision, l.lesson_id, l.version, l.content_hash
+            FROM mentor_lesson_snapshots l JOIN mentor_items i ON i.id = l.item_id AND i.session_id = l.session_id
+            WHERE l.item_id = ? AND l.session_id = ?
+            """, arguments: [itemID.uuidString, sessionID.uuidString]) else { return nil }
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let lesson = try decoder.decode(MentorLesson.self, from: Data((row["payload_json"] as String).utf8))
+        let lessonID: String = row["lesson_id"], version: String = row["version"], hash: String = row["content_hash"]
+        guard let section = MentorReadingSection(rawValue: row["reading_section"]), lesson.id == lessonID,
+              lesson.version == version, lesson.contentHash == hash, MentorLessonCatalog.contentHash(for: lesson) == hash else {
+            throw PersistenceError.invalidStoredValue("mentor lesson snapshot")
+        }
+        return MentorSavedLesson(id: itemID, sessionID: sessionID, lesson: lesson, readingSection: section, readingRevision: row["reading_revision"])
+    }
+
+    private static func excludedLessons(_ db: Database, sessionID: UUID, cutoff: String) throws -> Set<String> {
+        // No upper date bound: clock rollback must not erase future-dated presentation facts.
+        Set(try String.fetchAll(db, sql: """
+            SELECT l.lesson_id FROM mentor_lesson_snapshots l JOIN mentor_items i ON i.id = l.item_id
+            WHERE i.presented_at IS NOT NULL AND (l.session_id = ? OR i.presentation_day >= ?)
+            UNION SELECT lesson_id FROM mentor_feedback WHERE kind = 'already_known' AND revoked_at IS NULL AND lesson_id IS NOT NULL
+            """, arguments: [sessionID.uuidString, cutoff]))
+    }
+
+    private static func excludedThemes(_ db: Database, sessionID: UUID) throws -> Set<String> {
+        Set(try String.fetchAll(db, sql: """
+            SELECT l.theme FROM mentor_feedback f JOIN mentor_lesson_snapshots l ON l.item_id = f.item_id AND l.session_id = f.session_id
+            WHERE f.session_id = ? AND f.kind = 'not_relevant' AND f.revoked_at IS NULL
+            """, arguments: [sessionID.uuidString]))
+    }
+
+    private static func lessonDay(_ date: Date, timeZone: TimeZone, offset: Int = 0) throws -> String {
+        guard date.timeIntervalSince1970.isFinite else { throw PersistenceError.validationFailed("invalid lesson date") }
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = timeZone
+        guard let shifted = calendar.date(byAdding: .day, value: offset, to: date) else { throw PersistenceError.validationFailed("invalid lesson date") }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar; formatter.timeZone = timeZone; formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: shifted)
     }
 }

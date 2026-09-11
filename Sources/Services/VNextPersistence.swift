@@ -827,6 +827,26 @@ extension AppDatabase {
                 """)
         }
 
+        migrator.registerMigration("v63_mentor_lesson_snapshots") { db in
+            try db.create(table: "mentor_lesson_snapshots") { t in
+                t.column("item_id", .text).primaryKey()
+                t.column("session_id", .text).notNull()
+                t.column("lesson_id", .text).notNull().indexed()
+                t.column("version", .text).notNull()
+                t.column("content_hash", .text).notNull()
+                t.column("theme", .text).notNull()
+                t.column("epoch", .integer).notNull()
+                t.column("reading_section", .text).notNull().defaults(to: "title")
+                t.column("reading_revision", .integer).notNull().defaults(to: 0)
+                t.foreignKey(["session_id", "item_id"], references: "mentor_items", columns: ["session_id", "id"], onDelete: .cascade)
+            }
+            try db.alter(table: "mentor_feedback") { t in t.add(column: "revoked_at", .text) }
+            try db.create(table: "mentor_feedback_resets") { t in
+                t.column("command_id", .text).primaryKey()
+                t.column("created_at", .text).notNull()
+            }
+        }
+
     }
 }
 
