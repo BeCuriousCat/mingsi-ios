@@ -29,6 +29,8 @@ protocol MentorRepository {
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
     func deleteSession(id: UUID) async throws
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
+    func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
+    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
 }
 
 struct MentorSubmitTurn: Equatable {
@@ -76,6 +78,55 @@ final class SQLiteMentorRepository: MentorRepository {
 
     func deleteSession(id: UUID) async throws {
         try await database.dbQueue.write { db in try MentorSessionRow.deleteOne(db, key: id.uuidString) }
+    }
+
+    /// Cancels persisted attempts and flushes the draft in the same transaction.
+    /// The caller must cancel its in-memory transport before invoking this command.
+    func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws {
+        try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: id.uuidString),
+                  draftRevision >= session.draftRevision,
+                  draftRevision > session.draftRevision || draftText == session.draftText else {
+                throw PersistenceError.validationFailed("stale or missing mentor session")
+            }
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [id.uuidString])
+            try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = ?, draft_revision = ?, draft_text = ?, activity_at = ? WHERE id = ?", arguments: [ending ? "ended" : "paused", draftRevision, draftText, ISO8601DateFormatter().string(from: .now), id.uuidString])
+        }
+    }
+
+    /// Storage boundary only: caller must first validate the mentor response protocol
+    /// and dynamic source/intent rules. Does not mark content as presented.
+    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem {
+        guard let data = payloadJSON.data(using: .utf8),
+              (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else {
+            throw PersistenceError.validationFailed("invalid mentor response JSON")
+        }
+        return try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString),
+                  let request = try MentorRequestRow.fetchOne(db, key: requestID.uuidString),
+                  request.sessionID == session.id else {
+                throw PersistenceError.validationFailed("mentor response owner missing or mismatched")
+            }
+            if request.state == "committed" {
+                guard let itemID = try String.fetchOne(db, sql: "SELECT item_id FROM mentor_request_results WHERE request_id = ? AND session_id = ?", arguments: [request.id, session.id]),
+                      let item = try MentorItemRow.fetchOne(db, key: itemID),
+                      item.payloadJSON == payloadJSON else {
+                    throw PersistenceError.validationFailed("conflicting mentor response replay")
+                }
+                return try item.model()
+            }
+            guard session.lifecycle == "active",
+                  ["prepared", "in_flight", "response_received"].contains(request.state) else {
+                throw PersistenceError.validationFailed("mentor response is no longer valid")
+            }
+            let next = try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sequence), 0) + 1 FROM mentor_items WHERE session_id = ?", arguments: [session.id]) ?? 1
+            let item = MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: next, kind: .assistant, payloadJSON: payloadJSON)
+            try MentorItemRow(item).insert(db)
+            try db.execute(sql: "INSERT INTO mentor_request_results (request_id, session_id, item_id) VALUES (?, ?, ?)", arguments: [request.id, session.id, item.id.uuidString])
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'committed' WHERE id = ?", arguments: [request.id])
+            try db.execute(sql: "UPDATE mentor_sessions SET activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: .now), session.id])
+            return item
+        }
     }
 
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID {

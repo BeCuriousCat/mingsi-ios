@@ -754,6 +754,17 @@ extension AppDatabase {
                 t.add(column: "intent", .text).notNull().defaults(to: "legacy")
             }
         }
+        migrator.registerMigration("v56_mentor_response_ownership") { db in
+            try db.create(index: "mentor_items_session_identity", on: "mentor_items", columns: ["session_id", "id"], unique: true)
+            try db.create(index: "mentor_requests_session_identity", on: "mentor_requests", columns: ["session_id", "id"], unique: true)
+            try db.create(table: "mentor_request_results") { t in
+                t.column("request_id", .text).primaryKey().references("mentor_requests", onDelete: .cascade)
+                t.column("session_id", .text).notNull().references("mentor_sessions", onDelete: .cascade)
+                t.column("item_id", .text).notNull().unique()
+                t.foreignKey(["session_id", "request_id"], references: "mentor_requests", columns: ["session_id", "id"], onDelete: .cascade)
+                t.foreignKey(["session_id", "item_id"], references: "mentor_items", columns: ["session_id", "id"], onDelete: .cascade)
+            }
+        }
     }
 }
 

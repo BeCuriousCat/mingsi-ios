@@ -104,4 +104,61 @@ final class MentorPersistenceTests: XCTestCase {
         }
     }
 
+    func testResponseReplayAndPauseRejectLateResponseAfterResume() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let first = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "one", intent: "reply", contextSnapshotJSON: "{}"))
+        let result = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: "{\"body\":\"reply\"}")
+        let replay = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: result.payloadJSON)
+        XCTAssertEqual(result, replay)
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: "{}"); XCTFail("Conflicting replay") } catch {}
+        let late = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "two", intent: "reply", contextSnapshotJSON: "{}"))
+        try await repo.suspendSession(id: id, ending: false, draftRevision: 1, draftText: "saved")
+        let paused = try await repo.session(id: id)
+        XCTAssertEqual(paused?.lifecycle, .paused)
+        XCTAssertEqual(paused?.draftText, "saved")
+        _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "resume", intent: "reply", contextSnapshotJSON: "{}"))
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: late, payloadJSON: "{}"); XCTFail("Late response survived resume") } catch {}
+        try await repo.deleteSession(id: id)
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: result.payloadJSON); XCTFail("Deleted response recreated") } catch {}
+        let links = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_request_results") }
+        XCTAssertEqual(links, 0)
+    }
+
+    func testResponseOwnershipAndAtomicRollback() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID(), other = UUID()
+        for sessionID in [id, other] {
+            try await repo.createSession(MentorSession(id: sessionID, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        }
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "one", intent: "reply", contextSnapshotJSON: "{}"))
+        do { _ = try await repo.commitResponse(sessionID: other, requestID: request, payloadJSON: "{}"); XCTFail("Cross-session response") } catch {}
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_result BEFORE INSERT ON mentor_request_results BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}"); XCTFail("Expected failure") } catch {}
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.count, 1)
+        let state = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [request.uuidString]) }
+        XCTAssertEqual(state, "prepared")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_result") }
+        _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}")
+    }
+
+    func testSuspendFailureRollsBackRequestCancellation() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "one", intent: "reply", contextSnapshotJSON: "{}"))
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_pause BEFORE UPDATE ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { try await repo.suspendSession(id: id, ending: true, draftRevision: 1, draftText: "new"); XCTFail("Expected failure") } catch {}
+        let session = try await repo.session(id: id)
+        XCTAssertEqual(session?.lifecycle, .active)
+        XCTAssertEqual(session?.draftRevision, 0)
+        let state = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [request.uuidString]) }
+        XCTAssertEqual(state, "prepared")
+    }
+
 }
