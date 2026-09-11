@@ -18,6 +18,8 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
     case evaluateGuidanceEvidence
     case diagnoseTrainingCase
     case reviewCoachAnswer
+    case digestCaptures
+    case singleNudge
 
     var id: String { rawValue }
 
@@ -25,7 +27,7 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
     /// derived from the PromptID so existing PromptRun rows need no migration.
     var decisionRoute: LLMDecisionRoute {
         switch self {
-        case .organizeCards:
+        case .organizeCards, .digestCaptures:
             return .capture
         case .recommendLenses, .generateQuestions, .generateQuests, .diagnoseTrainingCase, .reviewCoachAnswer:
             return .coaching
@@ -36,6 +38,8 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
             return .projects
         case .generateSideQuest:
             return .life
+        case .singleNudge:
+            return .coaching
         }
     }
 
@@ -57,6 +61,8 @@ enum PromptID: String, Codable, CaseIterable, Identifiable {
         case .evaluateGuidanceEvidence: return "判断提示证据"
         case .diagnoseTrainingCase: return "诊断事项训练重点"
         case .reviewCoachAnswer: return "复盘教练回答"
+        case .digestCaptures: return "整理今日闪念"
+        case .singleNudge: return "明思一下"
         }
     }
 }
@@ -115,6 +121,8 @@ struct LLMRequest: Hashable {
     var sourceRecordIDs: [String] = []
     var contextVersion: Int = 1
     var contextRecordIDs: [String] = []
+    /// Opt-in mentor transport policy; nil preserves existing client behavior.
+    var mentorExecutionPolicy: MentorRequestPolicy? = nil
 
     var decisionRoute: LLMDecisionRoute {
         prompt.id.decisionRoute
@@ -2463,6 +2471,38 @@ private struct PromptEvalCase {
             try expect(cards.contains { $0.sensitivity == .possiblySensitive }, "Expected a possibly sensitive card.")
         },
         PromptEvalCase(
+            promptId: .digestCaptures,
+            caseId: "digest.daily_capture_schema",
+            name: "Daily capture digest preserves themes and source refs",
+            inputSummary: "Two same-day capture fragments about clarifying a decision and checking feedback.",
+            expectedBehavior: "Decode a bounded digest with a concise summary, at most three themes, and only supplied fragment UUIDs.") { _ in
+            let response = try JSONDecoder().decode(
+                CaptureDigestResponse.self,
+                from: Data(Self.digestCapturesFixture.utf8)
+            )
+            try expect(!response.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "Expected digest summary.")
+            try expect((1...3).contains(response.themes.count), "Expected one to three digest themes.")
+            try expect(response.themes.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "Expected non-empty digest themes.")
+            try expect(response.recommendedQuestion?.contains("？") == true, "Expected one recommended question.")
+            try expect(
+                response.sourceRefs == [
+                    "00000000-0000-0000-0000-000000000001",
+                    "00000000-0000-0000-0000-000000000002"
+                ],
+                "Expected supplied capture fragment refs in order."
+            )
+        },
+        PromptEvalCase(
+            promptId: .singleNudge,
+            caseId: "nudge.single_concise_question",
+            name: "Single nudge returns exactly one concise question",
+            inputSummary: "A short reflection input where one immediate fact-checking question is useful.",
+            expectedBehavior: "Parse strict single-question JSON with exactly one non-empty question and no extra keys.") { parser in
+            let question = try parser.parseSingleNudge(from: Data(Self.singleNudgeFixture.utf8))
+            try expect(question.contains("事实"), "Expected the nudge to focus on an observable fact.")
+            try expect(question.filter { $0 == "?" || $0 == "？" }.count == 1, "Expected exactly one question mark.")
+        },
+        PromptEvalCase(
             promptId: .recommendLenses,
             caseId: "lenses.recommends_supported_default",
             name: "Lens recommendations include supported default",
@@ -3364,6 +3404,24 @@ private struct PromptEvalCase {
         }
     ]
 
+    private static let digestCapturesFixture = """
+    {
+      "summary": "今天的记录都在澄清决策并观察反馈。",
+      "themes": ["决策澄清", "反馈观察"],
+      "recommended_question": "哪一个事实最值得先核对？",
+      "source_refs": [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002"
+      ]
+    }
+    """
+
+    private static let singleNudgeFixture = """
+    {
+      "question": "这件事里，下一步最值得确认的一个事实是什么？"
+    }
+    """
+
     private static let recommendLensesFixture = """
     {
       "recommended_lenses": [
@@ -3909,6 +3967,14 @@ final class LocalPromptProvider: PromptProvider {
             promptVersion = "1.5.0"
             rollbackTargetVersion = "1.4.0"
             outputSchemaVersion = 1
+        case .digestCaptures:
+            promptVersion = "1.0.0"
+            rollbackTargetVersion = nil
+            outputSchemaVersion = 1
+        case .singleNudge:
+            promptVersion = "1.1.0"
+            rollbackTargetVersion = "1.0.0"
+            outputSchemaVersion = 1
         default:
             promptVersion = "1.0.0"
             rollbackTargetVersion = nil
@@ -3932,6 +3998,18 @@ final class LocalPromptProvider: PromptProvider {
         current: PromptTemplate
     ) -> PromptTemplate? {
         switch (id, version) {
+        case (.singleNudge, "1.0.0"):
+            return PromptTemplate(
+                id: id,
+                version: version,
+                systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion,
+                evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: nil,
+                systemText: current.systemText,
+                userText: Self.singleNudgeV100UserText(),
+                outputSchemaVersion: 1
+            )
         case (.generateQuestions, "1.12.0"):
             return PromptTemplate(
                 id: id,
@@ -5682,6 +5760,20 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func singleNudgeV100UserText() -> String {
+        "Return JSON only with exactly one key, question, containing one concise reflective question."
+    }
+
+    private static func singleNudgeV110UserText() -> String {
+        """
+        You are MingSi's one-question thinking prompt. Use the user's language and only the supplied material from this one nudge chain.
+        Find one high-leverage gap in the person's current thinking: a missing fact, assumption, judgment criterion, causal link, or counterexample. Ask exactly one concrete question they can answer now.
+        Do not give an answer, recommendation, plan, or task. Do not decide for the user. Do not ask vague questions such as "你怎么看？". Do not infer a role, ability, motive, or stereotype from the person's job or situation.
+        When continuation_mode is alternateAngle, avoid the previous question's entry point. When it is deeper, follow the person's just-stated expression one layer further, still with one answerable-now question.
+        Return strict JSON only: {"question":"..."}. The value must be one short single-line question with exactly one question mark. No markdown and no other keys.
+        """
+    }
+
     private static func userText(for id: PromptID, mode: SessionMode) -> String {
         let prior = userTextV1120(for: id, mode: mode)
 
@@ -5707,6 +5799,8 @@ final class LocalPromptProvider: PromptProvider {
             - When the real condition is still unknown, generate the smallest respectful discovery action instead of a delivery task. When it is already clear, do not add discovery work for its own sake.
             - Do not describe this as a “true need” exercise to the user. Keep the task grounded in their actual situation and the signal that would update their judgment.
             """
+        case .singleNudge:
+            return singleNudgeV110UserText()
         default:
             return prior
         }
@@ -5765,6 +5859,21 @@ final class LocalPromptProvider: PromptProvider {
     private static func userTextV1110(for id: PromptID, mode: SessionMode) -> String {
         let modeGuidance = Self.modeGuidance(for: mode)
         switch id {
+        case .digestCaptures:
+            return """
+            You are MingSi's daily capture digest assistant. Aggregate only the supplied raw capture fragments from one local calendar day.
+            Do not rewrite or replace any source fragment. Do not create cards, TrainingCases, quests, principles, metrics, notifications, diagnoses, or a training plan. Do not infer private facts not present in the fragments.
+            Return JSON only with this exact schema:
+            {
+              "summary": "concise Chinese aggregation",
+              "themes": ["one to three short themes"],
+              "recommended_question": "one optional reflective question or null",
+              "source_refs": ["one or more supplied fragment UUIDs"]
+            }
+            source_refs must only contain supplied UUIDs. themes has at most 3 values and recommended_question has at most 1 value.
+            """
+        case .singleNudge:
+            return singleNudgeV100UserText()
         case .organizeCards:
             return """
             Organize the user's raw daily input into editable thinking cards.

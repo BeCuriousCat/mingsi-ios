@@ -9,7 +9,60 @@ final class DirectGLMClientTests: XCTestCase {
         GLMStubURLProtocol.requestTimeouts = []
         GLMStubURLProtocol.responseDelays = []
         GLMStubURLProtocol.transportErrors = []
+        GLMStubURLProtocol.hangs = false
+        GLMStubURLProtocol.onStopLoading = nil
         super.tearDown()
+    }
+
+    func testMentorDeadlineCancelsActualURLSessionTask() async throws {
+        GLMStubURLProtocol.hangs = true
+        let stopped = expectation(description: "URLSession stopped the request")
+        GLMStubURLProtocol.onStopLoading = { stopped.fulfill() }
+        var request = makeRequest()
+        request.mentorExecutionPolicy = MentorRequestPolicy(deadline: .milliseconds(100), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+        do { _ = try await makeClient().complete(request); XCTFail("Expected total deadline") }
+        catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
+        await fulfillment(of: [stopped], timeout: 1)
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    func testMentorPolicyMakesExactlyOneHTTPAttemptForRecoverableErrors() async throws {
+        for status in [429, 500, 503] {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [StubbedHTTPResponse(statusCode: status, body: "server busy"),
+                StubbedHTTPResponse(statusCode: 200, body: #"{"choices":[{"message":{"content":"{}"}}]}"#)]
+            var request = makeRequest(); request.mentorExecutionPolicy = .m1
+            do { _ = try await makeClient().complete(request); XCTFail("Must return first error") }
+            catch { guard case LLMClientError.httpStatus(let actual, _) = error else { return XCTFail("Unexpected error: \(error)") }; XCTAssertEqual(actual, status) }
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
+    func testMentorPolicyDoesNotRetryResponseFormatRejectionOrTransportError() async throws {
+        GLMStubURLProtocol.responses = [StubbedHTTPResponse(statusCode: 400, body: #"{"error":"response_format is not supported"}"#)]
+        var request = makeRequest(); request.mentorExecutionPolicy = .m1
+        do { _ = try await makeClient().complete(request); XCTFail("Must not fallback") } catch {}
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        XCTAssertTrue(GLMStubURLProtocol.requestBodies[0].contains("response_format"))
+        GLMStubURLProtocol.requestBodies = []
+        GLMStubURLProtocol.transportErrors = [URLError(.networkConnectionLost)]
+        do { _ = try await makeClient().complete(request); XCTFail("Must not retry transport failure") } catch {}
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    func testMentorSuccessUsesBoundedTimeoutAndRejectsStreamingBypass() async throws {
+        GLMStubURLProtocol.responses = [StubbedHTTPResponse(statusCode: 200, body: #"{"choices":[{"message":{"content":"{\"ok\":true}"}}]}"#)]
+        var request = makeRequest(); request.mentorExecutionPolicy = .m1
+        let data = try await makeClient().complete(request)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("choices"))
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        XCTAssertEqual(GLMStubURLProtocol.requestTimeouts.first, 30)
+        do {
+            var iterator = makeClient().stream(request).makeAsyncIterator()
+            _ = try await iterator.next()
+            XCTFail("Mentor streaming is unavailable")
+        } catch { XCTAssertEqual(error as? MentorRequestExecutionError, .unsupportedStreaming) }
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
     }
 
     func testComplete_retriesWithoutResponseFormatWhenEndpointRejectsIt() async throws {
@@ -433,6 +486,8 @@ private final class GLMStubURLProtocol: URLProtocol {
     static var requestTimeouts: [TimeInterval] = []
     static var responseDelays: [Duration] = []
     static var transportErrors: [URLError?] = []
+    static var hangs = false
+    static var onStopLoading: (() -> Void)?
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -445,6 +500,7 @@ private final class GLMStubURLProtocol: URLProtocol {
     override func startLoading() {
         Self.requestBodies.append(Self.bodyString(for: request))
         Self.requestTimeouts.append(request.timeoutInterval)
+        if Self.hangs { return }
 
         let requestIndex = Self.requestBodies.count - 1
         if Self.transportErrors.indices.contains(requestIndex),
@@ -484,7 +540,7 @@ private final class GLMStubURLProtocol: URLProtocol {
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { Self.onStopLoading?() }
 
     private static func bodyString(for request: URLRequest) -> String {
         if let body = request.httpBody {

@@ -118,6 +118,12 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        if let policy = request.mentorExecutionPolicy {
+            // Bypass both the recoverable-status loop and the response_format fallback.
+            return try await MentorRequestExecutor().execute({ [self] in
+                try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
+            }, policy: policy).data
+        }
         var lastError: Error?
         for attempt in 0...configuration.maxRetryAttempts {
             do {
@@ -152,7 +158,13 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             usesJSONResponseFormat: usesJSONResponseFormat,
             stream: false
         )
-        urlRequest.timeoutInterval = configuration.requestTimeout
+        if let policy = request.mentorExecutionPolicy {
+            let components = policy.deadline.components
+            let seconds = Double(components.seconds) + Double(components.attoseconds) / 1e18
+            urlRequest.timeoutInterval = min(configuration.requestTimeout, seconds)
+        } else {
+            urlRequest.timeoutInterval = configuration.requestTimeout
+        }
 
 
         do {
@@ -174,7 +186,10 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     }
 
     func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
-        AsyncThrowingStream { continuation in
+        guard request.mentorExecutionPolicy == nil else {
+            return AsyncThrowingStream { $0.finish(throwing: MentorRequestExecutionError.unsupportedStreaming) }
+        }
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     try await streamAttemptingRetries(request, continuation: continuation)

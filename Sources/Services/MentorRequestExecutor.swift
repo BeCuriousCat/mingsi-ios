@@ -1,6 +1,6 @@
 import Foundation
 
-struct MentorRequestPolicy: Equatable {
+struct MentorRequestPolicy: Hashable {
     let deadline: Duration
     let waitingNoticeAfter: Duration
     let maxHTTPAttempts: Int
@@ -9,7 +9,7 @@ struct MentorRequestPolicy: Equatable {
 }
 
 enum MentorRequestExecutionState: Equatable { case started, waiting, completed, timedOut, cancelled, failed }
-enum MentorRequestExecutionError: Error, Equatable { case timedOut, cancelled, invalidPolicy }
+enum MentorRequestExecutionError: Error, Equatable { case timedOut, cancelled, invalidPolicy, unsupportedStreaming }
 
 struct MentorRequestExecutionResult {
     let data: Data
@@ -21,6 +21,7 @@ struct MentorRequestExecutionResult {
 /// forwarded, but a late transport result cannot resume the caller or emit another state.
 /// The transport must separately enforce one HTTP attempt and owned audit writes.
 final class MentorRequestExecutor {
+    private static let maximumDeadline: Duration = .seconds(30)
     private let clock: ContinuousClock
     init(clock: ContinuousClock = ContinuousClock()) { self.clock = clock }
 
@@ -28,7 +29,8 @@ final class MentorRequestExecutor {
                  policy: MentorRequestPolicy = .m1,
                  startedAt: ContinuousClock.Instant? = nil,
                  onState: @escaping @Sendable (MentorRequestExecutionState) -> Void = { _ in }) async throws -> MentorRequestExecutionResult {
-        guard policy.deadline > .zero, policy.waitingNoticeAfter >= .zero,
+        guard policy.deadline > .zero, policy.deadline <= Self.maximumDeadline,
+              policy.waitingNoticeAfter >= .zero, policy.waitingNoticeAfter <= .seconds(10),
               policy.waitingNoticeAfter < policy.deadline, policy.maxHTTPAttempts == 1,
               !policy.allowsFormatFallback else { throw MentorRequestExecutionError.invalidPolicy }
         let start = startedAt ?? clock.now

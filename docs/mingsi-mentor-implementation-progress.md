@@ -142,6 +142,16 @@ project.yml 和生成工程将草稿加入 Debug App 资源，Release 使用 EXC
 
 验证：MingSi Dev 模拟器 MentorRequestExecutorTests 8 项通过、0 失败、0 跳过。包含底层用 continuation 故意忽略取消时，前台仍在短预算内超时 / 取消返回，释放迟到结果后不再显示成功；过期准备时间不启动操作；无效策略被拒绝。测试锁封装也改为读写均受锁保护。此项证明前台仲裁，不证明底层严格审计、单次 HTTP 或持久化失效已接通。内部修复无需用户发布说明。
 
+## 2026-09-12：F10 DirectGLM 一次请求与超时策略接入
+
+复核并修正此前执行器接入：`MentorRequestPolicy` 现在是 `LLMRequest` 的可选字段，只有导师请求启用；DirectGLM 遇到导师策略时绕过既有 recoverable-status 重试循环和 response_format 降级重发。每个导师完成请求严格调用一次 `send`，策略拒绝 maxHTTPAttempts 非 1、启用格式回退或超过 30 秒的截止时间。导师请求不支持流式路径，明确返回 unsupportedStreaming，避免绕过总截止和审计边界。
+
+DirectGLM 为导师请求把 URLSession `timeoutInterval` 限制到策略截止，并由 MentorRequestExecutor 的独立 watchdog 负责从提交开始的前台总预算；底层 URLSession 任务收到取消。既有普通请求仍保留旧的十分钟 idle timeout 和重试兼容行为，不被本次策略改变。
+
+验证：MingSi Dev 模拟器 DirectGLMClientTests 19 项通过、0 失败、0 跳过；包括 429 / 500 / 503 各只发一次、response_format 拒绝不 fallback、传输错误不 retry、成功请求 30 秒 timeout、导师流式路径显式拒绝、挂起 URLProtocol 在总截止后收到 stopLoading，以及既有普通请求回归。MentorRequestExecutorTests 8 项此前已通过，覆盖底层忽略取消时的前台超时 / 取消返回和迟到结果丢弃。
+
+本轮修复也更正了 a0df546 的过宽表述：该提交只实现策略常量，随后 43c74f6 实现真正的 watchdog；本次才接入 DirectGLM。仍未完成 PromptTracing 的严格导师所有权审计、仓储 request_epoch 复核、Store 状态机与真实在线服务环境验证。内部实现无需用户发布说明。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。
