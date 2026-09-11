@@ -161,4 +161,42 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(state, "prepared")
     }
 
+    func testDraftRevisionConflictsAndReplayPreserveStoredText() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        try await repo.saveDraft(sessionID: id, revision: 2, text: "newest")
+        let before = try await repo.session(id: id)
+        try await repo.saveDraft(sessionID: id, revision: 2, text: "newest")
+        let replay = try await repo.session(id: id)
+        XCTAssertEqual(before, replay)
+        for revision in [-1, 1, 2] {
+            do { try await repo.saveDraft(sessionID: id, revision: revision, text: "older"); XCTFail("Rejected stale or conflicting revision") } catch {}
+        }
+        let saved = try await repo.session(id: id)
+        XCTAssertEqual(saved, before)
+    }
+
+    func testClosedSessionRejectsDelayedDraftAndSuspendWrites() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "topic", lifecycle: .active, draftText: "", draftRevision: 0, activityAt: .now))
+        try await repo.suspendSession(id: id, ending: false, draftRevision: 1, draftText: "paused")
+        do { try await repo.saveDraft(sessionID: id, revision: 2, text: "late"); XCTFail("Paused draft overwritten") } catch {}
+        try await repo.suspendSession(id: id, ending: true, draftRevision: 1, draftText: "paused")
+        let ended = try await repo.session(id: id)
+        try await repo.suspendSession(id: id, ending: true, draftRevision: 1, draftText: "paused")
+        do { try await repo.suspendSession(id: id, ending: false, draftRevision: 2, draftText: "late"); XCTFail("Ended session reopened by background callback") } catch {}
+        do { try await repo.saveDraft(sessionID: id, revision: 2, text: "late"); XCTFail("Ended draft overwritten") } catch {}
+        let final = try await repo.session(id: id)
+        XCTAssertEqual(final, ended)
+        try await repo.resumeSession(id: id)
+        try await repo.saveDraft(sessionID: id, revision: 2, text: "explicit continuation")
+        let resumed = try await repo.session(id: id)
+        XCTAssertEqual(resumed?.lifecycle, .active)
+        XCTAssertEqual(resumed?.draftText, "explicit continuation")
+    }
+
 }

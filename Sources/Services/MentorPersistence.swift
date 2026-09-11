@@ -30,6 +30,7 @@ protocol MentorRepository {
     func deleteSession(id: UUID) async throws
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
+    func resumeSession(id: UUID) async throws
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
 }
 
@@ -46,6 +47,7 @@ final class SQLiteMentorRepository: MentorRepository {
     init(database: AppDatabase) { self.database = database }
 
     func createSession(_ session: MentorSession) async throws {
+        guard session.draftRevision >= 0 else { throw PersistenceError.validationFailed("negative mentor draft revision") }
         try await database.dbQueue.write { db in try MentorSessionRow(session).insert(db) }
     }
 
@@ -55,8 +57,20 @@ final class SQLiteMentorRepository: MentorRepository {
 
     func saveDraft(sessionID: UUID, revision: Int, text: String) async throws {
         try await database.dbQueue.write { db in
-            try db.execute(sql: "UPDATE mentor_sessions SET draft_text = ?, draft_revision = ?, activity_at = ? WHERE id = ? AND draft_revision <= ?", arguments: [text, revision, ISO8601DateFormatter().string(from: .now), sessionID.uuidString, revision])
-            guard db.changesCount > 0 else { throw PersistenceError.validationFailed("stale or missing mentor draft") }
+            guard let current = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString),
+                  revision >= 0, revision >= current.draftRevision else {
+                throw PersistenceError.validationFailed("stale or missing mentor draft")
+            }
+            if revision == current.draftRevision {
+                guard text == current.draftText else {
+                    throw PersistenceError.validationFailed("mentor draft revision conflict")
+                }
+                return // An exact retry must not change activity ordering.
+            }
+            guard ["draft", "active"].contains(current.lifecycle) else {
+                throw PersistenceError.validationFailed("mentor draft requires an active session")
+            }
+            try db.execute(sql: "UPDATE mentor_sessions SET draft_text = ?, draft_revision = ?, activity_at = ? WHERE id = ?", arguments: [text, revision, ISO8601DateFormatter().string(from: .now), sessionID.uuidString])
         }
     }
 
@@ -80,14 +94,31 @@ final class SQLiteMentorRepository: MentorRepository {
         try await database.dbQueue.write { db in try MentorSessionRow.deleteOne(db, key: id.uuidString) }
     }
 
+    /// Explicit user continuation; cancelled requests remain terminal.
+    func resumeSession(id: UUID) async throws {
+        try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: id.uuidString) else {
+                throw PersistenceError.validationFailed("mentor session missing")
+            }
+            guard session.lifecycle != "active" else { return }
+            try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: .now), id.uuidString])
+        }
+    }
+
     /// Cancels persisted attempts and flushes the draft in the same transaction.
     /// The caller must cancel its in-memory transport before invoking this command.
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws {
         try await database.dbQueue.write { db in
             guard let session = try MentorSessionRow.fetchOne(db, key: id.uuidString),
-                  draftRevision >= session.draftRevision,
+                  draftRevision >= 0, draftRevision >= session.draftRevision,
                   draftRevision > session.draftRevision || draftText == session.draftText else {
                 throw PersistenceError.validationFailed("stale or missing mentor session")
+            }
+            if session.lifecycle == "ended" {
+                guard ending, draftRevision == session.draftRevision, draftText == session.draftText else {
+                    throw PersistenceError.validationFailed("ended mentor session cannot be overwritten by suspension")
+                }
+                return
             }
             try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id = ? AND state IN ('prepared', 'in_flight', 'response_received')", arguments: [id.uuidString])
             try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = ?, draft_revision = ?, draft_text = ?, activity_at = ? WHERE id = ?", arguments: [ending ? "ended" : "paused", draftRevision, draftText, ISO8601DateFormatter().string(from: .now), id.uuidString])
