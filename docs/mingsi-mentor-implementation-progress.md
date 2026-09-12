@@ -210,6 +210,14 @@ v65 为 mentor_source_links 增加 owner_kind、owner_uuid、source_version、co
 
 剩余范围：尚未接入最近交流 SwiftUI 列表、详情页面、返回位置、旧点拨兼容和真实 App 导航。当前仅完成 Store 协调层，不代表 F13 完整交付。
 
+## 2026-09-12：F08 启动前中断请求恢复接入 Store
+
+Store 在创建新的导师会话前先调用幂等的 `recoverInterruptedRequests`，把上一次进程遗留的请求收敛为 interrupted 并暂停所属会话；该步骤不发起网络请求，避免新一轮操作与旧请求并存。原有 Store 测试全部回归通过。
+
+验证：MingSi Dev 模拟器 `MentorFeatureStoreTests` 4 项通过、0 失败、0 跳过。
+
+剩余范围：尚未接入 App 启动级统一恢复、后台生命周期通知、保存失败界面和真实请求执行器；本项仅完成新导师入口前的恢复门槛。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。

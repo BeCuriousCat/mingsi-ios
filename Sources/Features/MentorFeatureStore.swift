@@ -173,6 +173,9 @@ final class MentorFeatureStore: ObservableObject {
 
     private func startTask(entry: String, initialText: String) async {
         do {
+            // Reconcile requests left by a prior process before allowing a new
+            // foreground attempt. This is idempotent and does not transmit.
+            _ = try await repository.recoverInterruptedRequests()
             let id = UUID()
             try await repository.createSession(MentorSession(id: id, initialEntry: entry, lifecycle: .draft,
                 draftText: initialText, draftRevision: initialText.isEmpty ? 0 : 1, activityAt: .now))
