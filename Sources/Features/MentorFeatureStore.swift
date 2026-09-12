@@ -12,6 +12,7 @@ struct MentorFeatureState: Equatable {
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var response: MentorValidatedTurn?
+    var understanding: MentorUnderstanding?
     var inputText = ""
     var draftRevision = 0
 }
@@ -87,6 +88,42 @@ final class MentorFeatureStore: ObservableObject {
             do {
                 try await self?.repository.acknowledgePresentation(sessionID: session.id, itemID: lesson.id, at: .now, timeZone: self?.timeZone ?? .current)
                 self?.state.timeline = try await self?.repository.items(sessionID: session.id) ?? []
+            } catch { self?.state.phase = .failed(String(describing: error)) }
+        }
+    }
+
+    /// Starts a user-owned understanding draft. This path is intentionally local:
+    /// confirmation never requires a model request or changes prior revisions.
+    func beginUnderstanding(previousRevisionID: UUID? = nil) {
+        guard let session = state.session else { return }
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                let draft = try await self.repository.beginUserUnderstanding(sessionID: session.id, draftID: UUID(), previousRevisionID: previousRevisionID)
+                self.state.understanding = draft
+            } catch { self?.state.phase = .failed(String(describing: error)) }
+        }
+    }
+
+    func saveUnderstanding(text: String) {
+        guard let session = state.session, let draft = state.understanding, draft.state == .draft else { return }
+        requestTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                self.state.understanding = try await self.repository.saveUnderstandingDraft(
+                    sessionID: session.id, draftID: draft.id, editRevision: draft.editRevision + 1, text: text)
+            } catch { self?.state.phase = .failed(String(describing: error)) }
+        }
+    }
+
+    func confirmUnderstanding() {
+        guard let session = state.session, let draft = state.understanding else { return }
+        requestTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                self.state.understanding = try await self.repository.confirmUnderstanding(
+                    sessionID: session.id, draftID: draft.id, expectedEditRevision: draft.editRevision)
             } catch { self?.state.phase = .failed(String(describing: error)) }
         }
     }

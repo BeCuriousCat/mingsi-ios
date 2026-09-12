@@ -44,6 +44,27 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.phase, .ended)
     }
 
+    func testUnderstandingDraftAndConfirmationStayLocal() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await Task.sleep(for: .milliseconds(50))
+        store.beginUnderstanding()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.state.understanding?.state, .draft)
+        store.saveUnderstanding(text: "我会先区分动作和效果")
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.state.understanding?.text, "我会先区分动作和效果")
+        store.confirmUnderstanding()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.state.understanding?.state, .confirmed)
+        XCTAssertEqual(store.state.understanding?.confirmedAt != nil, true)
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        let understandings = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(understandings.count, 1)
+    }
+
     private func catalog() throws -> MentorLessonCatalog {
         let lessons = (1...24).map { index in
             let base = MentorLesson(id: String(format: "L%02d", index), version: "1.0", editorialOrder: index,

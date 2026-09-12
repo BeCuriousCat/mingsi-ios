@@ -194,6 +194,14 @@ v65 为 mentor_source_links 增加 owner_kind、owner_uuid、source_version、co
 
 剩余范围：Store 尚未接入 Today 三入口真实 UI、App navigation、后台恢复 / 前台重建、本地保存失败界面、防抖与生命周期通知；正式 Prompt ID、真实 MentorRequestExecutor / PromptTracing 链路和模型 wiring 仍需后续 F08–F11 完成。内部实现无需用户发布说明。
 
+## 2026-09-12：F12 Store 接入用户理解草稿与确认
+
+`MentorFeatureStore` 增加用户理解草稿的开始、保存和确认操作。草稿与确认沿用仓储的编辑修订和不可变版本约束；确认只在本地事务完成，不发起模型请求，也不把教材或助手内容伪装成用户表达。Store 测试覆盖草稿创建、编辑、确认和仓储回读。
+
+验证：MingSi Dev 模拟器 `MentorFeatureStoreTests` 3 项通过、0 失败、0 跳过。
+
+剩余范围：尚未接入理解编辑 SwiftUI 页面、自动保存防抖、AI 草稿请求与来源资格校验、理解删除和最近交流详情。此次实现不代表 F12 完整交付。
+
 ## 当前完整性判断
 
 此前 `c75f968` 仅完成教材模型和部分结构检查，F01 仍缺 Bundle 内容加载、内容哈希复算与不可变版本验证、完整字段与发布审核约束。不能将其记为整个 F01 完成。
