@@ -63,7 +63,8 @@ final class MentorFeatureStore: ObservableObject {
             do {
                 guard let self else { return }
                 let page = try await self.repository.recentSessions(after: cursor, limit: limit)
-                self.state.recentSessions.append(contentsOf: page.sessions)
+                let existing = Set(self.state.recentSessions.map(\.id))
+                self.state.recentSessions.append(contentsOf: page.sessions.filter { !existing.contains($0.id) })
                 self.state.recentSessionsCursor = page.nextCursor
             } catch { self?.state.phase = .failed(String(describing: error)) }
         }
