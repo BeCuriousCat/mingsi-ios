@@ -23,6 +23,7 @@
 		45865065AEFF0EFD171685EA /* mentor-lessons-m1.draft.json in Resources */ = {isa = PBXBuildFile; fileRef = FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */; };
 		4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */; };
 		49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */; };
+		49EEEE6DEDEC5489BAE8FC99 /* SpeechTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */; };
 		4F8852152107C5A2EFC929B1 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890E4F32AA3030AD7B049750 /* AppStore.swift */; };
 		5A11C654564863D8121B5E54 /* SideQuestAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */; };
 		609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */; };
@@ -111,6 +112,7 @@
 		3D05560A573D382BC7E7992F /* TodayAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIService.swift; sourceTree = "<group>"; };
 		407113F4E10DA13FE28568B7 /* GRDB.swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GRDB.swift; path = Vendor/GRDB.swift; sourceTree = SOURCE_ROOT; };
 		423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCore.swift; sourceTree = "<group>"; };
+		43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriptionService.swift; sourceTree = "<group>"; };
 		4868ABB675A8EC62EC09C333 /* MentorResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorResponseParserTests.swift; sourceTree = "<group>"; };
 		4E410DAB6B10DE802BA39704 /* MingSiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MingSiApp.swift; sourceTree = "<group>"; };
 		4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoreTests.swift; sourceTree = "<group>"; };
@@ -308,6 +310,7 @@
 				9FC5DF0F04313A3F701061FA /* ProjectAIService.swift */,
 				6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */,
 				E13EAC1CF8D4DB7FC664E043 /* SideQuestContextProviders.swift */,
+				43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */,
 				9B7B24368263DE39B64D7040 /* TodayAIResponseParser.swift */,
 				3D05560A573D382BC7E7992F /* TodayAIService.swift */,
 				517A7557F737CD34AA5E87F8 /* VNextCoordinators.swift */,
@@ -585,6 +588,7 @@
 				BC86A27B59E5989FE3AEE30C /* SideQuestCatalog.swift in Sources */,
 				D45C89BE5FBFBDA33F1BE072 /* SideQuestContextProviders.swift in Sources */,
 				12F0EDDF57FD8A6D28D10C46 /* SingleNudgeModels.swift in Sources */,
+				49EEEE6DEDEC5489BAE8FC99 /* SpeechTranscriptionService.swift in Sources */,
 				344FD5566DDE9C8ADB7044E9 /* Theme.swift in Sources */,
 				DCBAA2F11AFBE5F19318A6F2 /* TodayAIResponseParser.swift in Sources */,
 				9D2CCE4DD30860C3C85FED04 /* TodayAIService.swift in Sources */,
@@ -643,8 +647,10 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "明思不会写入健康数据。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "明思仅使用粗略位置情境生成可选生活奇遇。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "明思仅在你按住说话时使用麦克风，将语音转换为可编辑文字。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "明思仅在你拍下生活奇遇照片时，将它保存到“明思·奇遇”相册。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "明思仅在你选择照片附到生活奇遇时读取所选照片。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "明思仅在你主动按住说话时，将语音转换为可编辑文字。";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -706,8 +712,10 @@
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "明思不会写入健康数据。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "明思仅使用粗略位置情境生成可选生活奇遇。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "明思仅在你按住说话时使用麦克风，将语音转换为可编辑文字。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "明思仅在你拍下生活奇遇照片时，将它保存到“明思·奇遇”相册。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "明思仅在你选择照片附到生活奇遇时读取所选照片。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "明思仅在你主动按住说话时，将语音转换为可编辑文字。";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

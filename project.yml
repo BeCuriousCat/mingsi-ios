@@ -31,6 +31,8 @@ targets:
         INFOPLIST_KEY_NSCalendarsUsageDescription: 明思仅使用日历忙闲状态生成可选生活奇遇。
         INFOPLIST_KEY_NSHealthShareUsageDescription: 明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: 明思不会写入健康数据。
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: 明思仅在你按住说话时使用麦克风，将语音转换为可编辑文字。
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: 明思仅在你主动按住说话时，将语音转换为可编辑文字。
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: GQ6YS2M625
       configs:
