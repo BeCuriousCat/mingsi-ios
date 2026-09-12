@@ -46,6 +46,7 @@
 		AFCBD37EA4C5C6DEF322A382 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E464B20FAB39B0E755A7452 /* Models.swift */; };
 		B2826EC7826391D5F0233512 /* test_live_glm_acceptance_script.sh in Resources */ = {isa = PBXBuildFile; fileRef = 0492ADFFCC647956F2F0D259 /* test_live_glm_acceptance_script.sh */; };
 		BC86A27B59E5989FE3AEE30C /* SideQuestCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32C5D52EA95184E3C35A976C /* SideQuestCatalog.swift */; };
+		BD9A9BEAFA8132AB7BEB5630 /* PushToTalkInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BA9AC4112A72CCB7CCA2FD /* PushToTalkInput.swift */; };
 		BFC462F0F634AC1A38B6243A /* MentorLessonModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872B3A7F78DACCAAA5F423EC /* MentorLessonModels.swift */; };
 		C1B52292286CE211107DC5E9 /* TodayAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3BAA6E015127F933E5EB576 /* TodayAIServiceContextTests.swift */; };
 		C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78C9B6129C7F5909784B1A /* PromptEvalFixtureTests.swift */; };
@@ -130,6 +131,7 @@
 		744D664F5D847C09A2809E68 /* MingSi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MingSi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MingSiUITests.swift; sourceTree = "<group>"; };
 		789607A3FDEEB9450C3ED105 /* TodayAIResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIResponseParserTests.swift; sourceTree = "<group>"; };
+		81BA9AC4112A72CCB7CCA2FD /* PushToTalkInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushToTalkInput.swift; sourceTree = "<group>"; };
 		831494666A2CE930CA9837F0 /* CaptureDigestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDigestModels.swift; sourceTree = "<group>"; };
 		872B3A7F78DACCAAA5F423EC /* MentorLessonModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorLessonModels.swift; sourceTree = "<group>"; };
 		890E4F32AA3030AD7B049750 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
@@ -245,6 +247,7 @@
 			children = (
 				1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */,
 				683458105C8561F5F1C66E6F /* MentorFeatureStore.swift */,
+				81BA9AC4112A72CCB7CCA2FD /* PushToTalkInput.swift */,
 				279625DD8CF02641D8E5BC21 /* Today */,
 			);
 			path = Features;
@@ -584,6 +587,7 @@
 				E1FA33F2E58A47F93CBBFA68 /* PersistenceCore.swift in Sources */,
 				CD0CC571BEF715689807491C /* PhotoMemoryMediaService.swift in Sources */,
 				D31826207C325D841645BEE6 /* ProjectAIService.swift in Sources */,
+				BD9A9BEAFA8132AB7BEB5630 /* PushToTalkInput.swift in Sources */,
 				5A11C654564863D8121B5E54 /* SideQuestAIService.swift in Sources */,
 				BC86A27B59E5989FE3AEE30C /* SideQuestCatalog.swift in Sources */,
 				D45C89BE5FBFBDA33F1BE072 /* SideQuestContextProviders.swift in Sources */,
