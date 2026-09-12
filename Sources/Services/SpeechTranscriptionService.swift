@@ -6,6 +6,7 @@ enum SpeechTranscriptionState: Equatable {
     case idle
     case requestingPermission
     case recording(text: String)
+    case interrupted(text: String)
     case final(text: String)
     case failed(String)
 }
@@ -34,7 +35,11 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
         self.recognizer = SFSpeechRecognizer(locale: locale)
         self.audioEngine = audioEngine
         super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption), name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange), name: AVAudioSession.routeChangeNotification, object: nil)
     }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     func start() async {
         guard case .idle = state else { return }
@@ -101,6 +106,22 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     }
 
     func cancel() { cleanup(); state = .idle }
+
+    @objc private func handleAudioInterruption(_ notification: Notification) {
+        guard case let .recording(text) = state,
+              let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: raw), type == .began else { return }
+        cleanup()
+        state = .interrupted(text: text)
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard case let .recording(text) = state,
+              let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: raw), reason == .oldDeviceUnavailable else { return }
+        cleanup()
+        state = .interrupted(text: text)
+    }
 
     private func finish(text: String) { cleanup(); state = .final(text: text) }
 
