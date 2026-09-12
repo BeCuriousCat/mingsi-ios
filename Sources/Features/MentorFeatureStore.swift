@@ -13,6 +13,8 @@ struct MentorFeatureState: Equatable {
     var lesson: MentorSavedLesson?
     var response: MentorValidatedTurn?
     var understanding: MentorUnderstanding?
+    var recentSessions: [MentorSessionSummary] = []
+    var recentSessionsCursor: MentorSessionCursor?
     var inputText = ""
     var draftRevision = 0
 }
@@ -41,6 +43,47 @@ final class MentorFeatureStore: ObservableObject {
     func start(entry: String, initialText: String = "") {
         requestTask?.cancel()
         requestTask = Task { [weak self] in await self?.startTask(entry: entry, initialText: initialText) }
+    }
+
+    func loadRecentSessions(limit: Int = 3) {
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                let page = try await self.repository.recentSessions(after: nil, limit: limit)
+                self.state.recentSessions = page.sessions
+                self.state.recentSessionsCursor = page.nextCursor
+            } catch { self?.state.phase = .failed(String(describing: error)) }
+        }
+    }
+
+    func loadMoreRecentSessions(limit: Int = 20) {
+        guard let cursor = state.recentSessionsCursor else { return }
+        requestTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                let page = try await self.repository.recentSessions(after: cursor, limit: limit)
+                self.state.recentSessions.append(contentsOf: page.sessions)
+                self.state.recentSessionsCursor = page.nextCursor
+            } catch { self?.state.phase = .failed(String(describing: error)) }
+        }
+    }
+
+    func continueSession(id: UUID) {
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            do {
+                guard let self, let session = try await self.repository.session(id: id) else {
+                    throw MentorFeatureError.missingSession
+                }
+                if session.lifecycle != .active { try await self.repository.resumeSession(id: id) }
+                let current = try await self.repository.session(id: id) ?? session
+                self.state = MentorFeatureState(phase: .editing, session: current,
+                    timeline: try await self.repository.items(sessionID: id), inputText: current.draftText,
+                    draftRevision: current.draftRevision)
+            } catch is CancellationError { return }
+            catch { self?.state.phase = .failed(String(describing: error)) }
+        }
     }
 
     func submit(intent: String = "reply", text: String? = nil) {

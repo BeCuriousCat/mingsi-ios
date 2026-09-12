@@ -65,6 +65,25 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(understandings.count, 1)
     }
 
+    func testRecentSessionsLoadAndContinueExistingDraft() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss", initialText: "保留这件事")
+        try await Task.sleep(for: .milliseconds(60))
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.pause()
+        try await Task.sleep(for: .milliseconds(80))
+        store.loadRecentSessions()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.state.recentSessions.first?.id, id)
+        store.continueSession(id: id)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.state.session?.id, id)
+        XCTAssertEqual(store.state.inputText, "保留这件事")
+        XCTAssertEqual(store.state.phase, .editing)
+    }
+
     private func catalog() throws -> MentorLessonCatalog {
         let lessons = (1...24).map { index in
             let base = MentorLesson(id: String(format: "L%02d", index), version: "1.0", editorialOrder: index,
