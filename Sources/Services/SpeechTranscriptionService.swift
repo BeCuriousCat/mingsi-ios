@@ -27,6 +27,8 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     private let audioEngine: AVAudioEngine
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    private var durationTask: Task<Void, Never>?
+    private let maximumDuration: Duration = .seconds(60)
 
     init(locale: Locale = Locale(identifier: "zh-CN"), audioEngine: AVAudioEngine = AVAudioEngine()) {
         self.recognizer = SFSpeechRecognizer(locale: locale)
@@ -73,6 +75,14 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
             audioEngine.prepare()
             try audioEngine.start()
             state = .recording(text: "")
+            durationTask = Task { [weak self] in
+                try? await Task.sleep(for: self?.maximumDuration ?? .seconds(60))
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    guard let self, case .recording = self.state else { return }
+                    self.stop()
+                }
+            }
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -100,6 +110,8 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
         request?.endAudio()
         task?.cancel()
         task = nil
+        durationTask?.cancel()
+        durationTask = nil
         request = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
