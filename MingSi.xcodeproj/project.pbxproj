@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0488F94A589BD0CE19F45F46 /* CaptureIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B086B439CA85A75D6A46E7 /* CaptureIntent.swift */; };
+		072C0A83E0DD08C0D607DAED /* MentorUnderstandingEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */; };
 		07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */; };
 		0DE633A74E1A2F7334510BEF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = C9A0CF3E56523CA50EB41DB2 /* GRDB */; };
 		12F0EDDF57FD8A6D28D10C46 /* SingleNudgeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF956BBDC2D43F308B122BFE /* SingleNudgeModels.swift */; };
@@ -65,6 +66,7 @@
 		DCB4DBEBF0E48CE273B4A6B5 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F875CD539723AF5C1CE047F2 /* GRDB */; };
 		DCBAA2F11AFBE5F19318A6F2 /* TodayAIResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7B24368263DE39B64D7040 /* TodayAIResponseParser.swift */; };
 		DD8C78A7885EB0919AAB77A4 /* HistoryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */; };
+		E05E6B1AE186F8801CB40E25 /* MentorUnderstandingEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F88CC1A2D8C929023F913DE /* MentorUnderstandingEditorTests.swift */; };
 		E0BC578B67A943F68357EF60 /* MentorContextBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD2B72790DEE048882ACCB99 /* MentorContextBuilderTests.swift */; };
 		E0D7E4AD4835EF4DFC47D043 /* SpeechInputDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5811CA42794883A820967541 /* SpeechInputDraftTests.swift */; };
 		E0E0D15117BD3F36245533F8 /* LocalPromptProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBC269BFC4C140D49F82ECC /* LocalPromptProviderTests.swift */; };
@@ -104,6 +106,7 @@
 		14C4A0F9E9FCA09D74D2AB9D /* MentorResponseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorResponseModels.swift; sourceTree = "<group>"; };
 		14F31675FA9F8D119F5B7944 /* VNextModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VNextModels.swift; sourceTree = "<group>"; };
 		1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryFeatureTests.swift; sourceTree = "<group>"; };
+		1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorUnderstandingEditor.swift; sourceTree = "<group>"; };
 		26FEDE49ED5564881B924578 /* VNextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VNextTests.swift; sourceTree = "<group>"; };
 		27B086B439CA85A75D6A46E7 /* CaptureIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureIntent.swift; sourceTree = "<group>"; };
 		2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectAIServiceContextTests.swift; sourceTree = "<group>"; };
@@ -113,6 +116,7 @@
 		35993467B43FF5E9C4147855 /* MockLLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockLLMClient.swift; sourceTree = "<group>"; };
 		37177EDA6B0B62BEFD894132 /* MentorFeatureStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorFeatureStoreTests.swift; sourceTree = "<group>"; };
 		3D05560A573D382BC7E7992F /* TodayAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAIService.swift; sourceTree = "<group>"; };
+		3F88CC1A2D8C929023F913DE /* MentorUnderstandingEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorUnderstandingEditorTests.swift; sourceTree = "<group>"; };
 		407113F4E10DA13FE28568B7 /* GRDB.swift */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GRDB.swift; path = Vendor/GRDB.swift; sourceTree = SOURCE_ROOT; };
 		423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCore.swift; sourceTree = "<group>"; };
 		43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriptionService.swift; sourceTree = "<group>"; };
@@ -230,6 +234,7 @@
 			children = (
 				1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */,
 				37177EDA6B0B62BEFD894132 /* MentorFeatureStoreTests.swift */,
+				3F88CC1A2D8C929023F913DE /* MentorUnderstandingEditorTests.swift */,
 				5811CA42794883A820967541 /* SpeechInputDraftTests.swift */,
 			);
 			path = Features;
@@ -253,6 +258,7 @@
 				1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */,
 				683458105C8561F5F1C66E6F /* MentorFeatureStore.swift */,
 				81BA9AC4112A72CCB7CCA2FD /* PushToTalkInput.swift */,
+				C696B9146302E6A62DAC3F78 /* Mentor */,
 				279625DD8CF02641D8E5BC21 /* Today */,
 			);
 			path = Features;
@@ -352,6 +358,14 @@
 				333288A6AEAC75F4F296DE98 /* MingSiUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C696B9146302E6A62DAC3F78 /* Mentor */ = {
+			isa = PBXGroup;
+			children = (
+				1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */,
+			);
+			path = Mentor;
 			sourceTree = "<group>";
 		};
 		CB82B6FBC02A67DC20E12272 /* Domain */ = {
@@ -556,6 +570,7 @@
 				609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */,
 				AC4BEA024D283AAF734DB26D /* MentorRequestExecutorTests.swift in Sources */,
 				F848D3917105F124BC0E6339 /* MentorResponseParserTests.swift in Sources */,
+				E05E6B1AE186F8801CB40E25 /* MentorUnderstandingEditorTests.swift in Sources */,
 				972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */,
 				4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */,
 				C51F912E8623AF512BF12BAC /* PromptEvalFixtureTests.swift in Sources */,
@@ -589,6 +604,7 @@
 				07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */,
 				73FB6477F6651F843AC07BAD /* MentorRequestExecutor.swift in Sources */,
 				31148CBC90B846FE01375E43 /* MentorResponseModels.swift in Sources */,
+				072C0A83E0DD08C0D607DAED /* MentorUnderstandingEditor.swift in Sources */,
 				842077D34FB6E1C3E590252F /* MingSiApp.swift in Sources */,
 				E673294D5A0FC29ABB3406A1 /* MockLLMClient.swift in Sources */,
 				AFCBD37EA4C5C6DEF322A382 /* Models.swift in Sources */,
