@@ -6,6 +6,7 @@ struct MentorHomeView: View {
     @ObservedObject var feature: MentorFeatureStore
     @State private var showsConversation = false
     @State private var showsToday = false
+    @State private var showsHistory = false
 
     var body: some View {
         NavigationStack {
@@ -44,17 +45,15 @@ struct MentorHomeView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        if feature.state.recentSessionsCursor != nil {
-                            Button("查看更多交流") { feature.loadMoreRecentSessions() }
-                                .controlSize(.large).buttonStyle(.bordered)
-                                .disabled(feature.state.isLoadingHistory)
-                        }
                     }
                     if feature.state.historyError != nil {
                         Text("最近交流暂时没能读取，请重试。")
                         Button("重新读取") { feature.loadRecentSessions() }
                             .controlSize(.large).buttonStyle(.bordered)
                     }
+                    Button("查看全部交流") { showsHistory = true }
+                        .controlSize(.large).buttonStyle(.bordered)
+                        .frame(minHeight: 44)
                     Divider()
                     Button { showsToday = true } label: {
                         Label("今日整理", systemImage: "list.bullet.rectangle")
@@ -79,6 +78,9 @@ struct MentorHomeView: View {
         .sheet(isPresented: $showsConversation, onDismiss: { feature.loadRecentSessions() }) {
             MentorConversationView(feature: feature)
                 .environmentObject(app)
+        }
+        .sheet(isPresented: $showsHistory, onDismiss: { feature.loadRecentSessions() }) {
+            MentorHistoryView(feature: feature).environmentObject(app)
         }
         .sheet(isPresented: $showsToday) {
             TodayView().environmentObject(app).accessibilityIdentifier("mentor.legacy-today")
@@ -378,7 +380,15 @@ struct MentorUITestHarness: View {
             guard feature == nil else { return }
             do {
                 let database = try AppDatabase(dbQueue: GRDB.DatabaseQueue())
-                feature = MentorFeatureStore(repository: SQLiteMentorRepository(database: database), transport: MentorUIOfflineTransport())
+                let repository = SQLiteMentorRepository(database: database)
+                if ProcessInfo.processInfo.arguments.contains("--mentor-history-fixture") {
+                    for index in 1...45 {
+                        try await repository.createSession(MentorSession(id: UUID(), initialEntry: "discuss", lifecycle: .ended,
+                            draftText: String(format: "History record %02d", index), draftRevision: 1,
+                            activityAt: Date(timeIntervalSince1970: Double(100000 - index * 100))))
+                    }
+                }
+                feature = MentorFeatureStore(repository: repository, transport: MentorUIOfflineTransport())
                 app.apiKeyConfigured = false
             } catch { self.error = String(describing: error) }
         }

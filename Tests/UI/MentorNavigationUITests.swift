@@ -2,6 +2,48 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testFullHistoryKeepsPositionAfterViewingAndDeleting() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-history-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let all = app.buttons["查看全部交流"]
+        XCTAssertTrue(all.waitForExistence(timeout: 15))
+        if !all.isHittable { app.swipeUp() }
+        all.tap()
+        XCTAssertTrue(app.navigationBars["全部交流"].waitForExistence(timeout: 5))
+        let more = app.buttons["加载更多交流"]
+        for _ in 0..<12 {
+            if more.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(more.isHittable)
+        more.tap()
+        let record = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "History record 25")).firstMatch
+        for _ in 0..<8 {
+            if record.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(record.isHittable)
+        record.tap()
+        XCTAssertTrue(app.buttons["继续这件事"].waitForExistence(timeout: 5))
+        app.navigationBars["这次交流"].buttons["返回"].tap()
+        XCTAssertTrue(app.navigationBars["全部交流"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record.isHittable, "Returning must not reset to the first page")
+        record.tap()
+        app.buttons["交流操作"].tap()
+        app.buttons["删除这次交流"].tap()
+        app.buttons["删除整段交流"].tap()
+        XCTAssertTrue(app.navigationBars["全部交流"].waitForExistence(timeout: 5))
+        XCTAssertTrue(record.waitForNonExistence(timeout: 5))
+        let nearby = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "History record 26")).firstMatch
+        XCTAssertTrue(nearby.isHittable)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "mentor-history-after-deletion"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testUnderstandingGroupDeletionCanBeCancelledThenConfirmed() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]

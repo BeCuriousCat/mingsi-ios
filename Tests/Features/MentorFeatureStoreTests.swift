@@ -4,6 +4,70 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testHistoryReadFailureKeepsLoadedRowsAndCanRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        for index in 0..<21 {
+            try await repo.createSession(MentorSession(id: UUID(), initialEntry: "discuss", lifecycle: .ended,
+                draftText: "历史 \(index)", draftRevision: 1, activityAt: .now))
+        }
+        let history = MentorHistoryStore(repository: repo)
+        history.refresh()
+        try await waitUntil { !history.isLoading }
+        let original = history.sessions
+        try await db.dbQueue.write { try $0.execute(sql: "ALTER TABLE mentor_sessions RENAME TO unavailable_sessions") }
+        history.loadMore()
+        try await waitUntil { !history.isLoading }
+        XCTAssertNotNil(history.error)
+        XCTAssertEqual(history.sessions, original)
+        XCTAssertTrue(history.hasMore)
+        history.refresh()
+        try await waitUntil { !history.isLoading }
+        XCTAssertNotNil(history.error)
+        XCTAssertEqual(history.sessions, original)
+        try await db.dbQueue.write { try $0.execute(sql: "ALTER TABLE unavailable_sessions RENAME TO mentor_sessions") }
+        history.loadMore()
+        try await waitUntil { !history.isLoading }
+        XCTAssertNil(history.error)
+        XCTAssertEqual(history.sessions.count, 21)
+        XCTAssertFalse(history.hasMore)
+    }
+
+    func testIndependentHistoryPaginationRefreshesLoadedRangeAfterDeletion() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        var ids: [UUID] = []
+        for index in 0..<45 {
+            let id = UUID()
+            ids.append(id)
+            try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .ended,
+                draftText: "历史 \(index)", draftRevision: 1, activityAt: Date(timeIntervalSince1970: Double(1000 - index))))
+        }
+        let feature = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        let history = feature.makeHistoryStore()
+        history.refresh()
+        try await waitUntil { !history.isLoading }
+        XCTAssertEqual(history.sessions.map(\.id), Array(ids.prefix(20)))
+        XCTAssertTrue(history.hasMore)
+        history.loadMore()
+        try await waitUntil { !history.isLoading }
+        XCTAssertEqual(history.sessions.count, 40)
+        feature.viewSession(id: ids[25])
+        try await waitUntil { feature.state.isViewingHistory && !feature.state.isTransitioningSession }
+        let deleted = await feature.deleteViewedSession()
+        XCTAssertTrue(deleted)
+        history.refresh()
+        try await waitUntil { !history.isLoading }
+        XCTAssertEqual(history.sessions.map(\.id), Array(ids.filter { $0 != ids[25] }.prefix(40)))
+        history.loadMore()
+        try await waitUntil { !history.isLoading }
+        XCTAssertEqual(history.sessions.count, 44)
+        XCTAssertFalse(history.hasMore)
+        feature.loadRecentSessions()
+        try await waitUntil { !feature.state.isLoadingHistory }
+        XCTAssertEqual(feature.state.recentSessions.count, 3)
+        XCTAssertEqual(history.sessions.count, 44)
+    }
+
     func testUnderstandingGroupDeletionReloadsHistoryAndPreservesOtherMaterial() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

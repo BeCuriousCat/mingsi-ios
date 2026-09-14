@@ -226,6 +226,8 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    func makeHistoryStore() -> MentorHistoryStore { MentorHistoryStore(repository: repository) }
+
     func loadRecentSessions(limit: Int = 3) {
         historyTask?.cancel()
         let generation = UUID()
