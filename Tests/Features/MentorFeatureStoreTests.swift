@@ -730,6 +730,84 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(notes.count, 1)
     }
 
+    func testRapidReadingPositionsPersistLatestSectionBeforeContinuation() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport, catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let lesson = try XCTUnwrap(store.state.lesson)
+        try await repo.acknowledgePresentation(sessionID: lesson.sessionID, itemID: lesson.id, at: .now, timeZone: .current)
+        let before = try await repo.session(id: lesson.sessionID)
+        store.saveReadingPosition(itemID: lesson.id, section: .claim)
+        store.saveReadingPosition(itemID: lesson.id, section: .example)
+        store.saveReadingPosition(itemID: lesson.id, section: .boundary)
+        store.saveReadingPosition(itemID: lesson.id, section: .boundary)
+        XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
+        store.continueSession(id: lesson.sessionID)
+        try await waitUntil { store.state.phase == .editing }
+        XCTAssertEqual(store.state.pendingReadingPositionSaves, 0)
+        let saved = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(saved?.readingSection, .boundary)
+        XCTAssertEqual(saved?.readingRevision, 3)
+        XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
+        let after = try await repo.session(id: lesson.sessionID)
+        XCTAssertEqual(after?.semanticRevision, before?.semanticRevision)
+        XCTAssertEqual(after?.requestEpoch, before?.requestEpoch)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
+    func testOldLessonScrollCannotMoveReplacementAndDoesNotConfirmPresentation() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(), catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let old = try XCTUnwrap(store.state.lesson)
+        store.saveReadingPosition(itemID: old.id, section: .example)
+        try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+        let unpresented = try await repo.listeningResume(at: .now, timeZone: .current)
+        XCTAssertNil(unpresented)
+        store.acknowledgeLesson()
+        store.saveReadingPosition(itemID: old.id, section: .boundary)
+        store.selectAnotherLesson()
+        try await waitUntil { store.state.phase == .reading && store.state.lesson?.id != old.id }
+        let replacement = try XCTUnwrap(store.state.lesson)
+        store.saveReadingPosition(itemID: old.id, section: .claim)
+        store.saveReadingPosition(itemID: replacement.id, section: .observation)
+        XCTAssertEqual(store.state.lesson, replacement)
+        let savedOld = try await repo.savedLesson(sessionID: old.sessionID, itemID: old.id)
+        XCTAssertEqual(savedOld?.readingSection, .boundary)
+        XCTAssertEqual(store.state.pendingReadingPositionSaves, 0)
+    }
+
+    func testReadingPositionFailureKeepsVisibleSectionAndRetriesLocally() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport, catalog: try catalog())
+        store.start(entry: "listen", initialText: "保留交流草稿")
+        try await waitUntil { store.state.phase == .reading }
+        let lesson = try XCTUnwrap(store.state.lesson)
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_position BEFORE UPDATE OF reading_section ON mentor_lesson_snapshots BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.saveReadingPosition(itemID: lesson.id, section: .boundary)
+        try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+        XCTAssertNotNil(store.state.readingPositionError)
+        XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
+        XCTAssertEqual(store.state.inputText, "保留交流草稿")
+        XCTAssertEqual(store.state.phase, .reading)
+        let failed = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(failed?.readingSection, .title)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_position") }
+        store.retryReadingPositionSave()
+        store.retryReadingPositionSave()
+        try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+        let saved = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(saved?.readingSection, .boundary)
+        XCTAssertEqual(saved?.readingRevision, 1)
+        XCTAssertNil(store.state.readingPositionError)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }

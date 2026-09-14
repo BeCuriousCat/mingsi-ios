@@ -12,6 +12,8 @@ struct MentorFeatureState: Equatable {
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var lessonError: String?
+    var readingPositionError: String?
+    var pendingReadingPositionSaves = 0
     var lessonFeedbackError: String?
     var isSavingLessonFeedback = false
     var response: MentorValidatedTurn?
@@ -61,6 +63,7 @@ final class MentorFeatureStore: ObservableObject {
     private var understandingTask: Task<Void, Never>?
     private var understandingGeneration = UUID()
     private var pendingUnderstandingCreation: (id: UUID, previousRevisionID: UUID?)?
+    private var readingPositionTask: Task<Void, Never>?
     private var lessonFeedbackTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
@@ -75,7 +78,7 @@ final class MentorFeatureStore: ObservableObject {
         self.now = now
     }
 
-    deinit { lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
+    deinit { readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
         understandingGeneration = UUID()
@@ -144,7 +147,10 @@ final class MentorFeatureStore: ObservableObject {
         requestTask?.cancel()
         requestTask = Task { [weak self] in
             do {
-                guard let self, let session = try await self.repository.session(id: id) else {
+                guard let self else { return }
+                await self.readingPositionTask?.value
+                try Task.checkCancellation()
+                guard let session = try await self.repository.session(id: id) else {
                     throw MentorFeatureError.missingSession
                 }
                 try Task.checkCancellation()
@@ -189,6 +195,7 @@ final class MentorFeatureStore: ObservableObject {
         let previousPhase = state.phase
         let receipt = presentationTask
         let feedback = lessonFeedbackTask
+        let position = readingPositionTask
         state.phase = .selectingLesson
         state.lessonError = nil
         requestTask?.cancel()
@@ -197,6 +204,7 @@ final class MentorFeatureStore: ObservableObject {
             do {
                 await receipt?.value
                 await feedback?.value
+                await position?.value
                 try Task.checkCancellation()
                 guard state.lessonFeedbackError == nil else {
                     state.phase = previousPhase
@@ -211,6 +219,8 @@ final class MentorFeatureStore: ObservableObject {
                 guard state.session?.id == current.id else { return }
                 state.timeline = items
                 state.lesson = lesson
+                state.readingPositionError = nil
+                state.pendingReadingPositionSaves = 0
                 state.phase = lesson == nil ? .lessonExhausted : .reading
             } catch {
                 guard !Task.isCancelled, state.session?.id == session.id else { return }
@@ -307,6 +317,52 @@ final class MentorFeatureStore: ObservableObject {
     func acknowledgeResponse(itemID: UUID) {
         guard state.responseItemID == itemID else { return }
         acknowledge(itemID: itemID, isResponse: true)
+    }
+
+    /// The visible lesson's identity travels with scroll events, so a disappearing
+    /// page cannot move the reading position of its replacement.
+    func saveReadingPosition(itemID: UUID, section: MentorReadingSection) {
+        guard let lesson = state.lesson, lesson.id == itemID,
+              lesson.sessionID == state.session?.id, state.phase != .selectingLesson,
+              section != .observation || lesson.lesson.observation != nil else { return }
+        guard section != lesson.readingSection || state.readingPositionError != nil else { return }
+        let updated = MentorSavedLesson(id: lesson.id, sessionID: lesson.sessionID,
+            lesson: lesson.lesson, readingSection: section, readingRevision: lesson.readingRevision + 1)
+        state.lesson = updated
+        enqueueReadingPosition(updated)
+    }
+
+    func retryReadingPositionSave() {
+        guard state.pendingReadingPositionSaves == 0, state.readingPositionError != nil,
+              let lesson = state.lesson else { return }
+        enqueueReadingPosition(lesson)
+    }
+
+    private func enqueueReadingPosition(_ lesson: MentorSavedLesson) {
+        let previous = readingPositionTask
+        state.pendingReadingPositionSaves += 1
+        state.readingPositionError = nil
+        readingPositionTask = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            defer {
+                if state.session?.id == lesson.sessionID, state.lesson?.id == lesson.id {
+                    state.pendingReadingPositionSaves -= 1
+                }
+            }
+            do {
+                try Task.checkCancellation()
+                try await repository.saveReadingPosition(sessionID: lesson.sessionID, itemID: lesson.id,
+                    revision: lesson.readingRevision, section: lesson.readingSection)
+                guard state.lesson?.id == lesson.id,
+                      state.lesson?.readingRevision == lesson.readingRevision else { return }
+                state.readingPositionError = nil
+            } catch {
+                guard !Task.isCancelled, state.lesson?.id == lesson.id,
+                      state.lesson?.readingRevision == lesson.readingRevision else { return }
+                state.readingPositionError = String(describing: error)
+            }
+        }
     }
 
     func acknowledgeLesson() {
@@ -478,6 +534,7 @@ final class MentorFeatureStore: ObservableObject {
     private func startTask(entry: String, initialText: String) async {
         do {
             await lessonFeedbackTask?.value
+            await readingPositionTask?.value
             try Task.checkCancellation()
             // Process recovery belongs to application bootstrap, never a new
             // session: other stores may still own active requests.
