@@ -22,6 +22,7 @@ struct MentorFeatureState: Equatable {
     var understanding: MentorUnderstanding?
     var understandingInputText = ""
     var understandingError: String?
+    var pendingUnderstandingOperations = 0
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
     var historyError: String?
@@ -59,6 +60,7 @@ final class MentorFeatureStore: ObservableObject {
     private var requestTask: Task<Void, Never>?
     private var understandingTask: Task<Void, Never>?
     private var understandingGeneration = UUID()
+    private var pendingUnderstandingCreation: (id: UUID, previousRevisionID: UUID?)?
     private var lessonFeedbackTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
@@ -77,6 +79,8 @@ final class MentorFeatureStore: ObservableObject {
 
     func start(entry: String, initialText: String = "") {
         understandingGeneration = UUID()
+        state.pendingUnderstandingOperations = 0
+        pendingUnderstandingCreation = nil
         pendingResponse = nil
         pendingRequestEnd = nil
         state.canRetryRequestFinalization = false
@@ -130,6 +134,8 @@ final class MentorFeatureStore: ObservableObject {
 
     func continueSession(id: UUID) {
         understandingGeneration = UUID()
+        state.pendingUnderstandingOperations = 0
+        pendingUnderstandingCreation = nil
         pendingResponse = nil
         pendingRequestEnd = nil
         state.canRetryRequestFinalization = false
@@ -335,18 +341,58 @@ final class MentorFeatureStore: ObservableObject {
         case confirm
     }
 
+    /// Switching editors is disabled until queued writes finish. A failed edit
+    /// must be retried before another draft can replace its in-memory text.
+    func selectUnderstandingDraft(id: UUID) {
+        guard state.pendingUnderstandingOperations == 0, state.understandingError == nil,
+              let draft = state.understandings.first(where: { $0.id == id }),
+              draft.sessionID == state.session?.id, draft.state == .draft else { return }
+        understandingGeneration = UUID()
+        state.understanding = draft
+        state.understandingInputText = draft.text
+    }
+
     func beginUnderstanding(previousRevisionID: UUID? = nil) {
-        guard state.session != nil else { return }
+        guard state.session != nil, state.pendingUnderstandingOperations == 0,
+              state.understandingError == nil else { return }
+        var initialText = ""
+        if let previousRevisionID {
+            guard let previous = state.understandings.first(where: { $0.id == previousRevisionID }),
+                  previous.state == .confirmed, previous.sessionID == state.session?.id else { return }
+            // Resume an existing revision draft rather than creating a second one.
+            if let draft = state.understandings.first(where: { $0.previousRevisionID == previousRevisionID && $0.state == .draft }) {
+                selectUnderstandingDraft(id: draft.id)
+                return
+            }
+            guard !state.understandings.contains(where: { $0.groupID == previous.groupID && $0.revision > previous.revision }) else { return }
+            initialText = previous.text
+        }
         understandingGeneration = UUID()
         state.understanding = nil
-        state.understandingInputText = ""
+        state.understandingInputText = initialText
         state.understandingError = nil
-        enqueueUnderstanding(.begin(UUID(), previousRevisionID))
+        let id = UUID()
+        pendingUnderstandingCreation = (id, previousRevisionID)
+        enqueueUnderstanding(.begin(id, previousRevisionID))
     }
 
     func saveUnderstanding(text: String) {
+        guard state.session != nil, state.understanding?.state != .confirmed,
+              state.understanding != nil || pendingUnderstandingCreation != nil else { return }
         state.understandingInputText = text
+        // A failed creation has no writable row yet; retain edits for its retry.
+        if state.understanding == nil, state.pendingUnderstandingOperations == 0 { return }
         enqueueUnderstanding(.save(text))
+    }
+
+    func retryUnderstandingSave() {
+        guard state.pendingUnderstandingOperations == 0, state.understandingError != nil else { return }
+        if let pending = pendingUnderstandingCreation {
+            enqueueUnderstanding(.begin(pending.id, pending.previousRevisionID))
+            enqueueUnderstanding(.save(state.understandingInputText))
+        } else if state.understanding?.state == .draft {
+            enqueueUnderstanding(.save(state.understandingInputText))
+        }
     }
 
     func confirmUnderstanding() { enqueueUnderstanding(.confirm) }
@@ -357,10 +403,14 @@ final class MentorFeatureStore: ObservableObject {
         guard let sessionID = state.session?.id else { return }
         let generation = understandingGeneration
         let previous = understandingTask
+        state.pendingUnderstandingOperations += 1
         understandingTask = Task { [weak self] in
             await previous?.value
             guard let self, !Task.isCancelled, understandingGeneration == generation,
                   state.session?.id == sessionID else { return }
+            defer { if understandingGeneration == generation, state.session?.id == sessionID {
+                state.pendingUnderstandingOperations -= 1
+            } }
             do {
                 let saved: MentorUnderstanding
                 switch command {
@@ -379,6 +429,7 @@ final class MentorFeatureStore: ObservableObject {
                 }
                 guard !Task.isCancelled, understandingGeneration == generation,
                       state.session?.id == sessionID else { return }
+                if case .begin = command { pendingUnderstandingCreation = nil }
                 state.understanding = saved
                 if let index = state.understandings.firstIndex(where: { $0.id == saved.id }) {
                     state.understandings[index] = saved

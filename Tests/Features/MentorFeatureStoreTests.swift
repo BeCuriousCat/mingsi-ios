@@ -636,6 +636,100 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertNil(restored.state.acknowledgedResponseItemID)
     }
 
+    func testConfirmedUnderstandingRevisionStartsWithOriginalTextAndResumesExistingDraft() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "原本认可的理解")
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let confirmed = try XCTUnwrap(store.state.understanding)
+        XCTAssertEqual(confirmed.state, .confirmed)
+        store.saveUnderstanding(text: "不能直接改写确认版本")
+        XCTAssertEqual(store.state.understandingInputText, "原本认可的理解")
+        store.beginUnderstanding(previousRevisionID: confirmed.id)
+        XCTAssertEqual(store.state.understandingInputText, "原本认可的理解")
+        store.saveUnderstanding(text: "创建完成前输入的修订")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let revision = try XCTUnwrap(store.state.understanding)
+        XCTAssertEqual(revision.text, "创建完成前输入的修订")
+        XCTAssertEqual(store.state.understandingInputText, revision.text)
+        store.beginUnderstanding(previousRevisionID: confirmed.id)
+        XCTAssertEqual(store.state.understanding?.id, revision.id)
+        XCTAssertEqual(store.state.understandingInputText, revision.text)
+        let versions = try await repo.understandings(sessionID: confirmed.sessionID)
+        XCTAssertEqual(versions.count, 2)
+        XCTAssertEqual(versions.first(where: { $0.id == confirmed.id }), confirmed)
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        store.beginUnderstanding(previousRevisionID: confirmed.id)
+        XCTAssertEqual(store.state.understanding?.id, revision.id)
+        XCTAssertNil(store.state.understandingError)
+    }
+
+    func testDraftSelectionWaitsForWritesAndPreservesFailedInput() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "第一份草稿")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let first = try XCTUnwrap(store.state.understanding)
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "第二份草稿")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let second = try XCTUnwrap(store.state.understanding)
+        store.selectUnderstandingDraft(id: first.id)
+        XCTAssertEqual(store.state.understandingInputText, first.text)
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_selected_edit BEFORE UPDATE OF text ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.saveUnderstanding(text: "不能丢失的输入")
+        store.selectUnderstandingDraft(id: second.id)
+        XCTAssertEqual(store.state.understanding?.id, first.id)
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertNotNil(store.state.understandingError)
+        store.selectUnderstandingDraft(id: second.id)
+        XCTAssertEqual(store.state.understandingInputText, "不能丢失的输入")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_selected_edit") }
+        store.retryUnderstandingSave()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertNil(store.state.understandingError)
+        store.selectUnderstandingDraft(id: second.id)
+        XCTAssertEqual(store.state.understandingInputText, second.text)
+        store.selectUnderstandingDraft(id: first.id)
+        XCTAssertEqual(store.state.understandingInputText, "不能丢失的输入")
+        store.selectUnderstandingDraft(id: UUID())
+        XCTAssertEqual(store.state.understanding?.id, first.id)
+    }
+
+    func testUnderstandingCreationFailureRetriesWithTypedTextAndNoDuplicateDraft() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_note_creation BEFORE INSERT ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "创建失败时已经输入的想法")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertNotNil(store.state.understandingError)
+        XCTAssertNil(store.state.understanding)
+        store.saveUnderstanding(text: "失败后继续修正的想法")
+        XCTAssertEqual(store.state.understandingInputText, "失败后继续修正的想法")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_note_creation") }
+        store.retryUnderstandingSave()
+        store.retryUnderstandingSave()
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertEqual(store.state.understanding?.state, .confirmed)
+        XCTAssertEqual(store.state.understanding?.text, "失败后继续修正的想法")
+        let notes = try await repo.understandings(sessionID: XCTUnwrap(store.state.session?.id))
+        XCTAssertEqual(notes.count, 1)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
