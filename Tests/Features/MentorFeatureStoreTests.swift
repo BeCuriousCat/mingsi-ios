@@ -1447,6 +1447,35 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(notes.count, 1)
     }
 
+    func testLateReadingEventsCannotOverwritePositionDuringNavigationOrAfterExit() async throws {
+        for ending in [false, true] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(), catalog: try catalog())
+            store.start(entry: "listen")
+            try await waitUntil { store.state.phase == .reading }
+            let lesson = try XCTUnwrap(store.state.lesson)
+            store.saveReadingPosition(itemID: lesson.id, section: .example)
+            if ending { store.finish() } else { store.pause() }
+            XCTAssertTrue(store.state.isTransitioningSession)
+            store.saveReadingPosition(itemID: lesson.id, section: .boundary)
+            try await waitUntil { !store.state.isTransitioningSession }
+            XCTAssertEqual(store.state.phase, ending ? .ended : .paused)
+            store.saveReadingPosition(itemID: lesson.id, section: .claim)
+            let saved = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+            XCTAssertEqual(saved?.readingSection, .example)
+            XCTAssertEqual(saved?.readingRevision, 1)
+            XCTAssertEqual(store.state.lesson?.readingSection, .example)
+            store.continueSession(id: lesson.sessionID)
+            store.saveReadingPosition(itemID: lesson.id, section: .title)
+            try await waitUntil { !store.state.isTransitioningSession }
+            XCTAssertEqual(store.state.lesson?.readingSection, .example)
+            store.saveReadingPosition(itemID: lesson.id, section: .boundary)
+            try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+            let resumed = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+            XCTAssertEqual(resumed?.readingSection, .boundary)
+        }
+    }
+
     func testRapidReadingPositionsPersistLatestSectionBeforeContinuation() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let transport = MentorStoreFixtureTransport()

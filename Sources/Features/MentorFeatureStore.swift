@@ -569,6 +569,8 @@ final class MentorFeatureStore: ObservableObject {
             guard let self else { return }
             defer { endSessionTransition(transition) }
             guard await flushPendingEdits(), !Task.isCancelled else { return }
+            await readingPositionTask?.value
+            guard !Task.isCancelled else { return }
             let revision = state.draftRevision
             let text = state.inputText
             do {
@@ -600,6 +602,8 @@ final class MentorFeatureStore: ObservableObject {
             guard let self else { return }
             defer { endSessionTransition(transition) }
             guard await flushPendingEdits(), !Task.isCancelled else { return }
+            await readingPositionTask?.value
+            guard !Task.isCancelled else { return }
             let revision = state.draftRevision
             let text = state.inputText
             do {
@@ -633,7 +637,8 @@ final class MentorFeatureStore: ObservableObject {
     /// The visible lesson's identity travels with scroll events, so a disappearing
     /// page cannot move the reading position of its replacement.
     func saveReadingPosition(itemID: UUID, section: MentorReadingSection) {
-        guard !state.isViewingHistory else { return }
+        guard !state.isViewingHistory, sessionTransitionID == nil,
+              state.phase != .paused, state.phase != .ended else { return }
         guard let lesson = state.lesson, lesson.id == itemID,
               lesson.sessionID == state.session?.id, state.phase != .selectingLesson,
               section != .observation || lesson.lesson.observation != nil else { return }
@@ -645,7 +650,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func retryReadingPositionSave() {
-        guard !state.isViewingHistory else { return }
+        guard !state.isViewingHistory, sessionTransitionID == nil,
+              state.phase != .paused, state.phase != .ended else { return }
         guard state.pendingReadingPositionSaves == 0, state.readingPositionError != nil,
               let lesson = state.lesson else { return }
         enqueueReadingPosition(lesson)
