@@ -118,6 +118,7 @@ struct MentorConversationView: View {
     @State private var wantsClose = false
     @State private var showsSettings = false
     @State private var needsConfiguration = false
+    @State private var showsDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -125,7 +126,7 @@ struct MentorConversationView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
                         if feature.state.isTransitioningSession {
-                            ProgressView("正在保存和打开交流…")
+                            ProgressView(feature.state.isDeletingSession ? "正在删除交流…" : "正在保存和打开交流…")
                         } else {
                             content
                             if feature.state.session != nil {
@@ -159,7 +160,14 @@ struct MentorConversationView: View {
                         .disabled(feature.state.isTransitioningSession)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if !feature.state.isViewingHistory {
+                    if feature.state.isViewingHistory {
+                        Menu {
+                            Button("删除这次交流", role: .destructive) { showsDeleteConfirmation = true }
+                        } label: {
+                            Label("交流操作", systemImage: "ellipsis.circle")
+                        }
+                        .disabled(feature.state.isTransitioningSession)
+                    } else {
                         Button("到这里") { leave(ending: true) }
                             .disabled(feature.state.isTransitioningSession)
                     }
@@ -172,6 +180,16 @@ struct MentorConversationView: View {
         }
         .tint(DS.accent)
         .interactiveDismissDisabled()
+        .alert("删除这次交流？", isPresented: $showsDeleteConfirmation) {
+            Button("删除整段交流", role: .destructive) {
+                Task { @MainActor in
+                    if await feature.deleteViewedSession() { dismiss() }
+                }
+            }
+            Button("保留交流", role: .cancel) {}
+        } message: {
+            Text("这次交流的原话、草稿、理解和反馈会一起删除，无法撤销。引用的闪念与事项原始资料会保留。")
+        }
         .sheet(isPresented: $showsSettings) { SettingsView().environmentObject(app) }
         .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
             guard wantsClose, !transitioning else { return }
@@ -263,6 +281,10 @@ struct MentorConversationView: View {
 
     @ViewBuilder private var status: some View {
         if feature.state.phase == .submitting { ProgressView("正在回应…") }
+        if feature.state.deletionError != nil {
+            Text("暂时没能删除，交流仍保留在这里。请稍后重试。")
+                .foregroundStyle(DS.caution)
+        }
         if case .failed = feature.state.phase {
             Text("这一步没有完成。已保存的内容仍在，可以重试或稍后继续。")
                 .foregroundStyle(DS.caution)

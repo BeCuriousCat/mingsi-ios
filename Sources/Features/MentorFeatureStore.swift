@@ -13,6 +13,8 @@ struct MentorFeatureState: Equatable {
     var phase: Phase = .idle
     var session: MentorSession?
     var isViewingHistory = false
+    var deletionError: String?
+    var isDeletingSession = false
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var lessonError: String?
@@ -210,6 +212,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func start(entry: String, initialText: String = "") {
+        guard !state.isDeletingSession else { return }
         guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -273,6 +276,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func openSession(id: UUID, resuming: Bool) {
+        guard !state.isDeletingSession else { return }
         guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -306,6 +310,35 @@ final class MentorFeatureStore: ObservableObject {
                 guard !Task.isCancelled else { return }
                 self.state.phase = .failed(String(describing: error))
             }
+        }
+    }
+
+    /// Only a confirmed user action in the history detail may delete its owned graph.
+    @discardableResult
+    func deleteViewedSession() async -> Bool {
+        guard state.isViewingHistory, sessionTransitionID == nil, let id = state.session?.id else { return false }
+        let transition = beginSessionTransition()
+        state.isDeletingSession = true
+        defer {
+            state.isDeletingSession = false
+            endSessionTransition(transition)
+        }
+        state.deletionError = nil
+        historyTask?.cancel()
+        historyGeneration = UUID()
+        state.isLoadingHistory = false
+        do {
+            try await repository.deleteSession(id: id)
+            // A committed deletion remains authoritative even if the caller was cancelled.
+            if state.session?.id == id {
+                resetSessionBuffers()
+                state = MentorFeatureState()
+            }
+            loadRecentSessions()
+            return true
+        } catch {
+            if state.session?.id == id { state.deletionError = String(describing: error) }
+            return false
         }
     }
 

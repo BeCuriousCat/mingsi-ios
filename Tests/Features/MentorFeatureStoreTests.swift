@@ -4,6 +4,67 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testDeleteViewedSessionClearsOwnedContentAndRefreshesHome() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss", initialText: "需要删除的交流")
+        try await waitUntil { store.state.phase == .editing }
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "所属理解")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        store.submit(text: "提交的原话")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let rejected = await store.deleteViewedSession()
+        XCTAssertFalse(rejected, "Live editing cannot bypass the history confirmation route")
+        store.viewSession(id: id)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        let deleted = await store.deleteViewedSession()
+        XCTAssertTrue(deleted)
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertNil(store.state.session)
+        XCTAssertNil(store.state.response)
+        XCTAssertTrue(store.state.understandings.isEmpty)
+        XCTAssertTrue(store.state.recentSessions.isEmpty)
+        XCTAssertNil(store.state.latestUnfinishedSession)
+        let remainingSession = try await repo.session(id: id)
+        let remainingItems = try await repo.items(sessionID: id)
+        let remainingNotes = try await repo.understandings(sessionID: id)
+        XCTAssertNil(remainingSession)
+        XCTAssertTrue(remainingItems.isEmpty)
+        XCTAssertTrue(remainingNotes.isEmpty)
+        let requestCount = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(requestCount, 0)
+        XCTAssertEqual(transport.calls, 1)
+    }
+
+    func testFailedDeletionPreservesHistoryAndCanBeRetried() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss", initialText: "不能静默丢失")
+        try await waitUntil { store.state.phase == .editing }
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.viewSession(id: id)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_history_delete BEFORE DELETE ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        let deleted = await store.deleteViewedSession()
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(store.state.session?.id, id)
+        XCTAssertEqual(store.state.inputText, "不能静默丢失")
+        XCTAssertTrue(store.state.isViewingHistory)
+        XCTAssertNotNil(store.state.deletionError)
+        XCTAssertFalse(store.state.isTransitioningSession)
+        let retained = try await repo.session(id: id)
+        XCTAssertNotNil(retained)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_history_delete") }
+        let retried = await store.deleteViewedSession()
+        XCTAssertTrue(retried)
+        XCTAssertNil(store.state.session)
+    }
+
     func testViewingHistoryPreservesLifecycleDraftAndVersionsUntilExplicitContinuation() async throws {
         for lifecycle in [MentorSessionLifecycle.active, .paused, .ended] {
             let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))

@@ -2,6 +2,34 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testHistoryDeletionRequiresConfirmationAndRemovesRecord() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["我有一件事"].waitForExistence(timeout: 15))
+        app.buttons["我有一件事"].tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Delete this conversation")
+        app.buttons["收起键盘"].tap()
+        app.navigationBars["这次交流"].buttons["到这里"].tap()
+        let record = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Delete this conversation")).firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5))
+        record.tap()
+        app.buttons["交流操作"].tap()
+        app.buttons["删除这次交流"].tap()
+        XCTAssertTrue(app.buttons["删除整段交流"].waitForExistence(timeout: 3))
+        app.buttons["保留交流"].tap()
+        XCTAssertTrue(app.buttons["继续这件事"].exists)
+        app.buttons["交流操作"].tap()
+        app.buttons["删除这次交流"].tap()
+        app.buttons["删除整段交流"].tap()
+        XCTAssertTrue(app.buttons["带我回看"].waitForExistence(timeout: 5))
+        XCTAssertFalse(record.exists)
+    }
+
+    @MainActor
     func testOriginalTrainingAndAllFiveTabsRemainAccessible() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
