@@ -229,6 +229,9 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.submit(text: "只提交一次")
         try await waitUntil { store.state.canRetryResponseSave }
         XCTAssertEqual(transport.calls, 1)
+        store.retryLastRequest()
+        XCTAssertTrue(store.state.canRetryResponseSave)
+        XCTAssertEqual(transport.calls, 1)
         store.retryResponseSave()
         try await waitUntil { store.state.canRetryResponseSave }
         XCTAssertEqual(transport.calls, 1)
@@ -1060,6 +1063,72 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(recovered?.draftText, "保留草稿")
     }
 
+    func testExplicitNetworkRetryReusesOriginalItemAndKeepsNewDraft() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let failed = FailingMentorTransport(result: .failure(URLError(.notConnectedToInternet)))
+        let store = MentorFeatureStore(repository: repo, transport: failed)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "原来那轮的原话")
+        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+        let first = try XCTUnwrap(failed.request)
+        let original = try XCTUnwrap(store.state.retryableRequest)
+        let id = try XCTUnwrap(store.state.session?.id)
+        try await repo.saveDraft(sessionID: id, revision: 2, text: "还没提交的新草稿")
+        store.continueSession(id: id)
+        try await waitUntil { store.state.phase == .editing }
+        let success = MentorStoreFixtureTransport()
+        store.updateDependencies(transport: success, promptProvider: LocalPromptProvider())
+        store.retryLastRequest()
+        store.retryLastRequest()
+        try await waitUntil { store.state.phase == .showingResponse }
+        let second = try XCTUnwrap(success.lastRequest)
+        XCTAssertNotEqual(first.traceID, second.traceID)
+        XCTAssertEqual(success.calls, 1)
+        XCTAssertEqual(store.state.inputText, "还没提交的新草稿")
+        XCTAssertEqual(store.state.timeline.filter { $0.kind == .user }.count, 1)
+        let oldContext = try JSONDecoder().decode(MentorContextPayload.self, from: Data(first.inputSummary.utf8))
+        let newContext = try JSONDecoder().decode(MentorContextPayload.self, from: Data(second.inputSummary.utf8))
+        XCTAssertEqual(oldContext, newContext)
+        let relation = try await db.dbQueue.read { try Row.fetchOne($0,
+            sql: "SELECT retry_of, user_item_id FROM mentor_requests WHERE id = ?", arguments: [second.mentorAuditToken!.requestID.uuidString]) }
+        XCTAssertEqual(relation?["retry_of"] as String?, original.id.uuidString)
+        let users = try await db.dbQueue.read { try String.fetchAll($0, sql: "SELECT user_item_id FROM mentor_requests") }
+        XCTAssertEqual(Set(users).count, 1)
+        XCTAssertNil(store.state.retryableRequest)
+    }
+
+    func testInterruptedFrozenRequestRetriesWithNewEpochAndSameEvidence() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "崩溃前的原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let loaded = try await repo.session(id: id)
+        let before = try XCTUnwrap(loaded)
+        let items = try await repo.items(sessionID: id)
+        let built = try MentorContextBuilder().build(session: before, items: items, intent: "reply")
+        try await repo.prepareRequestContext(token: .init(sessionID: id, requestID: requestID,
+            requestEpoch: 0, semanticRevision: 0), json: built.json)
+        _ = try await repo.recoverInterruptedRequests()
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.continueSession(id: id)
+        try await waitUntil { store.state.phase == .editing }
+        XCTAssertEqual(store.state.retryableRequest?.id, requestID)
+        store.retryLastRequest()
+        try await waitUntil { store.state.phase == .showingResponse }
+        let sent = try XCTUnwrap(transport.lastRequest)
+        var expected = built.payload
+        expected.requestEpoch = 1
+        XCTAssertEqual(try JSONDecoder().decode(MentorContextPayload.self, from: Data(sent.inputSummary.utf8)), expected)
+        XCTAssertEqual(store.state.timeline.filter { $0.kind == .user }.count, 1)
+        XCTAssertEqual(transport.calls, 1)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -1115,9 +1184,11 @@ private final class HeldMentorTransport: MentorTransport {
 private final class FailingMentorTransport: MentorTransport {
     let result: Result<Data, Error>
     private(set) var calls = 0
+    private(set) var request: LLMRequest?
     init(result: Result<Data, Error>) { self.result = result }
     func complete(_ request: LLMRequest) async throws -> Data {
         calls += 1
+        self.request = request
         return try result.get()
     }
 }

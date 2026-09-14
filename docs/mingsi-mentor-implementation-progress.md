@@ -443,3 +443,15 @@ MingSiApp 的启动任务在现有 loadPersistedState 后调用导师初始化�
 验证：MingSi Dev 上 MentorFeatureStoreTests 与 MentorPersistenceTests 合计 78 项通过、0 失败、0 跳过（Test-MingSi-2026.09.15_01-08-45-+0800.xcresult）。新增两项测试覆盖并发初始化得到同一实例、遗留请求中断与原话 / 草稿保留且零 PromptRun、再进入不改变当前 in_flight 请求并可正常完成；注入恢复 UPDATE 故障证明事务未推进 epoch / lifecycle，初始化不可用，移除故障后重试成功。接入真实 App 启动调用后，MingSi Dev build 通过；git diff --check 通过。
 
 剩余范围：启动错误 / 等待 UI、交流详情的 interrupted 提示与显式“重试这一轮”、跨进程数据库占用，以及完整前台预算尚待实现。本轮依赖 App 共用单一 AppStore 的启动结构，不声称跨进程协调已完成。真实页面、正式教材审核和整体迁移备份仍未交付；只对 AppStore 暂存本模块补丁，保留原有修改。内部启动治理未增加用户页面，无需用户发布说明。
+
+## 2026-09-15：F10 显式网络重试与冻结上下文重放
+
+仓储新增 retryableRequest，返回当前会话最后插入且仍可重试的失败 / 取消 / 超时 / 中断请求；语义版本已改变时不可用。submitTurn 在事务内再次确认重试目标仍为最后请求，继续复用原 user_item_id，避免候选读取后有新轮次时重试旧内容。
+
+Store 新增 retryLastRequest，恢复会话和失败终态保存后更新候选状态；连点只创建一次尝试。重试生成新的请求 ID 和 traceID，使用原 intent 与原话，跳过输入草稿保存，不把尚未提交的新草稿当作重试原文。已经得到合法回应但仅本地保存失败时，禁止走网络重试，继续使用既有 retryResponseSave。
+
+MentorContextBuilder.replay 重放冻结来源、教材目录及补材料约束，只将 requestEpoch 对齐当前生命周期；会话、语义版本或补材料计数不匹配时拒绝。prepareRequestContext 仅允许新建 retry 请求对原快照做精确 epoch 更新，不允许借重试替换来源。尚未冻结（登记上下文为 {}）的中断准备请求才重新构建上下文。冻结后的命令登记幂等性继续由 registration_context_json 保留。
+
+验证：MingSi Dev 上 Store / MentorPersistence / MentorContextBuilder 合计 87 项通过、0 失败 / 0 跳过（Test-MingSi-2026.09.15_01-18-03-+0800.xcresult）。新增三项测试覆盖失败后继续交流再重试：新 trace、同一用户条目、原快照一致、新草稿保留和连点单次调用；已冻结 in_flight 请求启动恢复后以新 epoch 重试且原证据不变；只允许最新失败轮次且纠正事实后不可重试。既有本地回应保存失败测试增加网络重试拒绝验证。git diff --check 通过。
+
+剩余范围：真实详情 / 错误页的重试按钮与中断提示、完整前台超时和跨流程占用、当前尚未实现意图的独立路由、删除 / 导出治理和语义验收仍未完成。本轮只重试原请求证据，不默认采用之后选择的新教材；新的材料需要用户明确提交新轮次。内部动作尚未接入页面，无需用户发布说明，M1 尚未整体交付。

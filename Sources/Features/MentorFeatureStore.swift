@@ -35,6 +35,8 @@ struct MentorFeatureState: Equatable {
     var canRetryResponseSave = false
     var requestFinalizationError: String?
     var canRetryRequestFinalization = false
+    var retryableRequest: MentorRetryableRequest?
+    var retryError: String?
     var inputText = ""
     var draftRevision = 0
 }
@@ -198,6 +200,37 @@ final class MentorFeatureStore: ObservableObject {
         requestTask = Task { [weak self] in
             await self?.submitTask(session: session, intent: intent, text: value,
                 transport: transport, prompt: prompt)
+        }
+    }
+
+    /// Explicit network retry; local response-save retries never use this path.
+    func retryLastRequest() {
+        guard let session = state.session, pendingResponse == nil, pendingRequestEnd == nil,
+              state.phase != .submitting, state.phase != .selectingLesson else { return }
+        let previousPhase = state.phase
+        let transport = self.transport
+        let prompt = promptProvider.template(for: .mentorRespond, mode: .standard)
+        state.phase = .submitting
+        state.retryError = nil
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let candidate = try await repository.retryableRequest(sessionID: session.id)
+                try Task.checkCancellation()
+                guard let candidate else {
+                    state.retryableRequest = nil
+                    state.retryError = "当前没有可重试的轮次。"
+                    state.phase = previousPhase
+                    return
+                }
+                await submitTask(session: session, intent: candidate.intent, text: candidate.text ?? "",
+                    transport: transport, prompt: prompt, retry: candidate)
+            } catch {
+                guard !Task.isCancelled else { return }
+                state.retryError = String(describing: error)
+                state.phase = previousPhase
+            }
         }
     }
 
@@ -545,6 +578,8 @@ final class MentorFeatureStore: ObservableObject {
             restored.response = MentorValidatedTurn(response: response, availableSuggestedActions: response.suggestedActions)
             restored.responseItemID = last.id
         }
+        restored.retryableRequest = try await repository.retryableRequest(sessionID: session.id)
+        try Task.checkCancellation()
         return restored
     }
 
@@ -593,24 +628,31 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func submitTask(session: MentorSession, intent: String, text: String,
-                            transport: MentorTransport, prompt: PromptTemplate) async {
+                            transport: MentorTransport, prompt: PromptTemplate, retry: MentorRetryableRequest? = nil) async {
         var submittedRequestID: UUID?
         do {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
+            if retry == nil, !trimmed.isEmpty {
                 let nextRevision = state.draftRevision + 1
                 try await repository.saveDraft(sessionID: session.id, revision: nextRevision, text: text)
                 state.draftRevision = nextRevision
             }
             let requestID = try await repository.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: session.id,
                 text: trimmed.isEmpty ? nil : text,
-                intent: intent, contextSnapshotJSON: "{}"))
+                intent: intent, contextSnapshotJSON: retry?.contextSnapshotJSON ?? "{}", retryOf: retry?.id))
             submittedRequestID = requestID
+            state.retryableRequest = nil
+            state.retryError = nil
             guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
             let items = try await repository.items(sessionID: session.id)
-            let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
-                responseIntent: intent == "explain" ? .directTeaching : .discuss,
-                currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
+            let built: MentorBuiltContext
+            if let retry, retry.contextSnapshotJSON != "{}" {
+                built = try MentorContextBuilder().replay(json: retry.contextSnapshotJSON, session: current)
+            } else {
+                built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
+                    responseIntent: intent == "explain" ? .directTeaching : .discuss,
+                    currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
+            }
             var request = LLMRequest(prompt: prompt,
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
@@ -661,6 +703,15 @@ final class MentorFeatureStore: ObservableObject {
             pendingRequestEnd = nil
             state.canRetryRequestFinalization = false
             state.requestFinalizationError = nil
+            do {
+                let candidate = try await repository.retryableRequest(sessionID: end.sessionID)
+                guard !Task.isCancelled, state.session?.id == end.sessionID else { return }
+                state.retryableRequest = candidate
+                state.retryError = nil
+            } catch {
+                guard !Task.isCancelled, state.session?.id == end.sessionID else { return }
+                state.retryError = String(describing: error)
+            }
         } catch {
             guard !Task.isCancelled, state.session?.id == end.sessionID else { return }
             state.canRetryRequestFinalization = true
@@ -692,6 +743,8 @@ final class MentorFeatureStore: ObservableObject {
         try Task.checkCancellation()
         guard state.session?.id == pending.sessionID else { return }
         state.timeline = timeline
+        state.retryableRequest = nil
+        state.retryError = nil
         state.response = pending.validated
         state.responseItemID = item.id
         state.acknowledgedResponseItemID = nil

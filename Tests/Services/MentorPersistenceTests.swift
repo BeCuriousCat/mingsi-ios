@@ -52,6 +52,30 @@ final class MentorPersistenceTests: XCTestCase {
         }
     }
 
+    func testRetryCandidateIsOnlyLatestUncorrectedFailedRequest() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let old = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "较早一轮", intent: "reply", contextSnapshotJSON: "{}"))
+        try await repo.finishRequest(sessionID: id, requestID: old, reason: .failed)
+        let latest = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "最近一轮", intent: "reply", contextSnapshotJSON: "{}"))
+        try await repo.finishRequest(sessionID: id, requestID: latest, reason: .timedOut)
+        let candidate = try await repo.retryableRequest(sessionID: id)
+        XCTAssertEqual(candidate?.id, latest)
+        do {
+            _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+                text: "较早一轮", intent: "reply", contextSnapshotJSON: "{}", retryOf: old))
+            XCTFail("Older failed turn was retried after newer work")
+        } catch {}
+        let item = try await repo.items(sessionID: id).last!
+        _ = try await repo.correctUserItem(sessionID: id, itemID: item.id, commandID: UUID(), expectedRevision: 0, text: "修正后的事实")
+        let obsolete = try await repo.retryableRequest(sessionID: id)
+        XCTAssertNil(obsolete)
+    }
+
     private func lessonCatalog(version: String = "1.0", claim: String = "A concrete teaching claim") throws -> MentorLessonCatalog {
         let lessons = (1...24).map { index -> MentorLesson in
             func build(_ hash: String) -> MentorLesson {

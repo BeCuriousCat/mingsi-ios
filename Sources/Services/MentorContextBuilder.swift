@@ -28,7 +28,7 @@ struct MentorContextPayload: Codable, Equatable {
     let schemaVersion: String
     let sessionID: UUID
     let semanticRevision: Int
-    let requestEpoch: Int
+    var requestEpoch: Int
     let initialEntry: String
     let intent: String
     let materialQuestionCount: Int
@@ -65,6 +65,26 @@ enum MentorContextError: Error, Equatable {
 /// Pure preparation of one session's data. Repository ownership and the request epoch
 /// must be checked again when submitting; this object never fetches unrelated history.
 struct MentorContextBuilder {
+    /// Retry the same frozen evidence, changing only the lifecycle epoch.
+    func replay(json: String, session: MentorSession) throws -> MentorBuiltContext {
+        var payload = try JSONDecoder().decode(MentorContextPayload.self, from: Data(json.utf8))
+        guard payload.schemaVersion == "1.0.0", payload.sessionID == session.id,
+              payload.semanticRevision == session.semanticRevision,
+              payload.materialQuestionCount == session.recallCount else { throw MentorContextError.invalidTimeline }
+        payload.requestEpoch = session.requestEpoch
+        let candidateRefs = try payload.lessonCandidates.map { try MentorSourceReference("lesson:\($0.id)@\($0.version)") }
+        let context = try MentorResponseValidationContext(
+            sentSources: Set(payload.sources.map(\.ref) + candidateRefs),
+            userExpressionSources: Set(payload.sources.filter { ($0.role == .user || $0.role == .understanding) && $0.isCurrent }.map(\.ref)),
+            supersededSources: Set(payload.sources.filter { !$0.isCurrent }.map(\.ref)),
+            eligibleLessons: Set(payload.lessonCandidates.map { MentorLessonReference(id: $0.id, version: $0.version) }),
+            materialQuestionCount: session.recallCount, intent: payload.intent == "explain" ? .directTeaching : .discuss)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return MentorBuiltContext(payload: payload, json: String(decoding: try encoder.encode(payload), as: UTF8.self),
+            validation: context, omittedItemIDs: [])
+    }
+
     func build(session: MentorSession, items: [MentorTimelineItem], intent: String,
                responseIntent: MentorResponseValidationContext.Intent = .discuss,
                currentLesson: MentorSavedLesson? = nil, selectedUnderstanding: MentorUnderstanding? = nil,

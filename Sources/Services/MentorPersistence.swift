@@ -85,6 +85,13 @@ struct MentorSourceLink: Codable, Equatable, Identifiable {
     let availability: MentorSourceAvailability
 }
 
+struct MentorRetryableRequest: Equatable {
+    let id: UUID
+    let text: String?
+    let intent: String
+    let contextSnapshotJSON: String
+}
+
 protocol MentorRepository {
     func selectNextLesson(sessionID: UUID, itemID: UUID, expectedEpoch: Int, catalog: MentorLessonCatalog, at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
     func savedLesson(sessionID: UUID, itemID: UUID) async throws -> MentorSavedLesson?
@@ -106,6 +113,7 @@ protocol MentorRepository {
     func appendItem(_ item: MentorTimelineItem) async throws
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
     func deleteSession(id: UUID) async throws
+    func retryableRequest(sessionID: UUID) async throws -> MentorRetryableRequest?
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
     func prepareRequestContext(token: LLMRequest.MentorAuditToken, json: String) async throws
     func recoverInterruptedRequests() async throws -> Int
@@ -406,11 +414,19 @@ final class SQLiteMentorRepository: MentorRepository {
                   request.epoch == token.requestEpoch, request.expectedRevision == token.semanticRevision,
                   session.requestEpoch == token.requestEpoch, session.semanticRevision == token.semanticRevision,
                   ["prepared", "in_flight"].contains(request.state),
-                  request.contextSnapshotJSON == json || (request.state == "prepared" && request.contextSnapshotJSON == "{}") else {
+                  request.contextSnapshotJSON == json || (request.state == "prepared" &&
+                    (request.contextSnapshotJSON == "{}" || Self.isRetryContextRebase(request, context: context))) else {
                 throw PersistenceError.validationFailed("mentor context is stale or already frozen")
             }
             try db.execute(sql: "UPDATE mentor_requests SET registration_context_json = COALESCE(registration_context_json, context_snapshot_json), context_snapshot_json = ?, state = 'in_flight' WHERE id = ?", arguments: [json, request.id])
         }
+    }
+
+    private static func isRetryContextRebase(_ request: MentorRequestRow, context: MentorContextPayload) -> Bool {
+        guard request.retryOf != nil,
+              var original = try? JSONDecoder().decode(MentorContextPayload.self, from: Data(request.contextSnapshotJSON.utf8)) else { return false }
+        original.requestEpoch = request.epoch
+        return original == context
     }
 
     /// Explicit user continuation; cancelled requests remain terminal.
@@ -565,6 +581,25 @@ final class SQLiteMentorRepository: MentorRepository {
         }
     }
 
+    func retryableRequest(sessionID: UUID) async throws -> MentorRetryableRequest? {
+        try await database.dbQueue.read { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: sessionID.uuidString),
+                  let row = try MentorRequestRow.fetchOne(db, sql: "SELECT * FROM mentor_requests WHERE session_id = ? ORDER BY rowid DESC LIMIT 1", arguments: [session.id]),
+                  ["failed", "cancelled", "timed_out", "interrupted"].contains(row.state),
+                  row.expectedRevision == session.semanticRevision,
+                  let id = UUID(uuidString: row.id) else { return nil }
+            let original = try row.userItemID.flatMap { try MentorItemRow.fetchOne(db, key: $0) }
+            let text = try original.map { item -> String in
+                guard item.sessionID == session.id, item.kind == "user",
+                      let text = try JSONDecoder().decode([String: String].self, from: Data(item.payloadJSON.utf8))["text"] else {
+                    throw PersistenceError.invalidStoredValue("retry user item")
+                }
+                return text
+            }
+            return MentorRetryableRequest(id: id, text: text, intent: row.intent, contextSnapshotJSON: row.contextSnapshotJSON)
+        }
+    }
+
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID {
         try await database.dbQueue.write { db in
             guard let session = try MentorSessionRow.fetchOne(db, key: command.sessionID.uuidString) else { throw PersistenceError.validationFailed("mentor session missing") }
@@ -596,6 +631,7 @@ final class SQLiteMentorRepository: MentorRepository {
             if let retryOf = command.retryOf {
                 guard let previous = try MentorRequestRow.fetchOne(db, key: retryOf.uuidString),
                       previous.sessionID == session.id,
+                      try String.fetchOne(db, sql: "SELECT id FROM mentor_requests WHERE session_id = ? ORDER BY rowid DESC LIMIT 1", arguments: [session.id]) == previous.id,
                       ["failed", "cancelled", "timed_out", "interrupted"].contains(previous.state),
                       previous.expectedRevision == session.semanticRevision,
                       previous.intent == command.intent,
