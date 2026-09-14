@@ -4,6 +4,85 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testUnsupportedIntentDoesNotSubmitOrChangeDraft() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss", initialText: "保留原文")
+        try await waitUntil { store.state.phase == .editing }
+        let original = store.state.session
+        for intent in ["draft_understanding", "unknown", ""] {
+            store.submit(intent: intent, text: "不能被当作普通交流")
+            XCTAssertEqual(store.state.phase, .editing)
+            XCTAssertEqual(store.state.session, original)
+            XCTAssertEqual(store.state.inputText, "保留原文")
+            XCTAssertNotNil(store.state.actionError)
+        }
+        XCTAssertEqual(transport.calls, 0)
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(count, 0)
+    }
+
+    func testNewResponseHidesUnavailableAIDraftButKeepsAuditableOutput() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        transport.suggestedActions = ["draft_understanding", "reply", "finish"]
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "今天意识到交付不等于效果")
+        try await waitUntil { store.state.phase == .showingResponse }
+        XCTAssertEqual(store.state.response?.availableSuggestedActions, [.reply, .finish])
+        XCTAssertEqual(store.state.response?.response.suggestedActions, [.draftUnderstanding, .reply, .finish])
+    }
+
+    func testUnsupportedHistoricalIntentCannotRetryThroughConversationPrompt() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "原话", intent: "draft_understanding", contextSnapshotJSON: "{}"))
+        try await repo.finishRequest(sessionID: id, requestID: requestID, reason: .failed)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.continueSession(id: id)
+        try await waitUntil { store.state.phase == .editing }
+        store.retryLastRequest()
+        try await waitUntil { store.state.phase != .submitting }
+        XCTAssertNotNil(store.state.retryError)
+        XCTAssertEqual(transport.calls, 0)
+        let candidate = try await repo.retryableRequest(sessionID: id)
+        XCTAssertEqual(candidate?.id, requestID)
+    }
+
+    func testRestoredSuggestionsReflectCurrentCapabilitiesWithoutRewritingHistory() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "用户原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let payload = """
+        {"schema_version":"1.0.0","action":"explain","material_status":"usable","body":"一个新视角","question":null,"question_purpose":null,"source_refs":[],"lesson_ref":null,"suggested_actions":["draft_understanding","another_lesson","reply","finish"]}
+        """
+        let item = try await repo.commitResponse(sessionID: id, requestID: requestID, payloadJSON: payload)
+        for hasCatalog in [false, true] {
+            let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(),
+                catalog: hasCatalog ? try catalog() : nil)
+            store.continueSession(id: id)
+            try await waitUntil { store.state.phase == .showingResponse }
+            XCTAssertEqual(store.state.response?.availableSuggestedActions,
+                hasCatalog ? [.anotherLesson, .reply, .finish] : [.reply, .finish])
+            XCTAssertEqual(store.state.response?.response.suggestedActions,
+                [.draftUnderstanding, .anotherLesson, .reply, .finish])
+        }
+        let stored = try await repo.items(sessionID: id)
+        XCTAssertEqual(stored.first { $0.id == item.id }?.payloadJSON, payload)
+    }
+
     func testDiscardUnderstandingCancelsDebounceAndKeepsPersistedContent() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let transport = MentorStoreFixtureTransport()
@@ -1635,6 +1714,7 @@ final class MentorFeatureStoreTests: XCTestCase {
 }
 
 private final class MentorStoreFixtureTransport: MentorTransport, LLMClient, @unchecked Sendable {
+    var suggestedActions = ["finish"]
     private(set) var calls = 0
     private(set) var lastRequest: LLMRequest?
     func complete(_ request: LLMRequest) async throws -> Data {
@@ -1644,7 +1724,7 @@ private final class MentorStoreFixtureTransport: MentorTransport, LLMClient, @un
         return try JSONSerialization.data(withJSONObject: [
             "schema_version": "1.0.0", "action": "explain", "material_status": "usable",
             "body": "把完成动作和实际效果分开看。", "question": NSNull(), "question_purpose": NSNull(),
-            "source_refs": [source], "lesson_ref": NSNull(), "suggested_actions": ["finish"]
+            "source_refs": [source], "lesson_ref": NSNull(), "suggested_actions": suggestedActions
         ])
     }
 }

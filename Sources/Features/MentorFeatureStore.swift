@@ -39,6 +39,7 @@ struct MentorFeatureState: Equatable {
     var canRetryRequestFinalization = false
     var retryableRequest: MentorRetryableRequest?
     var retryError: String?
+    var actionError: String?
     var inputText = ""
     var draftRevision = 0
     var hasUnsavedDraft = false
@@ -294,6 +295,11 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func submit(intent: String = "reply", text: String? = nil) {
+        guard ["reply", "explain", "finish", "another_lesson"].contains(intent) else {
+            state.actionError = "这个操作暂不可用。可以继续交流，或自己写一句理解。"
+            return
+        }
+        state.actionError = nil
         if intent == "finish" { finish(); return }
         if intent == "another_lesson" { selectAnotherLesson(); return }
         guard sessionTransitionID == nil, let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
@@ -331,6 +337,11 @@ final class MentorFeatureStore: ObservableObject {
                 guard let candidate else {
                     state.retryableRequest = nil
                     state.retryError = "当前没有可重试的轮次。"
+                    state.phase = previousPhase
+                    return
+                }
+                guard ["reply", "explain"].contains(candidate.intent) else {
+                    state.retryError = "这次操作暂不能重试，请继续交流。"
                     state.phase = previousPhase
                     return
                 }
@@ -765,6 +776,18 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    /// Keep original model output for audit; only executable suggestions reach the UI.
+    private func supportedSuggestions(_ turn: MentorValidatedTurn) -> MentorValidatedTurn {
+        let actions = turn.availableSuggestedActions.filter { action in
+            switch action {
+            case .draftUnderstanding: return false // Dedicated AI draft flow is not yet implemented.
+            case .anotherLesson: return catalog != nil
+            case .reply, .explain, .finish: return true
+            }
+        }
+        return MentorValidatedTurn(response: turn.response, availableSuggestedActions: actions)
+    }
+
     /// Reconstruct from saved versions, never from the current teaching catalog.
     /// Preserve every understanding group; only a unique draft is auto-selected.
     private func restoredState(session: MentorSession, lesson: MentorSavedLesson? = nil) async throws -> MentorFeatureState {
@@ -789,7 +812,8 @@ final class MentorFeatureStore: ObservableObject {
             // sources against today's context or counting it as presented.
             let response = try JSONDecoder().decode(MentorTurnResponse.self, from: Data(last.payloadJSON.utf8))
             guard response.schemaVersion == "1.0.0" else { throw MentorResponseError.unsupportedSchema }
-            restored.response = MentorValidatedTurn(response: response, availableSuggestedActions: response.suggestedActions)
+            restored.response = supportedSuggestions(MentorValidatedTurn(response: response,
+                availableSuggestedActions: response.suggestedActions))
             restored.responseItemID = last.id
         }
         restored.retryableRequest = try await repository.retryableRequest(sessionID: session.id)
@@ -920,7 +944,7 @@ final class MentorFeatureStore: ObservableObject {
             try Task.checkCancellation()
             let data = try await transport.complete(request)
             try Task.checkCancellation()
-            let validated = try MentorResponseParser().parseTurn(data, context: built.validation)
+            let validated = supportedSuggestions(try MentorResponseParser().parseTurn(data, context: built.validation))
             let pending = PendingResponse(sessionID: current.id, requestID: requestID,
                 payload: String(decoding: data, as: UTF8.self), validated: validated)
             pendingResponse = pending
