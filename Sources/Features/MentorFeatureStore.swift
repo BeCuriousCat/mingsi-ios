@@ -21,6 +21,8 @@ struct MentorFeatureState: Equatable {
     var historyError: String?
     var isLoadingHistory = false
     var canRetryResponseSave = false
+    var requestFinalizationError: String?
+    var canRetryRequestFinalization = false
     var inputText = ""
     var draftRevision = 0
 }
@@ -40,6 +42,12 @@ final class MentorFeatureStore: ObservableObject {
         let payload: String
         let validated: MentorValidatedTurn
     }
+    private struct PendingRequestEnd {
+        let sessionID: UUID
+        let requestID: UUID
+        let reason: MentorRequestEndReason
+    }
+    private var pendingRequestEnd: PendingRequestEnd?
     private var pendingResponse: PendingResponse?
     private var requestTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
@@ -58,6 +66,9 @@ final class MentorFeatureStore: ObservableObject {
 
     func start(entry: String, initialText: String = "") {
         pendingResponse = nil
+        pendingRequestEnd = nil
+        state.canRetryRequestFinalization = false
+        state.requestFinalizationError = nil
         state.canRetryResponseSave = false
         requestTask?.cancel()
         requestTask = Task { [weak self] in await self?.startTask(entry: entry, initialText: initialText) }
@@ -107,6 +118,9 @@ final class MentorFeatureStore: ObservableObject {
 
     func continueSession(id: UUID) {
         pendingResponse = nil
+        pendingRequestEnd = nil
+        state.canRetryRequestFinalization = false
+        state.requestFinalizationError = nil
         state.canRetryResponseSave = false
         requestTask?.cancel()
         requestTask = Task { [weak self] in
@@ -136,6 +150,9 @@ final class MentorFeatureStore: ObservableObject {
 
     func finish() {
         pendingResponse = nil
+        pendingRequestEnd = nil
+        state.canRetryRequestFinalization = false
+        state.requestFinalizationError = nil
         state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
@@ -153,6 +170,9 @@ final class MentorFeatureStore: ObservableObject {
 
     func pause() {
         pendingResponse = nil
+        pendingRequestEnd = nil
+        state.canRetryRequestFinalization = false
+        state.requestFinalizationError = nil
         state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
@@ -263,6 +283,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func submitTask(session: MentorSession, intent: String, text: String) async {
+        var submittedRequestID: UUID?
         do {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
@@ -273,6 +294,7 @@ final class MentorFeatureStore: ObservableObject {
             let requestID = try await repository.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: session.id,
                 text: trimmed.isEmpty ? nil : text,
                 intent: intent, contextSnapshotJSON: "{}"))
+            submittedRequestID = requestID
             guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
             let items = try await repository.items(sessionID: session.id)
             let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
@@ -290,11 +312,44 @@ final class MentorFeatureStore: ObservableObject {
                 payload: String(decoding: data, as: UTF8.self), validated: validated)
             pendingResponse = pending
             try await saveResponse(pending)
-        } catch is CancellationError { return }
-        catch {
+        } catch {
             guard !Task.isCancelled else { return }
+            if pendingResponse == nil, let requestID = submittedRequestID {
+                let reason: MentorRequestEndReason
+                switch error {
+                case MentorRequestExecutionError.timedOut: reason = .timedOut
+                case is CancellationError, MentorRequestExecutionError.cancelled: reason = .cancelled
+                default: reason = .failed
+                }
+                let end = PendingRequestEnd(sessionID: session.id, requestID: requestID, reason: reason)
+                pendingRequestEnd = end
+                await persistRequestEnd(end)
+                guard !Task.isCancelled else { return }
+            }
             state.canRetryResponseSave = pendingResponse != nil
             state.phase = .failed(String(describing: error))
+        }
+    }
+
+    /// Retries only the terminal database write; never invokes transport.
+    func retryRequestFinalization() {
+        guard state.canRetryRequestFinalization, let end = pendingRequestEnd,
+              state.session?.id == end.sessionID else { return }
+        state.canRetryRequestFinalization = false
+        requestTask = Task { [weak self] in await self?.persistRequestEnd(end) }
+    }
+
+    private func persistRequestEnd(_ end: PendingRequestEnd) async {
+        do {
+            try await repository.finishRequest(sessionID: end.sessionID, requestID: end.requestID, reason: end.reason)
+            guard !Task.isCancelled, state.session?.id == end.sessionID else { return }
+            pendingRequestEnd = nil
+            state.canRetryRequestFinalization = false
+            state.requestFinalizationError = nil
+        } catch {
+            guard !Task.isCancelled, state.session?.id == end.sessionID else { return }
+            state.canRetryRequestFinalization = true
+            state.requestFinalizationError = String(describing: error)
         }
     }
 

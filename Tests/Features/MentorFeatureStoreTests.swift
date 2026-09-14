@@ -242,6 +242,51 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.timeline.filter { $0.kind == .assistant }.count, 1)
     }
 
+    func testTransportAndProtocolFailuresPersistTerminalRequests() async throws {
+        let cases: [(Result<Data, Error>, String)] = [
+            (.failure(URLError(.notConnectedToInternet)), "failed"),
+            (.success(Data("invalid JSON".utf8)), "failed"),
+            (.failure(MentorRequestExecutionError.timedOut), "timed_out"),
+            (.failure(CancellationError()), "cancelled")
+        ]
+        for (result, expected) in cases {
+            let db = try AppDatabase(dbQueue: DatabaseQueue())
+            let transport = FailingMentorTransport(result: result)
+            let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport)
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing }
+            store.submit(text: "失败也保留原话")
+            try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+            let status = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests") }
+            XCTAssertEqual(status, expected)
+            XCTAssertEqual(transport.calls, 1)
+            XCTAssertFalse(store.state.canRetryResponseSave)
+            XCTAssertFalse(store.state.canRetryRequestFinalization)
+        }
+    }
+
+    func testRequestFinalizationFailureRetriesOnlyDatabaseWrite() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let transport = FailingMentorTransport(result: .failure(URLError(.notConnectedToInternet)))
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_request_end BEFORE UPDATE OF state ON mentor_requests BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.submit(text: "请求失败的原话")
+        try await waitUntil { store.state.canRetryRequestFinalization }
+        XCTAssertNotNil(store.state.requestFinalizationError)
+        let failedPhase = store.state.phase
+        store.retryRequestFinalization()
+        try await waitUntil { store.state.canRetryRequestFinalization }
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_request_end") }
+        store.retryRequestFinalization()
+        try await waitUntil { store.state.requestFinalizationError == nil }
+        XCTAssertEqual(store.state.phase, failedPhase)
+        XCTAssertEqual(transport.calls, 1)
+        let statuses = try await db.dbQueue.read { try String.fetchAll($0, sql: "SELECT state FROM mentor_requests") }
+        XCTAssertEqual(statuses, ["failed"])
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -289,5 +334,15 @@ private final class HeldMentorTransport: MentorTransport {
         wasCancelled = Task.isCancelled
         didReturn = true
         return data
+    }
+}
+
+private final class FailingMentorTransport: MentorTransport {
+    let result: Result<Data, Error>
+    private(set) var calls = 0
+    init(result: Result<Data, Error>) { self.result = result }
+    func complete(_ request: LLMRequest) async throws -> Data {
+        calls += 1
+        return try result.get()
     }
 }
