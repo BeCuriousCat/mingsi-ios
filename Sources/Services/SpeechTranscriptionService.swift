@@ -57,6 +57,7 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     deinit { NotificationCenter.default.removeObserver(self) }
 
     func start() async {
+        guard !Task.isCancelled else { return }
         switch state {
         case .requestingPermission, .recording: return
         default: break
