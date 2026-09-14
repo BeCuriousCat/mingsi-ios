@@ -32,7 +32,7 @@ struct MentorHomeView: View {
                         Text("最近交流").font(.headline).accessibilityAddTraits(.isHeader)
                         ForEach(feature.state.recentSessions) { session in
                             Button {
-                                feature.continueSession(id: session.id)
+                                feature.viewSession(id: session.id)
                                 showsConversation = true
                             } label: {
                                 VStack(alignment: .leading, spacing: 8) {
@@ -159,8 +159,10 @@ struct MentorConversationView: View {
                         .disabled(feature.state.isTransitioningSession)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("到这里") { leave(ending: true) }
-                        .disabled(feature.state.isTransitioningSession)
+                    if !feature.state.isViewingHistory {
+                        Button("到这里") { leave(ending: true) }
+                            .disabled(feature.state.isTransitioningSession)
+                    }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -177,12 +179,22 @@ struct MentorConversationView: View {
             if feature.state.phase == .paused || feature.state.phase == .ended { dismiss() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background, !feature.state.isTransitioningSession { feature.pause() }
+            if phase == .background, !feature.state.isTransitioningSession, !feature.state.isViewingHistory { feature.pause() }
         }
     }
 
     @ViewBuilder private var content: some View {
-        if feature.state.timeline.isEmpty && feature.state.lesson == nil {
+        if feature.state.isViewingHistory {
+            Text(feature.state.session?.lifecycle == .ended ? "已结束的交流" : "历史交流 · 仅查看")
+                .font(.subheadline).foregroundStyle(DS.mutedInk)
+            if !feature.state.inputText.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("保留的输入").font(.headline)
+                    Text(feature.state.inputText).textSelection(.enabled)
+                }
+            }
+        }
+        if !feature.state.isViewingHistory, feature.state.timeline.isEmpty && feature.state.lesson == nil {
             if feature.state.session?.initialEntry == "listen" {
                 Text("暂时没有可读的新视角，可以先聊聊你手上的一件事。")
             } else {
@@ -212,7 +224,7 @@ struct MentorConversationView: View {
             }
         }
         status
-        if feature.state.phase == .paused || feature.state.phase == .ended {
+        if feature.state.isViewingHistory || feature.state.phase == .paused || feature.state.phase == .ended {
             Button("继续这件事") {
                 if let id = feature.state.session?.id { feature.continueSession(id: id) }
             }.buttonStyle(.bordered).controlSize(.large)
@@ -276,7 +288,7 @@ struct MentorConversationView: View {
             Button("重试保存回应") { feature.retryResponseSave() }.buttonStyle(.bordered).controlSize(.large)
         } else if feature.state.canRetryRequestFinalization {
             Button("重试保存状态") { feature.retryRequestFinalization() }.buttonStyle(.bordered).controlSize(.large)
-        } else if feature.state.retryableRequest != nil {
+        } else if !feature.state.isViewingHistory, feature.state.retryableRequest != nil {
             Button("重新请求回应") { online { feature.retryLastRequest() } }.buttonStyle(.bordered).controlSize(.large)
         }
         if needsConfiguration {
@@ -323,7 +335,7 @@ struct MentorConversationView: View {
 
     private func leave(ending: Bool) {
         inputFocused = false
-        if feature.state.session == nil || feature.state.phase == .ended { dismiss(); return }
+        if feature.state.isViewingHistory || feature.state.session == nil || feature.state.phase == .ended { dismiss(); return }
         wantsClose = true
         if ending { feature.finish() } else { feature.pause() }
     }

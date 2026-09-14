@@ -51,6 +51,15 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertEqual(input.value as? String, "A small change worth checking")
         app.navigationBars["这次交流"].buttons["到这里"].tap()
         XCTAssertTrue(app.buttons["带我回看"].waitForExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "A small change worth checking")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["继续这件事"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.textViews["你想说的话"].exists)
+        XCTAssertFalse(app.navigationBars["这次交流"].buttons["到这里"].exists)
+        app.buttons["继续这件事"].tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "A small change worth checking")
+        app.navigationBars["这次交流"].buttons["到这里"].tap()
+        XCTAssertTrue(app.buttons["带我回看"].waitForExistence(timeout: 5))
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "mentor-home-after-local-conversation"
         screenshot.lifetime = .keepAlways

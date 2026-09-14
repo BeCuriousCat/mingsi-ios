@@ -12,6 +12,7 @@ struct MentorFeatureState: Equatable {
     enum Phase: Equatable { case idle, editing, reading, selectingLesson, lessonExhausted, submitting, showingResponse, paused, ended, failed(String) }
     var phase: Phase = .idle
     var session: MentorSession?
+    var isViewingHistory = false
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var lessonError: String?
@@ -114,6 +115,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func updateInputText(_ text: String) {
+        guard !state.isViewingHistory else { return }
         guard let sessionID = state.session?.id, sessionTransitionID == nil,
               state.phase != .paused, state.phase != .ended, text != state.inputText else { return }
         state.inputText = text
@@ -263,7 +265,14 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
-    func continueSession(id: UUID) {
+    func continueSession(id: UUID) { openSession(id: id, resuming: true) }
+
+    func viewSession(id: UUID) {
+        guard state.phase != .submitting || state.session?.id != id else { return }
+        openSession(id: id, resuming: false)
+    }
+
+    private func openSession(id: UUID, resuming: Bool) {
         guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -281,12 +290,15 @@ final class MentorFeatureStore: ObservableObject {
                 var restored = try await self.restoredState(session: session)
                 try Task.checkCancellation()
                 try await suspendPreviousSession(destinationID: id)
-                if session.lifecycle != .active { try await self.repository.resumeSession(id: id) }
+                if resuming, session.lifecycle != .active { try await self.repository.resumeSession(id: id) }
                 try Task.checkCancellation()
                 guard let current = try await self.repository.session(id: id) else { throw MentorFeatureError.missingSession }
                 try Task.checkCancellation()
                 restored.session = current
+                restored.isViewingHistory = !resuming
                 restored.phase = restored.response == nil ? .editing : .showingResponse
+                if !resuming, current.lifecycle == .ended { restored.phase = .ended }
+                if !resuming, current.lifecycle == .paused { restored.phase = .paused }
                 resetSessionBuffers()
                 self.state = restored
             } catch is CancellationError { return }
@@ -298,6 +310,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func submit(intent: String = "reply", text: String? = nil) {
+        guard !state.isViewingHistory else { return }
         guard ["reply", "explain", "finish", "another_lesson"].contains(intent) else {
             state.actionError = "这个操作暂不可用。可以继续交流，或自己写一句理解。"
             return
@@ -323,6 +336,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Explicit network retry; local response-save retries never use this path.
     func retryLastRequest() {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, let session = state.session, pendingResponse == nil, pendingRequestEnd == nil,
               state.phase != .submitting, state.phase != .selectingLesson else { return }
         let startedAt = ContinuousClock().now
@@ -360,6 +374,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Reading and changing lessons are local actions even when a draft exists.
     func selectAnotherLesson() {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, let session = state.session,
               [.editing, .reading, .showingResponse, .lessonExhausted].contains(state.phase) else { return }
         guard let catalog else {
@@ -407,6 +422,7 @@ final class MentorFeatureStore: ObservableObject {
     /// Feedback records a preference without replacing the current readable snapshot.
     /// A subsequent change of lesson waits for this local write to finish.
     func recordLessonFeedback(_ kind: MentorLessonFeedback) {
+        guard !state.isViewingHistory else { return }
         guard let session = state.session, let lesson = state.lesson,
               [.reading, .showingResponse, .paused, .ended].contains(state.phase) else { return }
         saveLessonFeedback(sessionID: session.id, itemID: lesson.id, kind: kind)
@@ -447,6 +463,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func finish() {
+        guard !state.isViewingHistory else { return }
         guard let session = state.session else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -477,6 +494,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func pause() {
+        guard !state.isViewingHistory else { return }
         guard let session = state.session else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -509,6 +527,7 @@ final class MentorFeatureStore: ObservableObject {
     /// Called by the view only after this exact response has appeared.
     /// Keeping the item ID in the event prevents an old view acknowledging a new response.
     func acknowledgeResponse(itemID: UUID) {
+        guard !state.isViewingHistory else { return }
         guard state.responseItemID == itemID else { return }
         acknowledge(itemID: itemID, isResponse: true)
     }
@@ -516,6 +535,7 @@ final class MentorFeatureStore: ObservableObject {
     /// The visible lesson's identity travels with scroll events, so a disappearing
     /// page cannot move the reading position of its replacement.
     func saveReadingPosition(itemID: UUID, section: MentorReadingSection) {
+        guard !state.isViewingHistory else { return }
         guard let lesson = state.lesson, lesson.id == itemID,
               lesson.sessionID == state.session?.id, state.phase != .selectingLesson,
               section != .observation || lesson.lesson.observation != nil else { return }
@@ -527,6 +547,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func retryReadingPositionSave() {
+        guard !state.isViewingHistory else { return }
         guard state.pendingReadingPositionSaves == 0, state.readingPositionError != nil,
               let lesson = state.lesson else { return }
         enqueueReadingPosition(lesson)
@@ -560,6 +581,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func acknowledgeLesson() {
+        guard !state.isViewingHistory else { return }
         guard let lesson = state.lesson else { return }
         acknowledge(itemID: lesson.id, isResponse: false)
     }
@@ -594,6 +616,7 @@ final class MentorFeatureStore: ObservableObject {
     /// Switching editors is disabled until queued writes finish. A failed edit
     /// must be retried before another draft can replace its in-memory text.
     func selectUnderstandingDraft(id: UUID) {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, !state.hasUnsavedUnderstanding,
               state.pendingUnderstandingOperations == 0, state.understandingError == nil,
               let draft = state.understandings.first(where: { $0.id == id }),
@@ -604,6 +627,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func beginUnderstanding(previousRevisionID: UUID? = nil) {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, !state.hasUnsavedUnderstanding,
               state.session != nil, state.pendingUnderstandingOperations == 0,
               state.understandingError == nil else { return }
@@ -630,6 +654,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Text-editor input is immediate in memory and persisted after 500 ms of quiet.
     func updateUnderstandingText(_ text: String) {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, !state.isConfirmingUnderstanding,
               state.session != nil, state.understanding?.state != .confirmed,
               state.understanding != nil || pendingUnderstandingCreation != nil,
@@ -658,6 +683,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Explicit save bypasses the input debounce and replaces any scheduled text.
     func saveUnderstanding(text: String) {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, !state.isConfirmingUnderstanding,
               state.session != nil, state.understanding?.state != .confirmed,
               state.understanding != nil || pendingUnderstandingCreation != nil else { return }
@@ -672,6 +698,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func retryUnderstandingSave() {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, state.pendingUnderstandingOperations == 0, state.understandingError != nil else { return }
         understandingDebounceTask?.cancel()
         understandingDebounceTask = nil
@@ -688,7 +715,7 @@ final class MentorFeatureStore: ObservableObject {
     /// Already queued writes settle first; only the remaining memory buffer is discarded.
     @discardableResult
     func discardUnderstandingEdits() async -> Bool {
-        guard sessionTransitionID == nil, !state.isConfirmingUnderstanding,
+        guard !state.isViewingHistory, sessionTransitionID == nil, !state.isConfirmingUnderstanding,
               let sessionID = state.session?.id else { return false }
         let transition = beginSessionTransition()
         defer { endSessionTransition(transition) }
@@ -722,6 +749,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func confirmUnderstanding() {
+        guard !state.isViewingHistory else { return }
         guard sessionTransitionID == nil, !state.isConfirmingUnderstanding, state.session != nil,
               state.understanding != nil || pendingUnderstandingCreation != nil else { return }
         state.isConfirmingUnderstanding = true
@@ -827,7 +855,7 @@ final class MentorFeatureStore: ObservableObject {
     /// The database epoch, rather than transport cancellation alone, rejects late responses.
     private func suspendPreviousSession(destinationID: UUID?) async throws {
         try Task.checkCancellation()
-        guard let previous = state.session, previous.id != destinationID else { return }
+        guard !state.isViewingHistory, let previous = state.session, previous.id != destinationID else { return }
         let text = state.inputText
         let revision = state.draftRevision
         guard let current = try await repository.session(id: previous.id) else {

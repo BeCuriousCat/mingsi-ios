@@ -4,6 +4,57 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testViewingHistoryPreservesLifecycleDraftAndVersionsUntilExplicitContinuation() async throws {
+        for lifecycle in [MentorSessionLifecycle.active, .paused, .ended] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let id = UUID()
+            try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: lifecycle,
+                draftText: "历史草稿", draftRevision: 1, activityAt: .now))
+            let note = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+            _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: note.id, editRevision: 1, text: "历史理解")
+            let before = try await repo.session(id: id)
+            let notes = try await repo.understandings(sessionID: id)
+            let transport = MentorStoreFixtureTransport()
+            let store = MentorFeatureStore(repository: repo, transport: transport)
+            store.viewSession(id: id)
+            try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+            XCTAssertEqual(store.state.inputText, "历史草稿")
+            store.updateInputText("不能修改")
+            store.submit(text: "不能发送")
+            store.beginUnderstanding()
+            store.saveUnderstanding(text: "不能覆盖理解")
+            store.confirmUnderstanding()
+            store.pause()
+            store.finish()
+            let after = try await repo.session(id: id)
+            let unchangedNotes = try await repo.understandings(sessionID: id)
+            XCTAssertEqual(before, after)
+            XCTAssertEqual(notes, unchangedNotes)
+            XCTAssertEqual(transport.calls, 0)
+            store.continueSession(id: id)
+            try await waitUntil { !store.state.isViewingHistory && store.state.phase == .editing }
+            let continued = try await repo.session(id: id)
+            XCTAssertEqual(continued?.lifecycle, .active)
+            XCTAssertEqual(continued?.draftText, "历史草稿")
+        }
+    }
+
+    func testStartingAfterViewingHistoryDoesNotPauseTheViewedRecord() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "保留历史状态", draftRevision: 1, activityAt: .now))
+        let before = try await repo.session(id: id)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.viewSession(id: id)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.session?.id != id }
+        XCTAssertFalse(store.state.isViewingHistory)
+        let after = try await repo.session(id: id)
+        XCTAssertEqual(after, before)
+    }
+
     func testHomeResumptionIsIndependentOfRecentHistoryPage() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let date = Date(timeIntervalSince1970: 1_800_000_000)

@@ -180,7 +180,7 @@ struct MentorUnderstandingSection: View {
     @State private var showsEditor = false
 
     private var canOpenEditor: Bool {
-        store.state.session != nil && !store.state.isTransitioningSession &&
+        store.state.session != nil && !store.state.isViewingHistory && !store.state.isTransitioningSession &&
         store.state.pendingUnderstandingOperations == 0 && !store.state.hasUnsavedUnderstanding &&
         store.state.understandingError == nil
     }
