@@ -109,6 +109,7 @@ protocol MentorRepository {
     func session(id: UUID) async throws -> MentorSession?
     func acknowledgePresentation(sessionID: UUID, itemID: UUID, at date: Date, timeZone: TimeZone) async throws
     func recentSessions(after cursor: MentorSessionCursor?, limit: Int) async throws -> MentorSessionPage
+    func latestUnfinishedSession() async throws -> MentorSessionSummary?
     func saveDraft(sessionID: UUID, revision: Int, text: String) async throws
     func appendItem(_ item: MentorTimelineItem) async throws
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
@@ -270,14 +271,24 @@ final class SQLiteMentorRepository: MentorRepository {
     /// Keyset pagination over live records. Refresh from the first page after
     /// edits; records whose activity changes may move ahead of an existing cursor.
     func recentSessions(after cursor: MentorSessionCursor? = nil, limit: Int = 20) async throws -> MentorSessionPage {
+        try await sessionPage(after: cursor, limit: limit, unfinishedOnly: false)
+    }
+
+    /// Independent of history pagination: ended sessions must not hide resumable work.
+    func latestUnfinishedSession() async throws -> MentorSessionSummary? {
+        try await sessionPage(after: nil, limit: 1, unfinishedOnly: true).sessions.first
+    }
+
+    private func sessionPage(after cursor: MentorSessionCursor?, limit: Int,
+                             unfinishedOnly: Bool) async throws -> MentorSessionPage {
         guard (1...20).contains(limit) else {
             throw PersistenceError.validationFailed("mentor page size must be between 1 and 20")
         }
         return try await database.dbQueue.read { db in
             var arguments: StatementArguments = []
-            var boundary = ""
+            var boundary = unfinishedOnly ? "AND s.lifecycle != 'ended'" : ""
             if let cursor {
-                boundary = "AND (s.activity_at, s.id) < (?, ?)"
+                boundary += " AND (s.activity_at, s.id) < (?, ?)"
                 arguments += [cursor.storedActivityAt, cursor.id]
             }
             arguments += [limit + 1]

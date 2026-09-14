@@ -16,7 +16,7 @@ struct MentorHomeView: View {
                     Text("不用先想清楚。回看一个片段，或者听一个新视角。")
                         .foregroundStyle(DS.mutedInk)
                     VStack(alignment: .leading, spacing: 12) {
-                        if let recent = feature.state.recentSessions.first(where: { $0.lifecycle != .ended }) {
+                        if let recent = feature.state.latestUnfinishedSession {
                             entry("继续这次交流", symbol: "arrow.turn.down.right", primary: true) {
                                 feature.continueSession(id: recent.id)
                                 showsConversation = true
@@ -27,7 +27,7 @@ struct MentorHomeView: View {
                         entry("听一个新视角", symbol: "book") { start("listen") }
                         entry("我有一件事", symbol: "square.and.pencil") { start("discuss") }
                     }
-                    .disabled(feature.state.isTransitioningSession)
+                    .disabled(feature.state.isTransitioningSession || feature.state.isLoadingHistory)
                     if !feature.state.recentSessions.isEmpty {
                         Text("最近交流").font(.headline).accessibilityAddTraits(.isHeader)
                         ForEach(feature.state.recentSessions) { session in

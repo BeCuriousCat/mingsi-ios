@@ -30,6 +30,7 @@ struct MentorFeatureState: Equatable {
     var understandingError: String?
     var pendingUnderstandingOperations = 0
     var isConfirmingUnderstanding = false
+    var latestUnfinishedSession: MentorSessionSummary?
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
     var historyError: String?
@@ -228,7 +229,9 @@ final class MentorFeatureStore: ObservableObject {
             guard let self else { return }
             do {
                 let page = try await repository.recentSessions(after: nil, limit: limit)
+                let unfinished = try await repository.latestUnfinishedSession()
                 guard !Task.isCancelled, historyGeneration == generation else { return }
+                state.latestUnfinishedSession = unfinished
                 state.recentSessions = page.sessions
                 state.recentSessionsCursor = page.nextCursor
             } catch {

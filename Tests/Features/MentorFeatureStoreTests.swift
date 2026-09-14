@@ -4,6 +4,34 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testHomeResumptionIsIndependentOfRecentHistoryPage() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let unfinishedID = UUID()
+        try await repo.createSession(MentorSession(id: unfinishedID, initialEntry: "discuss", lifecycle: .paused,
+            draftText: "还没说完的一件事", draftRevision: 1, activityAt: date))
+        for index in 1...25 {
+            try await repo.createSession(MentorSession(id: UUID(), initialEntry: "discuss", lifecycle: .ended,
+                draftText: "较新的已结束交流", draftRevision: 1, activityAt: date.addingTimeInterval(Double(index))))
+        }
+        // An empty abandoned entry is not resumable material.
+        try await repo.createSession(MentorSession(id: UUID(), initialEntry: "listen", lifecycle: .draft,
+            draftText: "", draftRevision: 0, activityAt: date.addingTimeInterval(30)))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.loadRecentSessions()
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertEqual(store.state.recentSessions.count, 3)
+        XCTAssertTrue(store.state.recentSessions.allSatisfy { $0.lifecycle == .ended })
+        XCTAssertEqual(store.state.latestUnfinishedSession?.id, unfinishedID)
+        store.loadMoreRecentSessions()
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertEqual(store.state.latestUnfinishedSession?.id, unfinishedID)
+        try await repo.suspendSession(id: unfinishedID, ending: true, draftRevision: 1, draftText: "还没说完的一件事")
+        store.loadRecentSessions()
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertNil(store.state.latestUnfinishedSession)
+    }
+
     func testUnsupportedIntentDoesNotSubmitOrChangeDraft() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
