@@ -21,6 +21,7 @@ struct SpeechInputDraft: Equatable {
         case .idle: cancel()
         case .requestingPermission: message = "请允许麦克风和语音识别权限"
         case .recording(let text): preview = text; message = "正在听，最多 60 秒"
+        case .finalizing(let text): preview = text; message = "正在完成识别…"
         case .final(let text):
             preview = text; isActive = false; isReviewing = true
             message = text.isEmpty ? "没有识别到文字，可以重新录音。" : "请检查识别文字，再添加到输入框。"
