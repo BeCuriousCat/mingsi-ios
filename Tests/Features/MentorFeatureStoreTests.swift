@@ -1241,6 +1241,96 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertTrue(runs.isEmpty)
     }
 
+    func testSwitchWaitsForQueuedUnderstandingCreationAndLatestEdit() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        let originalID = try XCTUnwrap(store.state.session?.id)
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "第一版")
+        store.saveUnderstanding(text: "切换前的最新理解")
+        store.start(entry: "discuss", initialText: "下一件事")
+        store.saveUnderstanding(text: "旧编辑器迟到的事件")
+        try await waitUntil { store.state.session?.id != originalID && !store.state.isTransitioningSession }
+        let saved = try await repo.understandings(sessionID: originalID)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.text, "切换前的最新理解")
+        XCTAssertEqual(saved.first?.state, .draft)
+        XCTAssertEqual(store.state.inputText, "下一件事")
+    }
+
+    func testUnderstandingWriteFailureBlocksAllSessionTransitionsUntilSaved() async throws {
+        for action in ["start", "continue", "pause", "finish"] {
+            let db = try AppDatabase(dbQueue: DatabaseQueue())
+            let repo = SQLiteMentorRepository(database: db)
+            let transport = MentorStoreFixtureTransport()
+            let store = MentorFeatureStore(repository: repo, transport: transport)
+            let targetID = UUID()
+            try await repo.createSession(MentorSession(id: targetID, initialEntry: "discuss", lifecycle: .paused,
+                draftText: "历史草稿", draftRevision: 1, activityAt: .now))
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing }
+            let oldID = try XCTUnwrap(store.state.session?.id)
+            store.beginUnderstanding()
+            store.saveUnderstanding(text: "已保存的理解")
+            try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+            try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_exit_note BEFORE UPDATE OF text ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+            store.saveUnderstanding(text: "离开前未保存的理解")
+            func leave() {
+                switch action {
+                case "start": store.start(entry: "discuss")
+                case "continue": store.continueSession(id: targetID)
+                case "pause": store.pause()
+                default: store.finish()
+                }
+            }
+            leave()
+            try await waitUntil { !store.state.isTransitioningSession && store.state.pendingUnderstandingOperations == 0 }
+            XCTAssertEqual(store.state.session?.id, oldID, action)
+            XCTAssertEqual(store.state.understandingInputText, "离开前未保存的理解", action)
+            XCTAssertNotNil(store.state.understandingError, action)
+            let old = try await repo.understandings(sessionID: oldID)
+            XCTAssertEqual(old.first?.text, "已保存的理解", action)
+            try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_exit_note") }
+            store.retryUnderstandingSave()
+            try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+            XCTAssertNil(store.state.understandingError)
+            leave()
+            try await waitUntil { !store.state.isTransitioningSession }
+            switch action {
+            case "start": XCTAssertNotEqual(store.state.session?.id, oldID)
+            case "continue": XCTAssertEqual(store.state.session?.id, targetID)
+            case "pause": XCTAssertEqual(store.state.phase, .paused)
+            default: XCTAssertEqual(store.state.phase, .ended)
+            }
+            let saved = try await repo.understandings(sessionID: oldID)
+            XCTAssertEqual(saved.first?.text, "离开前未保存的理解")
+            XCTAssertEqual(saved.first?.state, .draft)
+            XCTAssertEqual(transport.calls, 0)
+        }
+    }
+
+    func testConfirmationFreezesInputUntilItsResultIsKnown() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "我明确认可的这一版")
+        store.confirmUnderstanding()
+        XCTAssertTrue(store.state.isConfirmingUnderstanding)
+        store.saveUnderstanding(text: "确认过程中迟到的编辑")
+        store.confirmUnderstanding()
+        let flushed = await store.flushPendingEdits()
+        XCTAssertTrue(flushed)
+        XCTAssertFalse(store.state.isConfirmingUnderstanding)
+        XCTAssertEqual(store.state.understanding?.state, .confirmed)
+        XCTAssertEqual(store.state.understanding?.text, "我明确认可的这一版")
+        XCTAssertEqual(store.state.understandingInputText, "我明确认可的这一版")
+        XCTAssertNil(store.state.understandingError)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }

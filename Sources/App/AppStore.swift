@@ -8010,7 +8010,7 @@ final class AppStore: ObservableObject {
 
     func handleScenePhase(_ phase: ScenePhase) {
         if phase == .inactive || phase == .background, let mentorFeatureStore {
-            Task { _ = await mentorFeatureStore.flushDraft() }
+            Task { _ = await mentorFeatureStore.flushPendingEdits() }
         }
         switch phase {
         case .active:

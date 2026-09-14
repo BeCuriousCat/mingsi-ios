@@ -28,6 +28,7 @@ struct MentorFeatureState: Equatable {
     var understandingInputText = ""
     var understandingError: String?
     var pendingUnderstandingOperations = 0
+    var isConfirmingUnderstanding = false
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
     var historyError: String?
@@ -171,6 +172,21 @@ final class MentorFeatureStore: ObservableObject {
         return !Task.isCancelled && state.session?.id == sessionID
     }
 
+    /// Wait for both independent editing queues before leaving or backgrounding.
+    @discardableResult
+    func flushPendingEdits() async -> Bool {
+        let sessionID = state.session?.id
+        while !Task.isCancelled {
+            guard await flushDraft(), state.session?.id == sessionID else { return false }
+            let generation = understandingGeneration
+            await understandingTask?.value
+            guard !Task.isCancelled, state.session?.id == sessionID,
+                  understandingGeneration == generation, state.understandingError == nil else { return false }
+            if !state.hasUnsavedDraft, state.pendingUnderstandingOperations == 0 { return true }
+        }
+        return false
+    }
+
     private func beginSessionTransition() -> UUID {
         let id = UUID()
         sessionTransitionID = id
@@ -190,7 +206,7 @@ final class MentorFeatureStore: ObservableObject {
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
-            guard await flushDraft(), !Task.isCancelled else { return }
+            guard await flushPendingEdits(), !Task.isCancelled else { return }
             understandingGeneration = UUID()
             state.pendingUnderstandingOperations = 0
             pendingUnderstandingCreation = nil
@@ -251,7 +267,7 @@ final class MentorFeatureStore: ObservableObject {
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
-            guard await flushDraft(), !Task.isCancelled else { return }
+            guard await flushPendingEdits(), !Task.isCancelled else { return }
             understandingGeneration = UUID()
             state.pendingUnderstandingOperations = 0
             pendingUnderstandingCreation = nil
@@ -428,7 +444,7 @@ final class MentorFeatureStore: ObservableObject {
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
-            guard await flushDraft(), !Task.isCancelled else { return }
+            guard await flushPendingEdits(), !Task.isCancelled else { return }
             let revision = state.draftRevision
             let text = state.inputText
             do {
@@ -458,7 +474,7 @@ final class MentorFeatureStore: ObservableObject {
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
-            guard await flushDraft(), !Task.isCancelled else { return }
+            guard await flushPendingEdits(), !Task.isCancelled else { return }
             let revision = state.draftRevision
             let text = state.inputText
             do {
@@ -569,7 +585,7 @@ final class MentorFeatureStore: ObservableObject {
     /// Switching editors is disabled until queued writes finish. A failed edit
     /// must be retried before another draft can replace its in-memory text.
     func selectUnderstandingDraft(id: UUID) {
-        guard state.pendingUnderstandingOperations == 0, state.understandingError == nil,
+        guard sessionTransitionID == nil, state.pendingUnderstandingOperations == 0, state.understandingError == nil,
               let draft = state.understandings.first(where: { $0.id == id }),
               draft.sessionID == state.session?.id, draft.state == .draft else { return }
         understandingGeneration = UUID()
@@ -578,7 +594,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func beginUnderstanding(previousRevisionID: UUID? = nil) {
-        guard state.session != nil, state.pendingUnderstandingOperations == 0,
+        guard sessionTransitionID == nil, state.session != nil, state.pendingUnderstandingOperations == 0,
               state.understandingError == nil else { return }
         var initialText = ""
         if let previousRevisionID {
@@ -602,7 +618,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func saveUnderstanding(text: String) {
-        guard state.session != nil, state.understanding?.state != .confirmed,
+        guard sessionTransitionID == nil, !state.isConfirmingUnderstanding,
+              state.session != nil, state.understanding?.state != .confirmed,
               state.understanding != nil || pendingUnderstandingCreation != nil else { return }
         state.understandingInputText = text
         // A failed creation has no writable row yet; retain edits for its retry.
@@ -611,7 +628,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func retryUnderstandingSave() {
-        guard state.pendingUnderstandingOperations == 0, state.understandingError != nil else { return }
+        guard sessionTransitionID == nil, state.pendingUnderstandingOperations == 0, state.understandingError != nil else { return }
         if let pending = pendingUnderstandingCreation {
             enqueueUnderstanding(.begin(pending.id, pending.previousRevisionID))
             enqueueUnderstanding(.save(state.understandingInputText))
@@ -620,7 +637,12 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
-    func confirmUnderstanding() { enqueueUnderstanding(.confirm) }
+    func confirmUnderstanding() {
+        guard sessionTransitionID == nil, !state.isConfirmingUnderstanding, state.session != nil,
+              state.understanding != nil || pendingUnderstandingCreation != nil else { return }
+        state.isConfirmingUnderstanding = true
+        enqueueUnderstanding(.confirm)
+    }
 
     /// Serialize local edits independently of model work. Confirmation reads the
     /// last successfully saved revision after all earlier commands have finished.
@@ -635,6 +657,7 @@ final class MentorFeatureStore: ObservableObject {
                   state.session?.id == sessionID else { return }
             defer { if understandingGeneration == generation, state.session?.id == sessionID {
                 state.pendingUnderstandingOperations -= 1
+                if case .confirm = command { state.isConfirmingUnderstanding = false }
             } }
             do {
                 let saved: MentorUnderstanding
