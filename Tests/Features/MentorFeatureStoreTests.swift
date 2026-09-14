@@ -846,6 +846,73 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.inputText, "不能漏存的原话")
     }
 
+    func testSharedGatewayUsesInjectedPromptAndPersistsOwnedAuditBeforeResponse() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let runs = SQLitePromptRunRepository(database: db)
+        let base = MentorStoreFixtureTransport()
+        let center = CentralLLMDecisionCenter(base: PromptTracingLLMClient(base: base, repository: runs,
+            modelProvider: "fixture", modelName: "shared-model", mentorAudit: repo))
+        let store = MentorFeatureStore(repository: repo, transport: center, promptProvider: MentorTestPromptProvider())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "经过共享模型入口的原话")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let request = try XCTUnwrap(base.lastRequest)
+        XCTAssertEqual(request.prompt.version, "test-injected.2")
+        let savedRuns = try await runs.recentPromptRuns(limit: 10)
+        let run = try XCTUnwrap(savedRuns.first)
+        XCTAssertEqual(savedRuns.count, 1)
+        XCTAssertEqual(run.id, request.traceID)
+        XCTAssertEqual(run.promptVersion, "test-injected.2")
+        XCTAssertEqual(run.requestSummary, request.inputSummary)
+        XCTAssertEqual(run.modelName, "shared-model")
+        let owner = try await db.dbQueue.read { try String.fetchOne($0,
+            sql: "SELECT mentor_request_id FROM prompt_runs WHERE id = ?", arguments: [run.id.uuidString]) }
+        XCTAssertEqual(owner, request.mentorAuditToken?.requestID.uuidString)
+        // The request is now terminal. Replaying it must fail before a second model call.
+        do { _ = try await center.complete(request); XCTFail("Terminal request reached the model") } catch {}
+        XCTAssertEqual(base.calls, 1)
+    }
+
+    func testSharedGatewayMissingAuditRejectsBeforeNetwork() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let runs = SQLitePromptRunRepository(database: db)
+        let base = MentorStoreFixtureTransport()
+        let center = CentralLLMDecisionCenter(base: PromptTracingLLMClient(base: base, repository: runs,
+            modelProvider: "fixture", modelName: "missing-audit"))
+        let store = MentorFeatureStore(repository: repo, transport: center)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "审计缺失时不能发出")
+        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+        XCTAssertEqual(base.calls, 0)
+        XCTAssertNil(store.state.response)
+        let saved = try await runs.recentPromptRuns(limit: 10)
+        XCTAssertTrue(saved.isEmpty)
+    }
+
+    func testSharedGatewayAuditWriteFailureDoesNotPublishUnauditedResponse() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let runs = SQLitePromptRunRepository(database: db)
+        let base = MentorStoreFixtureTransport()
+        let center = CentralLLMDecisionCenter(base: PromptTracingLLMClient(base: base, repository: runs,
+            modelProvider: "fixture", modelName: "audit-failure", mentorAudit: repo))
+        let store = MentorFeatureStore(repository: repo, transport: center)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_mentor_trace BEFORE INSERT ON prompt_runs BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.submit(text: "原话仍需保留")
+        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+        XCTAssertEqual(base.calls, 1)
+        XCTAssertNil(store.state.response)
+        let items = try await repo.items(sessionID: XCTUnwrap(store.state.session?.id))
+        XCTAssertEqual(items.filter { $0.kind == .user }.count, 1)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 0)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -868,7 +935,7 @@ final class MentorFeatureStoreTests: XCTestCase {
     }
 }
 
-private final class MentorStoreFixtureTransport: MentorTransport, @unchecked Sendable {
+private final class MentorStoreFixtureTransport: MentorTransport, LLMClient, @unchecked Sendable {
     private(set) var calls = 0
     private(set) var lastRequest: LLMRequest?
     func complete(_ request: LLMRequest) async throws -> Data {
@@ -917,5 +984,13 @@ private final class TeachingIntentTransport: MentorTransport {
             "body": "先补充一个片段", "question": "当时发生了什么？", "question_purpose": "material",
             "source_refs": [], "lesson_ref": NSNull(), "suggested_actions": ["finish"]
         ])
+    }
+}
+
+private struct MentorTestPromptProvider: PromptProvider {
+    func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
+        let base = LocalPromptProvider().template(for: id, mode: mode)
+        return PromptTemplate(id: id, version: "test-injected.2", systemText: base.systemText,
+            userText: base.userText, outputSchemaVersion: base.outputSchemaVersion)
     }
 }

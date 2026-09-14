@@ -5,6 +5,9 @@ protocol MentorTransport {
     func complete(_ request: LLMRequest) async throws -> Data
 }
 
+// The application can pass its shared gateway without constructing a feature-specific client.
+extension CentralLLMDecisionCenter: MentorTransport {}
+
 struct MentorFeatureState: Equatable {
     enum Phase: Equatable { case idle, editing, reading, selectingLesson, lessonExhausted, submitting, showingResponse, paused, ended, failed(String) }
     var phase: Phase = .idle
@@ -43,6 +46,7 @@ final class MentorFeatureStore: ObservableObject {
     @Published private(set) var state = MentorFeatureState()
     private let repository: MentorRepository
     private let transport: MentorTransport
+    private let promptProvider: PromptProvider
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
     private let now: () -> Date
@@ -70,9 +74,10 @@ final class MentorFeatureStore: ObservableObject {
     private var historyGeneration = UUID()
 
     init(repository: MentorRepository, transport: MentorTransport, catalog: MentorLessonCatalog? = nil,
-         timeZone: TimeZone = .current, now: @escaping () -> Date = { .now }) {
+         promptProvider: PromptProvider = LocalPromptProvider(), timeZone: TimeZone = .current, now: @escaping () -> Date = { .now }) {
         self.repository = repository
         self.transport = transport
+        self.promptProvider = promptProvider
         self.catalog = catalog
         self.timeZone = timeZone
         self.now = now
@@ -593,7 +598,7 @@ final class MentorFeatureStore: ObservableObject {
             let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
                 responseIntent: intent == "explain" ? .directTeaching : .discuss,
                 currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
-            var request = LLMRequest(prompt: LocalPromptProvider().template(for: .mentorRespond, mode: .standard),
+            var request = LLMRequest(prompt: promptProvider.template(for: .mentorRespond, mode: .standard),
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
             request.mentorExecutionPolicy = .m1

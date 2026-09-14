@@ -413,3 +413,13 @@ Store 新增按 ID 选择当前会话未确认草稿的入口，恢复多组草�
 验证：MingSi Dev 第一批 Store / 仓储 / 响应解析 / LocalPromptProvider 127 项通过；扩展发现缺少新 PromptID 评估用例，补齐后 PromptEvalFixtureTests / TodayAIServiceContextTests / LocalPromptProviderTests 170 项通过（Test-MingSi-2026.09.15_00-50-51-+0800.xcresult）。最后新增 v65 有数据升级和冻结后命令重放验证，Store / 仓储 70 项通过（Test-MingSi-2026.09.15_00-52-35-+0800.xcresult），均 0 失败 / 0 跳过。注入上下文 UPDATE 失败证明零模型调用；冻结快照与实际 inputSummary 逐字一致。终态故障测试限定为终态 UPDATE，继续验证模型失败后仅重试本地收尾。git diff --check 通过。
 
 剩余范围：App 注入中央 PromptProvider / 实际 transport、AI 理解完整请求路径、正式内容审核、真实模型语义评估、迁移备份与能力降级、共享前台超时预算及页面仍未完整实现。登记阶段仍有 prepared 占位上下文，只有冻结成功才发起模型调用；不能声称任意 interrupted 准备请求已经发送。当前工作树验证不等于干净 checkout。对原本已有修改的 AppStore / TodayAIService / MockLLMClient 仅暂存新 PromptID 所需独立改动，其余保持未提交。内部未开放能力无需用户发布说明，M1 仍未交付。
+
+## 2026-09-15：F08 中央模型依赖桥接与发送前审计检查
+
+CentralLLMDecisionCenter 直接适配 MentorTransport，Store 新增可注入 PromptProvider，默认保留 LocalPromptProvider；不再在每次提交时绕过注入实例构造模板。这样 App 组装时可以传入同一个模型入口及有效提示词提供器，导师无需另存模型配置或自行创建 HTTP 客户端。
+
+PromptTracingLLMClient 对导师 PromptID、导师策略或所有权标记的请求，在调用 base 前要求完整策略、token 和 mentorAudit，并校验当前请求归属；缺失依赖、终态或失效归属不先联系模型。传输后仍由原有 savePromptRun 事务再次校验并保存，保存失败不向 Store 返回可展示响应。取消检查位于调用前与预检之后。
+
+验证：MingSi Dev 上 Store、MentorPersistence 和四项旧 PromptTracing 回归合计 77 项通过、0 失败、0 跳过，已核对 Test-MingSi-2026.09.15_00-57-04-+0800.xcresult。新增三项集成测试走真实 CentralLLMDecisionCenter → PromptTracingLLMClient → 注入测试客户端：注入模板版本进入实际请求和 PromptRun，审计请求 ID 与快照一致；终态重放与缺少审计时不增加模型调用；注入 PromptRun INSERT 故障后原话保留且没有助手条目。git diff --check 通过。
+
+剩余范围：AppStore 的生产组装仍需提供同库 MentorRepository 及 mentorAudit、导航和设置刷新策略；本轮没有调用远端模型或验证真实 Keychain 配置。已检查 DirectGLM 的导师策略会使用现有执行器，但这仅约束传输阶段，不能声称提交前本地准备和审计已纳入完整 30 秒前台预算。页面、共享占用、正式语义评估与内容审核仍待完成。内部依赖桥接不代表功能已在 App 开放，无需用户发布说明；保留其他已有工作树修改。

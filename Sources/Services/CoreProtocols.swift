@@ -1385,6 +1385,16 @@ final class PromptTracingLLMClient: LLMClient {
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        // Reject missing or stale ownership before contacting the endpoint. The
+        // atomic audit write below checks again after the transport returns.
+        try Task.checkCancellation()
+        if request.mentorAuditToken != nil || request.mentorExecutionPolicy != nil
+            || request.prompt.id == .mentorRespond || request.prompt.id == .mentorDraftUnderstanding {
+            guard let token = request.mentorAuditToken, request.mentorExecutionPolicy != nil,
+                  let mentorAudit else { throw PromptTracingError.missingMentorAudit }
+            try await mentorAudit.validate(token)
+            try Task.checkCancellation()
+        }
         do {
             let data = try await base.complete(request)
             try await saveRun(for: request, responseData: data, error: nil)
