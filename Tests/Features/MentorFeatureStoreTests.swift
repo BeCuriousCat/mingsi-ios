@@ -322,6 +322,50 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(saved?.lifecycle, .ended)
     }
 
+    func testLocalLessonSwitchPreservesDraftAndExhaustsWithoutRequests() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport, catalog: try catalog())
+        store.start(entry: "discuss", initialText: "还想继续说的事")
+        try await waitUntil { store.state.phase == .editing }
+        var seen = Set<String>()
+        for _ in 0..<24 {
+            store.submit(intent: "another_lesson")
+            store.submit(intent: "another_lesson") // ignored while selecting
+            try await waitUntil { store.state.phase == .reading }
+            let lesson = try XCTUnwrap(store.state.lesson)
+            XCTAssertTrue(seen.insert(lesson.lesson.id).inserted)
+            XCTAssertEqual(store.state.inputText, "还想继续说的事")
+            store.acknowledgeLesson()
+        }
+        store.submit(intent: "another_lesson")
+        try await waitUntil { store.state.phase == .lessonExhausted }
+        XCTAssertNil(store.state.lesson)
+        XCTAssertEqual(seen.count, 24)
+        XCTAssertEqual(store.state.timeline.count, 24)
+        XCTAssertEqual(transport.calls, 0)
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(count, 0)
+        store.finish()
+        try await waitUntil { store.state.phase == .ended }
+    }
+
+    func testLessonSwitchFailurePreservesCurrentReading() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport, catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let first = store.state.lesson
+        // Without an actual presentation receipt the next selection must fail.
+        store.selectAnotherLesson()
+        try await waitUntil { store.state.lessonError != nil }
+        XCTAssertEqual(store.state.phase, .reading)
+        XCTAssertEqual(store.state.lesson, first)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }

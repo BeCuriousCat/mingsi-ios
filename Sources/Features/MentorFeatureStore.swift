@@ -6,11 +6,12 @@ protocol MentorTransport {
 }
 
 struct MentorFeatureState: Equatable {
-    enum Phase: Equatable { case idle, editing, reading, submitting, showingResponse, paused, ended, failed(String) }
+    enum Phase: Equatable { case idle, editing, reading, selectingLesson, lessonExhausted, submitting, showingResponse, paused, ended, failed(String) }
     var phase: Phase = .idle
     var session: MentorSession?
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
+    var lessonError: String?
     var response: MentorValidatedTurn?
     var responseItemID: UUID?
     var acknowledgedResponseItemID: UUID?
@@ -140,6 +141,7 @@ final class MentorFeatureStore: ObservableObject {
 
     func submit(intent: String = "reply", text: String? = nil) {
         if intent == "finish" { finish(); return }
+        if intent == "another_lesson" { selectAnotherLesson(); return }
         guard let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
         if state.phase == .showingResponse, state.acknowledgedResponseItemID != state.responseItemID { return }
         // Teaching buttons are intent only; never resubmit the draft as evidence.
@@ -148,6 +150,42 @@ final class MentorFeatureStore: ObservableObject {
         state.phase = .submitting
         requestTask?.cancel()
         requestTask = Task { [weak self] in await self?.submitTask(session: session, intent: intent, text: value) }
+    }
+
+    /// Reading and changing lessons are local actions even when a draft exists.
+    func selectAnotherLesson() {
+        guard let session = state.session,
+              [.editing, .reading, .showingResponse, .lessonExhausted].contains(state.phase) else { return }
+        guard let catalog else {
+            state.lessonError = "教材暂不可用，请稍后重试。"
+            return
+        }
+        let previousPhase = state.phase
+        let receipt = presentationTask
+        state.phase = .selectingLesson
+        state.lessonError = nil
+        requestTask?.cancel()
+        requestTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                await receipt?.value
+                try Task.checkCancellation()
+                guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
+                try Task.checkCancellation()
+                let lesson = try await repository.selectNextLesson(sessionID: current.id, itemID: UUID(),
+                    expectedEpoch: current.requestEpoch, catalog: catalog, at: .now, timeZone: timeZone)
+                let items = try await repository.items(sessionID: current.id)
+                try Task.checkCancellation()
+                guard state.session?.id == current.id else { return }
+                state.timeline = items
+                state.lesson = lesson
+                state.phase = lesson == nil ? .lessonExhausted : .reading
+            } catch {
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                state.lessonError = String(describing: error)
+                state.phase = previousPhase
+            }
+        }
     }
 
     func finish() {

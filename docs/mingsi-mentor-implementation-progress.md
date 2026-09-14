@@ -339,3 +339,11 @@ Store 在创建请求后保留其 ID。传输或协议校验失败、模型预�
 验证：MingSi Dev 上 MentorFeatureStoreTests 15 项通过、0 失败、0 跳过，已核对 xcresult。新增直接讲解测试核验实际发送 JSON、无用户来源、原草稿保留以及补材料回应拒绝；结束意图测试核验零传输调用、草稿保留与 ended 持久化。此前连续交流与失败终态测试回归通过。
 
 剩余范围：未接入正式 Prompt 模板；another_lesson、draft_understanding 等按钮还需按各自本地 / 模型职责完整路由，不能把任意 intent 字符串视为已实现功能。正文隐含追问仍需语义评估。本次为未开放流程内部修复，无需用户发布说明。
+
+## 2026-09-15：F06 / F07 离线换题与耗尽状态接入 Store
+
+another_lesson 现在路由到本地 selectAnotherLesson，不再被当作模型轮次提交。选择期间进入 selectingLesson，防止连点；等待已发出的呈现回执完成后使用当前会话 epoch 调用已有教材选择事务。选择成功更新教材与时间线，保留原输入草稿；没有候选时进入 lessonExhausted，不循环推荐已呈现内容。缺少目录或选择失败暴露 lessonError，保留此前阅读状态与内容。
+
+验证：MingSi Dev 上 MentorFeatureStoreTests 17 项通过、0 失败、0 跳过，已核对 xcresult。新增完整遍历 24 份测试教材、逐次呈现、换题连点、去重耗尽、草稿保留、结束和零 transport / 零 mentor_requests 验证；另覆盖未呈现当前教材时换题拒绝但保留阅读内容。测试使用 approved fixture，不代表正式教材已审核。
+
+剩余范围：正式页面、教材反馈入口、同日恢复、发布教材审核与语义质量验收仍待完成。内部流程尚未开放，无需用户发布说明，不代表 F06 / F07 整体交付。
