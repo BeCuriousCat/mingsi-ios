@@ -3,6 +3,106 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testUnderstandingGroupDeletionRemovesDerivedCopiesButPreservesUserMaterial() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "独立的交流草稿", draftRevision: 1, activityAt: .now))
+        let note = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: note.id, editRevision: 1, text: "要删除的理解")
+        _ = try await repo.confirmUnderstanding(sessionID: id, draftID: note.id, expectedEditRevision: 1)
+        _ = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: note.id)
+        let other = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: other.id, editRevision: 1, text: "独立的另一组理解")
+        let context = "{\"sources\":[{\"ref\":\"understanding:\(note.id.uuidString)\",\"content\":\"要删除的理解\"}]}"
+        let first = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "用户原话保留", intent: "reply", contextSnapshotJSON: context))
+        let output = "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"理解的派生回应\",\"question\":null,\"question_purpose\":null,\"source_refs\":[],\"lesson_ref\":null,\"suggested_actions\":[]}"
+        let run = PromptRun(promptId: PromptID.mentorRespond.rawValue, promptVersion: "1", outputSchemaVersion: 1,
+            modelProvider: "test", modelName: "test", sessionMode: "standard", sourceRecordIds: ["understanding:" + note.id.uuidString],
+            requestSummary: context, responseJSON: output)
+        try await repo.savePromptRun(run, token: .init(sessionID: id, requestID: first, requestEpoch: 0, semanticRevision: 0))
+        let firstItem = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: output)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: firstItem.id, at: .now, timeZone: .current)
+        let downstream = "{\"sources\":[{\"ref\":\"item:\(firstItem.id.uuidString)\",\"content\":\"理解的派生回应\"}]}"
+        let second = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "第二条用户原话也保留", intent: "reply", contextSnapshotJSON: downstream))
+        let secondItem = try await repo.commitResponse(sessionID: id, requestID: second, payloadJSON: output)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: secondItem.id, at: .now, timeZone: .current)
+        let pending = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "独立的新输入", intent: "reply", contextSnapshotJSON: "{}"))
+        let sourceLink = MentorSourceLink(id: UUID(), sessionID: id, ownerKind: .understanding, ownerID: other.id,
+            sourceKind: "understanding", sourceID: note.id.uuidString, sourceVersion: nil, contentHash: nil, availability: .available)
+        try await repo.saveSourceLink(sourceLink)
+        try await repo.deleteUnderstandingGroup(sessionID: id, groupID: note.groupID)
+        let notes = try await repo.understandings(sessionID: id)
+        XCTAssertEqual(notes.map(\.id), [other.id])
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertTrue(items.allSatisfy { $0.kind == .user })
+        let requests = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(requests, 1)
+        let state = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [pending.uuidString]) }
+        XCTAssertEqual(state, "cancelled")
+        let runs = try await SQLitePromptRunRepository(database: db).recentPromptRuns(limit: 10)
+        XCTAssertTrue(runs.isEmpty)
+        let links = try await repo.sourceLinks(sessionID: id, ownerID: other.id)
+        XCTAssertEqual(links.first?.availability, .deleted)
+        let session = try await repo.session(id: id)
+        XCTAssertEqual(session?.draftText, "独立的交流草稿")
+        XCTAssertEqual(session?.requestEpoch, 1)
+        XCTAssertEqual(session?.semanticRevision, 1)
+    }
+
+    func testUnderstandingDeletionPreservesLegacyGroupsAndOtherOwnerKindsWithSameUUID() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let note = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        let legacy = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        try await db.dbQueue.write { db in
+            try db.execute(sql: "UPDATE mentor_understandings SET origin = 'legacy' WHERE id = ?", arguments: [legacy.id.uuidString])
+        }
+        try await repo.appendItem(MentorTimelineItem(id: note.id, sessionID: id, sequence: 1,
+            kind: .user, payloadJSON: "{\"text\":\"独立原话\"}"))
+        for (kind, owner) in [(MentorSourceOwnerKind.item, note.id), (.understanding, legacy.id)] {
+            try await repo.saveSourceLink(MentorSourceLink(id: UUID(), sessionID: id, ownerKind: kind, ownerID: owner,
+                sourceKind: "understanding", sourceID: note.id.uuidString, sourceVersion: nil,
+                contentHash: nil, availability: .available))
+        }
+        try await repo.deleteUnderstandingGroup(sessionID: id, groupID: note.groupID)
+        let notes = try await repo.understandings(sessionID: id)
+        XCTAssertEqual(notes.map(\.id), [legacy.id])
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.map(\.id), [note.id])
+        for owner in [note.id, legacy.id] {
+            let links = try await repo.sourceLinks(sessionID: id, ownerID: owner)
+            XCTAssertEqual(links.count, 1)
+            XCTAssertEqual(links.first?.availability, .deleted)
+        }
+    }
+
+    func testUnderstandingGroupDeletionOwnershipAndTransactionRollback() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "原文", draftRevision: 1, activityAt: .now))
+        let note = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        do { try await repo.deleteUnderstandingGroup(sessionID: UUID(), groupID: note.groupID); XCTFail("Must validate ownership") } catch {}
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_group_delete BEFORE UPDATE OF request_epoch ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do { try await repo.deleteUnderstandingGroup(sessionID: id, groupID: note.groupID); XCTFail("Must roll back whole deletion") } catch {}
+        let retained = try await repo.understandings(sessionID: id)
+        XCTAssertEqual(retained, [note])
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_group_delete") }
+        try await repo.deleteUnderstandingGroup(sessionID: id, groupID: note.groupID)
+        let deleted = try await repo.understandings(sessionID: id)
+        XCTAssertTrue(deleted.isEmpty)
+    }
+
     func testMentorGatewayDeadlineIncludesUncooperativePreflightAndAudit() async throws {
         for holdPreflight in [true, false] {
             let db = try AppDatabase(dbQueue: DatabaseQueue())

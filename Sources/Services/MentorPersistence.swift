@@ -103,6 +103,7 @@ protocol MentorRepository {
     func saveUnderstandingDraft(sessionID: UUID, draftID: UUID, editRevision: Int, text: String) async throws -> MentorUnderstanding
     func confirmUnderstanding(sessionID: UUID, draftID: UUID, expectedEditRevision: Int) async throws -> MentorUnderstanding
     func understandings(sessionID: UUID) async throws -> [MentorUnderstanding]
+    func deleteUnderstandingGroup(sessionID: UUID, groupID: UUID) async throws
     func saveSourceLink(_ link: MentorSourceLink) async throws
     func sourceLinks(sessionID: UUID, ownerID: UUID) async throws -> [MentorSourceLink]
     func createSession(_ session: MentorSession) async throws
@@ -256,6 +257,116 @@ final class SQLiteMentorRepository: MentorRepository {
         try await database.dbQueue.read { db in
             try MentorUnderstandingRow.filter(Column("session_id") == sessionID.uuidString)
                 .order(Column("group_id"), Column("revision")).fetchAll(db).map { try $0.model() }
+        }
+    }
+
+    /// Delete a version group and model-owned copies derived from its references.
+    /// Original user items and independently authored understanding groups are retained.
+    func deleteUnderstandingGroup(sessionID: UUID, groupID: UUID) async throws {
+        try await database.dbQueue.write { db in
+            let notes = try MentorUnderstandingRow.fetchAll(db)
+            let group = notes.filter { $0.groupID == groupID.uuidString }
+            guard !group.isEmpty, group.allSatisfy({ $0.sessionID == sessionID.uuidString }) else {
+                throw PersistenceError.validationFailed("understanding group is not owned")
+            }
+            let requests = try MentorRequestRow.fetchAll(db)
+            let items = try MentorItemRow.fetchAll(db)
+            let links = try MentorSourceLinkRow.fetchAll(db, sql: "SELECT * FROM mentor_source_links")
+            let results = try Row.fetchAll(db, sql: "SELECT request_id, item_id FROM mentor_request_results")
+            let audits = try PromptRunRow.fetchAll(db)
+            var auditIDs = Set<String>()
+            let noteIDs = Set(group.map(\.id))
+            var requestIDs = Set<String>()
+            var itemIDs = Set<String>()
+            var affectedSessions: Set<String> = [sessionID.uuidString]
+
+            func references(_ json: String?) -> Set<String> {
+                guard let json, let data = json.data(using: .utf8),
+                      let value = try? JSONSerialization.jsonObject(with: data) else { return [] }
+                if let array = value as? [String] { return Set(array.map { $0.lowercased() }) }
+                guard let object = value as? [String: Any] else { return [] }
+                let sources = (object["sources"] as? [[String: Any]] ?? []).compactMap { $0["ref"] as? String }
+                let direct = object["source_refs"] as? [String] ?? []
+                return Set((sources + direct).map { $0.lowercased() })
+            }
+            // Follow actual source edges and retry/result ownership to a fixed point.
+            while true {
+                let count = noteIDs.count + requestIDs.count + itemIDs.count + auditIDs.count
+                let removedRefs = Set(noteIDs.map { "understanding:" + $0.lowercased() } +
+                                      itemIDs.map { "item:" + $0.lowercased() })
+                for request in requests where !requestIDs.contains(request.id) {
+                    if !references(request.contextSnapshotJSON).isDisjoint(with: removedRefs) ||
+                       !references(request.registrationContextJSON).isDisjoint(with: removedRefs) ||
+                       request.retryOf.map({ requestIDs.contains($0) }) == true {
+                        requestIDs.insert(request.id)
+                        affectedSessions.insert(request.sessionID)
+                    }
+                }
+                for result in results {
+                    let requestID: String = result["request_id"]
+                    let itemID: String = result["item_id"]
+                    if requestIDs.contains(requestID) { itemIDs.insert(itemID) }
+                    if itemIDs.contains(itemID) { requestIDs.insert(requestID) }
+                }
+                for audit in audits {
+                    let refs = references(audit.requestSummary).union(references(audit.responseJson))
+                        .union(references(audit.sourceRecordIdsJson)).union(references(audit.contextRecordIdsJson))
+                    if !refs.isDisjoint(with: removedRefs) {
+                        auditIDs.insert(audit.id)
+                        if let requestID = audit.mentorRequestId { requestIDs.insert(requestID) }
+                        if let owner = audit.mentorSessionId { affectedSessions.insert(owner) }
+                    }
+                }
+                for item in items where item.kind == "assistant" &&
+                    !references(item.payloadJSON).isDisjoint(with: removedRefs) {
+                    itemIDs.insert(item.id)
+                    affectedSessions.insert(item.sessionID)
+                }
+                for link in links {
+                    let ref = (link.sourceKind + ":" + link.sourceID).lowercased()
+                    guard removedRefs.contains(ref), let owner = link.ownerUUID else { continue }
+                    affectedSessions.insert(link.sessionID)
+                    switch link.ownerKind {
+                    case "request": requestIDs.insert(owner)
+                    case "item":
+                        if items.contains(where: { $0.id == owner && $0.kind == "assistant" }) { itemIDs.insert(owner) }
+                    case "understanding":
+                        // Other groups may contain user writing, including legacy rows
+                        // of unknown authorship. Retain them with unavailable sources.
+                        break
+                    default: break
+                    }
+                }
+                if count == noteIDs.count + requestIDs.count + itemIDs.count + auditIDs.count { break }
+            }
+            // Request results may identify a derived item even if its payload has no refs.
+            affectedSessions.formUnion(items.filter { itemIDs.contains($0.id) }.map(\.sessionID))
+            affectedSessions.formUnion(notes.filter { noteIDs.contains($0.id) }.map(\.sessionID))
+            affectedSessions.formUnion(requests.filter { requestIDs.contains($0.id) }.map(\.sessionID))
+            func placeholders(_ ids: Set<String>) -> String { Array(repeating: "?", count: ids.count).joined(separator: ",") }
+            func delete(_ table: String, column: String, ids: Set<String>) throws {
+                guard !ids.isEmpty else { return }
+                try db.execute(sql: "DELETE FROM \(table) WHERE \(column) IN (\(placeholders(ids)))",
+                               arguments: StatementArguments(Array(ids)))
+            }
+            let removedRefs = Set(noteIDs.map { "understanding:" + $0.lowercased() } + itemIDs.map { "item:" + $0.lowercased() })
+            for link in links where removedRefs.contains((link.sourceKind + ":" + link.sourceID).lowercased()) {
+                try db.execute(sql: "UPDATE mentor_source_links SET availability = 'deleted' WHERE id = ?", arguments: [link.id])
+            }
+            for (kind, ids) in [("understanding", noteIDs), ("request", requestIDs), ("item", itemIDs)] where !ids.isEmpty {
+                try db.execute(sql: "DELETE FROM mentor_source_links WHERE owner_kind = ? AND owner_uuid IN (\(placeholders(ids)))",
+                               arguments: StatementArguments([kind] + Array(ids)))
+            }
+            try delete("prompt_runs", column: "id", ids: auditIDs)
+            try delete("prompt_runs", column: "mentor_request_id", ids: requestIDs)
+            try delete("mentor_requests", column: "id", ids: requestIDs)
+            try delete("mentor_items", column: "id", ids: itemIDs)
+            try delete("mentor_understandings", column: "id", ids: noteIDs)
+            // Invalidate in-flight audits/commits based on the pre-deletion graph.
+            try db.execute(sql: "UPDATE mentor_requests SET state = 'cancelled' WHERE session_id IN (\(placeholders(affectedSessions))) AND state IN ('prepared','in_flight','response_received')",
+                           arguments: StatementArguments(Array(affectedSessions)))
+            try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = request_epoch + 1, semantic_revision = semantic_revision + 1 WHERE id IN (\(placeholders(affectedSessions)))",
+                           arguments: StatementArguments(Array(affectedSessions)))
         }
     }
 
