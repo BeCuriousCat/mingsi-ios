@@ -4,6 +4,66 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testSwitchInvalidatesHeldRequestForNewAndExistingDestinations() async throws {
+        for existing in [false, true] {
+            let db = try AppDatabase(dbQueue: DatabaseQueue())
+            let repo = SQLiteMentorRepository(database: db)
+            let held = HeldMentorTransport()
+            let store = MentorFeatureStore(repository: repo, transport: held)
+            let destination = UUID()
+            if existing {
+                try await repo.createSession(MentorSession(id: destination, initialEntry: "discuss", lifecycle: .draft, draftText: "", draftRevision: 0, activityAt: .now))
+            }
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing }
+            let oldID = try XCTUnwrap(store.state.session?.id)
+            store.submit(text: "旧会话原话")
+            try await waitUntil { held.pending != nil }
+            let before = try await repo.session(id: oldID)
+            if existing { store.continueSession(id: destination) }
+            else { store.start(entry: "discuss") }
+            try await waitUntil { store.state.session?.id != oldID && !store.state.isTransitioningSession }
+            let after = try await repo.session(id: oldID)
+            XCTAssertEqual(after?.lifecycle, .paused)
+            XCTAssertEqual(after?.requestEpoch, (before?.requestEpoch ?? 0) + 1)
+            let retry = try await repo.retryableRequest(sessionID: oldID)
+            XCTAssertNotNil(retry)
+            let activeID = store.state.session?.id
+            let payload = try await MentorStoreFixtureTransport().complete(try XCTUnwrap(held.request))
+            held.pending?.resume(returning: payload)
+            held.pending = nil
+            try await waitUntil { held.didReturn }
+            for _ in 0..<10 { await Task.yield() }
+            XCTAssertEqual(store.state.session?.id, activeID)
+            let items = try await repo.items(sessionID: oldID)
+            XCTAssertFalse(items.contains { $0.kind == .assistant })
+        }
+    }
+
+    func testSwitchSuspensionFailureKeepsOriginalDraftAndCanRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss", initialText: "必须保留")
+        try await waitUntil { store.state.phase == .editing }
+        let original = try XCTUnwrap(store.state.session)
+        try await db.dbQueue.write {
+            try $0.execute(sql: "CREATE TRIGGER fail_switch BEFORE UPDATE OF lifecycle ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+        store.start(entry: "discuss")
+        try await waitUntil { !store.state.isTransitioningSession }
+        XCTAssertEqual(store.state.session?.id, original.id)
+        XCTAssertEqual(store.state.inputText, "必须保留")
+        let unchanged = try await repo.session(id: original.id)
+        XCTAssertEqual(unchanged?.requestEpoch, original.requestEpoch)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_switch") }
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.session?.id != original.id }
+        let saved = try await repo.session(id: original.id)
+        XCTAssertEqual(saved?.lifecycle, .paused)
+        XCTAssertEqual(saved?.draftText, "必须保留")
+    }
+
     func testDirectDiscussionPersistsInputAndValidatedResponse() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
@@ -232,6 +292,12 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.retryLastRequest()
         XCTAssertTrue(store.state.canRetryResponseSave)
         XCTAssertEqual(transport.calls, 1)
+        let retainedID = store.state.session?.id
+        store.start(entry: "discuss")
+        store.continueSession(id: UUID())
+        XCTAssertFalse(store.state.isTransitioningSession)
+        XCTAssertEqual(store.state.session?.id, retainedID)
+        XCTAssertTrue(store.state.canRetryResponseSave)
         store.updateInputText("回应保存失败后继续编辑的草稿")
         try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_exit_draft BEFORE UPDATE OF draft_text ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
         store.finish()

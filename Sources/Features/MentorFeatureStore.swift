@@ -201,20 +201,13 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func start(entry: String, initialText: String = "") {
+        guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
             guard await flushPendingEdits(), !Task.isCancelled else { return }
-            understandingGeneration = UUID()
-            state.pendingUnderstandingOperations = 0
-            pendingUnderstandingCreation = nil
-            pendingResponse = nil
-            pendingRequestEnd = nil
-            state.canRetryRequestFinalization = false
-            state.requestFinalizationError = nil
-            state.canRetryResponseSave = false
             await startTask(entry: entry, initialText: initialText)
         }
     }
@@ -262,20 +255,13 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func continueSession(id: UUID) {
+        guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { endSessionTransition(transition) }
             guard await flushPendingEdits(), !Task.isCancelled else { return }
-            understandingGeneration = UUID()
-            state.pendingUnderstandingOperations = 0
-            pendingUnderstandingCreation = nil
-            pendingResponse = nil
-            pendingRequestEnd = nil
-            state.canRetryRequestFinalization = false
-            state.requestFinalizationError = nil
-            state.canRetryResponseSave = false
             do {
                 await self.readingPositionTask?.value
                 try Task.checkCancellation()
@@ -285,12 +271,14 @@ final class MentorFeatureStore: ObservableObject {
                 try Task.checkCancellation()
                 var restored = try await self.restoredState(session: session)
                 try Task.checkCancellation()
+                try await suspendPreviousSession(destinationID: id)
                 if session.lifecycle != .active { try await self.repository.resumeSession(id: id) }
                 try Task.checkCancellation()
                 guard let current = try await self.repository.session(id: id) else { throw MentorFeatureError.missingSession }
                 try Task.checkCancellation()
                 restored.session = current
                 restored.phase = restored.response == nil ? .editing : .showingResponse
+                resetSessionBuffers()
                 self.state = restored
             } catch is CancellationError { return }
             catch {
@@ -725,6 +713,40 @@ final class MentorFeatureStore: ObservableObject {
         return restored
     }
 
+    /// The database epoch, rather than transport cancellation alone, rejects late responses.
+    private func suspendPreviousSession(destinationID: UUID?) async throws {
+        try Task.checkCancellation()
+        guard let previous = state.session, previous.id != destinationID else { return }
+        let text = state.inputText
+        let revision = state.draftRevision
+        guard let current = try await repository.session(id: previous.id) else {
+            throw MentorFeatureError.missingSession
+        }
+        try Task.checkCancellation()
+        if current.lifecycle != .ended && current.lifecycle != .paused {
+            try await repository.suspendSession(id: current.id, ending: false,
+                draftRevision: revision, draftText: text)
+            try Task.checkCancellation()
+            // Keep the old screen truthful if destination activation subsequently fails.
+            let suspended = try await repository.session(id: current.id)
+            try Task.checkCancellation()
+            state.session = suspended
+            state.phase = .paused
+        }
+        try Task.checkCancellation()
+    }
+
+    private func resetSessionBuffers() {
+        understandingGeneration = UUID()
+        state.pendingUnderstandingOperations = 0
+        pendingUnderstandingCreation = nil
+        pendingResponse = nil
+        pendingRequestEnd = nil
+        state.canRetryRequestFinalization = false
+        state.requestFinalizationError = nil
+        state.canRetryResponseSave = false
+    }
+
     private func startTask(entry: String, initialText: String) async {
         do {
             await lessonFeedbackTask?.value
@@ -738,20 +760,24 @@ final class MentorFeatureStore: ObservableObject {
                 guard let session = try await repository.session(id: saved.sessionID) else { throw MentorFeatureError.missingSession }
                 var restored = try await restoredState(session: session, lesson: saved)
                 try Task.checkCancellation()
+                try await suspendPreviousSession(destinationID: session.id)
                 switch session.lifecycle {
                 case .ended: restored.phase = .ended
                 case .paused: restored.phase = .paused
                 default: restored.phase = restored.response == nil ? .reading : .showingResponse
                 }
+                resetSessionBuffers()
                 state = restored
                 return
             }
             try Task.checkCancellation()
+            try await suspendPreviousSession(destinationID: nil)
             let id = UUID()
             try await repository.createSession(MentorSession(id: id, initialEntry: entry, lifecycle: .draft,
                 draftText: initialText, draftRevision: initialText.isEmpty ? 0 : 1, activityAt: now()))
             guard let session = try await repository.session(id: id) else { throw MentorFeatureError.missingSession }
             try Task.checkCancellation()
+            resetSessionBuffers()
             state = MentorFeatureState(phase: .editing, session: session, inputText: initialText,
                 draftRevision: session.draftRevision)
             state.isTransitioningSession = sessionTransitionID != nil
