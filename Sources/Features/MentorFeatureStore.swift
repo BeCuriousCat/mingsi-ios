@@ -37,6 +37,7 @@ final class MentorFeatureStore: ObservableObject {
     private let transport: MentorTransport
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
+    private let now: () -> Date
     private struct PendingResponse {
         let sessionID: UUID
         let requestID: UUID
@@ -56,11 +57,12 @@ final class MentorFeatureStore: ObservableObject {
     private var historyGeneration = UUID()
 
     init(repository: MentorRepository, transport: MentorTransport, catalog: MentorLessonCatalog? = nil,
-         timeZone: TimeZone = .current) {
+         timeZone: TimeZone = .current, now: @escaping () -> Date = { .now }) {
         self.repository = repository
         self.transport = transport
         self.catalog = catalog
         self.timeZone = timeZone
+        self.now = now
     }
 
     deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel() }
@@ -173,7 +175,7 @@ final class MentorFeatureStore: ObservableObject {
                 guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
                 try Task.checkCancellation()
                 let lesson = try await repository.selectNextLesson(sessionID: current.id, itemID: UUID(),
-                    expectedEpoch: current.requestEpoch, catalog: catalog, at: .now, timeZone: timeZone)
+                    expectedEpoch: current.requestEpoch, catalog: catalog, at: now(), timeZone: timeZone)
                 let items = try await repository.items(sessionID: current.id)
                 try Task.checkCancellation()
                 guard state.session?.id == current.id else { return }
@@ -248,7 +250,7 @@ final class MentorFeatureStore: ObservableObject {
             defer { presentationTask = nil }
             do {
                 try await repository.acknowledgePresentation(sessionID: session.id, itemID: itemID,
-                    at: .now, timeZone: timeZone)
+                    at: now(), timeZone: timeZone)
                 // Receipt updates must not overwrite foreground lifecycle or draft edits.
                 guard !Task.isCancelled, state.session?.id == session.id else { return }
                 if isResponse, state.responseItemID == itemID {
@@ -301,16 +303,34 @@ final class MentorFeatureStore: ObservableObject {
         do {
             // Process recovery belongs to application bootstrap, never a new
             // session: other stores may still own active requests.
+            if entry == "listen", initialText.isEmpty,
+               let saved = try await repository.listeningResume(at: now(), timeZone: timeZone) {
+                try Task.checkCancellation()
+                guard let session = try await repository.session(id: saved.sessionID) else { throw MentorFeatureError.missingSession }
+                let items = try await repository.items(sessionID: session.id)
+                try Task.checkCancellation()
+                let phase: MentorFeatureState.Phase
+                switch session.lifecycle {
+                case .ended: phase = .ended
+                case .paused: phase = .paused
+                default: phase = .reading
+                }
+                state = MentorFeatureState(phase: phase, session: session, timeline: items,
+                    lesson: saved, inputText: session.draftText, draftRevision: session.draftRevision)
+                return
+            }
+            try Task.checkCancellation()
             let id = UUID()
             try await repository.createSession(MentorSession(id: id, initialEntry: entry, lifecycle: .draft,
-                draftText: initialText, draftRevision: initialText.isEmpty ? 0 : 1, activityAt: .now))
+                draftText: initialText, draftRevision: initialText.isEmpty ? 0 : 1, activityAt: now()))
             guard let session = try await repository.session(id: id) else { throw MentorFeatureError.missingSession }
+            try Task.checkCancellation()
             state = MentorFeatureState(phase: .editing, session: session, inputText: initialText,
                 draftRevision: session.draftRevision)
             if entry == "listen" {
                 guard let catalog else { throw MentorFeatureError.lessonCatalogUnavailable }
                 guard let lesson = try await repository.selectNextLesson(sessionID: id, itemID: UUID(), expectedEpoch: session.requestEpoch,
-                    catalog: catalog, at: .now, timeZone: timeZone) else { state.phase = .failed("no_lesson"); return }
+                    catalog: catalog, at: now(), timeZone: timeZone) else { state.phase = .failed("no_lesson"); return }
                 state.lesson = lesson
                 state.timeline = try await repository.items(sessionID: id)
                 state.phase = .reading

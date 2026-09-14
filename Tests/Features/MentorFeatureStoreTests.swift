@@ -366,6 +366,36 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(transport.calls, 0)
     }
 
+    func testSameDayListeningRestoresEndedSnapshotWithoutCatalogOrNetwork() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let time = Date(timeIntervalSince1970: 1_789_430_400)
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "listen", lifecycle: .draft,
+            draftText: "保存的草稿", draftRevision: 1, activityAt: time))
+        let selected = try await repo.selectNextLesson(sessionID: id, itemID: UUID(), expectedEpoch: 0,
+            catalog: try catalog(), at: time, timeZone: zone)
+        let lesson = try XCTUnwrap(selected)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: lesson.id, at: time, timeZone: zone)
+        try await repo.saveReadingPosition(sessionID: id, itemID: lesson.id, revision: 1, section: .boundary)
+        try await repo.suspendSession(id: id, ending: true, draftRevision: 1, draftText: "保存的草稿")
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport, timeZone: zone, now: { time })
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .ended }
+        XCTAssertEqual(store.state.session?.id, id)
+        let persisted = try await repo.savedLesson(sessionID: id, itemID: lesson.id)
+        XCTAssertEqual(store.state.lesson, persisted)
+        XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
+        XCTAssertEqual(store.state.inputText, "保存的草稿")
+        XCTAssertEqual(transport.calls, 0)
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_sessions") }
+        XCTAssertEqual(count, 1)
+        let stored = try await repo.session(id: id)
+        XCTAssertEqual(stored?.lifecycle, .ended)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
