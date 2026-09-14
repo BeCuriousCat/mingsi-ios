@@ -39,6 +39,10 @@ struct MentorFeatureState: Equatable {
     var retryError: String?
     var inputText = ""
     var draftRevision = 0
+    var hasUnsavedDraft = false
+    var isSavingDraft = false
+    var draftSaveError: String?
+    var isTransitioningSession = false
 }
 
 /// The M1 flow coordinator. Persistence commands remain the authority for lifecycle
@@ -66,6 +70,15 @@ final class MentorFeatureStore: ObservableObject {
     private var pendingRequestEnd: PendingRequestEnd?
     private var pendingResponse: PendingResponse?
     private var requestTask: Task<Void, Never>?
+    private struct DraftSnapshot: Equatable {
+        let sessionID: UUID
+        let revision: Int
+        let text: String
+    }
+    private var draftDebounceTask: Task<Void, Never>?
+    private var draftWriteTask: Task<Bool, Never>?
+    private var draftWritingSnapshot: DraftSnapshot?
+    private var sessionTransitionID: UUID?
     private var understandingTask: Task<Void, Never>?
     private var understandingGeneration = UUID()
     private var pendingUnderstandingCreation: (id: UUID, previousRevisionID: UUID?)?
@@ -85,7 +98,7 @@ final class MentorFeatureStore: ObservableObject {
         self.now = now
     }
 
-    deinit { readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
+    deinit { draftDebounceTask?.cancel(); draftWriteTask?.cancel(); readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
 
     /// Configuration refresh affects future turns; each submitted turn captures
     /// the dependencies it started with and retains its own cancellation handle.
@@ -94,17 +107,100 @@ final class MentorFeatureStore: ObservableObject {
         self.promptProvider = promptProvider
     }
 
+    func updateInputText(_ text: String) {
+        guard let sessionID = state.session?.id, sessionTransitionID == nil,
+              state.phase != .paused, state.phase != .ended, text != state.inputText else { return }
+        state.inputText = text
+        state.draftRevision += 1
+        state.hasUnsavedDraft = true
+        state.draftSaveError = nil
+        draftDebounceTask?.cancel()
+        let revision = state.draftRevision
+        draftDebounceTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            guard let self, !Task.isCancelled, state.session?.id == sessionID,
+                  state.draftRevision == revision else { return }
+            draftDebounceTask = nil
+            _ = await flushDraft()
+        }
+    }
+
+    /// Flush before navigation/background or submission. Failure leaves the buffer intact.
+    @discardableResult
+    func flushDraft() async -> Bool {
+        draftDebounceTask?.cancel()
+        draftDebounceTask = nil
+        guard let sessionID = state.session?.id else { return true }
+        while state.hasUnsavedDraft, state.session?.id == sessionID {
+            guard !Task.isCancelled else { return false }
+            let snapshot = DraftSnapshot(sessionID: sessionID, revision: state.draftRevision, text: state.inputText)
+            let task: Task<Bool, Never>
+            if draftWritingSnapshot == snapshot, let existing = draftWriteTask {
+                task = existing
+            } else {
+                let previous = draftWriteTask
+                state.isSavingDraft = true
+                draftWritingSnapshot = snapshot
+                task = Task { [weak self] in
+                    _ = await previous?.value
+                    guard let self else { return false }
+                    defer {
+                        if draftWritingSnapshot == snapshot {
+                            draftWritingSnapshot = nil
+                            if state.session?.id == snapshot.sessionID { state.isSavingDraft = false }
+                        }
+                    }
+                    do {
+                        try await repository.saveDraft(sessionID: snapshot.sessionID, revision: snapshot.revision, text: snapshot.text)
+                        if state.session?.id == snapshot.sessionID, state.draftRevision == snapshot.revision {
+                            state.hasUnsavedDraft = false
+                            state.draftSaveError = nil
+                        }
+                        return true
+                    } catch {
+                        if state.session?.id == snapshot.sessionID, state.draftRevision == snapshot.revision {
+                            state.draftSaveError = "草稿尚未保存，请重试。"
+                        }
+                        return false
+                    }
+                }
+                draftWriteTask = task
+            }
+            guard await task.value else { return false }
+        }
+        return !Task.isCancelled && state.session?.id == sessionID
+    }
+
+    private func beginSessionTransition() -> UUID {
+        let id = UUID()
+        sessionTransitionID = id
+        state.isTransitioningSession = true
+        return id
+    }
+
+    private func endSessionTransition(_ id: UUID) {
+        guard sessionTransitionID == id else { return }
+        sessionTransitionID = nil
+        state.isTransitioningSession = false
+    }
+
     func start(entry: String, initialText: String = "") {
-        understandingGeneration = UUID()
-        state.pendingUnderstandingOperations = 0
-        pendingUnderstandingCreation = nil
-        pendingResponse = nil
-        pendingRequestEnd = nil
-        state.canRetryRequestFinalization = false
-        state.requestFinalizationError = nil
-        state.canRetryResponseSave = false
         requestTask?.cancel()
-        requestTask = Task { [weak self] in await self?.startTask(entry: entry, initialText: initialText) }
+        let transition = beginSessionTransition()
+        requestTask = Task { [weak self] in
+            guard let self else { return }
+            defer { endSessionTransition(transition) }
+            guard await flushDraft(), !Task.isCancelled else { return }
+            understandingGeneration = UUID()
+            state.pendingUnderstandingOperations = 0
+            pendingUnderstandingCreation = nil
+            pendingResponse = nil
+            pendingRequestEnd = nil
+            state.canRetryRequestFinalization = false
+            state.requestFinalizationError = nil
+            state.canRetryResponseSave = false
+            await startTask(entry: entry, initialText: initialText)
+        }
     }
 
     func loadRecentSessions(limit: Int = 3) {
@@ -150,18 +246,21 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func continueSession(id: UUID) {
-        understandingGeneration = UUID()
-        state.pendingUnderstandingOperations = 0
-        pendingUnderstandingCreation = nil
-        pendingResponse = nil
-        pendingRequestEnd = nil
-        state.canRetryRequestFinalization = false
-        state.requestFinalizationError = nil
-        state.canRetryResponseSave = false
         requestTask?.cancel()
+        let transition = beginSessionTransition()
         requestTask = Task { [weak self] in
+            guard let self else { return }
+            defer { endSessionTransition(transition) }
+            guard await flushDraft(), !Task.isCancelled else { return }
+            understandingGeneration = UUID()
+            state.pendingUnderstandingOperations = 0
+            pendingUnderstandingCreation = nil
+            pendingResponse = nil
+            pendingRequestEnd = nil
+            state.canRetryRequestFinalization = false
+            state.requestFinalizationError = nil
+            state.canRetryResponseSave = false
             do {
-                guard let self else { return }
                 await self.readingPositionTask?.value
                 try Task.checkCancellation()
                 guard let session = try await self.repository.session(id: id) else {
@@ -180,7 +279,7 @@ final class MentorFeatureStore: ObservableObject {
             } catch is CancellationError { return }
             catch {
                 guard !Task.isCancelled else { return }
-                self?.state.phase = .failed(String(describing: error))
+                self.state.phase = .failed(String(describing: error))
             }
         }
     }
@@ -188,11 +287,11 @@ final class MentorFeatureStore: ObservableObject {
     func submit(intent: String = "reply", text: String? = nil) {
         if intent == "finish" { finish(); return }
         if intent == "another_lesson" { selectAnotherLesson(); return }
-        guard let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
+        guard sessionTransitionID == nil, let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
         if state.phase == .showingResponse, state.acknowledgedResponseItemID != state.responseItemID { return }
         // Teaching buttons are intent only; never resubmit the draft as evidence.
         let value = text ?? (intent == "reply" ? state.inputText : "")
-        if intent == "reply" || text != nil { state.inputText = value }
+        if intent == "reply" || text != nil { updateInputText(value) }
         state.phase = .submitting
         requestTask?.cancel()
         let transport = self.transport
@@ -205,7 +304,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Explicit network retry; local response-save retries never use this path.
     func retryLastRequest() {
-        guard let session = state.session, pendingResponse == nil, pendingRequestEnd == nil,
+        guard sessionTransitionID == nil, let session = state.session, pendingResponse == nil, pendingRequestEnd == nil,
               state.phase != .submitting, state.phase != .selectingLesson else { return }
         let previousPhase = state.phase
         let transport = self.transport
@@ -236,7 +335,7 @@ final class MentorFeatureStore: ObservableObject {
 
     /// Reading and changing lessons are local actions even when a draft exists.
     func selectAnotherLesson() {
-        guard let session = state.session,
+        guard sessionTransitionID == nil, let session = state.session,
               [.editing, .reading, .showingResponse, .lessonExhausted].contains(state.phase) else { return }
         guard let catalog else {
             state.lessonError = "教材暂不可用，请稍后重试。"
@@ -323,42 +422,62 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func finish() {
-        pendingResponse = nil
-        pendingRequestEnd = nil
-        state.canRetryRequestFinalization = false
-        state.requestFinalizationError = nil
-        state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
+        let transition = beginSessionTransition()
         requestTask = Task { [weak self] in
+            guard let self else { return }
+            defer { endSessionTransition(transition) }
+            guard await flushDraft(), !Task.isCancelled else { return }
+            let revision = state.draftRevision
+            let text = state.inputText
             do {
-                guard let self else { return }
                 let current = try await self.repository.session(id: session.id) ?? session
+                try Task.checkCancellation()
                 try await self.repository.suspendSession(id: current.id, ending: true,
-                    draftRevision: self.state.draftRevision,
-                    draftText: self.state.inputText)
+                    draftRevision: revision,
+                    draftText: text)
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                pendingResponse = nil
+                pendingRequestEnd = nil
+                state.canRetryRequestFinalization = false
+                state.requestFinalizationError = nil
+                state.canRetryResponseSave = false
                 self.state.phase = .ended
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+            } catch {
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                self.state.phase = .failed(String(describing: error))
+            }
         }
     }
 
     func pause() {
-        pendingResponse = nil
-        pendingRequestEnd = nil
-        state.canRetryRequestFinalization = false
-        state.requestFinalizationError = nil
-        state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
+        let transition = beginSessionTransition()
         requestTask = Task { [weak self] in
+            guard let self else { return }
+            defer { endSessionTransition(transition) }
+            guard await flushDraft(), !Task.isCancelled else { return }
+            let revision = state.draftRevision
+            let text = state.inputText
             do {
-                guard let self else { return }
                 let current = try await self.repository.session(id: session.id) ?? session
+                try Task.checkCancellation()
                 try await self.repository.suspendSession(id: current.id, ending: false,
-                    draftRevision: self.state.draftRevision,
-                    draftText: self.state.inputText)
+                    draftRevision: revision,
+                    draftText: text)
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                pendingResponse = nil
+                pendingRequestEnd = nil
+                state.canRetryRequestFinalization = false
+                state.requestFinalizationError = nil
+                state.canRetryResponseSave = false
                 self.state.phase = .paused
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+            } catch {
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                self.state.phase = .failed(String(describing: error))
+            }
         }
     }
 
@@ -612,6 +731,7 @@ final class MentorFeatureStore: ObservableObject {
             try Task.checkCancellation()
             state = MentorFeatureState(phase: .editing, session: session, inputText: initialText,
                 draftRevision: session.draftRevision)
+            state.isTransitioningSession = sessionTransitionID != nil
             if entry == "listen" {
                 guard let catalog else { throw MentorFeatureError.lessonCatalogUnavailable }
                 guard let lesson = try await repository.selectNextLesson(sessionID: id, itemID: UUID(), expectedEpoch: session.requestEpoch,
@@ -632,11 +752,8 @@ final class MentorFeatureStore: ObservableObject {
         var submittedRequestID: UUID?
         do {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if retry == nil, !trimmed.isEmpty {
-                let nextRevision = state.draftRevision + 1
-                try await repository.saveDraft(sessionID: session.id, revision: nextRevision, text: text)
-                state.draftRevision = nextRevision
-            }
+            guard await flushDraft() else { throw MentorFeatureError.draftSaveFailed }
+            try Task.checkCancellation()
             let requestID = try await repository.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: session.id,
                 text: trimmed.isEmpty ? nil : text,
                 intent: intent, contextSnapshotJSON: retry?.contextSnapshotJSON ?? "{}", retryOf: retry?.id))
@@ -754,4 +871,4 @@ final class MentorFeatureStore: ObservableObject {
     }
 }
 
-enum MentorFeatureError: Error { case missingSession, lessonCatalogUnavailable, missingSavedLesson }
+enum MentorFeatureError: Error { case missingSession, lessonCatalogUnavailable, missingSavedLesson, draftSaveFailed }

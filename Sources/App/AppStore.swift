@@ -8009,6 +8009,9 @@ final class AppStore: ObservableObject {
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
+        if phase == .inactive || phase == .background, let mentorFeatureStore {
+            Task { _ = await mentorFeatureStore.flushDraft() }
+        }
         switch phase {
         case .active:
             isAppInBackground = false

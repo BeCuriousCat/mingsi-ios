@@ -232,6 +232,15 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.retryLastRequest()
         XCTAssertTrue(store.state.canRetryResponseSave)
         XCTAssertEqual(transport.calls, 1)
+        store.updateInputText("回应保存失败后继续编辑的草稿")
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_exit_draft BEFORE UPDATE OF draft_text ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.finish()
+        try await waitUntil { !store.state.isTransitioningSession }
+        XCTAssertNotNil(store.state.draftSaveError)
+        XCTAssertTrue(store.state.canRetryResponseSave)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_exit_draft") }
+        let flushed = await store.flushDraft()
+        XCTAssertTrue(flushed)
         store.retryResponseSave()
         try await waitUntil { store.state.canRetryResponseSave }
         XCTAssertEqual(transport.calls, 1)
@@ -1127,6 +1136,109 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(MentorContextPayload.self, from: Data(sent.inputSummary.utf8)), expected)
         XCTAssertEqual(store.state.timeline.filter { $0.kind == .user }.count, 1)
         XCTAssertEqual(transport.calls, 1)
+    }
+
+    func testTypingDebouncesDraftWithoutSubmittingUserItems() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.updateInputText("第一段")
+        store.updateInputText("最后的输入")
+        let before = try await repo.session(id: id)
+        XCTAssertEqual(before?.draftText, "")
+        XCTAssertTrue(store.state.hasUnsavedDraft)
+        try await waitUntil { !store.state.hasUnsavedDraft }
+        let saved = try await repo.session(id: id)
+        XCTAssertEqual(saved?.draftText, "最后的输入")
+        XCTAssertEqual(saved?.draftRevision, 2)
+        XCTAssertFalse(store.state.isSavingDraft)
+        XCTAssertEqual(transport.calls, 0)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertTrue(items.isEmpty)
+    }
+
+    func testSubmitFlushPreservesNewTypingWhileModelUsesSubmittedText() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = HeldMentorTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.updateInputText("本轮提交的原话")
+        store.submit()
+        store.updateInputText("等待期间的新草稿")
+        try await waitUntil { transport.pending != nil }
+        let request = try XCTUnwrap(transport.request)
+        let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(request.inputSummary.utf8))
+        XCTAssertEqual(context.sources.filter { $0.role == .user }.map(\.content), ["本轮提交的原话"])
+        let saved = try await repo.session(id: XCTUnwrap(store.state.session?.id))
+        XCTAssertEqual(saved?.draftText, "等待期间的新草稿")
+        transport.pending?.resume(returning: try await MentorStoreFixtureTransport().complete(request))
+        transport.pending = nil
+        try await waitUntil { store.state.phase == .showingResponse }
+        XCTAssertEqual(store.state.inputText, "等待期间的新草稿")
+    }
+
+    func testDraftFailureBlocksSwitchAndRetrySavesBeforeLeaving() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        let old = try XCTUnwrap(store.state.session?.id)
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_draft BEFORE UPDATE OF draft_text ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.updateInputText("不能丢失的草稿")
+        store.start(entry: "discuss", initialText: "下一件事")
+        try await waitUntil { !store.state.isTransitioningSession }
+        XCTAssertEqual(store.state.session?.id, old)
+        XCTAssertEqual(store.state.inputText, "不能丢失的草稿")
+        XCTAssertTrue(store.state.hasUnsavedDraft)
+        XCTAssertNotNil(store.state.draftSaveError)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_draft") }
+        store.start(entry: "discuss", initialText: "下一件事")
+        try await waitUntil { store.state.session?.id != old && !store.state.isTransitioningSession }
+        let saved = try await repo.session(id: old)
+        XCTAssertEqual(saved?.draftText, "不能丢失的草稿")
+        XCTAssertEqual(store.state.inputText, "下一件事")
+    }
+
+    func testPauseAndFinishFlushDraftBeforeLifecycleChange() async throws {
+        for ending in [false, true] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing }
+            let id = try XCTUnwrap(store.state.session?.id)
+            store.updateInputText("离开前最后一句")
+            if ending { store.finish() } else { store.pause() }
+            store.updateInputText("离开过程不能接受的编辑事件")
+            try await waitUntil { store.state.phase == (ending ? .ended : .paused) }
+            let saved = try await repo.session(id: id)
+            XCTAssertEqual(saved?.draftText, "离开前最后一句")
+            XCTAssertEqual(saved?.lifecycle, ending ? .ended : .paused)
+            XCTAssertFalse(store.state.hasUnsavedDraft)
+            XCTAssertFalse(store.state.isTransitioningSession)
+        }
+    }
+
+    func testAppBackgroundFlushesMentorDraftWithoutModelRequest() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let app = AppStore.persistentStore(database: db,
+            apiKeyStore: KeychainAPIKeyStore(service: "mingsi.draft.background.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
+        let prepared = await app.prepareMentorFeature()
+        let feature = try XCTUnwrap(prepared)
+        feature.start(entry: "discuss")
+        try await waitUntil { feature.state.phase == .editing }
+        feature.updateInputText("进入后台之前的文字")
+        app.handleScenePhase(.inactive)
+        app.handleScenePhase(.background)
+        try await waitUntil { !feature.state.hasUnsavedDraft }
+        let saved = try await SQLiteMentorRepository(database: db).session(id: XCTUnwrap(feature.state.session?.id))
+        XCTAssertEqual(saved?.draftText, "进入后台之前的文字")
+        let runs = try await SQLitePromptRunRepository(database: db).recentPromptRuns(limit: 10)
+        XCTAssertTrue(runs.isEmpty)
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {
