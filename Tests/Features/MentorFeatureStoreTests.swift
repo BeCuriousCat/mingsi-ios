@@ -287,6 +287,41 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(statuses, ["failed"])
     }
 
+    func testExplainButtonDoesNotResubmitDraftAndRejectsMaterialQuestion() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = TeachingIntentTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss", initialText: "还没有提交的原话")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(intent: "explain")
+        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+        XCTAssertEqual(store.state.inputText, "还没有提交的原话")
+        let request = try XCTUnwrap(transport.request)
+        let payload = try JSONDecoder().decode(MentorContextPayload.self, from: Data(request.inputSummary.utf8))
+        XCTAssertFalse(payload.allowsMaterialQuestion)
+        XCTAssertEqual(payload.intent, "explain")
+        XCTAssertFalse(payload.sources.contains { $0.role == .user })
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        let items = try await repo.items(sessionID: sessionID)
+        XCTAssertTrue(items.isEmpty, "Intent is not user expression; rejected response must not persist")
+        XCTAssertNil(store.state.response)
+    }
+
+    func testFinishIntentEndsLocallyWithoutTransport() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss", initialText: "下次再说")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(intent: "finish")
+        try await waitUntil { store.state.phase == .ended }
+        XCTAssertEqual(transport.calls, 0)
+        let saved = try await repo.session(id: try XCTUnwrap(store.state.session?.id))
+        XCTAssertEqual(saved?.draftText, "下次再说")
+        XCTAssertEqual(saved?.lifecycle, .ended)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -344,5 +379,17 @@ private final class FailingMentorTransport: MentorTransport {
     func complete(_ request: LLMRequest) async throws -> Data {
         calls += 1
         return try result.get()
+    }
+}
+
+private final class TeachingIntentTransport: MentorTransport {
+    private(set) var request: LLMRequest?
+    func complete(_ request: LLMRequest) async throws -> Data {
+        self.request = request
+        return try JSONSerialization.data(withJSONObject: [
+            "schema_version": "1.0.0", "action": "clarify", "material_status": "missing",
+            "body": "先补充一个片段", "question": "当时发生了什么？", "question_purpose": "material",
+            "source_refs": [], "lesson_ref": NSNull(), "suggested_actions": ["finish"]
+        ])
     }
 }

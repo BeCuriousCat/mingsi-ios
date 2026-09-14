@@ -139,10 +139,12 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func submit(intent: String = "reply", text: String? = nil) {
+        if intent == "finish" { finish(); return }
         guard let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
         if state.phase == .showingResponse, state.acknowledgedResponseItemID != state.responseItemID { return }
-        let value = text ?? state.inputText
-        state.inputText = value
+        // Teaching buttons are intent only; never resubmit the draft as evidence.
+        let value = text ?? (intent == "reply" ? state.inputText : "")
+        if intent == "reply" || text != nil { state.inputText = value }
         state.phase = .submitting
         requestTask?.cancel()
         requestTask = Task { [weak self] in await self?.submitTask(session: session, intent: intent, text: value) }
@@ -298,6 +300,7 @@ final class MentorFeatureStore: ObservableObject {
             guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
             let items = try await repository.items(sessionID: session.id)
             let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
+                responseIntent: intent == "explain" ? .directTeaching : .discuss,
                 currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
             var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "mentor.m1", systemText: "Return the mentor JSON contract.", userText: built.json, outputSchemaVersion: 1),
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
