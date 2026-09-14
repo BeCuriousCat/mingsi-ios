@@ -913,6 +913,74 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 0)
     }
 
+    func testAppAssemblySharesDatabaseAndRetainsMentorAcrossConfigurationRefresh() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let app = AppStore.persistentStore(database: db,
+            apiKeyStore: KeychainAPIKeyStore(service: "mingsi.mentor.tests.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
+        let feature = try XCTUnwrap(app.prepareMentorFeature(catalog: try catalog()))
+        XCTAssertTrue(app.prepareMentorFeature() === feature)
+        feature.start(entry: "listen")
+        try await waitUntil { feature.state.phase == .reading }
+        let lesson = try XCTUnwrap(feature.state.lesson)
+        let repo = SQLiteMentorRepository(database: db)
+        let stored = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(stored, lesson)
+        feature.acknowledgeLesson()
+        feature.selectAnotherLesson()
+        try await waitUntil { feature.state.phase == .reading && feature.state.lesson?.id != lesson.id }
+        feature.acknowledgeLesson()
+        // Presentation is setup for a new discussion; use the repository receipt to await its completion.
+        let current = try XCTUnwrap(feature.state.lesson)
+        try await repo.acknowledgePresentation(sessionID: current.sessionID, itemID: current.id, at: .now, timeZone: .current)
+        feature.submit(text: "未配置模型也要保存原话")
+        try await waitUntil { if case .failed = feature.state.phase { return true }; return false }
+        let runs = try await SQLitePromptRunRepository(database: db).recentPromptRuns(limit: 5)
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs.first?.modelName, "missing-api-key")
+        XCTAssertNotNil(runs.first?.error)
+        app.refreshAPIKeyStatus()
+        XCTAssertTrue(app.mentorFeatureStore === feature)
+        XCTAssertEqual(feature.state.inputText, "未配置模型也要保存原话")
+        XCTAssertEqual(feature.state.session?.id, lesson.sessionID)
+    }
+
+    func testAppAssemblyDisablesMentorOnLegacyDatabaseAndUnconfiguredPreview() throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue(), includesVNextMigrations: false)
+        let app = AppStore.persistentStore(database: db,
+            apiKeyStore: KeychainAPIKeyStore(service: "mingsi.mentor.legacy.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
+        XCTAssertNil(app.prepareMentorFeature())
+        XCTAssertNil(AppStore(refreshesAIServiceFromKeychain: false).prepareMentorFeature())
+    }
+
+    func testDependencyRefreshOnlyChangesFutureTurns() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let old = HeldMentorTransport()
+        let new = MentorStoreFixtureTransport()
+        let oldProvider = MentorTestPromptProvider()
+        oldProvider.version = "1.0.0"
+        let store = MentorFeatureStore(repository: repo, transport: old, promptProvider: oldProvider)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "提交时捕获配置")
+        oldProvider.version = "changed-after-submit"
+        store.updateDependencies(transport: new, promptProvider: MentorTestPromptProvider())
+        try await waitUntil { old.pending != nil }
+        XCTAssertEqual(new.calls, 0)
+        let originalRequest = try XCTUnwrap(old.request)
+        XCTAssertEqual(originalRequest.prompt.version, "1.0.0")
+        old.pending?.resume(returning: try await MentorStoreFixtureTransport().complete(originalRequest))
+        old.pending = nil
+        try await waitUntil { store.state.phase == .showingResponse }
+        XCTAssertFalse(old.wasCancelled)
+        let itemID = try XCTUnwrap(store.state.responseItemID)
+        store.acknowledgeResponse(itemID: itemID)
+        try await waitUntil { store.state.acknowledgedResponseItemID == itemID }
+        store.submit(text: "下一轮使用新配置")
+        try await waitUntil { store.state.phase == .showingResponse && store.state.responseItemID != itemID }
+        XCTAssertEqual(new.calls, 1)
+        XCTAssertEqual(new.lastRequest?.prompt.version, "test-injected.2")
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -987,10 +1055,11 @@ private final class TeachingIntentTransport: MentorTransport {
     }
 }
 
-private struct MentorTestPromptProvider: PromptProvider {
+private final class MentorTestPromptProvider: PromptProvider {
+    var version = "test-injected.2"
     func template(for id: PromptID, mode: SessionMode) -> PromptTemplate {
         let base = LocalPromptProvider().template(for: id, mode: mode)
-        return PromptTemplate(id: id, version: "test-injected.2", systemText: base.systemText,
+        return PromptTemplate(id: id, version: version, systemText: base.systemText,
             userText: base.userText, outputSchemaVersion: base.outputSchemaVersion)
     }
 }

@@ -284,6 +284,8 @@ final class AppStore: ObservableObject {
     private let coachPromptTurnRepository: CoachPromptTurnRepository?
     private let sideQuestRepository: SideQuestRepository?
     private let reminderService: ReminderService?
+    private let mentorRepository: (MentorRepository & MentorPromptAudit)?
+    @Published private(set) var mentorFeatureStore: MentorFeatureStore?
     private let promptProvider: PromptProvider
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
     private let assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy
@@ -411,6 +413,7 @@ final class AppStore: ObservableObject {
         weeklyGuidanceReviewRepository: WeeklyGuidanceReviewRepository? = nil,
         coachPromptTurnRepository: CoachPromptTurnRepository? = nil,
         sideQuestRepository: SideQuestRepository? = nil,
+        mentorRepository: (MentorRepository & MentorPromptAudit)? = nil,
         reminderService: ReminderService? = nil,
         promptProvider: PromptProvider = LocalPromptProvider(),
         promptEvalSchedulePolicy: PromptEvalSchedulePolicy = PromptEvalSchedulePolicy(),
@@ -467,6 +470,7 @@ final class AppStore: ObservableObject {
         self.weeklyGuidanceReviewRepository = weeklyGuidanceReviewRepository
         self.coachPromptTurnRepository = coachPromptTurnRepository
         self.sideQuestRepository = sideQuestRepository
+        self.mentorRepository = mentorRepository
         self.reminderService = reminderService
         self.promptProvider = promptProvider
         self.promptEvalSchedulePolicy = promptEvalSchedulePolicy
@@ -545,7 +549,7 @@ final class AppStore: ObservableObject {
         )
     }
 
-    private static func persistentStore(
+    static func persistentStore(
         database: AppDatabase,
         apiKeyStore: KeychainAPIKeyStore,
         trainingCasesVNextEnabled: Bool,
@@ -556,6 +560,9 @@ final class AppStore: ObservableObject {
         let coachPromptTurnRepository = trainingCasesVNextEnabled
             ? SQLiteCoachPromptTurnRepository(database: database)
             : nil
+        let hasMentorSchema = (try? database.dbQueue.read { db in
+            try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = 'v66_mentor_request_registration_context')") ?? false
+        }) == true
         return AppStore(
             apiKeyStore: apiKeyStore,
             dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
@@ -592,6 +599,7 @@ final class AppStore: ObservableObject {
             weeklyGuidanceReviewRepository: trainingCasesVNextEnabled ? SQLiteWeeklyGuidanceReviewRepository(database: database) : nil,
             coachPromptTurnRepository: coachPromptTurnRepository,
             sideQuestRepository: trainingCasesVNextEnabled ? SQLiteSideQuestRepository(database: database) : nil,
+            mentorRepository: hasMentorSchema ? SQLiteMentorRepository(database: database) : nil,
             reminderService: LocalNotificationReminder(),
             persistenceUnavailableMessage: persistenceUnavailableMessage,
             trainingCasesVNextEnabled: trainingCasesVNextEnabled
@@ -9630,6 +9638,20 @@ final class AppStore: ObservableObject {
         return PrincipleRetrievalSignalDisplay.displayText(for: signal)
     }
 
+    /// Lazily creates one coordinator on the same database and shared model
+    /// gateway. Legacy/preview stores without mentor persistence stay unavailable.
+    func prepareMentorFeature(catalog: MentorLessonCatalog? = nil) -> MentorFeatureStore? {
+        guard let mentorRepository, promptRunRepository != nil else { return nil }
+        if let mentorFeatureStore { return mentorFeatureStore }
+        let center = centralDecisionCenter ?? Self.makeLLMClient(apiKeyStore: apiKeyStore,
+            promptRunRepository: promptRunRepository, mentorAudit: mentorRepository)
+        centralDecisionCenter = center
+        let feature = MentorFeatureStore(repository: mentorRepository, transport: center,
+            catalog: catalog ?? (try? MentorLessonCatalog.loadBundled()), promptProvider: effectivePromptProvider)
+        mentorFeatureStore = feature
+        return feature
+    }
+
     private static func makeTodayAIService(
         llmClient: LLMClient,
         coachPromptTurnRepository: CoachPromptTurnRepository?,
@@ -9664,7 +9686,8 @@ final class AppStore: ObservableObject {
 
     private static func makeLLMClient(
         apiKeyStore: KeychainAPIKeyStore,
-        promptRunRepository: PromptRunRepository?
+        promptRunRepository: PromptRunRepository?,
+        mentorAudit: MentorPromptAudit? = nil
     ) -> CentralLLMDecisionCenter {
         let key = (try? apiKeyStore.loadAPIKey())?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !key.isEmpty else {
@@ -9675,7 +9698,8 @@ final class AppStore: ObservableObject {
                     base: missingKeyClient,
                     repository: promptRunRepository,
                     modelProvider: "GLM",
-                    modelName: "missing-api-key"
+                    modelName: "missing-api-key",
+                    mentorAudit: mentorAudit
                 )
             } else {
                 traced = missingKeyClient
@@ -9715,7 +9739,8 @@ final class AppStore: ObservableObject {
                 base: directClient,
                 repository: promptRunRepository,
                 modelProvider: "GLM",
-                modelName: config.model
+                modelName: config.model,
+                mentorAudit: mentorAudit
             )
         } else {
             traced = directClient
@@ -9727,9 +9752,11 @@ final class AppStore: ObservableObject {
         guard refreshesAIServiceFromKeychain else { return }
         let center = Self.makeLLMClient(
             apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository
+            promptRunRepository: promptRunRepository,
+            mentorAudit: mentorRepository
         )
         centralDecisionCenter = center
+        mentorFeatureStore?.updateDependencies(transport: center, promptProvider: effectivePromptProvider)
         todayAIService = Self.makeTodayAIService(
             llmClient: center,
             coachPromptTurnRepository: coachPromptTurnRepository,
@@ -9916,7 +9943,7 @@ final class AppStore: ObservableObject {
         glmConnectionMessage = "正在测试 GLM 连接..."
         updateSettingsMessage()
 
-        let client = Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+        let client = Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository, mentorAudit: mentorRepository)
         let contextPayload = PromptContextPayload(
             currentInput: .init(rawText: "connection test"),
             userChoice: .init(sessionMode: SessionMode.standard.rawValue)
@@ -10382,7 +10409,7 @@ final class AppStore: ObservableObject {
         return ProjectAIService(
             promptProvider: effectivePromptProvider,
             llmClient: centralDecisionCenter
-                ?? Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository)
+                ?? Self.makeLLMClient(apiKeyStore: apiKeyStore, promptRunRepository: promptRunRepository, mentorAudit: mentorRepository)
         )
     }
 

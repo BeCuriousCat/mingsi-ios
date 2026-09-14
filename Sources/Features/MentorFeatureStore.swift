@@ -45,8 +45,8 @@ struct MentorFeatureState: Equatable {
 final class MentorFeatureStore: ObservableObject {
     @Published private(set) var state = MentorFeatureState()
     private let repository: MentorRepository
-    private let transport: MentorTransport
-    private let promptProvider: PromptProvider
+    private var transport: MentorTransport
+    private var promptProvider: PromptProvider
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
     private let now: () -> Date
@@ -84,6 +84,13 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     deinit { readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
+
+    /// Configuration refresh affects future turns; each submitted turn captures
+    /// the dependencies it started with and retains its own cancellation handle.
+    func updateDependencies(transport: MentorTransport, promptProvider: PromptProvider) {
+        self.transport = transport
+        self.promptProvider = promptProvider
+    }
 
     func start(entry: String, initialText: String = "") {
         understandingGeneration = UUID()
@@ -186,7 +193,12 @@ final class MentorFeatureStore: ObservableObject {
         if intent == "reply" || text != nil { state.inputText = value }
         state.phase = .submitting
         requestTask?.cancel()
-        requestTask = Task { [weak self] in await self?.submitTask(session: session, intent: intent, text: value) }
+        let transport = self.transport
+        let prompt = promptProvider.template(for: .mentorRespond, mode: .standard)
+        requestTask = Task { [weak self] in
+            await self?.submitTask(session: session, intent: intent, text: value,
+                transport: transport, prompt: prompt)
+        }
     }
 
     /// Reading and changing lessons are local actions even when a draft exists.
@@ -580,7 +592,8 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
-    private func submitTask(session: MentorSession, intent: String, text: String) async {
+    private func submitTask(session: MentorSession, intent: String, text: String,
+                            transport: MentorTransport, prompt: PromptTemplate) async {
         var submittedRequestID: UUID?
         do {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -598,7 +611,7 @@ final class MentorFeatureStore: ObservableObject {
             let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
                 responseIntent: intent == "explain" ? .directTeaching : .discuss,
                 currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
-            var request = LLMRequest(prompt: promptProvider.template(for: .mentorRespond, mode: .standard),
+            var request = LLMRequest(prompt: prompt,
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
             request.mentorExecutionPolicy = .m1

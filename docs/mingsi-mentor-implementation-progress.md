@@ -423,3 +423,13 @@ PromptTracingLLMClient 对导师 PromptID、导师策略或所有权标记的请
 验证：MingSi Dev 上 Store、MentorPersistence 和四项旧 PromptTracing 回归合计 77 项通过、0 失败、0 跳过，已核对 Test-MingSi-2026.09.15_00-57-04-+0800.xcresult。新增三项集成测试走真实 CentralLLMDecisionCenter → PromptTracingLLMClient → 注入测试客户端：注入模板版本进入实际请求和 PromptRun，审计请求 ID 与快照一致；终态重放与缺少审计时不增加模型调用；注入 PromptRun INSERT 故障后原话保留且没有助手条目。git diff --check 通过。
 
 剩余范围：AppStore 的生产组装仍需提供同库 MentorRepository 及 mentorAudit、导航和设置刷新策略；本轮没有调用远端模型或验证真实 Keychain 配置。已检查 DirectGLM 的导师策略会使用现有执行器，但这仅约束传输阶段，不能声称提交前本地准备和审计已纳入完整 30 秒前台预算。页面、共享占用、正式语义评估与内容审核仍待完成。内部依赖桥接不代表功能已在 App 开放，无需用户发布说明；保留其他已有工作树修改。
+
+## 2026-09-15：F04 / F08 App 导师依赖组装与配置刷新
+
+AppStore 的持久化工厂按 v66 迁移记录确认导师结构可用，注入同一个 AppDatabase 的 SQLiteMentorRepository（同时承担审计）；不以旧训练开关推断导师数据库能力。prepareMentorFeature 懒创建并复用单一协调器，沿用共享 CentralLLMDecisionCenter 与 effectivePromptProvider。没有导师仓储或 PromptRun 仓储时不创建协调器，旧数据库和未配置依赖的预览保持不可用，不另建正式数据库。
+
+makeLLMClient 的正常密钥和 missing-api-key 路径均注入导师审计。配置刷新更新现有导师协调器的后续依赖，不重置会话、原话或任务。每次 submit 同步固定 transport 和完整 PromptTemplate 值；即使原提示词提供器随后被修改，本轮仍使用提交时模板，下一轮才采用新配置。内置教材按 release 校验加载；当前未审核目录不会被放宽为可发布内容。
+
+验证：MingSi Dev 上 MentorFeatureStoreTests 最终 42 项通过、0 失败 / 0 跳过（Test-MingSi-2026.09.15_01-04-52-+0800.xcresult）。新增三项覆盖生产持久化工厂的同库教材与缺密钥审计、刷新后协调器身份和原话保留、旧库 / 缺依赖预览禁用，以及提交后立刻刷新 transport 并修改原 PromptProvider 时本轮旧配置 / 次轮新配置隔离。另两项现有 AppStore 连接测试及 Keychain 刷新成长报告回归通过（Test-MingSi-2026.09.15_01-03-45-+0800.xcresult）。测试使用独立 Keychain service 的缺密钥路径与内存数据库，没有远端模型调用。git diff --check 通过。
+
+剩余范围：导航和实际页面仍需调用工厂，启动遗留请求恢复、迁移前备份与失败降级、跨流程前台占用及总超时预算仍未完成；本轮迁移记录门禁不等于 F04 全部交付。正式教材尚待审核，真实模型配置 / 网络仍未真机验收。AppStore 只按补丁暂存本模块变更，原有未提交改动保留；当前工作树测试不等于干净 checkout。内部组装未开放新页面，无需用户发布说明。
