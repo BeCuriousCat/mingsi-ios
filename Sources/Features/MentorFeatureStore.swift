@@ -15,6 +15,8 @@ struct MentorFeatureState: Equatable {
     var understanding: MentorUnderstanding?
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
+    var historyError: String?
+    var isLoadingHistory = false
     var inputText = ""
     var draftRevision = 0
 }
@@ -29,6 +31,8 @@ final class MentorFeatureStore: ObservableObject {
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
     private var requestTask: Task<Void, Never>?
+    private var historyTask: Task<Void, Never>?
+    private var historyGeneration = UUID()
 
     init(repository: MentorRepository, transport: MentorTransport, catalog: MentorLessonCatalog? = nil,
          timeZone: TimeZone = .current) {
@@ -38,7 +42,7 @@ final class MentorFeatureStore: ObservableObject {
         self.timeZone = timeZone
     }
 
-    deinit { requestTask?.cancel() }
+    deinit { requestTask?.cancel(); historyTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
         requestTask?.cancel()
@@ -46,27 +50,44 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func loadRecentSessions(limit: Int = 3) {
-        requestTask?.cancel()
-        requestTask = Task { [weak self] in
+        historyTask?.cancel()
+        let generation = UUID()
+        historyGeneration = generation
+        state.isLoadingHistory = true
+        state.historyError = nil
+        historyTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                guard let self else { return }
-                let page = try await self.repository.recentSessions(after: nil, limit: limit)
-                self.state.recentSessions = page.sessions
-                self.state.recentSessionsCursor = page.nextCursor
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+                let page = try await repository.recentSessions(after: nil, limit: limit)
+                guard !Task.isCancelled, historyGeneration == generation else { return }
+                state.recentSessions = page.sessions
+                state.recentSessionsCursor = page.nextCursor
+            } catch {
+                guard !Task.isCancelled, historyGeneration == generation else { return }
+                state.historyError = String(describing: error)
+            }
+            state.isLoadingHistory = false
         }
     }
 
     func loadMoreRecentSessions(limit: Int = 20) {
-        guard let cursor = state.recentSessionsCursor else { return }
-        requestTask = Task { [weak self] in
+        guard !state.isLoadingHistory, let cursor = state.recentSessionsCursor else { return }
+        let generation = historyGeneration
+        state.isLoadingHistory = true
+        state.historyError = nil
+        historyTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                guard let self else { return }
-                let page = try await self.repository.recentSessions(after: cursor, limit: limit)
-                let existing = Set(self.state.recentSessions.map(\.id))
-                self.state.recentSessions.append(contentsOf: page.sessions.filter { !existing.contains($0.id) })
-                self.state.recentSessionsCursor = page.nextCursor
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+                let page = try await repository.recentSessions(after: cursor, limit: limit)
+                guard !Task.isCancelled, historyGeneration == generation else { return }
+                let existing = Set(state.recentSessions.map(\.id))
+                state.recentSessions.append(contentsOf: page.sessions.filter { !existing.contains($0.id) })
+                state.recentSessionsCursor = page.nextCursor
+            } catch {
+                guard !Task.isCancelled, historyGeneration == generation else { return }
+                state.historyError = String(describing: error)
+            }
+            state.isLoadingHistory = false
         }
     }
 
@@ -174,9 +195,8 @@ final class MentorFeatureStore: ObservableObject {
 
     private func startTask(entry: String, initialText: String) async {
         do {
-            // Reconcile requests left by a prior process before allowing a new
-            // foreground attempt. This is idempotent and does not transmit.
-            _ = try await repository.recoverInterruptedRequests()
+            // Process recovery belongs to application bootstrap, never a new
+            // session: other stores may still own active requests.
             let id = UUID()
             try await repository.createSession(MentorSession(id: id, initialEntry: entry, lifecycle: .draft,
                 draftText: initialText, draftRevision: initialText.isEmpty ? 0 : 1, activityAt: .now))
@@ -192,7 +212,10 @@ final class MentorFeatureStore: ObservableObject {
                 state.phase = .reading
             }
         } catch is CancellationError { return }
-        catch { state.phase = .failed(String(describing: error)) }
+        catch {
+            guard !Task.isCancelled else { return }
+            state.phase = .failed(String(describing: error))
+        }
     }
 
     private func submitTask(session: MentorSession, intent: String, text: String) async {
@@ -215,15 +238,22 @@ final class MentorFeatureStore: ObservableObject {
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
             request.mentorExecutionPolicy = .m1
             request.mentorAuditToken = .init(sessionID: current.id, requestID: requestID, requestEpoch: current.requestEpoch, semanticRevision: current.semanticRevision)
+            try Task.checkCancellation()
             let data = try await transport.complete(request)
+            try Task.checkCancellation()
             let validated = try MentorResponseParser().parseTurn(data, context: built.validation)
             _ = try await repository.commitResponse(sessionID: current.id, requestID: requestID,
                 payloadJSON: String(decoding: data, as: UTF8.self))
-            state.timeline = try await repository.items(sessionID: current.id)
+            let timeline = try await repository.items(sessionID: current.id)
+            try Task.checkCancellation()
+            state.timeline = timeline
             state.response = validated
             state.phase = .showingResponse
         } catch is CancellationError { return }
-        catch { state.phase = .failed(String(describing: error)) }
+        catch {
+            guard !Task.isCancelled else { return }
+            state.phase = .failed(String(describing: error))
+        }
     }
 }
 

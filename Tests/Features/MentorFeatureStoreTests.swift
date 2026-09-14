@@ -84,6 +84,89 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.phase, .editing)
     }
 
+    func testHistoryReadDoesNotCancelTransportAndFinishRejectsLateSuccess() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = HeldMentorTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.submit(text: "保留原话")
+        try await waitUntil { transport.pending != nil }
+        store.loadRecentSessions()
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertEqual(store.state.phase, .submitting)
+        XCTAssertFalse(transport.wasCancelled)
+        store.finish()
+        try await waitUntil { store.state.phase == .ended }
+        let payload = try await MentorStoreFixtureTransport().complete(try XCTUnwrap(transport.request))
+        transport.pending?.resume(returning: payload)
+        transport.pending = nil
+        try await waitUntil { transport.didReturn }
+        // Drain the transport continuation and the Store's following actor work.
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(store.state.phase, .ended)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertFalse(items.contains { $0.kind == .assistant })
+    }
+
+    func testHistoryReadAllowsCurrentResponseToComplete() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = HeldMentorTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "这次不结束会话")
+        try await waitUntil { transport.pending != nil }
+        store.loadRecentSessions()
+        try await waitUntil { !store.state.isLoadingHistory }
+        let payload = try await MentorStoreFixtureTransport().complete(try XCTUnwrap(transport.request))
+        transport.pending?.resume(returning: payload)
+        transport.pending = nil
+        try await waitUntil { store.state.phase == .showingResponse }
+        XCTAssertFalse(transport.wasCancelled)
+        XCTAssertNotNil(store.state.response)
+    }
+
+    func testNewStoreEntryDoesNotRecoverAnotherLiveRequest() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "另一个页面的请求", intent: "reply", contextSnapshotJSON: "{}"))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        let requestState = try await db.dbQueue.read {
+            try String.fetchOne($0, sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [requestID.uuidString])
+        }
+        XCTAssertEqual(requestState, "prepared")
+        let original = try await repo.session(id: id)
+        XCTAssertEqual(original?.lifecycle, .active)
+    }
+
+    func testHistoryFailureDoesNotReplaceConversationPhase() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.loadRecentSessions(limit: 0)
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertNotNil(store.state.historyError)
+        XCTAssertEqual(store.state.phase, .editing)
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Expected state was not reached")
+    }
+
     private func catalog() throws -> MentorLessonCatalog {
         let lessons = (1...24).map { index in
             let base = MentorLesson(id: String(format: "L%02d", index), version: "1.0", editorialOrder: index,
@@ -106,5 +189,20 @@ private final class MentorStoreFixtureTransport: MentorTransport, @unchecked Sen
             "body": "把完成动作和实际效果分开看。", "question": NSNull(), "question_purpose": NSNull(),
             "source_refs": [source], "lesson_ref": NSNull(), "suggested_actions": ["finish"]
         ])
+    }
+}
+
+@MainActor
+private final class HeldMentorTransport: MentorTransport {
+    var pending: CheckedContinuation<Data, Error>?
+    var request: LLMRequest?
+    var wasCancelled = false
+    var didReturn = false
+    func complete(_ request: LLMRequest) async throws -> Data {
+        self.request = request
+        let data: Data = try await withCheckedThrowingContinuation { pending = $0 }
+        wasCancelled = Task.isCancelled
+        didReturn = true
+        return data
     }
 }
