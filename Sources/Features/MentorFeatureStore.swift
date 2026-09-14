@@ -17,6 +17,8 @@ struct MentorFeatureState: Equatable {
     var acknowledgedResponseItemID: UUID?
     var presentationError: String?
     var understanding: MentorUnderstanding?
+    var understandingInputText = ""
+    var understandingError: String?
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
     var historyError: String?
@@ -52,6 +54,8 @@ final class MentorFeatureStore: ObservableObject {
     private var pendingRequestEnd: PendingRequestEnd?
     private var pendingResponse: PendingResponse?
     private var requestTask: Task<Void, Never>?
+    private var understandingTask: Task<Void, Never>?
+    private var understandingGeneration = UUID()
     private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
     private var historyGeneration = UUID()
@@ -65,9 +69,10 @@ final class MentorFeatureStore: ObservableObject {
         self.now = now
     }
 
-    deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel() }
+    deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
+        understandingGeneration = UUID()
         pendingResponse = nil
         pendingRequestEnd = nil
         state.canRetryRequestFinalization = false
@@ -120,6 +125,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func continueSession(id: UUID) {
+        understandingGeneration = UUID()
         pendingResponse = nil
         pendingRequestEnd = nil
         state.canRetryRequestFinalization = false
@@ -263,39 +269,63 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
-    /// Starts a user-owned understanding draft. This path is intentionally local:
-    /// confirmation never requires a model request or changes prior revisions.
+    private enum UnderstandingCommand {
+        case begin(UUID, UUID?)
+        case save(String)
+        case confirm
+    }
+
     func beginUnderstanding(previousRevisionID: UUID? = nil) {
-        guard let session = state.session else { return }
-        requestTask?.cancel()
-        requestTask = Task { [weak self] in
-            do {
-                guard let self else { return }
-                let draft = try await self.repository.beginUserUnderstanding(sessionID: session.id, draftID: UUID(), previousRevisionID: previousRevisionID)
-                self.state.understanding = draft
-            } catch { self?.state.phase = .failed(String(describing: error)) }
-        }
+        guard state.session != nil else { return }
+        understandingGeneration = UUID()
+        state.understanding = nil
+        state.understandingInputText = ""
+        state.understandingError = nil
+        enqueueUnderstanding(.begin(UUID(), previousRevisionID))
     }
 
     func saveUnderstanding(text: String) {
-        guard let session = state.session, let draft = state.understanding, draft.state == .draft else { return }
-        requestTask = Task { [weak self] in
-            do {
-                guard let self else { return }
-                self.state.understanding = try await self.repository.saveUnderstandingDraft(
-                    sessionID: session.id, draftID: draft.id, editRevision: draft.editRevision + 1, text: text)
-            } catch { self?.state.phase = .failed(String(describing: error)) }
-        }
+        state.understandingInputText = text
+        enqueueUnderstanding(.save(text))
     }
 
-    func confirmUnderstanding() {
-        guard let session = state.session, let draft = state.understanding else { return }
-        requestTask = Task { [weak self] in
+    func confirmUnderstanding() { enqueueUnderstanding(.confirm) }
+
+    /// Serialize local edits independently of model work. Confirmation reads the
+    /// last successfully saved revision after all earlier commands have finished.
+    private func enqueueUnderstanding(_ command: UnderstandingCommand) {
+        guard let sessionID = state.session?.id else { return }
+        let generation = understandingGeneration
+        let previous = understandingTask
+        understandingTask = Task { [weak self] in
+            await previous?.value
+            guard let self, !Task.isCancelled, understandingGeneration == generation,
+                  state.session?.id == sessionID else { return }
             do {
-                guard let self else { return }
-                self.state.understanding = try await self.repository.confirmUnderstanding(
-                    sessionID: session.id, draftID: draft.id, expectedEditRevision: draft.editRevision)
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+                let saved: MentorUnderstanding
+                switch command {
+                case .begin(let id, let previousID):
+                    saved = try await repository.beginUserUnderstanding(sessionID: sessionID,
+                        draftID: id, previousRevisionID: previousID)
+                case .save(let text):
+                    guard let draft = state.understanding else { return }
+                    saved = try await repository.saveUnderstandingDraft(sessionID: sessionID,
+                        draftID: draft.id, editRevision: draft.editRevision + 1, text: text)
+                case .confirm:
+                    // A failed preceding edit must not confirm the older text.
+                    guard state.understandingError == nil, let draft = state.understanding else { return }
+                    saved = try await repository.confirmUnderstanding(sessionID: sessionID,
+                        draftID: draft.id, expectedEditRevision: draft.editRevision)
+                }
+                guard !Task.isCancelled, understandingGeneration == generation,
+                      state.session?.id == sessionID else { return }
+                state.understanding = saved
+                state.understandingError = nil
+            } catch {
+                guard !Task.isCancelled, understandingGeneration == generation,
+                      state.session?.id == sessionID else { return }
+                state.understandingError = String(describing: error)
+            }
         }
     }
 

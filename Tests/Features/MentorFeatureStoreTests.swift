@@ -396,6 +396,45 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(stored?.lifecycle, .ended)
     }
 
+    func testRapidUnderstandingEditsConfirmLatestVersion() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "第一句话")
+        store.saveUnderstanding(text: "修正后的体会")
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.understanding?.state == .confirmed }
+        XCTAssertEqual(store.state.understanding?.text, "修正后的体会")
+        XCTAssertEqual(store.state.understanding?.editRevision, 2)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
+    func testFailedUnderstandingEditCannotConfirmOldText() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "旧文本")
+        try await waitUntil { store.state.understanding?.text == "旧文本" }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_note_edit BEFORE UPDATE OF text ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.saveUnderstanding(text: "未保存的新文本")
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.understandingError != nil }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(store.state.understanding?.state, .draft)
+        XCTAssertEqual(store.state.understandingInputText, "未保存的新文本")
+        XCTAssertEqual(store.state.phase, .editing)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_note_edit") }
+        store.saveUnderstanding(text: store.state.understandingInputText)
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.understanding?.state == .confirmed }
+        XCTAssertEqual(store.state.understanding?.text, "未保存的新文本")
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
