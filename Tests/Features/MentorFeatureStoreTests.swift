@@ -435,6 +435,94 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.understanding?.text, "未保存的新文本")
     }
 
+    func testNotRelevantFeedbackPrecedesImmediateLessonSelection() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport, catalog: try catalog())
+        store.start(entry: "listen", initialText: "保留草稿")
+        try await waitUntil { store.state.phase == .reading }
+        let first = try XCTUnwrap(store.state.lesson)
+        store.acknowledgeLesson()
+        store.recordLessonFeedback(.notRelevant)
+        store.recordLessonFeedback(.notRelevant)
+        store.selectAnotherLesson()
+        try await waitUntil { store.state.phase == .reading && store.state.lesson?.id != first.id }
+        XCTAssertNotEqual(store.state.lesson?.lesson.theme, first.lesson.theme)
+        XCTAssertEqual(store.state.inputText, "保留草稿")
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback") }
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(transport.calls, 0)
+        let previousSession = store.state.session?.id
+        store.start(entry: "listen", initialText: "另一个会话")
+        try await waitUntil { store.state.phase == .reading && store.state.session?.id != previousSession }
+        XCTAssertEqual(store.state.lesson?.lesson.theme, first.lesson.theme)
+    }
+
+    func testKnownFeedbackWinsOverImmediateSameDayResume() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db),
+            transport: MentorStoreFixtureTransport(), catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let first = try XCTUnwrap(store.state.lesson)
+        store.acknowledgeLesson()
+        store.recordLessonFeedback(.alreadyKnown)
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading && store.state.lesson?.id != first.id }
+        XCTAssertNotEqual(store.state.lesson?.lesson.id, first.lesson.id)
+        let known = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE kind = 'already_known' AND revoked_at IS NULL") }
+        XCTAssertEqual(known, 1)
+    }
+
+    func testResetKnownFeedbackPreservesRecentPresentationExclusion() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let time = Date(timeIntervalSince1970: 1_789_430_400)
+        let zone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(),
+            catalog: try catalog(), timeZone: zone, now: { time })
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let first = try XCTUnwrap(store.state.lesson)
+        store.acknowledgeLesson()
+        store.recordLessonFeedback(.alreadyKnown)
+        try await waitUntil { !store.state.isSavingLessonFeedback }
+        XCTAssertNil(store.state.lessonFeedbackError)
+        store.resetKnownLessonFeedback()
+        try await waitUntil { !store.state.isSavingLessonFeedback }
+        XCTAssertNil(store.state.lessonFeedbackError)
+        let active = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE revoked_at IS NULL") }
+        XCTAssertEqual(active, 0)
+        // A new session must still exclude the recently presented logical lesson.
+        store.start(entry: "listen", initialText: "新交流")
+        try await waitUntil { store.state.phase == .reading && store.state.lesson?.id != first.id }
+        XCTAssertNotEqual(store.state.lesson?.lesson.id, first.lesson.id)
+        let original = try await repo.savedLesson(sessionID: first.sessionID, itemID: first.id)
+        XCTAssertNotNil(original)
+    }
+
+    func testFeedbackWriteFailureKeepsLessonAndCanRetryLocally() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport, catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let first = store.state.lesson
+        store.acknowledgeLesson()
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_feedback BEFORE INSERT ON mentor_feedback BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.recordLessonFeedback(.alreadyKnown)
+        store.selectAnotherLesson()
+        try await waitUntil { !store.state.isSavingLessonFeedback && store.state.phase == .reading }
+        XCTAssertNotNil(store.state.lessonFeedbackError)
+        XCTAssertEqual(store.state.lesson, first)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_feedback") }
+        store.recordLessonFeedback(.alreadyKnown)
+        store.selectAnotherLesson()
+        try await waitUntil { store.state.phase == .reading && store.state.lesson?.id != first?.id }
+        XCTAssertNil(store.state.lessonFeedbackError)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }

@@ -12,6 +12,8 @@ struct MentorFeatureState: Equatable {
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var lessonError: String?
+    var lessonFeedbackError: String?
+    var isSavingLessonFeedback = false
     var response: MentorValidatedTurn?
     var responseItemID: UUID?
     var acknowledgedResponseItemID: UUID?
@@ -56,6 +58,7 @@ final class MentorFeatureStore: ObservableObject {
     private var requestTask: Task<Void, Never>?
     private var understandingTask: Task<Void, Never>?
     private var understandingGeneration = UUID()
+    private var lessonFeedbackTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
     private var historyGeneration = UUID()
@@ -69,7 +72,7 @@ final class MentorFeatureStore: ObservableObject {
         self.now = now
     }
 
-    deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
+    deinit { lessonFeedbackTask?.cancel(); requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
         understandingGeneration = UUID()
@@ -170,6 +173,7 @@ final class MentorFeatureStore: ObservableObject {
         }
         let previousPhase = state.phase
         let receipt = presentationTask
+        let feedback = lessonFeedbackTask
         state.phase = .selectingLesson
         state.lessonError = nil
         requestTask?.cancel()
@@ -177,7 +181,12 @@ final class MentorFeatureStore: ObservableObject {
             guard let self else { return }
             do {
                 await receipt?.value
+                await feedback?.value
                 try Task.checkCancellation()
+                guard state.lessonFeedbackError == nil else {
+                    state.phase = previousPhase
+                    return
+                }
                 guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
                 try Task.checkCancellation()
                 let lesson = try await repository.selectNextLesson(sessionID: current.id, itemID: UUID(),
@@ -192,6 +201,48 @@ final class MentorFeatureStore: ObservableObject {
                 guard !Task.isCancelled, state.session?.id == session.id else { return }
                 state.lessonError = String(describing: error)
                 state.phase = previousPhase
+            }
+        }
+    }
+
+    /// Feedback records a preference without replacing the current readable snapshot.
+    /// A subsequent change of lesson waits for this local write to finish.
+    func recordLessonFeedback(_ kind: MentorLessonFeedback) {
+        guard let session = state.session, let lesson = state.lesson,
+              [.reading, .showingResponse, .paused, .ended].contains(state.phase) else { return }
+        saveLessonFeedback(sessionID: session.id, itemID: lesson.id, kind: kind)
+    }
+
+    /// Settings can revoke known-item exclusions without deleting reading history.
+    func resetKnownLessonFeedback() {
+        saveLessonFeedback(sessionID: nil, itemID: nil, kind: nil)
+    }
+
+    private func saveLessonFeedback(sessionID: UUID?, itemID: UUID?, kind: MentorLessonFeedback?) {
+        guard lessonFeedbackTask == nil else { return }
+        let foregroundSessionID = state.session?.id
+        let receipt = presentationTask
+        let commandID = UUID()
+        state.lessonFeedbackError = nil
+        state.isSavingLessonFeedback = true
+        lessonFeedbackTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                lessonFeedbackTask = nil
+                if state.session?.id == foregroundSessionID { state.isSavingLessonFeedback = false }
+            }
+            do {
+                await receipt?.value
+                try Task.checkCancellation()
+                if let sessionID, let itemID, let kind {
+                    try await repository.recordLessonFeedback(sessionID: sessionID, itemID: itemID,
+                        commandID: commandID, kind: kind, at: now())
+                } else {
+                    try await repository.resetKnownLessonFeedback(commandID: commandID, at: now())
+                }
+            } catch {
+                guard !Task.isCancelled, state.session?.id == foregroundSessionID else { return }
+                state.lessonFeedbackError = String(describing: error)
             }
         }
     }
@@ -331,6 +382,8 @@ final class MentorFeatureStore: ObservableObject {
 
     private func startTask(entry: String, initialText: String) async {
         do {
+            await lessonFeedbackTask?.value
+            try Task.checkCancellation()
             // Process recovery belongs to application bootstrap, never a new
             // session: other stores may still own active requests.
             if entry == "listen", initialText.isEmpty,
