@@ -9,6 +9,7 @@ struct MentorUnderstandingEditor: View {
     @State private var isClosing = false
     @State private var closeFailed = false
     @State private var requestedConfirmation = false
+    @State private var showsDiscardConfirmation = false
 
     private var locked: Bool {
         isClosing || store.state.isTransitioningSession || store.state.isConfirmingUnderstanding
@@ -62,6 +63,22 @@ struct MentorUnderstandingEditor: View {
         }
         // All exits go through the save barrier; swiping cannot bypass it.
         .interactiveDismissDisabled()
+        .confirmationDialog("放弃这份理解尚未保存的修改？", isPresented: $showsDiscardConfirmation,
+                            titleVisibility: .visible) {
+            Button("放弃修改并返回", role: .destructive) {
+                isEditing = false
+                isClosing = true
+                Task { @MainActor in
+                    let discarded = await store.discardUnderstandingEdits()
+                    isClosing = false
+                    if discarded { dismiss() }
+                    else { closeFailed = true }
+                }
+            }
+            Button("继续编辑", role: .cancel) {}
+        } message: {
+            Text("将保留已经保存的草稿和已确认版本，只放弃这份理解尚未保存的文字。")
+        }
         .onChange(of: store.state.isConfirmingUnderstanding) { _, confirming in
             guard requestedConfirmation, !confirming else { return }
             requestedConfirmation = false
@@ -89,7 +106,7 @@ struct MentorUnderstandingEditor: View {
             .accessibilityIdentifier("mentor.understanding.input")
 
             if store.state.understandingError != nil || closeFailed {
-                Label("暂时没有保存成功，文字仍留在这里。请重试后再返回。", systemImage: "exclamationmark.circle")
+                Label("暂时没有保存成功，文字仍留在这里。可以重试，或放弃未保存修改。", systemImage: "exclamationmark.circle")
                     .foregroundStyle(DS.caution)
                     .accessibilityIdentifier("mentor.understanding.error")
                 Button("重试保存") {
@@ -106,6 +123,13 @@ struct MentorUnderstandingEditor: View {
                 .frame(minHeight: 44)
                 .disabled(locked || store.state.pendingUnderstandingOperations > 0)
                 .accessibilityIdentifier("mentor.understanding.retry")
+                Button(role: .destructive) {
+                    showsDiscardConfirmation = true
+                } label: {
+                    Text("放弃未保存修改并返回").frame(minHeight: 44)
+                }
+                .disabled(locked)
+                .accessibilityIdentifier("mentor.understanding.discard")
             } else {
                 Text(saveStatus)
                     .font(.subheadline)

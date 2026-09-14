@@ -670,6 +670,43 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    /// Call only after the user explicitly confirms discarding unsaved understanding edits.
+    /// Already queued writes settle first; only the remaining memory buffer is discarded.
+    @discardableResult
+    func discardUnderstandingEdits() async -> Bool {
+        guard sessionTransitionID == nil, !state.isConfirmingUnderstanding,
+              let sessionID = state.session?.id else { return false }
+        let transition = beginSessionTransition()
+        defer { endSessionTransition(transition) }
+        let selectedID = state.understanding?.id ?? pendingUnderstandingCreation?.id
+        let generation = understandingGeneration
+        understandingDebounceTask?.cancel()
+        understandingDebounceTask = nil
+        await understandingTask?.value
+        guard !Task.isCancelled, state.session?.id == sessionID,
+              understandingGeneration == generation, sessionTransitionID == transition else { return false }
+        do {
+            let saved = try await repository.understandings(sessionID: sessionID)
+            guard !Task.isCancelled, state.session?.id == sessionID,
+                  understandingGeneration == generation, sessionTransitionID == transition else { return false }
+            let selected = saved.first { $0.id == selectedID }
+            understandingGeneration = UUID()
+            pendingUnderstandingText = nil
+            pendingUnderstandingCreation = nil
+            state.understandings = saved
+            state.understanding = selected
+            state.understandingInputText = selected?.text ?? ""
+            state.hasUnsavedUnderstanding = false
+            state.understandingError = nil
+            return true
+        } catch {
+            guard !Task.isCancelled, state.session?.id == sessionID,
+                  sessionTransitionID == transition else { return false }
+            state.understandingError = String(describing: error)
+            return false
+        }
+    }
+
     func confirmUnderstanding() {
         guard sessionTransitionID == nil, !state.isConfirmingUnderstanding, state.session != nil,
               state.understanding != nil || pendingUnderstandingCreation != nil else { return }
