@@ -18,6 +18,7 @@ struct MentorFeatureState: Equatable {
     var responseItemID: UUID?
     var acknowledgedResponseItemID: UUID?
     var presentationError: String?
+    var understandings: [MentorUnderstanding] = []
     var understanding: MentorUnderstanding?
     var understandingInputText = ""
     var understandingError: String?
@@ -140,13 +141,21 @@ final class MentorFeatureStore: ObservableObject {
                 guard let self, let session = try await self.repository.session(id: id) else {
                     throw MentorFeatureError.missingSession
                 }
+                try Task.checkCancellation()
+                var restored = try await self.restoredState(session: session)
+                try Task.checkCancellation()
                 if session.lifecycle != .active { try await self.repository.resumeSession(id: id) }
-                let current = try await self.repository.session(id: id) ?? session
-                self.state = MentorFeatureState(phase: .editing, session: current,
-                    timeline: try await self.repository.items(sessionID: id), inputText: current.draftText,
-                    draftRevision: current.draftRevision)
+                try Task.checkCancellation()
+                guard let current = try await self.repository.session(id: id) else { throw MentorFeatureError.missingSession }
+                try Task.checkCancellation()
+                restored.session = current
+                restored.phase = restored.response == nil ? .editing : .showingResponse
+                self.state = restored
             } catch is CancellationError { return }
-            catch { self?.state.phase = .failed(String(describing: error)) }
+            catch {
+                guard !Task.isCancelled else { return }
+                self?.state.phase = .failed(String(describing: error))
+            }
         }
     }
 
@@ -371,6 +380,11 @@ final class MentorFeatureStore: ObservableObject {
                 guard !Task.isCancelled, understandingGeneration == generation,
                       state.session?.id == sessionID else { return }
                 state.understanding = saved
+                if let index = state.understandings.firstIndex(where: { $0.id == saved.id }) {
+                    state.understandings[index] = saved
+                } else {
+                    state.understandings.append(saved)
+                }
                 state.understandingError = nil
             } catch {
                 guard !Task.isCancelled, understandingGeneration == generation,
@@ -378,6 +392,36 @@ final class MentorFeatureStore: ObservableObject {
                 state.understandingError = String(describing: error)
             }
         }
+    }
+
+    /// Reconstruct from saved versions, never from the current teaching catalog.
+    /// Preserve every understanding group; only a unique draft is auto-selected.
+    private func restoredState(session: MentorSession, lesson: MentorSavedLesson? = nil) async throws -> MentorFeatureState {
+        let items = try await repository.items(sessionID: session.id)
+        try Task.checkCancellation()
+        var savedLesson = lesson
+        if savedLesson == nil, let item = items.last(where: { $0.kind == .lesson }) {
+            savedLesson = try await repository.savedLesson(sessionID: session.id, itemID: item.id)
+            guard savedLesson != nil else { throw MentorFeatureError.missingSavedLesson }
+        }
+        try Task.checkCancellation()
+        let notes = try await repository.understandings(sessionID: session.id)
+        try Task.checkCancellation()
+        let drafts = notes.filter { $0.state == .draft }
+        let draft = drafts.count == 1 ? drafts.first : nil
+        var restored = MentorFeatureState(phase: .editing, session: session, timeline: items,
+            lesson: savedLesson, understandings: notes, understanding: draft,
+            understandingInputText: draft?.text ?? "", inputText: session.draftText,
+            draftRevision: session.draftRevision)
+        if let last = items.last, last.kind == .assistant {
+            // Replay the committed original, without re-evaluating historical
+            // sources against today's context or counting it as presented.
+            let response = try JSONDecoder().decode(MentorTurnResponse.self, from: Data(last.payloadJSON.utf8))
+            guard response.schemaVersion == "1.0.0" else { throw MentorResponseError.unsupportedSchema }
+            restored.response = MentorValidatedTurn(response: response, availableSuggestedActions: response.suggestedActions)
+            restored.responseItemID = last.id
+        }
+        return restored
     }
 
     private func startTask(entry: String, initialText: String) async {
@@ -390,16 +434,14 @@ final class MentorFeatureStore: ObservableObject {
                let saved = try await repository.listeningResume(at: now(), timeZone: timeZone) {
                 try Task.checkCancellation()
                 guard let session = try await repository.session(id: saved.sessionID) else { throw MentorFeatureError.missingSession }
-                let items = try await repository.items(sessionID: session.id)
+                var restored = try await restoredState(session: session, lesson: saved)
                 try Task.checkCancellation()
-                let phase: MentorFeatureState.Phase
                 switch session.lifecycle {
-                case .ended: phase = .ended
-                case .paused: phase = .paused
-                default: phase = .reading
+                case .ended: restored.phase = .ended
+                case .paused: restored.phase = .paused
+                default: restored.phase = restored.response == nil ? .reading : .showingResponse
                 }
-                state = MentorFeatureState(phase: phase, session: session, timeline: items,
-                    lesson: saved, inputText: session.draftText, draftRevision: session.draftRevision)
+                state = restored
                 return
             }
             try Task.checkCancellation()
@@ -530,4 +572,4 @@ final class MentorFeatureStore: ObservableObject {
     }
 }
 
-enum MentorFeatureError: Error { case missingSession, lessonCatalogUnavailable }
+enum MentorFeatureError: Error { case missingSession, lessonCatalogUnavailable, missingSavedLesson }

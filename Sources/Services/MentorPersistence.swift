@@ -768,7 +768,9 @@ extension SQLiteMentorRepository {
             try MentorItemRow(MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: sequence, kind: .lesson, payloadJSON: payload)).insert(db)
             try db.execute(sql: "INSERT INTO mentor_lesson_snapshots (item_id, session_id, lesson_id, version, content_hash, theme, epoch) VALUES (?, ?, ?, ?, ?, ?, ?)", arguments: [itemID.uuidString, session.id, lesson.id, lesson.version, lesson.contentHash, lesson.theme.rawValue, expectedEpoch])
             try db.execute(sql: "UPDATE mentor_sessions SET lifecycle = 'active', activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: date), session.id])
-            return MentorSavedLesson(id: itemID, sessionID: sessionID, lesson: lesson, readingSection: .title, readingRevision: 0)
+            // Return exactly the persisted snapshot (including date precision),
+            // so immediate discussion uses the same version as later restoration.
+            return try Self.readLesson(db, sessionID: sessionID, itemID: itemID)
         }
     }
 

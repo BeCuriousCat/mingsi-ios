@@ -523,6 +523,119 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(transport.calls, 0)
     }
 
+    func testContinueRestoresSavedLessonAndUnderstandingVersionsWithoutCatalog() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "listen", lifecycle: .draft,
+            draftText: "原交流草稿", draftRevision: 1, activityAt: .now))
+        let selected = try await repo.selectNextLesson(sessionID: sessionID, itemID: UUID(), expectedEpoch: 0,
+            catalog: try catalog(), at: .now, timeZone: .current)
+        let lesson = try XCTUnwrap(selected)
+        try await repo.acknowledgePresentation(sessionID: sessionID, itemID: lesson.id, at: .now, timeZone: .current)
+        try await repo.saveReadingPosition(sessionID: sessionID, itemID: lesson.id, revision: 1, section: .example)
+        let original = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: nil)
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: original.id, editRevision: 1, text: "原确认理解")
+        let confirmed = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: original.id, expectedEditRevision: 1)
+        let revision = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: confirmed.id)
+        _ = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: revision.id, editRevision: 1, text: "尚未确认的修订")
+        try await repo.suspendSession(id: sessionID, ending: true, draftRevision: 1, draftText: "原交流草稿")
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.continueSession(id: sessionID)
+        try await waitUntil { store.state.phase == .editing }
+        XCTAssertEqual(store.state.session?.lifecycle, .active)
+        XCTAssertEqual(store.state.inputText, "原交流草稿")
+        XCTAssertEqual(store.state.lesson?.readingSection, .example)
+        let persistedLesson = try await repo.savedLesson(sessionID: sessionID, itemID: lesson.id)
+        XCTAssertEqual(store.state.lesson, persistedLesson)
+        let versions = try await repo.understandings(sessionID: sessionID)
+        XCTAssertEqual(store.state.understandings, versions)
+        XCTAssertEqual(store.state.understanding?.id, revision.id)
+        XCTAssertEqual(store.state.understandingInputText, "尚未确认的修订")
+        store.saveUnderstanding(text: "恢复后继续修订")
+        store.confirmUnderstanding()
+        try await waitUntil { store.state.understanding?.state == .confirmed }
+        XCTAssertEqual(store.state.understandings.first(where: { $0.id == confirmed.id }), confirmed)
+        XCTAssertEqual(store.state.understandings.first(where: { $0.id == revision.id })?.text, "恢复后继续修订")
+        XCTAssertEqual(transport.calls, 0)
+    }
+
+    func testSameDayRestorePreservesMultipleDraftsWithoutArbitrarySelection() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "listen", lifecycle: .draft,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let selected = try await repo.selectNextLesson(sessionID: id, itemID: UUID(), expectedEpoch: 0,
+            catalog: try catalog(), at: .now, timeZone: .current)
+        let lesson = try XCTUnwrap(selected)
+        try await repo.acknowledgePresentation(sessionID: id, itemID: lesson.id, at: .now, timeZone: .current)
+        for text in ["第一个独立想法", "第二个独立想法"] {
+            let draft = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+            _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: draft.id, editRevision: 1, text: text)
+        }
+        try await repo.suspendSession(id: id, ending: true, draftRevision: 0, draftText: "")
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .ended }
+        XCTAssertEqual(Set(store.state.understandings.map(\.text)), ["第一个独立想法", "第二个独立想法"])
+        XCTAssertNil(store.state.understanding)
+        XCTAssertEqual(store.state.understandingInputText, "")
+        XCTAssertEqual(store.state.session?.lifecycle, .ended)
+    }
+
+    func testContinueReplaysSavedResponseAndRequiresActualPresentationBeforeNextTurn() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let original = MentorFeatureStore(repository: repo, transport: transport)
+        original.start(entry: "discuss")
+        try await waitUntil { original.state.phase == .editing }
+        original.submit(text: "今天完成了改动")
+        try await waitUntil { original.state.phase == .showingResponse }
+        let id = try XCTUnwrap(original.state.session?.id)
+        let responseID = try XCTUnwrap(original.state.responseItemID)
+        original.finish()
+        try await waitUntil { original.state.phase == .ended }
+        let restored = MentorFeatureStore(repository: repo, transport: transport)
+        restored.continueSession(id: id)
+        try await waitUntil { restored.state.phase == .showingResponse }
+        XCTAssertEqual(restored.state.response, original.state.response)
+        XCTAssertEqual(restored.state.responseItemID, responseID)
+        XCTAssertNil(restored.state.acknowledgedResponseItemID)
+        restored.submit(text: "未呈现时不应提交")
+        XCTAssertEqual(transport.calls, 1)
+        restored.acknowledgeResponse(itemID: responseID)
+        try await waitUntil { restored.state.acknowledgedResponseItemID == responseID }
+        restored.submit(text: "继续这个问题")
+        try await waitUntil { restored.state.phase == .showingResponse && restored.state.responseItemID != responseID }
+        XCTAssertEqual(transport.calls, 2)
+        XCTAssertEqual(restored.state.timeline.filter { $0.kind == .assistant }.count, 2)
+    }
+
+    func testActiveListeningResumeKeepsResponsePresentationGate() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let original = MentorFeatureStore(repository: repo, transport: transport, catalog: try catalog())
+        original.start(entry: "listen")
+        try await waitUntil { original.state.phase == .reading }
+        original.acknowledgeLesson()
+        // Wait on persisted receipt before beginning this test's model turn.
+        for _ in 0..<200 {
+            if try await repo.listeningResume(at: .now, timeZone: .current) != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        original.submit(text: "这个角度让我想到今天的工作")
+        try await waitUntil { original.state.phase == .showingResponse }
+        let restored = MentorFeatureStore(repository: repo, transport: transport)
+        restored.start(entry: "listen")
+        try await waitUntil { restored.state.phase == .showingResponse }
+        XCTAssertEqual(restored.state.responseItemID, original.state.responseItemID)
+        restored.submit(text: "不能绕过呈现确认")
+        XCTAssertEqual(transport.calls, 1)
+        XCTAssertNil(restored.state.acknowledgedResponseItemID)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
