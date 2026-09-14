@@ -593,11 +593,14 @@ final class MentorFeatureStore: ObservableObject {
             let built = try MentorContextBuilder().build(session: current, items: items, intent: intent,
                 responseIntent: intent == "explain" ? .directTeaching : .discuss,
                 currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [])
-            var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "mentor.m1", systemText: "Return the mentor JSON contract.", userText: built.json, outputSchemaVersion: 1),
+            var request = LLMRequest(prompt: LocalPromptProvider().template(for: .mentorRespond, mode: .standard),
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
             request.mentorExecutionPolicy = .m1
-            request.mentorAuditToken = .init(sessionID: current.id, requestID: requestID, requestEpoch: current.requestEpoch, semanticRevision: current.semanticRevision)
+            let token = LLMRequest.MentorAuditToken(sessionID: current.id, requestID: requestID,
+                requestEpoch: current.requestEpoch, semanticRevision: current.semanticRevision)
+            request.mentorAuditToken = token
+            try await repository.prepareRequestContext(token: token, json: built.json)
             try Task.checkCancellation()
             let data = try await transport.complete(request)
             try Task.checkCancellation()

@@ -401,3 +401,15 @@ Store 新增按 ID 选择当前会话未确认草稿的入口，恢复多组草�
 验证：MingSi Dev 上 MentorFeatureStoreTests 共 34 项通过，0 失败、0 跳过；已核对 Test-MingSi-2026.09.15_00-38-44-+0800.xcresult。新增三项测试覆盖快速滚动到最终段落后立即继续、重复事件去重及语义版本不变；换题前完成旧位置保存、旧页面事件隔离、不自动呈现及可选段落校验；注入位置 UPDATE 失败后保留阅读与草稿、本地重试成功且零模型调用。git diff --check 通过。
 
 剩余范围：真实 ScrollView 的可见段落回调与恢复定位、段内位置、字号 / VoiceOver 验证、恢复进行中又产生滚动事件的完整时序、位置保存失败后的跨页面提示仍需处理。本轮实现段落级 Store 能力，不等于阅读页面已交付。当前工作树验证通过，不代表干净 checkout；内部未开放流程无需用户发布说明。
+
+## 2026-09-15：F08 / F09 正式导师 PromptID 与发送上下文冻结
+
+新增 mentorRespond、mentorDraftUnderstanding 两个 1.0.0 模板，路由到 coaching，保留旧 singleNudge 协议。导师模板明确中文表达、来源边界、修正优先、直接讲解、两轮补材料限制、严格 JSON 及理解草稿不得冒充用户确认。Store 的导师交流已使用 mentorRespond，移除临时 singleNudge / mentor.m1 / 单句 system 占位。理解模板与预览契约已提供，但真实 AI 理解请求流程尚未接入。
+
+新增 prepareRequestContext：在模型调用前按 session / request / epoch / semanticRevision / intent 校验并冻结实际 built.json，转为 in_flight；保存失败不调用模型，按现有失败收尾流程处理。同内容可幂等重放，已冻结的不同内容或已取消请求被拒绝。v66 增加 registration_context_json，保留首次登记上下文，使冻结真实发送快照后重复 submitTurn 命令仍能返回原请求；旧行以原 context_snapshot_json 兼容读取。迁移不改旧行正文或请求状态。
+
+新增 Preview 的导师响应及用户表达草稿契约；无用户表达时拒绝生成理解。旧上下文策略明确不为新 PromptID 加入训练记忆、处方、原则等自动来源，旧历史修复不接管新协议。固定评估套件加入直接讲解补材料拒绝、理解来源资格两项契约检查，避免新 PromptID 缺少用例导致全局门禁不完整。这些是协议测试，不代表真实模型语义质量已通过。
+
+验证：MingSi Dev 第一批 Store / 仓储 / 响应解析 / LocalPromptProvider 127 项通过；扩展发现缺少新 PromptID 评估用例，补齐后 PromptEvalFixtureTests / TodayAIServiceContextTests / LocalPromptProviderTests 170 项通过（Test-MingSi-2026.09.15_00-50-51-+0800.xcresult）。最后新增 v65 有数据升级和冻结后命令重放验证，Store / 仓储 70 项通过（Test-MingSi-2026.09.15_00-52-35-+0800.xcresult），均 0 失败 / 0 跳过。注入上下文 UPDATE 失败证明零模型调用；冻结快照与实际 inputSummary 逐字一致。终态故障测试限定为终态 UPDATE，继续验证模型失败后仅重试本地收尾。git diff --check 通过。
+
+剩余范围：App 注入中央 PromptProvider / 实际 transport、AI 理解完整请求路径、正式内容审核、真实模型语义评估、迁移备份与能力降级、共享前台超时预算及页面仍未完整实现。登记阶段仍有 prepared 占位上下文，只有冻结成功才发起模型调用；不能声称任意 interrupted 准备请求已经发送。当前工作树验证不等于干净 checkout。对原本已有修改的 AppStore / TodayAIService / MockLLMClient 仅暂存新 PromptID 所需独立改动，其余保持未提交。内部未开放能力无需用户发布说明，M1 仍未交付。

@@ -3,6 +3,55 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testPreparedContextCanReplayButCannotChangeOrReviveCancelledRequest() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .draft,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let command = MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: nil, intent: "explain", contextSnapshotJSON: "{}")
+        let requestID = try await repo.submitTurn(command)
+        let loaded = try await repo.session(id: id)
+        let session = try XCTUnwrap(loaded)
+        let context = try MentorContextBuilder().build(session: session, items: [], intent: "explain", responseIntent: .directTeaching)
+        let token = LLMRequest.MentorAuditToken(sessionID: id, requestID: requestID,
+            requestEpoch: session.requestEpoch, semanticRevision: session.semanticRevision)
+        try await repo.prepareRequestContext(token: token, json: context.json)
+        try await repo.prepareRequestContext(token: token, json: context.json)
+        let replay = try await repo.submitTurn(command)
+        XCTAssertEqual(replay, requestID)
+        do {
+            try await repo.prepareRequestContext(token: token, json: context.json + " ")
+            XCTFail("Frozen context was replaced")
+        } catch {}
+        try await repo.suspendSession(id: id, ending: true, draftRevision: 0, draftText: "")
+        do {
+            try await repo.prepareRequestContext(token: token, json: context.json)
+            XCTFail("Cancelled request was revived")
+        } catch {}
+        let stored = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT context_snapshot_json FROM mentor_requests") }
+        XCTAssertEqual(stored, context.json)
+    }
+
+    func testRegistrationContextMigrationPreservesExistingPreparedRequest() throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v65_mentor_source_link_ownership")
+        let sessionID = UUID().uuidString
+        let requestID = UUID().uuidString
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO mentor_sessions (id, initial_entry, lifecycle, draft_text, draft_revision, activity_at) VALUES (?, 'discuss', 'active', '', 0, '2026-09-15T00:00:00Z')", arguments: [sessionID])
+            try db.execute(sql: "INSERT INTO mentor_requests (id, session_id, command_id, intent, context_snapshot_json, state, created_at, expected_revision, epoch) VALUES (?, ?, ?, 'explain', '{}', 'prepared', '2026-09-15T00:00:00Z', 0, 0)", arguments: [requestID, sessionID, UUID().uuidString])
+        }
+        try AppDatabase.makeMigrator().migrate(queue)
+        try queue.read { db in
+            let row = try XCTUnwrap(Row.fetchOne(db, sql: "SELECT context_snapshot_json, registration_context_json, state FROM mentor_requests WHERE id = ?", arguments: [requestID]))
+            XCTAssertEqual(row["context_snapshot_json"] as String, "{}")
+            XCTAssertNil(row["registration_context_json"] as String?)
+            XCTAssertEqual(row["state"] as String, "prepared")
+        }
+    }
+
     private func lessonCatalog(version: String = "1.0", claim: String = "A concrete teaching claim") throws -> MentorLessonCatalog {
         let lessons = (1...24).map { index -> MentorLesson in
             func build(_ hash: String) -> MentorLesson {

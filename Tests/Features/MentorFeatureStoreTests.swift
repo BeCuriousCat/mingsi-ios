@@ -271,7 +271,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport)
         store.start(entry: "discuss")
         try await waitUntil { store.state.phase == .editing }
-        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_request_end BEFORE UPDATE OF state ON mentor_requests BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_request_end BEFORE UPDATE OF state ON mentor_requests WHEN NEW.state IN ('failed', 'timed_out', 'cancelled') BEGIN SELECT RAISE(ABORT, 'injected'); END") }
         store.submit(text: "请求失败的原话")
         try await waitUntil { store.state.canRetryRequestFinalization }
         XCTAssertNotNil(store.state.requestFinalizationError)
@@ -808,6 +808,44 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(transport.calls, 0)
     }
 
+    func testMentorRequestUsesVersionedPromptAndFreezesExactSentContext() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "今天的具体片段")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let sent = try XCTUnwrap(transport.lastRequest)
+        XCTAssertEqual(sent.prompt.id, .mentorRespond)
+        XCTAssertEqual(sent.prompt.version, "1.0.0")
+        XCTAssertEqual(sent.decisionRoute, .coaching)
+        XCTAssertNotEqual(sent.prompt.userText, sent.inputSummary)
+        let token = try XCTUnwrap(sent.mentorAuditToken)
+        let snapshot = try await db.dbQueue.read { try String.fetchOne($0,
+            sql: "SELECT context_snapshot_json FROM mentor_requests WHERE id = ?", arguments: [token.requestID.uuidString]) }
+        XCTAssertEqual(snapshot, sent.inputSummary)
+        let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(sent.inputSummary.utf8))
+        XCTAssertEqual(context.sources.first(where: { $0.role == .user })?.content, "今天的具体片段")
+        XCTAssertEqual(context.sessionID, token.sessionID)
+    }
+
+    func testContextSnapshotWriteFailurePreventsModelCall() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_context BEFORE UPDATE OF context_snapshot_json ON mentor_requests BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.submit(text: "不能漏存的原话")
+        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+        XCTAssertEqual(transport.calls, 0)
+        let terminal = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT state FROM mentor_requests") }
+        XCTAssertEqual(terminal, "failed")
+        XCTAssertEqual(store.state.inputText, "不能漏存的原话")
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -832,8 +870,10 @@ final class MentorFeatureStoreTests: XCTestCase {
 
 private final class MentorStoreFixtureTransport: MentorTransport, @unchecked Sendable {
     private(set) var calls = 0
+    private(set) var lastRequest: LLMRequest?
     func complete(_ request: LLMRequest) async throws -> Data {
         calls += 1
+        lastRequest = request
         let source = request.sourceRecordIDs.first ?? "item:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         return try JSONSerialization.data(withJSONObject: [
             "schema_version": "1.0.0", "action": "explain", "material_status": "usable",

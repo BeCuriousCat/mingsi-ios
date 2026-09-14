@@ -7,6 +7,32 @@ final class MentorResponseParserTests: XCTestCase {
     private let lesson = "lesson:L01@1.0"
     private let parser = MentorResponseParser()
 
+    func testMentorPreviewTemplatesReturnValidContractsWithoutInventingUserExpression() async throws {
+        let session = MentorSession(id: UUID(), initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now)
+        let item = MentorTimelineItem(id: UUID(), sessionID: session.id, sequence: 1, kind: .user,
+            payloadJSON: "{\"text\":\"我想先区分动作与效果\"}")
+        let built = try MentorContextBuilder().build(session: session, items: [item], intent: "reply")
+        let client = MockLLMClient()
+        let provider = LocalPromptProvider()
+        for id in [PromptID.mentorRespond, .mentorDraftUnderstanding] {
+            let request = LLMRequest(prompt: provider.template(for: id, mode: .standard), inputSummary: built.json)
+            let data = try await client.complete(request)
+            if id == .mentorRespond {
+                XCTAssertEqual(try parser.parseTurn(data, context: built.validation).response.schemaVersion, "1.0.0")
+            } else {
+                let draft = try parser.parseUnderstanding(data, context: built.validation)
+                XCTAssertEqual(draft.text, "我想先区分动作与效果")
+                XCTAssertEqual(draft.sourceRefs, [try MentorSourceReference("item:" + item.id.uuidString)])
+            }
+        }
+        let empty = try MentorContextBuilder().build(session: session, items: [], intent: "explain")
+        do {
+            _ = try await client.complete(LLMRequest(prompt: provider.template(for: .mentorDraftUnderstanding, mode: .standard), inputSummary: empty.json))
+            XCTFail("Preview invented an understanding without user expression")
+        } catch MentorContextError.invalidUnderstanding {}
+    }
+
     private func context(count: Int = 0, intent: MentorResponseValidationContext.Intent = .discuss, hasUser: Bool = true, superseded: Bool = false) throws -> MentorResponseValidationContext {
         let userRef = try MentorSourceReference(user)
         return try MentorResponseValidationContext(sentSources: [userRef, MentorSourceReference(assistant), MentorSourceReference(lesson)],

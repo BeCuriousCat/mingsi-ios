@@ -4404,6 +4404,8 @@ final class AppStore: ObservableObject {
 
     private static func canRepairPrompt(_ prompt: PromptID) -> Bool {
         switch prompt {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .organizeCards, .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .recommendLenses, .verifyQuest, .weeklyCalibration, .monthlyGrowth, .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:

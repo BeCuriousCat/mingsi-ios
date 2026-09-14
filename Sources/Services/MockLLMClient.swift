@@ -10,6 +10,17 @@ final class MockLLMClient: LLMClient {
 
     func complete(_ request: LLMRequest) async throws -> Data {
         switch request.prompt.id {
+        case .mentorRespond:
+            return try encode(["schema_version": "1.0.0", "action": "explain", "material_status": "not_needed",
+                "body": "可以先区分完成的动作和它带来的效果。例如，提交一个改动是动作，使用者的问题是否减少是效果。两者可能需要分别观察。",
+                "question": NSNull(), "question_purpose": NSNull(), "source_refs": [],
+                "lesson_ref": NSNull(), "suggested_actions": ["finish"]])
+        case .mentorDraftUnderstanding:
+            let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(request.inputSummary.utf8))
+            guard let source = context.sources.last(where: { $0.role == .user && $0.isCurrent }) else {
+                throw MentorContextError.invalidUnderstanding
+            }
+            return try encode(["schema_version": "1.0.0", "text": source.content, "source_refs": [source.ref.value]])
         case .organizeCards:
             return try encode([
                 "cards": [

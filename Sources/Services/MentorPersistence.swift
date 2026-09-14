@@ -107,6 +107,7 @@ protocol MentorRepository {
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
     func deleteSession(id: UUID) async throws
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
+    func prepareRequestContext(token: LLMRequest.MentorAuditToken, json: String) async throws
     func recoverInterruptedRequests() async throws -> Int
     func finishRequest(sessionID: UUID, requestID: UUID, reason: MentorRequestEndReason) async throws
     func suspendSession(id: UUID, ending: Bool, draftRevision: Int, draftText: String) async throws
@@ -390,6 +391,28 @@ final class SQLiteMentorRepository: MentorRepository {
         }
     }
 
+    /// Freeze the exact outgoing context before network execution. A second call
+    /// may replay the same context but cannot replace an already frozen request.
+    func prepareRequestContext(token: LLMRequest.MentorAuditToken, json: String) async throws {
+        let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(json.utf8))
+        guard context.sessionID == token.sessionID, context.requestEpoch == token.requestEpoch,
+              context.semanticRevision == token.semanticRevision else {
+            throw PersistenceError.validationFailed("mentor context ownership mismatch")
+        }
+        try await database.dbQueue.write { db in
+            guard let session = try MentorSessionRow.fetchOne(db, key: token.sessionID.uuidString),
+                  let request = try MentorRequestRow.fetchOne(db, key: token.requestID.uuidString),
+                  request.sessionID == session.id, request.intent == context.intent,
+                  request.epoch == token.requestEpoch, request.expectedRevision == token.semanticRevision,
+                  session.requestEpoch == token.requestEpoch, session.semanticRevision == token.semanticRevision,
+                  ["prepared", "in_flight"].contains(request.state),
+                  request.contextSnapshotJSON == json || (request.state == "prepared" && request.contextSnapshotJSON == "{}") else {
+                throw PersistenceError.validationFailed("mentor context is stale or already frozen")
+            }
+            try db.execute(sql: "UPDATE mentor_requests SET registration_context_json = COALESCE(registration_context_json, context_snapshot_json), context_snapshot_json = ?, state = 'in_flight' WHERE id = ?", arguments: [json, request.id])
+        }
+    }
+
     /// Explicit user continuation; cancelled requests remain terminal.
     func resumeSession(id: UUID) async throws {
         try await database.dbQueue.write { db in
@@ -557,7 +580,7 @@ final class SQLiteMentorRepository: MentorRepository {
             if let existing = try MentorRequestRow.filter(Column("session_id") == command.sessionID.uuidString && Column("command_id") == command.commandID.uuidString).fetchOne(db) {
                 let previousPayload = try existing.userItemID.flatMap { try MentorItemRow.fetchOne(db, key: $0)?.payloadJSON }
                 guard existing.intent == command.intent,
-                      existing.contextSnapshotJSON == command.contextSnapshotJSON,
+                      (existing.registrationContextJSON ?? existing.contextSnapshotJSON) == command.contextSnapshotJSON,
                       previousPayload == payload,
                       existing.retryOf == command.retryOf?.uuidString,
                       let requestID = UUID(uuidString: existing.id) else {
@@ -653,7 +676,8 @@ private struct MentorRequestRow: Codable, FetchableRecord, PersistableRecord {
     var intent, contextSnapshotJSON, state, createdAt: String
     var expectedRevision, epoch: Int
     var retryOf: String?
-    enum CodingKeys: String, CodingKey { case id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at", expectedRevision = "expected_revision", epoch, retryOf = "retry_of" }
+    var registrationContextJSON: String? = nil
+    enum CodingKeys: String, CodingKey { case registrationContextJSON = "registration_context_json", id, sessionID = "session_id", commandID = "command_id", userItemID = "user_item_id", intent, contextSnapshotJSON = "context_snapshot_json", state, createdAt = "created_at", expectedRevision = "expected_revision", epoch, retryOf = "retry_of" }
 }
 
 private struct MentorSessionRow: Codable, FetchableRecord, PersistableRecord {

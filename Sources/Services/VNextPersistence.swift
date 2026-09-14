@@ -869,6 +869,12 @@ extension AppDatabase {
             try db.create(index: "mentor_source_links_owner_idx", on: "mentor_source_links", columns: ["session_id", "owner_kind", "owner_uuid"], unique: false, ifNotExists: true)
         }
 
+        migrator.registerMigration("v66_mentor_request_registration_context") { db in
+            try db.alter(table: "mentor_requests") { t in
+                t.add(column: "registration_context_json", .text)
+            }
+        }
+
     }
 }
 

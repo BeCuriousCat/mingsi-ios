@@ -823,6 +823,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsCoachMemory(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
@@ -834,6 +836,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsPrincipleReferences(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests:
             return true
         case .extractPrinciple, .organizeCards, .recommendLenses, .verifyQuest,
@@ -845,6 +849,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsLensFeedback(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
@@ -856,6 +862,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsTrainingPrescription(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
@@ -867,6 +875,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsCoachTurn(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
@@ -878,6 +888,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsCoachObservation(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions:
             return true
         case .organizeCards, .recommendLenses, .generateQuests, .verifyQuest,
@@ -890,6 +902,8 @@ struct CoachContextMemoryPolicy {
 
     private func allowsCoachPatternSummary(_ promptID: PromptID) -> Bool {
         switch promptID {
+        case .mentorRespond, .mentorDraftUnderstanding:
+            return false
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
