@@ -4,6 +4,101 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testUnderstandingTypingDebouncesAndDoesNotReplaceNewerInput() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let original = try XCTUnwrap(store.state.understanding)
+        store.updateUnderstandingText("第一句")
+        try await Task.sleep(for: .milliseconds(150))
+        store.updateUnderstandingText("最后一句")
+        XCTAssertTrue(store.state.hasUnsavedUnderstanding)
+        store.beginUnderstanding()
+        XCTAssertEqual(store.state.understanding?.id, original.id)
+        try await Task.sleep(for: .milliseconds(200))
+        let before = try await repo.understandings(sessionID: original.sessionID)
+        XCTAssertEqual(before.first?.text, original.text)
+        XCTAssertEqual(store.state.understandingInputText, "最后一句")
+        try await waitUntil { !store.state.hasUnsavedUnderstanding }
+        let after = try await repo.understandings(sessionID: original.sessionID)
+        XCTAssertEqual(after.first?.text, "最后一句")
+        XCTAssertEqual(after.first?.editRevision, original.editRevision + 1)
+        XCTAssertEqual(transport.calls, 0)
+    }
+
+    func testEarlierUnderstandingSaveDoesNotUnlockEditorWithDebouncePending() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let id = store.state.understanding?.id
+        store.saveUnderstanding(text: "原句")
+        store.updateUnderstandingText("临时修改")
+        store.updateUnderstandingText("原句")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertTrue(store.state.hasUnsavedUnderstanding)
+        store.beginUnderstanding()
+        XCTAssertEqual(store.state.understanding?.id, id)
+        let flushed = await store.flushPendingEdits()
+        XCTAssertTrue(flushed)
+        XCTAssertFalse(store.state.hasUnsavedUnderstanding)
+        XCTAssertEqual(store.state.understanding?.text, "原句")
+    }
+
+    func testUnderstandingDebounceFlushesOnConfirmationAndSessionExit() async throws {
+        for confirm in [false, true] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing }
+            let id = try XCTUnwrap(store.state.session?.id)
+            store.beginUnderstanding()
+            store.updateUnderstandingText("创建期间输入并立即离开")
+            if confirm { store.confirmUnderstanding() }
+            else { store.start(entry: "discuss") }
+            try await waitUntil { !store.state.isTransitioningSession && !store.state.isConfirmingUnderstanding }
+            let saved = try await repo.understandings(sessionID: id)
+            XCTAssertEqual(saved.first?.text, "创建期间输入并立即离开")
+            XCTAssertEqual(saved.first?.state, confirm ? .confirmed : .draft)
+            XCTAssertFalse(store.state.hasUnsavedUnderstanding)
+        }
+    }
+
+    func testUnderstandingDebouncedSaveFailurePreservesTextUntilExplicitRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let id = try XCTUnwrap(store.state.session?.id)
+        try await db.dbQueue.write {
+            try $0.execute(sql: "CREATE TRIGGER fail_debounced_note BEFORE UPDATE OF text ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+        store.updateUnderstandingText("尚未落盘的理解")
+        let flushed = await store.flushPendingEdits()
+        XCTAssertFalse(flushed)
+        XCTAssertTrue(store.state.hasUnsavedUnderstanding)
+        store.start(entry: "discuss")
+        try await waitUntil { !store.state.isTransitioningSession }
+        XCTAssertEqual(store.state.session?.id, id)
+        XCTAssertEqual(store.state.understandingInputText, "尚未落盘的理解")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_debounced_note") }
+        store.retryUnderstandingSave()
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        XCTAssertFalse(store.state.hasUnsavedUnderstanding)
+        XCTAssertNil(store.state.understandingError)
+        let saved = try await repo.understandings(sessionID: id)
+        XCTAssertEqual(saved.first?.text, "尚未落盘的理解")
+    }
+
     func testSwitchInvalidatesHeldRequestForNewAndExistingDestinations() async throws {
         for existing in [false, true] {
             let db = try AppDatabase(dbQueue: DatabaseQueue())
