@@ -1167,9 +1167,11 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.recordLessonFeedback(.alreadyKnown)
         try await waitUntil { !store.state.isSavingLessonFeedback }
         XCTAssertNil(store.state.lessonFeedbackError)
+        XCTAssertTrue(store.state.lessonFeedbackNotice?.contains("以后不再自动推荐") == true)
         store.resetKnownLessonFeedback()
         try await waitUntil { !store.state.isSavingLessonFeedback }
         XCTAssertNil(store.state.lessonFeedbackError)
+        XCTAssertTrue(store.state.lessonFeedbackNotice?.contains("已重置") == true)
         let active = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE revoked_at IS NULL") }
         XCTAssertEqual(active, 0)
         // A new session must still exclude the recently presented logical lesson.
@@ -1193,6 +1195,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.selectAnotherLesson()
         try await waitUntil { !store.state.isSavingLessonFeedback && store.state.phase == .reading }
         XCTAssertNotNil(store.state.lessonFeedbackError)
+        XCTAssertNil(store.state.lessonFeedbackNotice)
         XCTAssertEqual(store.state.lesson, first)
         try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_feedback") }
         store.recordLessonFeedback(.alreadyKnown)

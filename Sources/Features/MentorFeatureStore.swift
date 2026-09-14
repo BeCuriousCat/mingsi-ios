@@ -23,6 +23,7 @@ struct MentorFeatureState: Equatable {
     var readingPositionError: String?
     var pendingReadingPositionSaves = 0
     var lessonFeedbackError: String?
+    var lessonFeedbackNotice: String?
     var isSavingLessonFeedback = false
     var response: MentorValidatedTurn?
     var responseItemID: UUID?
@@ -495,6 +496,7 @@ final class MentorFeatureStore: ObservableObject {
                 guard state.session?.id == current.id else { return }
                 state.timeline = items
                 state.lesson = lesson
+                state.lessonFeedbackNotice = nil
                 state.readingPositionError = nil
                 state.pendingReadingPositionSaves = 0
                 state.phase = lesson == nil ? .lessonExhausted : .reading
@@ -510,7 +512,7 @@ final class MentorFeatureStore: ObservableObject {
     /// A subsequent change of lesson waits for this local write to finish.
     func recordLessonFeedback(_ kind: MentorLessonFeedback) {
         guard !state.isViewingHistory else { return }
-        guard let session = state.session, let lesson = state.lesson,
+        guard sessionTransitionID == nil, let session = state.session, let lesson = state.lesson,
               [.reading, .showingResponse, .paused, .ended].contains(state.phase) else { return }
         saveLessonFeedback(sessionID: session.id, itemID: lesson.id, kind: kind)
     }
@@ -526,6 +528,7 @@ final class MentorFeatureStore: ObservableObject {
         let receipt = presentationTask
         let commandID = UUID()
         state.lessonFeedbackError = nil
+        state.lessonFeedbackNotice = nil
         state.isSavingLessonFeedback = true
         lessonFeedbackTask = Task { [weak self] in
             guard let self else { return }
@@ -541,6 +544,12 @@ final class MentorFeatureStore: ObservableObject {
                         commandID: commandID, kind: kind, at: now())
                 } else {
                     try await repository.resetKnownLessonFeedback(commandID: commandID, at: now())
+                }
+                guard state.session?.id == foregroundSessionID else { return }
+                switch kind {
+                case .notRelevant: state.lessonFeedbackNotice = "已记录，这次交流不再推荐这个主题。"
+                case .alreadyKnown: state.lessonFeedbackNotice = "已记录，以后不再自动推荐这篇内容。已读记录仍会保留。"
+                case nil: state.lessonFeedbackNotice = "已重置“已知道”反馈，已读记录仍会保留。"
                 }
             } catch {
                 guard !Task.isCancelled, state.session?.id == foregroundSessionID else { return }

@@ -253,7 +253,7 @@ struct MentorConversationView: View {
         }
     }
 
-    private func lesson(_ lesson: MentorLesson, itemID: UUID) -> some View {
+    @ViewBuilder private func lesson(_ lesson: MentorLesson, itemID: UUID) -> some View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(lesson.title).font(.title2.weight(.semibold))
                 Text(lesson.claim)
@@ -273,7 +273,42 @@ struct MentorConversationView: View {
             .background(GeometryReader { proxy in
                 Color.clear.preference(key: MentorVisibleItems.self, value: [itemID: proxy.frame(in: .global)])
             })
+            if feature.state.lesson?.id == itemID && !feature.state.isViewingHistory {
+                lessonActions
+            }
         }
+
+    private var lessonActions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button("换一个新视角") { feature.selectAnotherLesson() }
+                .buttonStyle(.bordered).controlSize(.large)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("mentor.lesson.another")
+            Button("不相关") { feature.recordLessonFeedback(.notRelevant) }
+                .frame(minHeight: 44)
+                .accessibilityHint("只在这次交流中排除这个主题。")
+                .accessibilityIdentifier("mentor.lesson.not-relevant")
+            Button("已知道") { feature.recordLessonFeedback(.alreadyKnown) }
+                .frame(minHeight: 44)
+                .accessibilityHint("以后不再自动推荐这篇内容，已读记录会保留。")
+                .accessibilityIdentifier("mentor.lesson.known")
+            if feature.state.isSavingLessonFeedback { ProgressView("正在保存反馈…") }
+            if let notice = feature.state.lessonFeedbackNotice {
+                Text(notice).font(.subheadline).foregroundStyle(DS.mutedInk)
+                    .accessibilityIdentifier("mentor.lesson.feedback-saved")
+            }
+            if feature.state.lessonFeedbackError != nil {
+                Text("反馈暂时没有保存成功。内容仍在，可以再次选择反馈重试。")
+                    .foregroundStyle(DS.caution)
+            }
+            if feature.state.lessonError != nil {
+                Text("暂时没能换到新内容，可以稍后重试。")
+                    .foregroundStyle(DS.caution)
+            }
+        }
+        .disabled(feature.state.isTransitioningSession || feature.state.isSavingLessonFeedback ||
+                  ![.reading, .showingResponse].contains(feature.state.phase))
+    }
 
     private func decodeLesson(_ json: String) -> MentorLesson? {
         let decoder = JSONDecoder()
@@ -283,6 +318,7 @@ struct MentorConversationView: View {
 
     @ViewBuilder private var status: some View {
         if feature.state.phase == .submitting { ProgressView("正在回应…") }
+        if feature.state.phase == .selectingLesson { ProgressView("正在准备下一个视角…") }
         if feature.state.deletionError != nil {
             Text("暂时没能删除，交流仍保留在这里。请稍后重试。")
                 .foregroundStyle(DS.caution)
@@ -388,7 +424,22 @@ struct MentorUITestHarness: View {
                             activityAt: Date(timeIntervalSince1970: Double(100000 - index * 100))))
                     }
                 }
-                feature = MentorFeatureStore(repository: repository, transport: MentorUIOfflineTransport())
+                var catalog: MentorLessonCatalog?
+                if ProcessInfo.processInfo.arguments.contains("--mentor-lesson-fixture") {
+                    let lessons = (1...24).map { index in
+                        let base = MentorLesson(id: String(format: "L%02d", index), version: "1.0", editorialOrder: index,
+                            title: "测试视角 \(index)", theme: MentorLesson.Theme.allCases[(index - 1) / 4],
+                            applicableContexts: ["UI fixture"], claim: "这是隔离的界面测试内容。", example: "用于检查阅读和反馈按钮。",
+                            boundary: "不作为正式教材发布。", observation: nil, sourceType: .teachingExample, citations: [],
+                            contentHash: "", review: .init(status: .approved, reviewedBy: "UI fixture", reviewedAt: .now, note: nil))
+                        return MentorLesson(id: base.id, version: base.version, editorialOrder: base.editorialOrder,
+                            title: base.title, theme: base.theme, applicableContexts: base.applicableContexts,
+                            claim: base.claim, example: base.example, boundary: base.boundary, observation: nil,
+                            sourceType: base.sourceType, citations: [], contentHash: MentorLessonCatalog.contentHash(for: base), review: base.review)
+                    }
+                    catalog = try MentorLessonCatalog(pack: MentorLessonPack(schemaVersion: "1.0.0", packID: "ui-fixture", version: "1.0", lessons: lessons))
+                }
+                feature = MentorFeatureStore(repository: repository, transport: MentorUIOfflineTransport(), catalog: catalog)
                 app.apiKeyConfigured = false
             } catch { self.error = String(describing: error) }
         }

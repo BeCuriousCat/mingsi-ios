@@ -2,6 +2,42 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testLessonFeedbackAndLocalNextLessonWithoutModel() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-lesson-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["听一个新视角"].waitForExistence(timeout: 15))
+        app.buttons["听一个新视角"].tap()
+        let known = app.buttons["mentor.lesson.known"]
+        for _ in 0..<10 {
+            if known.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(known.isHittable)
+        known.tap()
+        let saved = app.staticTexts["mentor.lesson.feedback-saved"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        XCTAssertTrue(saved.label.contains("以后不再自动推荐"))
+        let next = app.buttons["mentor.lesson.another"]
+        next.tap()
+        XCTAssertTrue(saved.waitForNonExistence(timeout: 5))
+        let unrelated = app.buttons["mentor.lesson.not-relevant"]
+        for _ in 0..<10 {
+            if unrelated.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(unrelated.isHittable)
+        unrelated.tap()
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        XCTAssertTrue(saved.label.contains("这次交流"))
+        XCTAssertFalse(app.buttons["打开模型设置"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "mentor-lesson-feedback"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testFullHistoryKeepsPositionAfterViewingAndDeleting() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-history-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
