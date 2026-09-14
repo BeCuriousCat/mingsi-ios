@@ -305,3 +305,11 @@ SpeechTranscriptionService 增加 finalizing 状态；松手或达到录音上�
 验证：MingSi Dev 上 MentorFeatureStoreTests 8 项通过、0 失败、0 跳过，已核对 xcresult。新增可控挂起且不合作取消的 transport，覆盖历史加载后正常回应、历史加载后结束再释放迟到回应且无助手条目写入；另覆盖新 Store 开始不修改已有 prepared 请求，以及历史读取错误不改变编辑状态。原有四项流程回归通过。
 
 剩余范围：理解编辑和教材呈现确认任务仍需独立生命周期管理，保存期间的快速切换需更完整的操作代次与事务测试；App 启动级恢复、前台请求共享占用、实际 UI 和模型 wiring 尚未完成。本次是未开放流程内部修复，无需用户发布说明，不代表 F08 / F10 / F13 全部交付。
+
+## 2026-09-14：F08 / F11 回应呈现确认与连续交流
+
+Store 保留 commitResponse 返回的实际条目 ID，新增 acknowledgeResponse(itemID:) 供页面实际显示后调用。旧页面的条目 ID 不会确认新回应；未确认呈现时 Store 不提交下一轮，确认成功后可以正常连续交流。呈现确认与教材确认使用独立任务，不再替换导师请求句柄，也不覆写前台会话、草稿和生命周期。呈现保存失败以 presentationError 单独暴露，保持回应可见，允许本地重试。
+
+验证：MingSi Dev 上 MentorFeatureStoreTests 10 项通过、0 失败、0 跳过，已核对 xcresult。新增连续两轮测试覆盖确认前阻止提交、确认后继续、旧事件不标记新回应、用户与助手各两条；注入 presented_at 写入失败验证回应不丢失、重试成功且请求数量仍为一条。
+
+剩余范围：真实 SwiftUI 视图的出现回调仍需接线，当前测试由 Store 驱动；后台草稿、理解编辑任务串行化、正式模型和页面导航仍未完成。不把 Store 的 showingResponse 当作真实呈现，不自动触发确认。内部模块无需用户发布说明。

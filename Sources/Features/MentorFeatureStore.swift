@@ -12,6 +12,9 @@ struct MentorFeatureState: Equatable {
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var response: MentorValidatedTurn?
+    var responseItemID: UUID?
+    var acknowledgedResponseItemID: UUID?
+    var presentationError: String?
     var understanding: MentorUnderstanding?
     var recentSessions: [MentorSessionSummary] = []
     var recentSessionsCursor: MentorSessionCursor?
@@ -31,6 +34,7 @@ final class MentorFeatureStore: ObservableObject {
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
     private var requestTask: Task<Void, Never>?
+    private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
     private var historyGeneration = UUID()
 
@@ -42,7 +46,7 @@ final class MentorFeatureStore: ObservableObject {
         self.timeZone = timeZone
     }
 
-    deinit { requestTask?.cancel(); historyTask?.cancel() }
+    deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
         requestTask?.cancel()
@@ -110,6 +114,7 @@ final class MentorFeatureStore: ObservableObject {
 
     func submit(intent: String = "reply", text: String? = nil) {
         guard let session = state.session, [.editing, .showingResponse, .reading].contains(state.phase) else { return }
+        if state.phase == .showingResponse, state.acknowledgedResponseItemID != state.responseItemID { return }
         let value = text ?? state.inputText
         state.inputText = value
         state.phase = .submitting
@@ -147,13 +152,36 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    /// Called by the view only after this exact response has appeared.
+    /// Keeping the item ID in the event prevents an old view acknowledging a new response.
+    func acknowledgeResponse(itemID: UUID) {
+        guard state.responseItemID == itemID else { return }
+        acknowledge(itemID: itemID, isResponse: true)
+    }
+
     func acknowledgeLesson() {
-        guard let session = state.session, let lesson = state.lesson else { return }
-        requestTask = Task { [weak self] in
+        guard let lesson = state.lesson else { return }
+        acknowledge(itemID: lesson.id, isResponse: false)
+    }
+
+    private func acknowledge(itemID: UUID, isResponse: Bool) {
+        guard let session = state.session, presentationTask == nil else { return }
+        state.presentationError = nil
+        presentationTask = Task { [weak self] in
+            guard let self else { return }
+            defer { presentationTask = nil }
             do {
-                try await self?.repository.acknowledgePresentation(sessionID: session.id, itemID: lesson.id, at: .now, timeZone: self?.timeZone ?? .current)
-                self?.state.timeline = try await self?.repository.items(sessionID: session.id) ?? []
-            } catch { self?.state.phase = .failed(String(describing: error)) }
+                try await repository.acknowledgePresentation(sessionID: session.id, itemID: itemID,
+                    at: .now, timeZone: timeZone)
+                // Receipt updates must not overwrite foreground lifecycle or draft edits.
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                if isResponse, state.responseItemID == itemID {
+                    state.acknowledgedResponseItemID = itemID
+                }
+            } catch {
+                guard !Task.isCancelled, state.session?.id == session.id else { return }
+                state.presentationError = String(describing: error)
+            }
         }
     }
 
@@ -242,12 +270,14 @@ final class MentorFeatureStore: ObservableObject {
             let data = try await transport.complete(request)
             try Task.checkCancellation()
             let validated = try MentorResponseParser().parseTurn(data, context: built.validation)
-            _ = try await repository.commitResponse(sessionID: current.id, requestID: requestID,
+            let responseItem = try await repository.commitResponse(sessionID: current.id, requestID: requestID,
                 payloadJSON: String(decoding: data, as: UTF8.self))
             let timeline = try await repository.items(sessionID: current.id)
             try Task.checkCancellation()
             state.timeline = timeline
             state.response = validated
+            state.responseItemID = responseItem.id
+            state.acknowledgedResponseItemID = nil
             state.phase = .showingResponse
         } catch is CancellationError { return }
         catch {

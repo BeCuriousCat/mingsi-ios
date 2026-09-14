@@ -159,6 +159,63 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(store.state.phase, .editing)
     }
 
+    func testResponseReceiptUnlocksNextTurnWithoutAcknowledgingNewResponse() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "第一轮")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let first = try XCTUnwrap(store.state.responseItemID)
+        store.submit(text: "尚未呈现时不应提交")
+        XCTAssertEqual(store.state.phase, .showingResponse)
+        XCTAssertEqual(store.state.inputText, "第一轮")
+        store.acknowledgeResponse(itemID: first)
+        try await waitUntil { store.state.acknowledgedResponseItemID == first }
+        store.submit(text: "第二轮")
+        try await waitUntil { store.state.phase == .showingResponse && store.state.responseItemID != first }
+        let second = try XCTUnwrap(store.state.responseItemID)
+        store.acknowledgeResponse(itemID: first)
+        XCTAssertNil(store.state.acknowledgedResponseItemID)
+        let presented = try await db.dbQueue.read {
+            try String.fetchOne($0, sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [second.uuidString])
+        }
+        XCTAssertNil(presented)
+        store.acknowledgeResponse(itemID: second)
+        try await waitUntil { store.state.acknowledgedResponseItemID == second }
+        let id = try XCTUnwrap(store.state.session?.id)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.filter { $0.kind == .user }.count, 2)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 2)
+    }
+
+    func testReceiptFailurePreservesResponseAndCanRetryLocally() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        store.submit(text: "需要保留的回应")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let item = try XCTUnwrap(store.state.responseItemID)
+        let response = store.state.response
+        try await db.dbQueue.write {
+            try $0.execute(sql: "CREATE TRIGGER reject_receipt BEFORE UPDATE OF presented_at ON mentor_items BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+        store.acknowledgeResponse(itemID: item)
+        try await waitUntil { store.state.presentationError != nil }
+        XCTAssertEqual(store.state.response, response)
+        XCTAssertEqual(store.state.phase, .showingResponse)
+        XCTAssertNil(store.state.acknowledgedResponseItemID)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_receipt") }
+        store.acknowledgeResponse(itemID: item)
+        try await waitUntil { store.state.acknowledgedResponseItemID == item }
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_requests") }
+        XCTAssertEqual(count, 1)
+        XCTAssertNil(store.state.presentationError)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
