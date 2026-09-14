@@ -3,9 +3,27 @@ import SwiftUI
 struct AppRootView: View {
     @EnvironmentObject private var store: AppStore
 
+    private var usesMentorUIFixture: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--mentor-ui-test")
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            TodayView()
+            Group {
+                if usesMentorUIFixture {
+                    #if DEBUG
+                    MentorUITestHarness()
+                    #endif
+                } else if let mentor = store.mentorFeatureStore {
+                    MentorHomeView(feature: mentor)
+                } else {
+                    TodayView()
+                }
+            }
                 .tag(AppTab.today)
                 .tabItem {
                     Label(AppTab.today.title, systemImage: "square.and.pencil")

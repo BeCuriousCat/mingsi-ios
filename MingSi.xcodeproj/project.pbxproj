@@ -25,6 +25,7 @@
 		4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */; };
 		49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */; };
 		49EEEE6DEDEC5489BAE8FC99 /* SpeechTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */; };
+		4F1AFCAACCFFE07DD632AEB0 /* MentorNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 535B6A32904E78CA5095608F /* MentorNavigationUITests.swift */; };
 		4F8852152107C5A2EFC929B1 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890E4F32AA3030AD7B049750 /* AppStore.swift */; };
 		5A11C654564863D8121B5E54 /* SideQuestAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B878E0792AE756DF41E02C3 /* SideQuestAIService.swift */; };
 		609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */; };
@@ -43,6 +44,7 @@
 		972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */; };
 		9D2CCE4DD30860C3C85FED04 /* TodayAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D05560A573D382BC7E7992F /* TodayAIService.swift */; };
 		9E61418EA710A150EAC4073F /* DirectGLMClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */; };
+		A3377AE7489B845CDA6C3065 /* MentorHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C796281289CA3AE2F0E5CD8 /* MentorHomeView.swift */; };
 		AC4BEA024D283AAF734DB26D /* MentorRequestExecutorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F625D3908E8FEE18D3DE56A /* MentorRequestExecutorTests.swift */; };
 		AFCBD37EA4C5C6DEF322A382 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E464B20FAB39B0E755A7452 /* Models.swift */; };
 		B2826EC7826391D5F0233512 /* test_live_glm_acceptance_script.sh in Resources */ = {isa = PBXBuildFile; fileRef = 0492ADFFCC647956F2F0D259 /* test_live_glm_acceptance_script.sh */; };
@@ -121,10 +123,12 @@
 		423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCore.swift; sourceTree = "<group>"; };
 		43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriptionService.swift; sourceTree = "<group>"; };
 		4868ABB675A8EC62EC09C333 /* MentorResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorResponseParserTests.swift; sourceTree = "<group>"; };
+		4C796281289CA3AE2F0E5CD8 /* MentorHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorHomeView.swift; sourceTree = "<group>"; };
 		4E410DAB6B10DE802BA39704 /* MingSiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MingSiApp.swift; sourceTree = "<group>"; };
 		4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceCoreTests.swift; sourceTree = "<group>"; };
 		4F625D3908E8FEE18D3DE56A /* MentorRequestExecutorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorRequestExecutorTests.swift; sourceTree = "<group>"; };
 		517A7557F737CD34AA5E87F8 /* VNextCoordinators.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VNextCoordinators.swift; sourceTree = "<group>"; };
+		535B6A32904E78CA5095608F /* MentorNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorNavigationUITests.swift; sourceTree = "<group>"; };
 		545A5FD25ED718BC0FA84F47 /* VNextPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VNextPersistence.swift; sourceTree = "<group>"; };
 		56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectGLMClientTests.swift; sourceTree = "<group>"; };
 		5811CA42794883A820967541 /* SpeechInputDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputDraftTests.swift; sourceTree = "<group>"; };
@@ -267,6 +271,7 @@
 		863DF20A42F4BF7014126CAB /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				535B6A32904E78CA5095608F /* MentorNavigationUITests.swift */,
 				750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */,
 			);
 			name = UI;
@@ -363,6 +368,7 @@
 		C696B9146302E6A62DAC3F78 /* Mentor */ = {
 			isa = PBXGroup;
 			children = (
+				4C796281289CA3AE2F0E5CD8 /* MentorHomeView.swift */,
 				1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */,
 			);
 			path = Mentor;
@@ -551,6 +557,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F1AFCAACCFFE07DD632AEB0 /* MentorNavigationUITests.swift in Sources */,
 				49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -600,6 +607,7 @@
 				8C5A1794302AEA95A61E0D3C /* KeychainAPIKeyStore.swift in Sources */,
 				3A47CAE75AF6E1AFB18849E0 /* MentorContextBuilder.swift in Sources */,
 				D5EABA0D1640862A77F5DD12 /* MentorFeatureStore.swift in Sources */,
+				A3377AE7489B845CDA6C3065 /* MentorHomeView.swift in Sources */,
 				BFC462F0F634AC1A38B6243A /* MentorLessonModels.swift in Sources */,
 				07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */,
 				73FB6477F6651F843AC07BAD /* MentorRequestExecutor.swift in Sources */,
