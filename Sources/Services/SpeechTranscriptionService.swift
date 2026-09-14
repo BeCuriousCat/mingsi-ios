@@ -29,11 +29,26 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var durationTask: Task<Void, Never>?
+    private var generation = UUID()
+    private var tapInstalled = false
+    private var ownsAudioSession = false
+    private let authorizeSpeech: () async -> SFSpeechRecognizerAuthorizationStatus
+    private let authorizeMicrophone: () async -> Bool
     private let maximumDuration: Duration = .seconds(60)
 
-    init(locale: Locale = Locale(identifier: "zh-CN"), audioEngine: AVAudioEngine = AVAudioEngine()) {
+    init(locale: Locale = Locale(identifier: "zh-CN"), audioEngine: AVAudioEngine = AVAudioEngine(),
+         authorizeSpeech: @escaping () async -> SFSpeechRecognizerAuthorizationStatus = {
+             await withCheckedContinuation { continuation in
+                 SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+             }
+         },
+         authorizeMicrophone: @escaping () async -> Bool = {
+             await AVAudioApplication.requestRecordPermission()
+         }) {
         self.recognizer = SFSpeechRecognizer(locale: locale)
         self.audioEngine = audioEngine
+        self.authorizeSpeech = authorizeSpeech
+        self.authorizeMicrophone = authorizeMicrophone
         super.init()
         NotificationCenter.default.addObserver(self, selector: #selector(handleAudioInterruption), name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange), name: AVAudioSession.routeChangeNotification, object: nil)
@@ -42,22 +57,25 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     deinit { NotificationCenter.default.removeObserver(self) }
 
     func start() async {
-        guard case .idle = state else { return }
-        state = .requestingPermission
-        let speech: SFSpeechRecognizerAuthorizationStatus = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+        switch state {
+        case .requestingPermission, .recording: return
+        default: break
         }
+        cleanup()
+        let attempt = UUID()
+        generation = attempt
+        state = .requestingPermission
+        let speech = await authorizeSpeech()
+        guard generation == attempt else { return }
+        guard !Task.isCancelled else { cancel(); return }
         guard speech == .authorized else {
             state = .failed("speech_permission_denied")
             return
         }
-        let microphone = AVAudioSession.sharedInstance().recordPermission
-        if microphone == .undetermined {
-            let granted: Bool = await withCheckedContinuation { continuation in
-                AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
-            }
-            guard granted else { state = .failed("microphone_permission_denied"); return }
-        } else if microphone != .granted {
+        let microphone = await authorizeMicrophone()
+        guard generation == attempt else { return }
+        guard !Task.isCancelled else { cancel(); return }
+        guard microphone else {
             state = .failed("microphone_permission_denied")
             return
         }
@@ -68,15 +86,16 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.setActive(true)
+            ownsAudioSession = true
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             self.request = request
             let input = audioEngine.inputNode
-            input.removeTap(onBus: 0)
-            input.installTap(onBus: 0, bufferSize: 1_024, format: input.outputFormat(forBus: 0)) { [weak self] buffer, _ in
-                self?.request?.append(buffer)
+            input.installTap(onBus: 0, bufferSize: 1_024, format: input.outputFormat(forBus: 0)) { buffer, _ in
+                request.append(buffer)
             }
+            tapInstalled = true
             audioEngine.prepare()
             try audioEngine.start()
             state = .recording(text: "")
@@ -84,23 +103,24 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
                 try? await Task.sleep(for: self?.maximumDuration ?? .seconds(60))
                 guard !Task.isCancelled else { return }
                 await MainActor.run { [weak self] in
-                    guard let self, case .recording = self.state else { return }
+                    guard let self, self.generation == attempt, case .recording = self.state else { return }
                     self.stop()
                 }
             }
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    guard let self, self.generation == attempt, case .recording = self.state else { return }
                     if let result {
                         self.state = .recording(text: result.bestTranscription.formattedString)
                         if result.isFinal { self.finish(text: result.bestTranscription.formattedString) }
-                    } else if let error, !Task.isCancelled { self.state = .failed(error.localizedDescription) }
+                    } else if let error, !Task.isCancelled { self.cleanup(); self.state = .failed(error.localizedDescription) }
                 }
             }
         } catch { state = .failed(error.localizedDescription); cleanup() }
     }
 
     func stop() {
+        if case .requestingPermission = state { cancel(); return }
         guard case let .recording(text) = state else { return }
         finish(text: text)
     }
@@ -126,14 +146,21 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     private func finish(text: String) { cleanup(); state = .final(text: text) }
 
     private func cleanup() {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        generation = UUID()
+        if audioEngine.isRunning { audioEngine.stop() }
+        if tapInstalled {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
         request?.endAudio()
         task?.cancel()
         task = nil
         durationTask?.cancel()
         durationTask = nil
         request = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if ownsAudioSession {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            ownsAudioSession = false
+        }
     }
 }
