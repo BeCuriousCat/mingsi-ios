@@ -3,6 +3,28 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testMentorGatewayDeadlineIncludesUncooperativePreflightAndAudit() async throws {
+        for holdPreflight in [true, false] {
+            let db = try AppDatabase(dbQueue: DatabaseQueue())
+            let audit = HeldDeadlineAudit(holdPreflight: holdPreflight)
+            let base = DeadlineCountingClient()
+            let client = PromptTracingLLMClient(base: base, repository: SQLitePromptRunRepository(database: db),
+                modelProvider: "test", modelName: "deadline", mentorAudit: audit)
+            var request = LLMRequest(prompt: LocalPromptProvider().template(for: .mentorRespond, mode: .standard), inputSummary: "{}")
+            request.mentorAuditToken = .init(sessionID: UUID(), requestID: UUID(), requestEpoch: 0, semanticRevision: 0)
+            request.mentorExecutionPolicy = MentorRequestPolicy(deadline: .milliseconds(100), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+            request.mentorStartedAt = ContinuousClock().now
+            do { _ = try await client.complete(request); XCTFail("Audit must share the deadline") }
+            catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
+            let callsBeforeRelease = await base.calls
+            XCTAssertEqual(callsBeforeRelease, holdPreflight ? 0 : 1)
+            await audit.release()
+            try await Task.sleep(for: .milliseconds(30))
+            let callsAfterRelease = await base.calls
+            XCTAssertEqual(callsAfterRelease, callsBeforeRelease, "Late preflight must not launch transport")
+        }
+    }
+
     func testPreparedContextCanReplayButCannotChangeOrReviveCancelledRequest() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
@@ -840,4 +862,34 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(receipts, 0)
     }
 
+}
+
+private actor HeldDeadlineAudit: MentorPromptAudit {
+    let holdPreflight: Bool
+    private var receiver: CheckedContinuation<Void, Never>?
+    private var released = false
+    init(holdPreflight: Bool) { self.holdPreflight = holdPreflight }
+    func validate(_ token: LLMRequest.MentorAuditToken) async throws {
+        if holdPreflight { await hold() }
+    }
+    func savePromptRun(_ run: PromptRun, token: LLMRequest.MentorAuditToken) async throws {
+        if !holdPreflight { await hold() }
+    }
+    private func hold() async {
+        if released { return }
+        await withCheckedContinuation { receiver = $0 }
+    }
+    func release() {
+        released = true
+        receiver?.resume()
+        receiver = nil
+    }
+}
+
+private actor DeadlineCountingClient: LLMClient {
+    private(set) var calls = 0
+    func complete(_ request: LLMRequest) async throws -> Data {
+        calls += 1
+        return Data("{}".utf8)
+    }
 }

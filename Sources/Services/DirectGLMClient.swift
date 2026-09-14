@@ -122,7 +122,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             // Bypass both the recoverable-status loop and the response_format fallback.
             return try await MentorRequestExecutor().execute({ [self] in
                 try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
-            }, policy: policy).data
+            }, policy: policy, startedAt: request.mentorStartedAt).data
         }
         var lastError: Error?
         for attempt in 0...configuration.maxRetryAttempts {

@@ -301,13 +301,14 @@ final class MentorFeatureStore: ObservableObject {
         // Teaching buttons are intent only; never resubmit the draft as evidence.
         let value = text ?? (intent == "reply" ? state.inputText : "")
         if intent == "reply" || text != nil { updateInputText(value) }
+        let startedAt = ContinuousClock().now
         state.phase = .submitting
         requestTask?.cancel()
         let transport = self.transport
         let prompt = promptProvider.template(for: .mentorRespond, mode: .standard)
         requestTask = Task { [weak self] in
             await self?.submitTask(session: session, intent: intent, text: value,
-                transport: transport, prompt: prompt)
+                transport: transport, prompt: prompt, startedAt: startedAt)
         }
     }
 
@@ -315,6 +316,7 @@ final class MentorFeatureStore: ObservableObject {
     func retryLastRequest() {
         guard sessionTransitionID == nil, let session = state.session, pendingResponse == nil, pendingRequestEnd == nil,
               state.phase != .submitting, state.phase != .selectingLesson else { return }
+        let startedAt = ContinuousClock().now
         let previousPhase = state.phase
         let transport = self.transport
         let prompt = promptProvider.template(for: .mentorRespond, mode: .standard)
@@ -333,7 +335,7 @@ final class MentorFeatureStore: ObservableObject {
                     return
                 }
                 await submitTask(session: session, intent: candidate.intent, text: candidate.text ?? "",
-                    transport: transport, prompt: prompt, retry: candidate)
+                    transport: transport, prompt: prompt, startedAt: startedAt, retry: candidate)
             } catch {
                 guard !Task.isCancelled else { return }
                 state.retryError = String(describing: error)
@@ -846,7 +848,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func submitTask(session: MentorSession, intent: String, text: String,
-                            transport: MentorTransport, prompt: PromptTemplate, retry: MentorRetryableRequest? = nil) async {
+                            transport: MentorTransport, prompt: PromptTemplate, startedAt: ContinuousClock.Instant,
+                            retry: MentorRetryableRequest? = nil) async {
         var submittedRequestID: UUID?
         do {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -872,6 +875,7 @@ final class MentorFeatureStore: ObservableObject {
                 inputSummary: built.json, sourceRecordIDs: built.payload.sources.map { $0.ref.value }, contextVersion: 1,
                 contextRecordIDs: built.payload.sources.map { $0.ref.value })
             request.mentorExecutionPolicy = .m1
+            request.mentorStartedAt = startedAt
             let token = LLMRequest.MentorAuditToken(sessionID: current.id, requestID: requestID,
                 requestEpoch: current.requestEpoch, semanticRevision: current.semanticRevision)
             request.mentorAuditToken = token

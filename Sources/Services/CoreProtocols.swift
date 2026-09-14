@@ -133,6 +133,8 @@ struct LLMRequest: Hashable {
     var contextRecordIDs: [String] = []
     /// Opt-in mentor transport policy; nil preserves existing client behavior.
     var mentorExecutionPolicy: MentorRequestPolicy? = nil
+    /// Monotonic foreground start, shared by preparation, audit and transport.
+    var mentorStartedAt: ContinuousClock.Instant? = nil
     var mentorAuditToken: MentorAuditToken? = nil
 
     var decisionRoute: LLMDecisionRoute {
@@ -1385,6 +1387,18 @@ final class PromptTracingLLMClient: LLMClient {
     }
 
     func complete(_ request: LLMRequest) async throws -> Data {
+        if let policy = request.mentorExecutionPolicy {
+            var bounded = request
+            bounded.mentorStartedAt = request.mentorStartedAt ?? ContinuousClock().now
+            let snapshot = bounded
+            return try await MentorRequestExecutor().execute({ [self] in
+                try await completeWithAudit(snapshot)
+            }, policy: policy, startedAt: snapshot.mentorStartedAt).data
+        }
+        return try await completeWithAudit(request)
+    }
+
+    private func completeWithAudit(_ request: LLMRequest) async throws -> Data {
         // Reject missing or stale ownership before contacting the endpoint. The
         // atomic audit write below checks again after the transport returns.
         try Task.checkCancellation()
@@ -1397,9 +1411,12 @@ final class PromptTracingLLMClient: LLMClient {
         }
         do {
             let data = try await base.complete(request)
+            if request.mentorExecutionPolicy != nil { try Task.checkCancellation() }
             try await saveRun(for: request, responseData: data, error: nil)
+            if request.mentorExecutionPolicy != nil { try Task.checkCancellation() }
             return data
         } catch {
+            if request.mentorExecutionPolicy != nil { try Task.checkCancellation() }
             // Preserve the transport error only when the failure audit was written.
             // A failed audit is itself terminal: returning an apparently usable result
             // would violate the mentor's traceability contract.

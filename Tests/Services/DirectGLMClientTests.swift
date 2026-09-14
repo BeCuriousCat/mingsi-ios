@@ -14,6 +14,15 @@ final class DirectGLMClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testExpiredForegroundBudgetNeverStartsHTTP() async throws {
+        var request = makeRequest()
+        request.mentorExecutionPolicy = .m1
+        request.mentorStartedAt = ContinuousClock().now.advanced(by: .seconds(-31))
+        do { _ = try await makeClient().complete(request); XCTFail("Expired preparation budget") }
+        catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
+        XCTAssertTrue(GLMStubURLProtocol.requestBodies.isEmpty)
+    }
+
     func testMentorDeadlineCancelsActualURLSessionTask() async throws {
         GLMStubURLProtocol.hangs = true
         let stopped = expectation(description: "URLSession stopped the request")

@@ -168,9 +168,14 @@ final class MentorFeatureStoreTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(store.state.phase, .editing)
         guard let sessionID = store.state.session?.id else { return XCTFail("session missing") }
+        let beforeSubmit = ContinuousClock().now
         store.submit(text: "今天完成了一个改动")
+        let afterSubmit = ContinuousClock().now
         try await Task.sleep(for: .milliseconds(150))
         guard case .showingResponse = store.state.phase else { return XCTFail("response was not shown: \(store.state.phase)") }
+        let startedAt = try XCTUnwrap(transport.lastRequest?.mentorStartedAt)
+        XCTAssertGreaterThanOrEqual(startedAt, beforeSubmit)
+        XCTAssertLessThanOrEqual(startedAt, afterSubmit)
         XCTAssertEqual(store.state.response?.response.action, .explain)
         XCTAssertEqual(store.state.timeline.filter { $0.kind == .user }.count, 1)
         XCTAssertEqual(store.state.timeline.filter { $0.kind == .assistant }.count, 1)
