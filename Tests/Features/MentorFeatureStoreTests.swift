@@ -4,6 +4,109 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testUnderstandingGroupDeletionReloadsHistoryAndPreservesOtherMaterial() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss", initialText: "保留交流草稿")
+        try await waitUntil { store.state.phase == .editing }
+        let id = try XCTUnwrap(store.state.session?.id)
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "整组理解")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let note = try XCTUnwrap(store.state.understanding)
+        store.confirmUnderstanding()
+        try await waitUntil { !store.state.isConfirmingUnderstanding }
+        store.beginUnderstanding(previousRevisionID: note.id)
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let other = try await repo.beginUserUnderstanding(sessionID: id, draftID: UUID(), previousRevisionID: nil)
+        _ = try await repo.saveUnderstandingDraft(sessionID: id, draftID: other.id, editRevision: 1, text: "独立理解")
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id, text: "保留原话",
+            intent: "reply", contextSnapshotJSON: "{\"sources\":[{\"ref\":\"understanding:\(note.id.uuidString)\"}]}"))
+        let payload = "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"派生回应\",\"question\":null,\"question_purpose\":null,\"source_refs\":[],\"lesson_ref\":null,\"suggested_actions\":[]}"
+        _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: payload)
+        let rejected = await store.deleteViewedUnderstanding(groupID: note.groupID)
+        XCTAssertFalse(rejected)
+        store.viewSession(id: id)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        XCTAssertNotNil(store.state.response)
+        let deleted = await store.deleteViewedUnderstanding(groupID: note.groupID)
+        XCTAssertTrue(deleted)
+        XCTAssertNil(store.state.response)
+        XCTAssertNil(store.state.responseItemID)
+        XCTAssertEqual(store.state.timeline.map(\.kind), [.user])
+        try await waitUntil { !store.state.isLoadingHistory }
+        XCTAssertEqual(store.state.understandings.map(\.id), [other.id])
+        XCTAssertEqual(store.state.understandingInputText, "独立理解")
+        XCTAssertEqual(store.state.inputText, "保留交流草稿")
+        XCTAssertEqual(store.state.session?.requestEpoch, 1)
+        XCTAssertTrue(store.state.isViewingHistory)
+        XCTAssertFalse(store.state.isTransitioningSession)
+        XCTAssertFalse(store.state.isDeletingUnderstanding)
+        XCTAssertEqual(transport.calls, 0)
+        XCTAssertEqual(store.state.latestUnfinishedSession?.id, id)
+    }
+
+    func testCommittedUnderstandingDeletionDoesNotRestoreStaleDetailWhenReloadFails() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss", initialText: "原文")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "要删除")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let note = try XCTUnwrap(store.state.understanding)
+        store.submit(text: "用户原话")
+        try await waitUntil { store.state.phase == .showingResponse }
+        store.viewSession(id: note.sessionID)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        XCTAssertNotNil(store.state.response)
+        try await db.dbQueue.write { db in
+            try db.execute(sql: "UPDATE mentor_items SET payload_json = '{}' WHERE kind = 'assistant'")
+        }
+        let deleted = await store.deleteViewedUnderstanding(groupID: note.groupID)
+        XCTAssertTrue(deleted, "A failed detail read must not report a committed deletion as failed")
+        let notes = try await repo.understandings(sessionID: note.sessionID)
+        XCTAssertTrue(notes.isEmpty)
+        XCTAssertTrue(store.state.understandings.isEmpty)
+        XCTAssertNil(store.state.response)
+        XCTAssertTrue(store.state.timeline.isEmpty)
+        XCTAssertEqual(store.state.understandingDeletionError, "理解已删除，但详情暂时无法刷新。请返回后重新打开这次交流。")
+        XCTAssertFalse(store.state.isTransitioningSession)
+        XCTAssertFalse(store.state.isDeletingUnderstanding)
+        XCTAssertTrue(store.state.isViewingHistory)
+    }
+
+    func testUnderstandingDeletionFailurePreservesDetailAndRetrySucceeds() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.start(entry: "discuss", initialText: "原文")
+        try await waitUntil { store.state.phase == .editing }
+        store.beginUnderstanding()
+        store.saveUnderstanding(text: "仍需保留")
+        try await waitUntil { store.state.pendingUnderstandingOperations == 0 }
+        let note = try XCTUnwrap(store.state.understanding)
+        store.viewSession(id: note.sessionID)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_note_delete BEFORE DELETE ON mentor_understandings BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        let deleted = await store.deleteViewedUnderstanding(groupID: note.groupID)
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(store.state.understandings, [note])
+        XCTAssertEqual(store.state.understandingInputText, "仍需保留")
+        XCTAssertNotNil(store.state.understandingDeletionError)
+        XCTAssertFalse(store.state.isTransitioningSession)
+        XCTAssertFalse(store.state.isDeletingUnderstanding)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_note_delete") }
+        let retried = await store.deleteViewedUnderstanding(groupID: note.groupID)
+        XCTAssertTrue(retried)
+        XCTAssertTrue(store.state.understandings.isEmpty)
+        XCTAssertNil(store.state.understanding)
+        XCTAssertNil(store.state.understandingDeletionError)
+    }
+
     func testDeleteViewedSessionClearsOwnedContentAndRefreshesHome() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

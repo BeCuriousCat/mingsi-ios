@@ -15,6 +15,8 @@ struct MentorFeatureState: Equatable {
     var isViewingHistory = false
     var deletionError: String?
     var isDeletingSession = false
+    var isDeletingUnderstanding = false
+    var understandingDeletionError: String?
     var timeline: [MentorTimelineItem] = []
     var lesson: MentorSavedLesson?
     var lessonError: String?
@@ -212,7 +214,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func start(entry: String, initialText: String = "") {
-        guard !state.isDeletingSession else { return }
+        guard !state.isDeletingSession, !state.isDeletingUnderstanding else { return }
         guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -276,7 +278,7 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func openSession(id: UUID, resuming: Bool) {
-        guard !state.isDeletingSession else { return }
+        guard !state.isDeletingSession, !state.isDeletingUnderstanding else { return }
         guard pendingResponse == nil, pendingRequestEnd == nil else { return }
         requestTask?.cancel()
         let transition = beginSessionTransition()
@@ -340,6 +342,56 @@ final class MentorFeatureStore: ObservableObject {
             if state.session?.id == id { state.deletionError = String(describing: error) }
             return false
         }
+    }
+
+    /// Explicit confirmation in history manages a whole version group.
+    @discardableResult
+    func deleteViewedUnderstanding(groupID: UUID) async -> Bool {
+        guard state.isViewingHistory, sessionTransitionID == nil,
+              let session = state.session,
+              state.understandings.contains(where: { $0.groupID == groupID }) else { return false }
+        let transition = beginSessionTransition()
+        state.isDeletingUnderstanding = true
+        state.understandingDeletionError = nil
+        defer {
+            state.isDeletingUnderstanding = false
+            endSessionTransition(transition)
+        }
+        historyTask?.cancel()
+        historyGeneration = UUID()
+        state.isLoadingHistory = false
+        do {
+            try await repository.deleteUnderstandingGroup(sessionID: session.id, groupID: groupID)
+        } catch {
+            state.understandingDeletionError = "暂时没有删除成功，内容仍保留。请重试。"
+            return false
+        }
+        // Clear all potentially derived presentation copies immediately after commit.
+        // Reconciliation has its own task so cancellation of the presenting view
+        // cannot leave the pre-deletion response or epoch in memory.
+        resetSessionBuffers()
+        state = MentorFeatureState(phase: .editing, session: session, isViewingHistory: true,
+            isDeletingUnderstanding: true, inputText: session.draftText, draftRevision: session.draftRevision,
+            isTransitioningSession: true)
+        await Task { @MainActor in
+            do {
+                guard let current = try await repository.session(id: session.id) else { throw MentorFeatureError.missingSession }
+                var restored = try await restoredState(session: current)
+                restored.isViewingHistory = true
+                restored.isTransitioningSession = true
+                restored.isDeletingUnderstanding = true
+                switch current.lifecycle {
+                case .ended: restored.phase = .ended
+                case .paused: restored.phase = .paused
+                default: restored.phase = restored.response == nil ? .editing : .showingResponse
+                }
+                state = restored
+            } catch {
+                state.understandingDeletionError = "理解已删除，但详情暂时无法刷新。请返回后重新打开这次交流。"
+            }
+            loadRecentSessions()
+        }.value
+        return true
     }
 
     func submit(intent: String = "reply", text: String? = nil) {

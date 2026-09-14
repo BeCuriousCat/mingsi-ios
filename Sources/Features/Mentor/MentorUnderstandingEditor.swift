@@ -178,6 +178,8 @@ struct MentorUnderstandingEditor: View {
 struct MentorUnderstandingSection: View {
     @ObservedObject var store: MentorFeatureStore
     @State private var showsEditor = false
+    @State private var groupToDelete: UUID?
+    @State private var showsDeleteConfirmation = false
 
     private var canOpenEditor: Bool {
         store.state.session != nil && !store.state.isViewingHistory && !store.state.isTransitioningSession &&
@@ -188,6 +190,13 @@ struct MentorUnderstandingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("我的理解").font(.headline).accessibilityAddTraits(.isHeader)
+            if store.state.isDeletingUnderstanding {
+                ProgressView("正在删除这组理解…")
+            }
+            if let error = store.state.understandingDeletionError {
+                Text(error).foregroundStyle(DS.caution)
+                    .accessibilityIdentifier("mentor.understanding.delete-error")
+            }
             ForEach(store.state.understandings, id: \.id) { note in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(note.text.isEmpty ? "还没写完的草稿" : note.text)
@@ -213,6 +222,18 @@ struct MentorUnderstandingSection: View {
                         }
                         .disabled(!canOpenEditor)
                     }
+                    if store.state.isViewingHistory && !store.state.understandings.contains(where: {
+                        $0.groupID == note.groupID && $0.revision > note.revision
+                    }) {
+                        Button(role: .destructive) {
+                            groupToDelete = note.groupID
+                            showsDeleteConfirmation = true
+                        } label: {
+                            Text("删除这组理解").frame(minHeight: 44)
+                        }
+                        .disabled(store.state.isTransitioningSession)
+                        .accessibilityIdentifier("mentor.understanding.delete-group")
+                    }
                 }
             }
             Button {
@@ -225,5 +246,15 @@ struct MentorUnderstandingSection: View {
             .disabled(!canOpenEditor)
         }
         .sheet(isPresented: $showsEditor) { MentorUnderstandingEditor(store: store) }
+        .alert("删除这组理解？", isPresented: $showsDeleteConfirmation) {
+            Button("保留理解", role: .cancel) { groupToDelete = nil }
+            Button("删除全部版本", role: .destructive) {
+                guard let groupID = groupToDelete else { return }
+                groupToDelete = nil
+                Task { @MainActor in _ = await store.deleteViewedUnderstanding(groupID: groupID) }
+            }
+        } message: {
+            Text("将删除这组理解的全部版本和草稿，并清理引用它的派生回应。交流原话和其他理解会保留。此操作无法撤销。")
+        }
     }
 }

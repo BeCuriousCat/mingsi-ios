@@ -2,6 +2,46 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testUnderstandingGroupDeletionCanBeCancelledThenConfirmed() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["我有一件事"].waitForExistence(timeout: 15))
+        app.buttons["我有一件事"].tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Keep this conversation")
+        app.buttons["收起键盘"].tap()
+        app.swipeUp()
+        app.buttons["mentor.understanding.begin"].tap()
+        let note = app.textViews["mentor.understanding.input"]
+        XCTAssertTrue(note.waitForExistence(timeout: 5))
+        note.tap()
+        note.typeText("Delete this understanding")
+        app.buttons["收起键盘"].tap()
+        app.buttons["mentor.understanding.confirm"].tap()
+        XCTAssertTrue(app.buttons["mentor.understanding.begin"].waitForExistence(timeout: 5))
+        app.navigationBars["这次交流"].buttons["到这里"].tap()
+        let record = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Keep this conversation")).firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5))
+        record.tap()
+        let delete = app.buttons["mentor.understanding.delete-group"]
+        if !delete.isHittable { app.swipeUp() }
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        delete.tap()
+        app.buttons["保留理解"].tap()
+        XCTAssertTrue(app.staticTexts["Delete this understanding"].exists)
+        delete.tap()
+        app.buttons["删除全部版本"].tap()
+        XCTAssertTrue(delete.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Delete this understanding"].exists)
+        XCTAssertTrue(app.buttons["继续这件事"].exists)
+        app.navigationBars["这次交流"].buttons["返回"].tap()
+        XCTAssertTrue(record.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testHistoryDeletionRequiresConfirmationAndRemovesRecord() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test"]
