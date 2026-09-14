@@ -216,6 +216,32 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertNil(store.state.presentationError)
     }
 
+    func testResponseSaveRetryDoesNotRepeatModelOrUserInput() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing }
+        try await db.dbQueue.write {
+            try $0.execute(sql: "CREATE TRIGGER reject_response BEFORE INSERT ON mentor_items WHEN NEW.kind = 'assistant' BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+        store.submit(text: "只提交一次")
+        try await waitUntil { store.state.canRetryResponseSave }
+        XCTAssertEqual(transport.calls, 1)
+        store.retryResponseSave()
+        try await waitUntil { store.state.canRetryResponseSave }
+        XCTAssertEqual(transport.calls, 1)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_response") }
+        store.retryResponseSave()
+        store.retryResponseSave()
+        try await waitUntil { store.state.phase == .showingResponse }
+        XCTAssertFalse(store.state.canRetryResponseSave)
+        XCTAssertEqual(transport.calls, 1)
+        XCTAssertEqual(store.state.timeline.filter { $0.kind == .user }.count, 1)
+        XCTAssertEqual(store.state.timeline.filter { $0.kind == .assistant }.count, 1)
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -239,7 +265,9 @@ final class MentorFeatureStoreTests: XCTestCase {
 }
 
 private final class MentorStoreFixtureTransport: MentorTransport, @unchecked Sendable {
+    private(set) var calls = 0
     func complete(_ request: LLMRequest) async throws -> Data {
+        calls += 1
         let source = request.sourceRecordIDs.first ?? "item:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
         return try JSONSerialization.data(withJSONObject: [
             "schema_version": "1.0.0", "action": "explain", "material_status": "usable",

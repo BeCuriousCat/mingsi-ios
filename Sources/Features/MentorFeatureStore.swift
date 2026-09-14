@@ -20,6 +20,7 @@ struct MentorFeatureState: Equatable {
     var recentSessionsCursor: MentorSessionCursor?
     var historyError: String?
     var isLoadingHistory = false
+    var canRetryResponseSave = false
     var inputText = ""
     var draftRevision = 0
 }
@@ -33,6 +34,13 @@ final class MentorFeatureStore: ObservableObject {
     private let transport: MentorTransport
     private let catalog: MentorLessonCatalog?
     private let timeZone: TimeZone
+    private struct PendingResponse {
+        let sessionID: UUID
+        let requestID: UUID
+        let payload: String
+        let validated: MentorValidatedTurn
+    }
+    private var pendingResponse: PendingResponse?
     private var requestTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
     private var historyTask: Task<Void, Never>?
@@ -49,6 +57,8 @@ final class MentorFeatureStore: ObservableObject {
     deinit { requestTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel() }
 
     func start(entry: String, initialText: String = "") {
+        pendingResponse = nil
+        state.canRetryResponseSave = false
         requestTask?.cancel()
         requestTask = Task { [weak self] in await self?.startTask(entry: entry, initialText: initialText) }
     }
@@ -96,6 +106,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func continueSession(id: UUID) {
+        pendingResponse = nil
+        state.canRetryResponseSave = false
         requestTask?.cancel()
         requestTask = Task { [weak self] in
             do {
@@ -123,6 +135,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func finish() {
+        pendingResponse = nil
+        state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
         requestTask = Task { [weak self] in
@@ -138,6 +152,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     func pause() {
+        pendingResponse = nil
+        state.canRetryResponseSave = false
         guard let session = state.session else { return }
         requestTask?.cancel()
         requestTask = Task { [weak self] in
@@ -270,20 +286,48 @@ final class MentorFeatureStore: ObservableObject {
             let data = try await transport.complete(request)
             try Task.checkCancellation()
             let validated = try MentorResponseParser().parseTurn(data, context: built.validation)
-            let responseItem = try await repository.commitResponse(sessionID: current.id, requestID: requestID,
-                payloadJSON: String(decoding: data, as: UTF8.self))
-            let timeline = try await repository.items(sessionID: current.id)
-            try Task.checkCancellation()
-            state.timeline = timeline
-            state.response = validated
-            state.responseItemID = responseItem.id
-            state.acknowledgedResponseItemID = nil
-            state.phase = .showingResponse
+            let pending = PendingResponse(sessionID: current.id, requestID: requestID,
+                payload: String(decoding: data, as: UTF8.self), validated: validated)
+            pendingResponse = pending
+            try await saveResponse(pending)
         } catch is CancellationError { return }
         catch {
             guard !Task.isCancelled else { return }
+            state.canRetryResponseSave = pendingResponse != nil
             state.phase = .failed(String(describing: error))
         }
+    }
+
+    func retryResponseSave() {
+        guard state.canRetryResponseSave, let pending = pendingResponse,
+              pending.sessionID == state.session?.id else { return }
+        state.canRetryResponseSave = false
+        state.phase = .submitting
+        requestTask = Task { [weak self] in
+            guard let self else { return }
+            do { try await saveResponse(pending) }
+            catch {
+                guard !Task.isCancelled else { return }
+                state.canRetryResponseSave = pendingResponse != nil
+                state.phase = .failed(String(describing: error))
+            }
+        }
+    }
+
+    private func saveResponse(_ pending: PendingResponse) async throws {
+        try Task.checkCancellation()
+        let item = try await repository.commitResponse(sessionID: pending.sessionID,
+            requestID: pending.requestID, payloadJSON: pending.payload)
+        let timeline = try await repository.items(sessionID: pending.sessionID)
+        try Task.checkCancellation()
+        guard state.session?.id == pending.sessionID else { return }
+        state.timeline = timeline
+        state.response = pending.validated
+        state.responseItemID = item.id
+        state.acknowledgedResponseItemID = nil
+        state.canRetryResponseSave = false
+        pendingResponse = nil
+        state.phase = .showingResponse
     }
 }
 
