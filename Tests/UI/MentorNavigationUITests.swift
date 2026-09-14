@@ -2,6 +2,23 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testLessonPreferenceResetRequiresConfirmation() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-preferences-fixture"]
+        app.launch()
+        let reset = app.buttons["mentor.preferences.reset-known"]
+        XCTAssertTrue(reset.waitForExistence(timeout: 15))
+        reset.tap()
+        XCTAssertTrue(app.buttons["保留偏好"].waitForExistence(timeout: 3))
+        app.buttons["保留偏好"].tap()
+        XCTAssertFalse(app.staticTexts["mentor.preferences.reset-saved"].exists)
+        reset.tap()
+        app.buttons["确认重置"].tap()
+        XCTAssertTrue(app.staticTexts["mentor.preferences.reset-saved"].waitForExistence(timeout: 5))
+        XCTAssertTrue(reset.isEnabled)
+    }
+
+    @MainActor
     func testLessonFeedbackAndLocalNextLessonWithoutModel() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-lesson-fixture"]

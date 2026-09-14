@@ -4,6 +4,41 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testLessonPreferencesResetFailureAndRetryPreserveReadingAndOtherFeedback() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(), catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let lesson = try XCTUnwrap(store.state.lesson)
+        store.acknowledgeLesson()
+        store.recordLessonFeedback(.alreadyKnown)
+        try await waitUntil { !store.state.isSavingLessonFeedback }
+        store.recordLessonFeedback(.notRelevant)
+        try await waitUntil { !store.state.isSavingLessonFeedback }
+        let preferences = store.makeLessonPreferencesStore()
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_known_reset BEFORE UPDATE OF revoked_at ON mentor_feedback BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        await preferences.resetKnownFeedback()
+        XCTAssertNotNil(preferences.error)
+        XCTAssertFalse(preferences.didReset)
+        XCTAssertFalse(preferences.isResetting)
+        let stillKnown = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback WHERE kind = 'already_known' AND revoked_at IS NULL") }
+        XCTAssertEqual(stillKnown, 1)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_known_reset") }
+        await preferences.resetKnownFeedback()
+        XCTAssertNil(preferences.error)
+        XCTAssertTrue(preferences.didReset)
+        let kinds = try await db.dbQueue.read { try String.fetchAll($0, sql: "SELECT kind FROM mentor_feedback WHERE revoked_at IS NULL") }
+        XCTAssertEqual(kinds, ["not_relevant"])
+        let saved = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertNotNil(saved)
+        let presented = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [lesson.id.uuidString]) }
+        XCTAssertNotNil(presented)
+        store.start(entry: "discuss", initialText: "新的交流")
+        try await waitUntil { store.state.phase == .editing && store.state.session?.id != lesson.sessionID }
+        XCTAssertTrue(preferences.didReset, "Global settings result survives conversation changes")
+    }
+
     func testHistoryReadFailureKeepsLoadedRowsAndCanRetry() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

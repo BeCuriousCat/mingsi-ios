@@ -2551,6 +2551,9 @@ struct SettingsView: View {
             VStack(spacing: DS.cardSpacing) {
                 apiKeyCard
                 dataExportCard
+                if let feature = store.mentorFeatureStore {
+                    MentorLessonPreferencesView(feature: feature)
+                }
                 sideQuestSettingsLink
                 SettingRow(title: "GLM API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
                 SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.displayTitle)

@@ -227,6 +227,8 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    func makeLessonPreferencesStore() -> MentorLessonPreferencesStore { MentorLessonPreferencesStore(repository: repository) }
+
     func makeHistoryStore() -> MentorHistoryStore { MentorHistoryStore(repository: repository) }
 
     func loadRecentSessions(limit: Int = 3) {

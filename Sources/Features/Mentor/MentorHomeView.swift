@@ -409,7 +409,11 @@ struct MentorUITestHarness: View {
     @State private var error: String?
     var body: some View {
         Group {
-            if let feature { MentorHomeView(feature: feature) }
+            if let feature {
+                if ProcessInfo.processInfo.arguments.contains("--mentor-preferences-fixture") {
+                    NavigationStack { MentorLessonPreferencesView(feature: feature).padding().navigationTitle("听讲偏好") }
+                } else { MentorHomeView(feature: feature) }
+            }
             else if let error { Text(error) }
             else { ProgressView("准备测试交流…") }
         }.task {
