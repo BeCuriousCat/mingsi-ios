@@ -59,6 +59,7 @@ struct MingSiApp: App {
                     guard store.loadsPersistedStateOnLaunch else { return }
                     #endif
                     await store.loadPersistedState()
+                    _ = await store.prepareMentorFeature()
                 }
         }
     }

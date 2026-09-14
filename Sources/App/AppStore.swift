@@ -286,6 +286,9 @@ final class AppStore: ObservableObject {
     private let reminderService: ReminderService?
     private let mentorRepository: (MentorRepository & MentorPromptAudit)?
     @Published private(set) var mentorFeatureStore: MentorFeatureStore?
+    @Published private(set) var isPreparingMentorFeature = false
+    @Published private(set) var mentorPreparationError: String?
+    private var mentorPreparationTask: Task<MentorFeatureStore?, Never>?
     private let promptProvider: PromptProvider
     private let promptEvalSchedulePolicy: PromptEvalSchedulePolicy
     private let assetPackRegistrySyncSchedulePolicy: AssetPackRegistrySubscriptionSyncSchedulePolicy
@@ -9640,16 +9643,35 @@ final class AppStore: ObservableObject {
 
     /// Lazily creates one coordinator on the same database and shared model
     /// gateway. Legacy/preview stores without mentor persistence stay unavailable.
-    func prepareMentorFeature(catalog: MentorLessonCatalog? = nil) -> MentorFeatureStore? {
+    func prepareMentorFeature(catalog: MentorLessonCatalog? = nil) async -> MentorFeatureStore? {
         guard let mentorRepository, promptRunRepository != nil else { return nil }
         if let mentorFeatureStore { return mentorFeatureStore }
-        let center = centralDecisionCenter ?? Self.makeLLMClient(apiKeyStore: apiKeyStore,
-            promptRunRepository: promptRunRepository, mentorAudit: mentorRepository)
-        centralDecisionCenter = center
-        let feature = MentorFeatureStore(repository: mentorRepository, transport: center,
-            catalog: catalog ?? (try? MentorLessonCatalog.loadBundled()), promptProvider: effectivePromptProvider)
-        mentorFeatureStore = feature
-        return feature
+        if let mentorPreparationTask { return await mentorPreparationTask.value }
+        isPreparingMentorFeature = true
+        mentorPreparationError = nil
+        // One shared preparation task gates exposure of this app's coordinator.
+        // Caller cancellation must not start a second recovery alongside this one.
+        let task = Task { [self] () -> MentorFeatureStore? in
+            defer {
+                isPreparingMentorFeature = false
+                mentorPreparationTask = nil
+            }
+            do {
+                _ = try await mentorRepository.recoverInterruptedRequests()
+                let center = centralDecisionCenter ?? Self.makeLLMClient(apiKeyStore: apiKeyStore,
+                    promptRunRepository: promptRunRepository, mentorAudit: mentorRepository)
+                centralDecisionCenter = center
+                let feature = MentorFeatureStore(repository: mentorRepository, transport: center,
+                    catalog: catalog ?? (try? MentorLessonCatalog.loadBundled()), promptProvider: effectivePromptProvider)
+                mentorFeatureStore = feature
+                return feature
+            } catch {
+                mentorPreparationError = "导师交流恢复失败，本地记录仍保留。请重试。"
+                return nil
+            }
+        }
+        mentorPreparationTask = task
+        return await task.value
     }
 
     private static func makeTodayAIService(

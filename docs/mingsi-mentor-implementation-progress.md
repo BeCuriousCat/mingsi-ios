@@ -433,3 +433,13 @@ makeLLMClient 的正常密钥和 missing-api-key 路径均注入导师审计。�
 验证：MingSi Dev 上 MentorFeatureStoreTests 最终 42 项通过、0 失败 / 0 跳过（Test-MingSi-2026.09.15_01-04-52-+0800.xcresult）。新增三项覆盖生产持久化工厂的同库教材与缺密钥审计、刷新后协调器身份和原话保留、旧库 / 缺依赖预览禁用，以及提交后立刻刷新 transport 并修改原 PromptProvider 时本轮旧配置 / 次轮新配置隔离。另两项现有 AppStore 连接测试及 Keychain 刷新成长报告回归通过（Test-MingSi-2026.09.15_01-03-45-+0800.xcresult）。测试使用独立 Keychain service 的缺密钥路径与内存数据库，没有远端模型调用。git diff --check 通过。
 
 剩余范围：导航和实际页面仍需调用工厂，启动遗留请求恢复、迁移前备份与失败降级、跨流程前台占用及总超时预算仍未完成；本轮迁移记录门禁不等于 F04 全部交付。正式教材尚待审核，真实模型配置 / 网络仍未真机验收。AppStore 只按补丁暂存本模块变更，原有未提交改动保留；当前工作树测试不等于干净 checkout。内部组装未开放新页面，无需用户发布说明。
+
+## 2026-09-15：F10 App 启动遗留请求恢复与初始化门禁
+
+prepareMentorFeature 改为异步初始化，在返回导师协调器前调用已有 recoverInterruptedRequests 事务。多个入口共享同一个初始化任务；成功后复用协调器，普通重新进入与配置刷新不再次恢复请求。恢复失败保留 mentorPreparationError、不开放协调器并允许重试；isPreparingMentorFeature 可供后续页面表达准备状态。调用者取消等待不会取消共享恢复任务或启动第二个并行恢复。
+
+MingSiApp 的启动任务在现有 loadPersistedState 后调用导师初始化，共用 App 层 StateObject。当前进程尚未开放导师入口前，将上次遗留请求置为 interrupted 并失效其 epoch；不自动发起模型请求，不删除用户原话或草稿。现有调试专用 fixture 的启动短路保持原行为。
+
+验证：MingSi Dev 上 MentorFeatureStoreTests 与 MentorPersistenceTests 合计 78 项通过、0 失败、0 跳过（Test-MingSi-2026.09.15_01-08-45-+0800.xcresult）。新增两项测试覆盖并发初始化得到同一实例、遗留请求中断与原话 / 草稿保留且零 PromptRun、再进入不改变当前 in_flight 请求并可正常完成；注入恢复 UPDATE 故障证明事务未推进 epoch / lifecycle，初始化不可用，移除故障后重试成功。接入真实 App 启动调用后，MingSi Dev build 通过；git diff --check 通过。
+
+剩余范围：启动错误 / 等待 UI、交流详情的 interrupted 提示与显式“重试这一轮”、跨进程数据库占用，以及完整前台预算尚待实现。本轮依赖 App 共用单一 AppStore 的启动结构，不声称跨进程协调已完成。真实页面、正式教材审核和整体迁移备份仍未交付；只对 AppStore 暂存本模块补丁，保留原有修改。内部启动治理未增加用户页面，无需用户发布说明。

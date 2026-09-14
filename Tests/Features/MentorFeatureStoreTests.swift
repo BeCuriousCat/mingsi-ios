@@ -917,8 +917,10 @@ final class MentorFeatureStoreTests: XCTestCase {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let app = AppStore.persistentStore(database: db,
             apiKeyStore: KeychainAPIKeyStore(service: "mingsi.mentor.tests.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
-        let feature = try XCTUnwrap(app.prepareMentorFeature(catalog: try catalog()))
-        XCTAssertTrue(app.prepareMentorFeature() === feature)
+        let prepared = await app.prepareMentorFeature(catalog: try catalog())
+        let feature = try XCTUnwrap(prepared)
+        let repeated = await app.prepareMentorFeature()
+        XCTAssertTrue(repeated === feature)
         feature.start(entry: "listen")
         try await waitUntil { feature.state.phase == .reading }
         let lesson = try XCTUnwrap(feature.state.lesson)
@@ -944,12 +946,14 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertEqual(feature.state.session?.id, lesson.sessionID)
     }
 
-    func testAppAssemblyDisablesMentorOnLegacyDatabaseAndUnconfiguredPreview() throws {
+    func testAppAssemblyDisablesMentorOnLegacyDatabaseAndUnconfiguredPreview() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue(), includesVNextMigrations: false)
         let app = AppStore.persistentStore(database: db,
             apiKeyStore: KeychainAPIKeyStore(service: "mingsi.mentor.legacy.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
-        XCTAssertNil(app.prepareMentorFeature())
-        XCTAssertNil(AppStore(refreshesAIServiceFromKeychain: false).prepareMentorFeature())
+        let legacy = await app.prepareMentorFeature()
+        let preview = await AppStore(refreshesAIServiceFromKeychain: false).prepareMentorFeature()
+        XCTAssertNil(legacy)
+        XCTAssertNil(preview)
     }
 
     func testDependencyRefreshOnlyChangesFutureTurns() async throws {
@@ -979,6 +983,81 @@ final class MentorFeatureStoreTests: XCTestCase {
         try await waitUntil { store.state.phase == .showingResponse && store.state.responseItemID != itemID }
         XCTAssertEqual(new.calls, 1)
         XCTAssertEqual(new.lastRequest?.prompt.version, "test-injected.2")
+    }
+
+    func testAppStartupRecoveryPreservesOriginalInputAndDoesNotRepeatForLiveWork() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let originalID = UUID()
+        try await repo.createSession(MentorSession(id: originalID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "未提交的草稿", draftRevision: 1, activityAt: .now))
+        let abandonedID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: originalID,
+            text: "上次已经提交的原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let app = AppStore.persistentStore(database: db,
+            apiKeyStore: KeychainAPIKeyStore(service: "mingsi.recovery.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
+        async let first = app.prepareMentorFeature()
+        async let second = app.prepareMentorFeature()
+        let results = await (first, second)
+        let feature = try XCTUnwrap(results.0)
+        XCTAssertTrue(feature === results.1)
+        XCTAssertFalse(app.isPreparingMentorFeature)
+        XCTAssertNil(app.mentorPreparationError)
+        let recovered = try await repo.session(id: originalID)
+        XCTAssertEqual(recovered?.lifecycle, .paused)
+        XCTAssertEqual(recovered?.requestEpoch, 1)
+        XCTAssertEqual(recovered?.draftText, "未提交的草稿")
+        let state = try await db.dbQueue.read { try String.fetchOne($0,
+            sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [abandonedID.uuidString]) }
+        XCTAssertEqual(state, "interrupted")
+        let items = try await repo.items(sessionID: originalID)
+        XCTAssertEqual(items.filter { $0.kind == .user }.count, 1)
+        let runs = try await SQLitePromptRunRepository(database: db).recentPromptRuns(limit: 10)
+        XCTAssertTrue(runs.isEmpty)
+        let held = HeldMentorTransport()
+        feature.updateDependencies(transport: held, promptProvider: LocalPromptProvider())
+        feature.start(entry: "discuss")
+        try await waitUntil { feature.state.phase == .editing }
+        feature.submit(text: "当前进程的新请求")
+        try await waitUntil { held.pending != nil }
+        let again = await app.prepareMentorFeature()
+        XCTAssertTrue(again === feature)
+        let request = try XCTUnwrap(held.request)
+        let currentID = try XCTUnwrap(request.mentorAuditToken?.requestID)
+        let active = try await db.dbQueue.read { try String.fetchOne($0,
+            sql: "SELECT state FROM mentor_requests WHERE id = ?", arguments: [currentID.uuidString]) }
+        XCTAssertEqual(active, "in_flight")
+        XCTAssertFalse(held.wasCancelled)
+        held.pending?.resume(returning: try await MentorStoreFixtureTransport().complete(request))
+        held.pending = nil
+        try await waitUntil { feature.state.phase == .showingResponse }
+    }
+
+    func testAppStartupRecoveryFailureKeepsFeatureUnavailableUntilRetrySucceeds() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "保留草稿", draftRevision: 1, activityAt: .now))
+        _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "保留原话", intent: "reply", contextSnapshotJSON: "{}"))
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_recovery BEFORE UPDATE OF state ON mentor_requests WHEN NEW.state = 'interrupted' BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        let app = AppStore.persistentStore(database: db,
+            apiKeyStore: KeychainAPIKeyStore(service: "mingsi.recovery.failure.\(UUID().uuidString)"), trainingCasesVNextEnabled: false)
+        let failed = await app.prepareMentorFeature()
+        XCTAssertNil(failed)
+        XCTAssertNil(app.mentorFeatureStore)
+        XCTAssertNotNil(app.mentorPreparationError)
+        XCTAssertFalse(app.isPreparingMentorFeature)
+        let unchanged = try await repo.session(id: id)
+        XCTAssertEqual(unchanged?.requestEpoch, 0)
+        XCTAssertEqual(unchanged?.lifecycle, .active)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_recovery") }
+        let retried = await app.prepareMentorFeature()
+        XCTAssertNotNil(retried)
+        XCTAssertNil(app.mentorPreparationError)
+        let recovered = try await repo.session(id: id)
+        XCTAssertEqual(recovered?.requestEpoch, 1)
+        XCTAssertEqual(recovered?.draftText, "保留草稿")
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {
