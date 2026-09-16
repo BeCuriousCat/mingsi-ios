@@ -1102,6 +1102,12 @@ final class MentorFeatureStoreTests: XCTestCase {
         let persisted = try await repo.savedLesson(sessionID: id, itemID: lesson.id)
         XCTAssertEqual(store.state.lesson, persisted)
         XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
+        XCTAssertTrue(store.state.isViewingHistory)
+        store.recordLessonFeedback(.alreadyKnown)
+        store.saveReadingPosition(itemID: lesson.id, section: .title)
+        let feedbackCount = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_feedback") }
+        XCTAssertEqual(feedbackCount, 0)
+        XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
         XCTAssertEqual(store.state.inputText, "保存的草稿")
         XCTAssertEqual(transport.calls, 0)
         let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_sessions") }
@@ -1260,7 +1266,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         let transport = MentorStoreFixtureTransport()
         let store = MentorFeatureStore(repository: repo, transport: transport)
         store.continueSession(id: sessionID)
-        try await waitUntil { store.state.phase == .editing }
+        try await waitUntil { store.state.phase == .reading }
         XCTAssertEqual(store.state.session?.lifecycle, .active)
         XCTAssertEqual(store.state.inputText, "原交流草稿")
         XCTAssertEqual(store.state.lesson?.readingSection, .example)
@@ -1351,6 +1357,14 @@ final class MentorFeatureStoreTests: XCTestCase {
         restored.submit(text: "不能绕过呈现确认")
         XCTAssertEqual(transport.calls, 1)
         XCTAssertNil(restored.state.acknowledgedResponseItemID)
+        // Both items can become visible in one geometry callback after resume.
+        // The lesson receipt must not swallow the response receipt behind it.
+        let responseID = try XCTUnwrap(restored.state.responseItemID)
+        restored.acknowledgeLesson()
+        restored.acknowledgeResponse(itemID: responseID)
+        restored.acknowledgeLesson()
+        restored.acknowledgeResponse(itemID: responseID)
+        try await waitUntil { restored.state.acknowledgedResponseItemID == responseID }
     }
 
     func testConfirmedUnderstandingRevisionStartsWithOriginalTextAndResumesExistingDraft() async throws {
@@ -1476,6 +1490,36 @@ final class MentorFeatureStoreTests: XCTestCase {
         }
     }
 
+    func testReadingOffsetSurvivesPauseContinueAndFailureRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport(), catalog: try catalog())
+        store.start(entry: "listen")
+        try await waitUntil { store.state.phase == .reading }
+        let lesson = try XCTUnwrap(store.state.lesson)
+        store.saveReadingPosition(itemID: lesson.id, section: .example, offset: 120, layoutKey: "402/large")
+        store.pause()
+        try await waitUntil { !store.state.isTransitioningSession }
+        store.continueSession(id: lesson.sessionID)
+        try await waitUntil { !store.state.isTransitioningSession }
+        XCTAssertEqual(store.state.phase, .reading, "Continuing a lesson must enable feedback and local next-lesson actions")
+        XCTAssertEqual(store.state.lesson?.readingOffset, 120)
+        XCTAssertEqual(store.state.lesson?.readingLayoutKey, "402/large")
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER fail_offset BEFORE UPDATE OF reading_offset ON mentor_lesson_snapshots BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        store.saveReadingPosition(itemID: lesson.id, section: .example, offset: 240, layoutKey: "402/large")
+        try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+        XCTAssertNotNil(store.state.readingPositionError)
+        XCTAssertEqual(store.state.lesson?.readingOffset, 240)
+        let beforeRetry = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(beforeRetry?.readingOffset, 120)
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_offset") }
+        store.retryReadingPositionSave()
+        try await waitUntil { store.state.pendingReadingPositionSaves == 0 }
+        XCTAssertNil(store.state.readingPositionError)
+        let afterRetry = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
+        XCTAssertEqual(afterRetry?.readingOffset, 240)
+    }
+
     func testRapidReadingPositionsPersistLatestSectionBeforeContinuation() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let transport = MentorStoreFixtureTransport()
@@ -1491,7 +1535,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         store.saveReadingPosition(itemID: lesson.id, section: .boundary)
         XCTAssertEqual(store.state.lesson?.readingSection, .boundary)
         store.continueSession(id: lesson.sessionID)
-        try await waitUntil { store.state.phase == .editing }
+        try await waitUntil { !store.state.isTransitioningSession && store.state.phase == .reading }
         XCTAssertEqual(store.state.pendingReadingPositionSaves, 0)
         let saved = try await repo.savedLesson(sessionID: lesson.sessionID, itemID: lesson.id)
         XCTAssertEqual(saved?.readingSection, .boundary)

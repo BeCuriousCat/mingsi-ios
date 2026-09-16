@@ -875,6 +875,17 @@ extension AppDatabase {
             }
         }
 
+        migrator.registerMigration("v67_mentor_reading_geometry") { db in
+            try db.execute(sql: """
+                ALTER TABLE mentor_lesson_snapshots ADD COLUMN reading_offset REAL NOT NULL DEFAULT 0
+                CHECK (reading_offset >= 0 AND reading_offset <= 1.7976931348623157e308)
+                """)
+            try db.execute(sql: """
+                ALTER TABLE mentor_lesson_snapshots ADD COLUMN reading_layout_key TEXT
+                CHECK (reading_layout_key IS NULL OR length(reading_layout_key) BETWEEN 1 AND 256)
+                """)
+        }
+
     }
 }
 

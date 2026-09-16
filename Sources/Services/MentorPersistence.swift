@@ -68,6 +68,19 @@ struct MentorSavedLesson: Equatable, Identifiable {
     let lesson: MentorLesson
     let readingSection: MentorReadingSection
     let readingRevision: Int
+    let readingOffset: Double
+    let readingLayoutKey: String?
+
+    init(id: UUID, sessionID: UUID, lesson: MentorLesson, readingSection: MentorReadingSection,
+         readingRevision: Int, readingOffset: Double = 0, readingLayoutKey: String? = nil) {
+        self.id = id
+        self.sessionID = sessionID
+        self.lesson = lesson
+        self.readingSection = readingSection
+        self.readingRevision = readingRevision
+        self.readingOffset = readingOffset
+        self.readingLayoutKey = readingLayoutKey
+    }
 }
 
 enum MentorSourceOwnerKind: String, Codable { case request, item, understanding }
@@ -96,7 +109,8 @@ protocol MentorRepository {
     func selectNextLesson(sessionID: UUID, itemID: UUID, expectedEpoch: Int, catalog: MentorLessonCatalog, at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
     func savedLesson(sessionID: UUID, itemID: UUID) async throws -> MentorSavedLesson?
     func listeningResume(at date: Date, timeZone: TimeZone) async throws -> MentorSavedLesson?
-    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws
+    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection,
+                             offset: Double, layoutKey: String?) async throws
     func recordLessonFeedback(sessionID: UUID, itemID: UUID, commandID: UUID, kind: MentorLessonFeedback, at date: Date) async throws
     func resetKnownLessonFeedback(commandID: UUID, at date: Date) async throws
     func beginUserUnderstanding(sessionID: UUID, draftID: UUID, previousRevisionID: UUID?) async throws -> MentorUnderstanding
@@ -125,6 +139,14 @@ protocol MentorRepository {
     func continueRecall(sessionID: UUID, commandID: UUID, expectedEpoch: Int) async throws
     func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
+}
+
+extension MentorRepository {
+    /// Existing section-only callers intentionally restore to the section start.
+    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws {
+        try await saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: revision,
+                                      section: section, offset: 0, layoutKey: nil)
+    }
 }
 
 enum MentorRequestEndReason: String { case failed, cancelled, timedOut = "timed_out" }
@@ -980,7 +1002,12 @@ extension SQLiteMentorRepository {
         }
     }
 
-    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws {
+    func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection,
+                             offset: Double = 0, layoutKey: String? = nil) async throws {
+        guard offset.isFinite, offset >= 0,
+              layoutKey.map({ !$0.isEmpty && $0.unicodeScalars.count <= 256 }) ?? true else {
+            throw PersistenceError.validationFailed("invalid reading position geometry")
+        }
         try await database.dbQueue.write { db in
             guard let saved = try Self.readLesson(db, sessionID: sessionID, itemID: itemID),
                   revision >= 0, revision >= saved.readingRevision,
@@ -988,10 +1015,17 @@ extension SQLiteMentorRepository {
                 throw PersistenceError.validationFailed("invalid reading position")
             }
             if revision == saved.readingRevision {
-                guard section == saved.readingSection else { throw PersistenceError.validationFailed("reading revision conflict") }
+                guard section == saved.readingSection, offset == saved.readingOffset,
+                      layoutKey == saved.readingLayoutKey else {
+                    throw PersistenceError.validationFailed("reading revision conflict")
+                }
                 return
             }
-            try db.execute(sql: "UPDATE mentor_lesson_snapshots SET reading_section = ?, reading_revision = ? WHERE item_id = ?", arguments: [section.rawValue, revision, itemID.uuidString])
+            try db.execute(sql: """
+                UPDATE mentor_lesson_snapshots
+                SET reading_section = ?, reading_revision = ?, reading_offset = ?, reading_layout_key = ?
+                WHERE item_id = ?
+                """, arguments: [section.rawValue, revision, offset, layoutKey, itemID.uuidString])
         }
     }
 
@@ -1025,18 +1059,23 @@ extension SQLiteMentorRepository {
 
     private static func readLesson(_ db: Database, sessionID: UUID, itemID: UUID) throws -> MentorSavedLesson? {
         guard let row = try Row.fetchOne(db, sql: """
-            SELECT i.payload_json, l.reading_section, l.reading_revision, l.lesson_id, l.version, l.content_hash
+            SELECT i.payload_json, l.reading_section, l.reading_revision, l.reading_offset,
+                   l.reading_layout_key, l.lesson_id, l.version, l.content_hash
             FROM mentor_lesson_snapshots l JOIN mentor_items i ON i.id = l.item_id AND i.session_id = l.session_id
             WHERE l.item_id = ? AND l.session_id = ?
             """, arguments: [itemID.uuidString, sessionID.uuidString]) else { return nil }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let lesson = try decoder.decode(MentorLesson.self, from: Data((row["payload_json"] as String).utf8))
         let lessonID: String = row["lesson_id"], version: String = row["version"], hash: String = row["content_hash"]
+        let offset: Double = row["reading_offset"], layoutKey: String? = row["reading_layout_key"]
         guard let section = MentorReadingSection(rawValue: row["reading_section"]), lesson.id == lessonID,
+              offset.isFinite, offset >= 0,
+              layoutKey.map({ !$0.isEmpty && $0.unicodeScalars.count <= 256 }) ?? true,
               lesson.version == version, lesson.contentHash == hash, MentorLessonCatalog.contentHash(for: lesson) == hash else {
             throw PersistenceError.invalidStoredValue("mentor lesson snapshot")
         }
-        return MentorSavedLesson(id: itemID, sessionID: sessionID, lesson: lesson, readingSection: section, readingRevision: row["reading_revision"])
+        return MentorSavedLesson(id: itemID, sessionID: sessionID, lesson: lesson, readingSection: section,
+                                 readingRevision: row["reading_revision"], readingOffset: offset, readingLayoutKey: layoutKey)
     }
 
     private static func excludedLessons(_ db: Database, sessionID: UUID, cutoff: String) throws -> Set<String> {

@@ -218,6 +218,121 @@ final class MentorPersistenceTests: XCTestCase {
         return id
     }
 
+    func testReadingGeometryMigrationPreservesExistingLessonAtSectionStart() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v66_mentor_request_registration_context")
+        let sessionID = UUID(), itemID = UUID()
+        let lesson = try XCTUnwrap(lessonCatalog().lessonsInEditorialOrder.first)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let payload = String(decoding: try encoder.encode(lesson), as: UTF8.self)
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO mentor_sessions (id, initial_entry, lifecycle, activity_at) VALUES (?, 'listen', 'ended', '2026-09-15T00:00:00Z')", arguments: [sessionID.uuidString])
+            try db.execute(sql: "INSERT INTO mentor_items (id, session_id, sequence, kind, payload_json) VALUES (?, ?, 1, 'lesson', ?)", arguments: [itemID.uuidString, sessionID.uuidString, payload])
+            try db.execute(sql: """
+                INSERT INTO mentor_lesson_snapshots
+                (item_id, session_id, lesson_id, version, content_hash, theme, epoch, reading_section, reading_revision)
+                VALUES (?, ?, ?, ?, ?, ?, 0, 'example', 7)
+                """, arguments: [itemID.uuidString, sessionID.uuidString, lesson.id, lesson.version, lesson.contentHash, lesson.theme.rawValue])
+        }
+        let database = try AppDatabase(dbQueue: queue)
+        let stored = try await SQLiteMentorRepository(database: database).savedLesson(sessionID: sessionID, itemID: itemID)
+        let restored = try XCTUnwrap(stored)
+        XCTAssertEqual(restored.lesson, lesson)
+        XCTAssertEqual(restored.readingSection, .example)
+        XCTAssertEqual(restored.readingRevision, 7)
+        XCTAssertEqual(restored.readingOffset, 0)
+        XCTAssertNil(restored.readingLayoutKey)
+        try await queue.read { db in
+            XCTAssertTrue(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v67_mentor_reading_geometry"))
+            XCTAssertTrue(try Row.fetchAll(db, sql: "PRAGMA foreign_key_check").isEmpty)
+            XCTAssertEqual(try String.fetchOne(db, sql: "SELECT lifecycle FROM mentor_sessions WHERE id = ?", arguments: [sessionID.uuidString]), "ended")
+        }
+    }
+
+    func testReadingGeometryRoundTripRevisionConflictsAndSectionOnlyCompatibility() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), repo = SQLiteMentorRepository(database: db)
+        let sessionID = try await listeningSession(repo), itemID = UUID()
+        let date = Date(timeIntervalSince1970: 1_800_000_000), zone = TimeZone(secondsFromGMT: 0)!
+        _ = try await repo.selectNextLesson(sessionID: sessionID, itemID: itemID, expectedEpoch: 0,
+            catalog: lessonCatalog(), at: date, timeZone: zone)
+        try await repo.acknowledgePresentation(sessionID: sessionID, itemID: itemID, at: date, timeZone: zone)
+        try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 2,
+            section: .example, offset: 128.5, layoutKey: "large:402")
+        try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 2,
+            section: .example, offset: 128.5, layoutKey: "large:402")
+        let resumed = try await SQLiteMentorRepository(database: db).listeningResume(at: date, timeZone: zone)
+        XCTAssertEqual(resumed?.readingSection, .example)
+        XCTAssertEqual(resumed?.readingRevision, 2)
+        XCTAssertEqual(resumed?.readingOffset, 128.5)
+        XCTAssertEqual(resumed?.readingLayoutKey, "large:402")
+        for (revision, section, offset, layout) in [
+            (1, MentorReadingSection.example, 128.5, "large:402"),
+            (2, .example, 128.0, "large:402"),
+            (2, .example, 128.5, "accessibility3:402"),
+            (2, .boundary, 128.5, "large:402")
+        ] {
+            do {
+                try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: revision,
+                    section: section, offset: offset, layoutKey: layout)
+                XCTFail("Stale or conflicting reading position was accepted")
+            } catch {}
+        }
+        let unchanged = try await repo.savedLesson(sessionID: sessionID, itemID: itemID)
+        XCTAssertEqual(unchanged, resumed)
+        // A layout change is valid with a newer revision, even inside the same section.
+        try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 3,
+            section: .example, offset: 240.25, layoutKey: "accessibility3:402")
+        let changed = try await repo.savedLesson(sessionID: sessionID, itemID: itemID)
+        XCTAssertEqual(changed?.readingOffset, 240.25)
+        XCTAssertEqual(changed?.readingLayoutKey, "accessibility3:402")
+        let repository: MentorRepository = repo
+        do {
+            try await repository.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 3, section: .example)
+            XCTFail("Section-only replay must not overwrite newer geometry at the same revision")
+        } catch {}
+        try await repository.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 4, section: .boundary)
+        let legacyCall = try await repo.savedLesson(sessionID: sessionID, itemID: itemID)
+        XCTAssertEqual(legacyCall?.readingSection, .boundary)
+        XCTAssertEqual(legacyCall?.readingOffset, 0)
+        XCTAssertNil(legacyCall?.readingLayoutKey)
+    }
+
+    func testReadingGeometryRejectsInvalidValuesWithoutReplacingSavedPosition() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue()), repo = SQLiteMentorRepository(database: db)
+        let sessionID = try await listeningSession(repo), itemID = UUID()
+        _ = try await repo.selectNextLesson(sessionID: sessionID, itemID: itemID, expectedEpoch: 0,
+            catalog: lessonCatalog(), at: .now, timeZone: .current)
+        try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 1,
+            section: .claim, offset: 12.5, layoutKey: String(repeating: "a", count: 256))
+        let original = try await repo.savedLesson(sessionID: sessionID, itemID: itemID)
+        for offset in [Double.nan, .infinity, -.infinity, -0.01] {
+            do {
+                try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 2,
+                    section: .claim, offset: offset, layoutKey: "large:402")
+                XCTFail("Nonfinite or negative offset was accepted")
+            } catch {}
+        }
+        for layout in ["", String(repeating: "a", count: 257)] {
+            do {
+                try await repo.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 2,
+                    section: .claim, offset: 10, layoutKey: layout)
+                XCTFail("Invalid layout signature was accepted")
+            } catch {}
+        }
+        let final = try await repo.savedLesson(sessionID: sessionID, itemID: itemID)
+        XCTAssertEqual(final, original)
+        for offset in [Double.nan, .infinity, -.infinity, -1] {
+            do {
+                try await db.dbQueue.write {
+                    try $0.execute(sql: "UPDATE mentor_lesson_snapshots SET reading_offset = ? WHERE item_id = ?",
+                        arguments: [offset, itemID.uuidString])
+                }
+                XCTFail("The database must also reject invalid geometry")
+            } catch {}
+        }
+    }
+
     func testLessonSnapshotPresentationResumeAndPosition() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue()), catalog = try lessonCatalog()
         let repo = SQLiteMentorRepository(database: db), timeZone = TimeZone(secondsFromGMT: 0)!

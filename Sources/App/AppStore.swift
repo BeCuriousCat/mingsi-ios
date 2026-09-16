@@ -564,7 +564,7 @@ final class AppStore: ObservableObject {
             ? SQLiteCoachPromptTurnRepository(database: database)
             : nil
         let hasMentorSchema = (try? database.dbQueue.read { db in
-            try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = 'v66_mentor_request_registration_context')") ?? false
+            try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM grdb_migrations WHERE identifier = 'v67_mentor_reading_geometry')") ?? false
         }) == true
         return AppStore(
             apiKeyStore: apiKeyStore,

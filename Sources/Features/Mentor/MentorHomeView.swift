@@ -104,13 +104,6 @@ struct MentorHomeView: View {
     }
 }
 
-private struct MentorVisibleItems: PreferenceKey {
-    static var defaultValue: [UUID: CGRect] = [:]
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
 struct MentorConversationView: View {
     @EnvironmentObject private var app: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -120,35 +113,56 @@ struct MentorConversationView: View {
     @State private var wantsClose = false
     @State private var showsSettings = false
     @State private var needsConfiguration = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var inputHeight = 120.0
+    @StateObject private var readingPosition = MentorReadingPositionCoordinator()
+    @StateObject private var readingGeometry = MentorReadingGeometry()
     @State private var showsDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
             GeometryReader { viewport in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 24) {
-                        if feature.state.isTransitioningSession {
-                            ProgressView(feature.state.isDeletingSession ? "正在删除交流…" : "正在保存和打开交流…")
-                        } else {
-                            content
-                            if feature.state.session != nil {
-                                MentorUnderstandingSection(store: feature)
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if feature.state.isTransitioningSession {
+                                ProgressView(feature.state.isDeletingSession ? "正在删除交流…" : "正在保存和打开交流…")
+                            } else {
+                                content
+                                if feature.state.session != nil {
+                                    MentorUnderstandingSection(store: feature)
+                                }
                             }
                         }
+                        .frame(maxWidth: 640, alignment: .leading)
+                        .padding(DS.pagePadding)
+                        .frame(maxWidth: .infinity)
+                        .background(MentorReadingScrollProbe(geometry: readingGeometry, coordinator: readingPosition,
+                            lesson: feature.state.isTransitioningSession ? nil : feature.state.lesson,
+                            layoutKey: "\(Int(viewport.size.width.rounded()))/\(dynamicTypeSize)",
+                            canSave: !feature.state.isViewingHistory,
+                            save: { [weak feature] position in
+                                feature?.saveReadingPosition(itemID: position.itemID, section: position.section,
+                                    offset: position.offset, layoutKey: position.layoutKey)
+                            }, presented: { [weak feature] id in
+                                guard let feature, !feature.state.isTransitioningSession else { return }
+                                if id == feature.state.responseItemID { feature.acknowledgeResponse(itemID: id) }
+                                if id == feature.state.lesson?.id { feature.acknowledgeLesson() }
+                            }))
                     }
-                    .frame(maxWidth: 640, alignment: .leading)
-                    .padding(DS.pagePadding)
-                    .frame(maxWidth: .infinity)
-                }
-                .onPreferenceChange(MentorVisibleItems.self) { frames in
-                    guard !feature.state.isTransitioningSession else { return }
-                    let visible = viewport.frame(in: .global)
-                    for (id, frame) in frames where frame.intersects(visible) && frame.height > 0 {
-                        if id == feature.state.responseItemID { feature.acknowledgeResponse(itemID: id) }
-                        if id == feature.state.lesson?.id { feature.acknowledgeLesson() }
+                    .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
+                        if transitioning { readingPosition.reset() }
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .task(id: "\(feature.state.lesson?.id.uuidString ?? "")/\(feature.state.isTransitioningSession)") {
+                        guard !feature.state.isTransitioningSession, let lesson = feature.state.lesson else { return }
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
+                        readingPosition.revealIfNeeded(itemID: lesson.id) {
+                            scroll.scrollTo(lesson.id, anchor: .top)
+                        }
                     }
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .background(DS.background)
             .foregroundStyle(DS.ink)
@@ -198,8 +212,12 @@ struct MentorConversationView: View {
             wantsClose = false
             if feature.state.phase == .paused || feature.state.phase == .ended { dismiss() }
         }
+        .onDisappear { flushReadingPosition(); readingGeometry.reset(); readingPosition.reset() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background, !feature.state.isTransitioningSession, !feature.state.isViewingHistory { feature.pause() }
+            if phase == .background, !feature.state.isTransitioningSession, !feature.state.isViewingHistory {
+                flushReadingPosition()
+                feature.pause()
+            }
         }
     }
 
@@ -223,24 +241,29 @@ struct MentorConversationView: View {
                 .font(.title3.weight(.medium))
             }
         }
-        ForEach(feature.state.timeline, id: \.id) { item in
-            if item.kind == .user,
-               let text = (try? JSONDecoder().decode([String: String].self, from: Data(item.payloadJSON.utf8)))?["text"] {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("你说").font(.subheadline).foregroundStyle(DS.mutedInk)
-                    Text(text).textSelection(.enabled)
+        LazyVStack(alignment: .leading, spacing: 24) {
+            ForEach(feature.state.timeline, id: \.id) { item in
+                // Keep one stable lazy row per item; conditional multiple children
+                // make lazy layout and scroll-to identity depend on visibility.
+                VStack(alignment: .leading, spacing: 24) {
+                    if item.kind == .user,
+                       let text = (try? JSONDecoder().decode([String: String].self, from: Data(item.payloadJSON.utf8)))?["text"] {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("你说").font(.subheadline).foregroundStyle(DS.mutedInk)
+                            Text(text).textSelection(.enabled)
+                        }
+                    } else if item.kind == .lesson, let saved = decodeLesson(item.payloadJSON) {
+                        lesson(saved, itemID: item.id)
+                    } else if item.kind == .assistant,
+                              let response = try? JSONDecoder().decode(MentorTurnResponse.self, from: Data(item.payloadJSON.utf8)) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(response.body).textSelection(.enabled)
+                            if let question = response.question { Text(question).fontWeight(.medium) }
+                        }
+                        .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
+                    }
                 }
-            } else if item.kind == .lesson, let saved = decodeLesson(item.payloadJSON) {
-                lesson(saved, itemID: item.id)
-            } else if item.kind == .assistant,
-                      let response = try? JSONDecoder().decode(MentorTurnResponse.self, from: Data(item.payloadJSON.utf8)) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(response.body).textSelection(.enabled)
-                    if let question = response.question { Text(question).fontWeight(.medium) }
-                }
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: MentorVisibleItems.self, value: [item.id: proxy.frame(in: .global)])
-                })
+                .id(item.id)
             }
         }
         status
@@ -256,11 +279,18 @@ struct MentorConversationView: View {
     @ViewBuilder private func lesson(_ lesson: MentorLesson, itemID: UUID) -> some View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(lesson.title).font(.title2.weight(.semibold))
+                    .modifier(MentorReadingSectionMarker(itemID: itemID, section: .title, geometry: readingGeometry))
                 Text(lesson.claim)
+                    .modifier(MentorReadingSectionMarker(itemID: itemID, section: .claim, geometry: readingGeometry))
                 Text(lesson.example)
-                Text("适用边界").font(.headline)
-                Text(lesson.boundary)
-                if let observation = lesson.observation { Text(observation) }
+                    .modifier(MentorReadingSectionMarker(itemID: itemID, section: .example, geometry: readingGeometry))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("适用边界").font(.headline)
+                    Text(lesson.boundary)
+                }.modifier(MentorReadingSectionMarker(itemID: itemID, section: .boundary, geometry: readingGeometry))
+                if let observation = lesson.observation {
+                    Text(observation).modifier(MentorReadingSectionMarker(itemID: itemID, section: .observation, geometry: readingGeometry))
+                }
                 Text(lesson.sourceType == .teachingExample ? "教学示例" : "外部参考")
                     .font(.subheadline).foregroundStyle(DS.mutedInk)
                 ForEach(lesson.citations, id: \.url) { citation in
@@ -270,9 +300,7 @@ struct MentorConversationView: View {
                 }
             }
             .textSelection(.enabled)
-            .background(GeometryReader { proxy in
-                Color.clear.preference(key: MentorVisibleItems.self, value: [itemID: proxy.frame(in: .global)])
-            })
+            .background(MentorReadingMarker(geometry: readingGeometry, itemID: itemID))
             if feature.state.lesson?.id == itemID && !feature.state.isViewingHistory {
                 lessonActions
             }
@@ -280,7 +308,10 @@ struct MentorConversationView: View {
 
     private var lessonActions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button("换一个新视角") { feature.selectAnotherLesson() }
+            Button("换一个新视角") {
+                flushReadingPosition()
+                feature.selectAnotherLesson()
+            }
                 .buttonStyle(.bordered).controlSize(.large)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("mentor.lesson.another")
@@ -319,6 +350,13 @@ struct MentorConversationView: View {
     @ViewBuilder private var status: some View {
         if feature.state.phase == .submitting { ProgressView("正在回应…") }
         if feature.state.phase == .selectingLesson { ProgressView("正在准备下一个视角…") }
+        if feature.state.readingPositionError != nil {
+            Text("阅读位置暂时没能保存，内容仍可继续阅读。")
+                .foregroundStyle(DS.caution)
+            Button("重试保存阅读位置") { feature.retryReadingPositionSave() }
+                .buttonStyle(.bordered).controlSize(.large)
+                .disabled(feature.state.pendingReadingPositionSaves > 0 || feature.state.isViewingHistory)
+        }
         if feature.state.deletionError != nil {
             Text("暂时没能删除，交流仍保留在这里。请稍后重试。")
                 .foregroundStyle(DS.caution)
@@ -362,7 +400,7 @@ struct MentorConversationView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("你想说的话").font(.headline)
             TextEditor(text: Binding(get: { feature.state.inputText }, set: { feature.updateInputText($0) }))
-                .frame(minHeight: 120).padding(8)
+                .frame(height: inputHeight).padding(8)
                 .scrollContentBackground(.hidden)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
                 .focused($inputFocused)
@@ -380,7 +418,10 @@ struct MentorConversationView: View {
             ForEach(feature.state.response?.availableSuggestedActions.filter { $0 == .explain || $0 == .anotherLesson } ?? [], id: \.self) { action in
                 Button(action == .explain ? "直接讲讲这个视角" : "换一个视角") {
                     if action == .explain { online { feature.submit(intent: action.rawValue) } }
-                    else { feature.submit(intent: action.rawValue) }
+                    else {
+                        flushReadingPosition()
+                        feature.submit(intent: action.rawValue)
+                    }
                 }.buttonStyle(.bordered).controlSize(.large)
             }
         }
@@ -393,8 +434,14 @@ struct MentorConversationView: View {
         action()
     }
 
+    private func flushReadingPosition() {
+        readingGeometry.flush()
+        readingPosition.flush()
+    }
+
     private func leave(ending: Bool) {
         inputFocused = false
+        flushReadingPosition()
         if feature.state.isViewingHistory || feature.state.session == nil || feature.state.phase == .ended { dismiss(); return }
         wantsClose = true
         if ending { feature.finish() } else { feature.pause() }
@@ -433,8 +480,10 @@ struct MentorUITestHarness: View {
                     let lessons = (1...24).map { index in
                         let base = MentorLesson(id: String(format: "L%02d", index), version: "1.0", editorialOrder: index,
                             title: "测试视角 \(index)", theme: MentorLesson.Theme.allCases[(index - 1) / 4],
-                            applicableContexts: ["UI fixture"], claim: "这是隔离的界面测试内容。", example: "用于检查阅读和反馈按钮。",
-                            boundary: "不作为正式教材发布。", observation: nil, sourceType: .teachingExample, citations: [],
+                            applicableContexts: ["UI fixture"],
+                            claim: ProcessInfo.processInfo.arguments.contains("--mentor-long-lesson") ? String(repeating: "这段测试观点用来验证长内容阅读位置。\n", count: 8) : "这是隔离的界面测试内容。",
+                            example: ProcessInfo.processInfo.arguments.contains("--mentor-long-lesson") ? String(repeating: "这个测试例子只用于检查分节滚动恢复。\n", count: 8) : "用于检查阅读和反馈按钮。",
+                            boundary: ProcessInfo.processInfo.arguments.contains("--mentor-long-lesson") ? String(repeating: "这段适用边界不作为正式教材发布。\n", count: 8) : "不作为正式教材发布。", observation: nil, sourceType: .teachingExample, citations: [],
                             contentHash: "", review: .init(status: .approved, reviewedBy: "UI fixture", reviewedAt: .now, note: nil))
                         return MentorLesson(id: base.id, version: base.version, editorialOrder: base.editorialOrder,
                             title: base.title, theme: base.theme, applicableContexts: base.applicableContexts,
@@ -442,6 +491,31 @@ struct MentorUITestHarness: View {
                             sourceType: base.sourceType, citations: [], contentHash: MentorLessonCatalog.contentHash(for: base), review: base.review)
                     }
                     catalog = try MentorLessonCatalog(pack: MentorLessonPack(schemaVersion: "1.0.0", packID: "ui-fixture", version: "1.0", lessons: lessons))
+                }
+                if ProcessInfo.processInfo.arguments.contains("--mentor-reading-history-fixture"), let catalog {
+                    let sessionID = UUID(), itemID = UUID()
+                    try await repository.createSession(MentorSession(id: sessionID, initialEntry: "listen", lifecycle: .active,
+                        draftText: "", draftRevision: 0, activityAt: .now))
+                    for index in 1...40 {
+                        let payload = try JSONEncoder().encode(["text": "较早交流 \(index)\n" + String(repeating: "保留长时间线中的原话。\n", count: 4)])
+                        try await repository.appendItem(MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: index,
+                            kind: .user, payloadJSON: String(decoding: payload, as: UTF8.self)))
+                    }
+                    _ = try await repository.selectNextLesson(sessionID: sessionID, itemID: itemID, expectedEpoch: 0,
+                        catalog: catalog, at: .now, timeZone: .current)
+                    try await repository.acknowledgePresentation(sessionID: sessionID, itemID: itemID, at: .now, timeZone: .current)
+                    // Simulates a snapshot saved before this device's layout;
+                    // opening it must find the distant lesson and its section.
+                    try await repository.saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: 1,
+                        section: .boundary, offset: 80, layoutKey: "previous-device-layout")
+                    // Leave enough later content to distinguish true section
+                    // restoration from clamping at the end of a short page.
+                    for index in 42...46 {
+                        let payload = try JSONEncoder().encode(["text": "教材后的交流 \(index)\n" + String(repeating: "这一段保留教材之后的原话。\n", count: 4)])
+                        try await repository.appendItem(MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: index,
+                            kind: .user, payloadJSON: String(decoding: payload, as: UTF8.self)))
+                    }
+                    try await repository.suspendSession(id: sessionID, ending: true, draftRevision: 0, draftText: "")
                 }
                 feature = MentorFeatureStore(repository: repository, transport: MentorUIOfflineTransport(), catalog: catalog)
                 app.apiKeyConfigured = false

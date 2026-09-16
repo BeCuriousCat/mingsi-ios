@@ -97,6 +97,8 @@ final class MentorFeatureStore: ObservableObject {
     private var readingPositionTask: Task<Void, Never>?
     private var lessonFeedbackTask: Task<Void, Never>?
     private var presentationTask: Task<Void, Never>?
+    private var acknowledgedPresentationIDs = Set<UUID>()
+    private var pendingPresentationIDs = Set<UUID>()
     private var historyTask: Task<Void, Never>?
     private var historyGeneration = UUID()
 
@@ -307,7 +309,8 @@ final class MentorFeatureStore: ObservableObject {
                 try Task.checkCancellation()
                 restored.session = current
                 restored.isViewingHistory = !resuming
-                restored.phase = restored.response == nil ? .editing : .showingResponse
+                restored.phase = restored.response != nil ? .showingResponse :
+                    (restored.lesson == nil ? .editing : .reading)
                 if !resuming, current.lifecycle == .ended { restored.phase = .ended }
                 if !resuming, current.lifecycle == .paused { restored.phase = .paused }
                 resetSessionBuffers()
@@ -636,15 +639,18 @@ final class MentorFeatureStore: ObservableObject {
 
     /// The visible lesson's identity travels with scroll events, so a disappearing
     /// page cannot move the reading position of its replacement.
-    func saveReadingPosition(itemID: UUID, section: MentorReadingSection) {
+    func saveReadingPosition(itemID: UUID, section: MentorReadingSection, offset: Double = 0, layoutKey: String? = nil) {
         guard !state.isViewingHistory, sessionTransitionID == nil,
               state.phase != .paused, state.phase != .ended else { return }
         guard let lesson = state.lesson, lesson.id == itemID,
               lesson.sessionID == state.session?.id, state.phase != .selectingLesson,
               section != .observation || lesson.lesson.observation != nil else { return }
-        guard section != lesson.readingSection || state.readingPositionError != nil else { return }
+        guard offset.isFinite, offset >= 0, offset == 0 || layoutKey != nil else { return }
+        guard section != lesson.readingSection || offset != lesson.readingOffset ||
+              layoutKey != lesson.readingLayoutKey || state.readingPositionError != nil else { return }
         let updated = MentorSavedLesson(id: lesson.id, sessionID: lesson.sessionID,
-            lesson: lesson.lesson, readingSection: section, readingRevision: lesson.readingRevision + 1)
+            lesson: lesson.lesson, readingSection: section, readingRevision: lesson.readingRevision + 1,
+            readingOffset: offset, readingLayoutKey: layoutKey)
         state.lesson = updated
         enqueueReadingPosition(updated)
     }
@@ -672,7 +678,8 @@ final class MentorFeatureStore: ObservableObject {
             do {
                 try Task.checkCancellation()
                 try await repository.saveReadingPosition(sessionID: lesson.sessionID, itemID: lesson.id,
-                    revision: lesson.readingRevision, section: lesson.readingSection)
+                    revision: lesson.readingRevision, section: lesson.readingSection,
+                    offset: lesson.readingOffset, layoutKey: lesson.readingLayoutKey)
                 guard state.lesson?.id == lesson.id,
                       state.lesson?.readingRevision == lesson.readingRevision else { return }
                 state.readingPositionError = nil
@@ -691,16 +698,23 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func acknowledge(itemID: UUID, isResponse: Bool) {
-        guard let session = state.session, presentationTask == nil else { return }
-        state.presentationError = nil
+        guard let session = state.session,
+              !acknowledgedPresentationIDs.contains(itemID),
+              !pendingPresentationIDs.contains(itemID) else { return }
+        let previous = presentationTask
+        pendingPresentationIDs.insert(itemID)
+        if state.presentationError != nil { state.presentationError = nil }
         presentationTask = Task { [weak self] in
+            await previous?.value
             guard let self else { return }
-            defer { presentationTask = nil }
+            defer { pendingPresentationIDs.remove(itemID) }
+            guard !Task.isCancelled, state.session?.id == session.id else { return }
             do {
                 try await repository.acknowledgePresentation(sessionID: session.id, itemID: itemID,
                     at: now(), timeZone: timeZone)
                 // Receipt updates must not overwrite foreground lifecycle or draft edits.
                 guard !Task.isCancelled, state.session?.id == session.id else { return }
+                acknowledgedPresentationIDs.insert(itemID)
                 if isResponse, state.responseItemID == itemID {
                     state.acknowledgedResponseItemID = itemID
                 }
@@ -980,6 +994,8 @@ final class MentorFeatureStore: ObservableObject {
     }
 
     private func resetSessionBuffers() {
+        acknowledgedPresentationIDs.removeAll()
+        pendingPresentationIDs.removeAll()
         understandingDebounceTask?.cancel()
         understandingDebounceTask = nil
         pendingUnderstandingText = nil
@@ -1009,7 +1025,9 @@ final class MentorFeatureStore: ObservableObject {
                 try Task.checkCancellation()
                 try await suspendPreviousSession(destinationID: session.id)
                 switch session.lifecycle {
-                case .ended: restored.phase = .ended
+                case .ended:
+                    restored.phase = .ended
+                    restored.isViewingHistory = true
                 case .paused: restored.phase = .paused
                 default: restored.phase = restored.response == nil ? .reading : .showingResponse
                 }

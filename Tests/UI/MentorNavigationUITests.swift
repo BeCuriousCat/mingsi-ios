@@ -2,6 +2,71 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testDistantHistoricalLessonRestoresSectionAfterLayoutChange() throws {
+        try verifyDistantHistoricalLesson(additionalArguments: [], screenshotName: "mentor-distant-history-reading-position")
+    }
+
+    @MainActor
+    func testDistantReadingAtLargestTextSizeInDarkMode() throws {
+        try verifyDistantHistoricalLesson(additionalArguments: ["-UIPreferredContentSizeCategory",
+            "UICTContentSizeCategoryAccessibilityXXXL", "-AppleInterfaceStyle", "Dark"],
+            screenshotName: "mentor-distant-history-largest-text-dark")
+    }
+
+    @MainActor
+    private func verifyDistantHistoricalLesson(additionalArguments: [String], screenshotName: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-lesson-fixture", "--mentor-long-lesson",
+                                "--mentor-reading-history-fixture"] + additionalArguments
+        app.launch()
+        XCTAssertTrue(app.buttons["听一个新视角"].waitForExistence(timeout: 15))
+        for _ in 0..<5 {
+            if app.buttons["听一个新视角"].isHittable { break }
+            app.swipeUp()
+        }
+        app.buttons["听一个新视角"].tap()
+        let boundary = app.staticTexts["适用边界"]
+        XCTAssertTrue(boundary.waitForExistence(timeout: 8))
+        XCTAssertTrue(boundary.isHittable)
+        XCTAssertLessThan(boundary.frame.minY, 200, "A different layout restores the saved section start")
+        XCTAssertFalse(app.staticTexts["测试视角 1"].isHittable)
+        XCTAssertFalse(app.buttons["mentor.lesson.known"].exists, "Ended listening opens as read-only history")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = screenshotName
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
+    func testLongLessonRestoresReadingSectionAfterReturning() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-lesson-fixture", "--mentor-long-lesson"]
+        app.launch()
+        XCTAssertTrue(app.buttons["听一个新视角"].waitForExistence(timeout: 15))
+        app.buttons["听一个新视角"].tap()
+        let boundary = app.staticTexts["适用边界"]
+        for _ in 0..<12 {
+            if boundary.exists && boundary.frame.minY < 220 { break }
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(boundary.exists)
+        // Preserve a real position inside the paragraph, not just its section ID.
+        app.swipeUp(velocity: .slow)
+        let originalY = boundary.frame.minY
+        app.navigationBars["这次交流"].buttons["返回"].tap()
+        XCTAssertTrue(app.buttons["继续这次交流"].waitForExistence(timeout: 5))
+        app.buttons["继续这次交流"].tap()
+        XCTAssertTrue(boundary.waitForExistence(timeout: 5))
+        XCTAssertEqual(boundary.frame.minY, originalY, accuracy: 5)
+        XCTAssertFalse(app.staticTexts["测试视角 1"].isHittable)
+        XCTAssertTrue(app.buttons["mentor.lesson.another"].isEnabled)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "mentor-reading-restored-boundary"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testLessonPreferenceResetRequiresConfirmation() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-preferences-fixture"]
