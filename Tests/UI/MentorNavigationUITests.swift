@@ -2,6 +2,28 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testHistoricalResponseShowsAvailableAndUnavailableSourceDetails() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-source-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        let record = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UI 来源原话")).firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 15))
+        record.tap()
+        let source = app.buttons["mentor.sources.open"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.tap()
+        XCTAssertTrue(app.navigationBars["来源详情"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["UI 来源原话：先检查实际效果。"].waitForExistence(timeout: 5))
+        let unavailable = app.staticTexts["mentor.sources.unavailable"]
+        XCTAssertTrue(unavailable.waitForExistence(timeout: 5))
+        XCTAssertTrue(unavailable.label.contains("没有随本次会话保存"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "mentor-source-details"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testDistantHistoricalLessonRestoresSectionAfterLayoutChange() throws {
         try verifyDistantHistoricalLesson(additionalArguments: [], screenshotName: "mentor-distant-history-reading-position")
     }

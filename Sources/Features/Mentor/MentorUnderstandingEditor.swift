@@ -180,6 +180,8 @@ struct MentorUnderstandingSection: View {
     @State private var showsEditor = false
     @State private var groupToDelete: UUID?
     @State private var showsDeleteConfirmation = false
+    @State private var sourceReferencesByUnderstanding: [UUID: [MentorSourceReference]] = [:]
+    @State private var sourceSelection: MentorSourceSelection?
 
     private var canOpenEditor: Bool {
         store.state.session != nil && !store.state.isViewingHistory && !store.state.isTransitioningSession &&
@@ -203,6 +205,16 @@ struct MentorUnderstandingSection: View {
                         .textSelection(.enabled)
                     Text(note.state == .confirmed ? "已确认 · 第 \(note.revision) 版" : "未确认草稿")
                         .font(.subheadline).foregroundStyle(DS.mutedInk)
+                    if let references = sourceReferencesByUnderstanding[note.id], !references.isEmpty {
+                        Button {
+                            sourceSelection = MentorSourceSelection(references: references)
+                        } label: {
+                            Label("查看理解来源（\(references.count)）", systemImage: "doc.text.magnifyingglass")
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("mentor.understanding.sources")
+                    }
                     if note.state == .draft {
                         Button {
                             store.selectUnderstandingDraft(id: note.id)
@@ -246,6 +258,14 @@ struct MentorUnderstandingSection: View {
             .disabled(!canOpenEditor)
         }
         .sheet(isPresented: $showsEditor) { MentorUnderstandingEditor(store: store) }
+        .sheet(item: $sourceSelection) { selection in
+            MentorSourceDetailView(feature: store, references: selection.references)
+        }
+        .task(id: sourceTaskID) {
+            let references = await store.understandingSourceReferences()
+            guard !Task.isCancelled else { return }
+            sourceReferencesByUnderstanding = references
+        }
         .alert("删除这组理解？", isPresented: $showsDeleteConfirmation) {
             Button("保留理解", role: .cancel) { groupToDelete = nil }
             Button("删除全部版本", role: .destructive) {
@@ -256,5 +276,9 @@ struct MentorUnderstandingSection: View {
         } message: {
             Text("将删除这组理解的全部版本和草稿，并清理引用它的派生回应。交流原话和其他理解会保留。此操作无法撤销。")
         }
+    }
+
+    private var sourceTaskID: String {
+        ([store.state.session?.id.uuidString ?? ""] + store.state.understandings.map(\.id.uuidString)).joined(separator: "/")
     }
 }

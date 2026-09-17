@@ -118,6 +118,7 @@ struct MentorConversationView: View {
     @StateObject private var readingPosition = MentorReadingPositionCoordinator()
     @StateObject private var readingGeometry = MentorReadingGeometry()
     @State private var showsDeleteConfirmation = false
+    @State private var sourceSelection: MentorSourceSelection?
 
     var body: some View {
         NavigationStack {
@@ -207,6 +208,9 @@ struct MentorConversationView: View {
             Text("这次交流的原话、草稿、理解和反馈会一起删除，无法撤销。引用的闪念与事项原始资料会保留。")
         }
         .sheet(isPresented: $showsSettings) { SettingsView().environmentObject(app) }
+        .sheet(item: $sourceSelection) { selection in
+            MentorSourceDetailView(feature: feature, references: selection.references)
+        }
         .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
             guard wantsClose, !transitioning else { return }
             wantsClose = false
@@ -259,6 +263,9 @@ struct MentorConversationView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(response.body).textSelection(.enabled)
                             if let question = response.question { Text(question).fontWeight(.medium) }
+                            if !response.sourceRefs.isEmpty {
+                                sourceButton(response.sourceRefs)
+                            }
                         }
                         .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
                     }
@@ -293,6 +300,9 @@ struct MentorConversationView: View {
                 }
                 Text(lesson.sourceType == .teachingExample ? "教学示例" : "外部参考")
                     .font(.subheadline).foregroundStyle(DS.mutedInk)
+                if let reference = try? MentorSourceReference("lesson:\(lesson.id)@\(lesson.version)") {
+                    sourceButton([reference])
+                }
                 ForEach(lesson.citations, id: \.url) { citation in
                     if let url = URL(string: citation.url), ["https", "http"].contains(url.scheme) {
                         Link(citation.title, destination: url)
@@ -305,6 +315,17 @@ struct MentorConversationView: View {
                 lessonActions
             }
         }
+
+    private func sourceButton(_ references: [MentorSourceReference]) -> some View {
+        Button {
+            sourceSelection = MentorSourceSelection(references: references)
+        } label: {
+            Label("查看来源（\(references.count)）", systemImage: "doc.text.magnifyingglass")
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("mentor.sources.open")
+    }
 
     private var lessonActions: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -448,6 +469,79 @@ struct MentorConversationView: View {
     }
 }
 
+struct MentorSourceSelection: Identifiable {
+    let id = UUID()
+    let references: [MentorSourceReference]
+}
+
+struct MentorSourceDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var feature: MentorFeatureStore
+    let references: [MentorSourceReference]
+    @State private var details: [MentorSourceDetail] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    if isLoading {
+                        ProgressView("正在读取来源…")
+                    } else if details.isEmpty {
+                        Text("这段内容没有可查看的来源。")
+                            .foregroundStyle(DS.mutedInk)
+                    } else {
+                        ForEach(details) { detail in
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(detail.title).font(.headline)
+                                    Spacer()
+                                    Text(detail.status.label).font(.subheadline).foregroundStyle(DS.mutedInk)
+                                }
+                                if let content = detail.content {
+                                    Text(content).textSelection(.enabled)
+                                }
+                                if case .unavailable(let reason) = detail.status {
+                                    Text(reason).foregroundStyle(DS.caution)
+                                        .accessibilityIdentifier("mentor.sources.unavailable")
+                                }
+                                if case .deleted = detail.status {
+                                    Text("这条来源已被删除，当前会话仍保留对它的引用记录。")
+                                        .foregroundStyle(DS.caution)
+                                }
+                                ForEach(detail.externalLinks) { link in
+                                    Link(link.title, destination: link.url)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(maxWidth: 640, alignment: .leading)
+                .padding(DS.pagePadding)
+                .frame(maxWidth: .infinity)
+            }
+            .background(DS.background)
+            .foregroundStyle(DS.ink)
+            .navigationTitle("来源详情")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DS.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("返回") { dismiss() }.frame(minWidth: 44, minHeight: 44)
+                }
+            }
+        }
+        .tint(DS.accent)
+        .task {
+            details = await feature.sourceDetails(for: references)
+            isLoading = false
+        }
+    }
+}
+
 #if DEBUG
 /// Isolated UI automation fixture; never uses the user's conversation database or model.
 struct MentorUITestHarness: View {
@@ -474,6 +568,23 @@ struct MentorUITestHarness: View {
                             draftText: String(format: "History record %02d", index), draftRevision: 1,
                             activityAt: Date(timeIntervalSince1970: Double(100000 - index * 100))))
                     }
+                }
+                if ProcessInfo.processInfo.arguments.contains("--mentor-source-fixture") {
+                    let sessionID = UUID(), userID = UUID(), missingID = UUID()
+                    try await repository.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .ended,
+                        draftText: "", draftRevision: 0, activityAt: .now))
+                    let userPayload = String(decoding: try JSONEncoder().encode(["text": "UI 来源原话：先检查实际效果。"]), as: UTF8.self)
+                    try await repository.appendItem(MentorTimelineItem(id: userID, sessionID: sessionID, sequence: 1,
+                        kind: .user, payloadJSON: userPayload))
+                    let response: [String: Any] = [
+                        "schema_version": "1.0.0", "action": "explain", "material_status": "usable",
+                        "body": "这段回应明确引用了保存的原话。", "question": NSNull(), "question_purpose": NSNull(),
+                        "source_refs": ["item:\(userID.uuidString)", "item:\(missingID.uuidString)"],
+                        "lesson_ref": NSNull(), "suggested_actions": []
+                    ]
+                    let responsePayload = String(decoding: try JSONSerialization.data(withJSONObject: response), as: UTF8.self)
+                    try await repository.appendItem(MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: 2,
+                        kind: .assistant, payloadJSON: responsePayload))
                 }
                 var catalog: MentorLessonCatalog?
                 if ProcessInfo.processInfo.arguments.contains("--mentor-lesson-fixture") {

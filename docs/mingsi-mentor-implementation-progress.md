@@ -659,3 +659,11 @@ pause / finish 增加等待已排队 readingPositionTask 的屏障，再写入�
 验证：MentorReadingPositionTests 6 项、MentorFeatureStoreTests 3 项与导师导航 UI 3 项通过；合并回归批次 9 项通过（Test-MingSi-2026.09.17_01-00-39-+0800.xcresult、Test-MingSi-2026.09.17_01-05-59-+0800.xcresult）。此前一次归档因磁盘空间不足未计为通过，清理可重建缓存后重新验证。当前仍基于含其他未提交工作的工作区，不宣称干净检出构建；真机、iPad、横屏、VoiceOver 和完整教材包验收仍待进行。
 
 README 与发布说明同步新增用户可见的阅读恢复能力。独立录音入口仍不属于当前 M1 PRD，现有语音底层和控件尚未接入导师正式输入页面。
+
+## 2026-09-18：F13 来源详情
+
+交流回应、教材快照和有明确来源链接的理解现在可以从导师页面打开“查看来源”。来源解析只使用当前会话已加载的时间线、教材快照、理解版本和 `MentorSourceLink`；支持 `item:<uuid>`、`understanding:<uuid>`、`lesson:<id>@<version>`、`capture:<uuid>` 和 `legacy-nudge:<uuid>` 引用。解析会校验会话归属、教材版本、内容哈希和来源链接可用性，不根据 UUID 或字符串前缀推断来源存在。
+
+来源被删除、标记不可用、版本不一致、内容哈希不一致或快照缺失时，详情页显示明确的不可用 / 已删除原因，并保留引用事实。教材详情显示保存的正文、版本、内容哈希对应的快照内容和可访问的外部引用链接；来源详情读取为只读操作，不创建呈现回执、不改变阅读位置、不修改输入草稿或会话生命周期。理解区域仅在存在明确理解来源链接时显示入口。
+
+验证：来源解析、Store 与 Persistence 专项共 135 项通过，0 失败、0 跳过；来源解析单独 10 项通过。`MentorNavigationUITests.testHistoricalResponseShowsAvailableAndUnavailableSourceDetails` 通过，覆盖历史回应、已保存原话和缺失来源的明确提示。`capture` 与 `legacy-nudge` 目前只有来源链接记录，因当前模块没有原始内容读取接口，会明确提示原始来源未保存在本次会话中，不伪造正文。当前验证基于含其他未提交工作的工作区；真机、iPad、横屏、深色、最大字号、VoiceOver 和完整发布教材验收仍待进行，M1 尚未整体完成。

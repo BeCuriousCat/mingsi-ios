@@ -7,6 +7,81 @@ final class MentorResponseParserTests: XCTestCase {
     private let lesson = "lesson:L01@1.0"
     private let parser = MentorResponseParser()
 
+    func testSourceResolverUsesOnlyCurrentSessionSnapshots() throws {
+        let sessionID = UUID()
+        let userID = UUID()
+        let assistantID = UUID()
+        let otherSessionID = UUID()
+        let noteID = UUID()
+        let timeline = [
+            MentorTimelineItem(id: userID, sessionID: sessionID, sequence: 1, kind: .user,
+                payloadJSON: "{\"text\":\"我看到的是一次完成，不确定是否真的改善。\"}"),
+            MentorTimelineItem(id: assistantID, sessionID: sessionID, sequence: 2, kind: .assistant,
+                payloadJSON: "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"把完成和效果分开看。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:\(userID.uuidString)\"],\"lesson_ref\":null,\"suggested_actions\":[]}"),
+            MentorTimelineItem(id: UUID(), sessionID: otherSessionID, sequence: 1, kind: .user,
+                payloadJSON: "{\"text\":\"不属于当前交流\"}")
+        ]
+        let note = MentorUnderstanding(id: noteID, sessionID: sessionID, groupID: UUID(), revision: 1,
+            previousRevisionID: nil, state: .confirmed, text: "我会同时检查交付和效果。", origin: "user_note",
+            editRevision: 1, confirmedAt: .now)
+        let refs = try [
+            MentorSourceReference("item:\(userID.uuidString)"),
+            MentorSourceReference("item:\(assistantID.uuidString)"),
+            MentorSourceReference("understanding:\(noteID.uuidString)"),
+            MentorSourceReference("item:\(UUID().uuidString)")
+        ]
+        let details = MentorSourceResolver().resolve(refs, sessionID: sessionID, timeline: timeline,
+            understandings: [note], links: [])
+        XCTAssertEqual(details[0].status, .available)
+        XCTAssertEqual(details[0].content, "我看到的是一次完成，不确定是否真的改善。")
+        XCTAssertEqual(details[1].title, "导师回应")
+        XCTAssertEqual(details[2].content, note.text)
+        if case .unavailable(let reason) = details[3].status {
+            XCTAssertTrue(reason.contains("没有随本次会话保存"))
+        } else { XCTFail("An unowned item must not be resolved by UUID shape alone") }
+    }
+
+    func testSourceResolverPreservesDeletedAndSnapshotMismatchStates() throws {
+        let sessionID = UUID()
+        let itemID = UUID()
+        let ref = try MentorSourceReference("item:\(itemID.uuidString)")
+        let item = MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user,
+            payloadJSON: "{\"text\":\"原始表达\"}")
+        let deleted = MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .item, ownerID: itemID,
+            sourceKind: "item", sourceID: itemID.uuidString, sourceVersion: nil, contentHash: nil, availability: .deleted)
+        let deletedDetail = MentorSourceResolver().resolve([ref], sessionID: sessionID, timeline: [item], understandings: [], links: [deleted]).first
+        XCTAssertEqual(deletedDetail?.status, .deleted)
+
+        let mismatched = MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .item, ownerID: itemID,
+            sourceKind: "item", sourceID: itemID.uuidString, sourceVersion: nil, contentHash: "sha256:wrong", availability: .available)
+        let mismatchDetail = MentorSourceResolver().resolve([ref], sessionID: sessionID, timeline: [item], understandings: [], links: [mismatched]).first
+        if case .unavailable(let reason) = mismatchDetail?.status {
+            XCTAssertTrue(reason.contains("内容"))
+        } else { XCTFail("A mismatched snapshot must be unavailable") }
+    }
+
+    func testLessonSourceResolverReturnsSnapshotAndExternalLinks() throws {
+        let sessionID = UUID()
+        let lesson = MentorLesson(id: "L01", version: "1.0", editorialOrder: 1, title: "改动与效果",
+            theme: .iteration, applicableContexts: ["fixture"], claim: "先说清希望什么变好。",
+            example: "检查改动后的实际效果。", boundary: "修复明确错误时可以直接验证。", observation: nil,
+            sourceType: .externalReference, citations: [.init(title: "出处", url: "https://example.com/source")],
+            contentHash: "", review: .init(status: .approved, reviewedBy: "fixture", reviewedAt: .now, note: nil))
+        let signed = MentorLesson(id: lesson.id, version: lesson.version, editorialOrder: lesson.editorialOrder,
+            title: lesson.title, theme: lesson.theme, applicableContexts: lesson.applicableContexts, claim: lesson.claim,
+            example: lesson.example, boundary: lesson.boundary, observation: lesson.observation, sourceType: lesson.sourceType,
+            citations: lesson.citations, contentHash: MentorLessonCatalog.contentHash(for: lesson), review: lesson.review)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let payload = String(decoding: try encoder.encode(signed), as: UTF8.self)
+        let item = MentorTimelineItem(id: UUID(), sessionID: sessionID, sequence: 1, kind: .lesson, payloadJSON: payload)
+        let ref = try MentorSourceReference("lesson:L01@1.0")
+        let detail = MentorSourceResolver().resolve([ref], sessionID: sessionID, timeline: [item], understandings: [], links: []).first
+        XCTAssertEqual(detail?.status, .available)
+        XCTAssertEqual(detail?.sourceVersion, "1.0")
+        XCTAssertEqual(detail?.externalLinks.first?.url.absoluteString, "https://example.com/source")
+    }
+
     func testMentorPreviewTemplatesReturnValidContractsWithoutInventingUserExpression() async throws {
         let session = MentorSession(id: UUID(), initialEntry: "discuss", lifecycle: .active,
             draftText: "", draftRevision: 0, activityAt: .now)

@@ -16,6 +16,7 @@
 		16811ABF7D8477470C0547D5 /* MentorLessonPreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BFBF7809D54C02BF679AD38 /* MentorLessonPreferencesStore.swift */; };
 		2ABE02814E391F9B1B502605 /* test_alpha_acceptance_script.sh in Resources */ = {isa = PBXBuildFile; fileRef = D74AF86E9851F4B6FBD87D95 /* test_alpha_acceptance_script.sh */; };
 		31148CBC90B846FE01375E43 /* MentorResponseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C4A0F9E9FCA09D74D2AB9D /* MentorResponseModels.swift */; };
+		31148CBC90B846FE01375E44 /* MentorSourceDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C4A0F9E9FCA09D74D2AC0 /* MentorSourceDetails.swift */; };
 		31B5A670F22271C9E35D4509 /* LiveGLMAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFB950525A17C702B66D37AA /* LiveGLMAcceptanceTests.swift */; };
 		33AC926B599A2DE5C9C257DF /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8658334444C5886A2AC844B /* AppRootView.swift */; };
 		344FD5566DDE9C8ADB7044E9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D770BD95F9E48F6885FB10 /* Theme.swift */; };
@@ -112,6 +113,7 @@
 		0E464B20FAB39B0E755A7452 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1251449AA6B99BE0DC65B118 /* FeatureTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureTabs.swift; sourceTree = "<group>"; };
 		14C4A0F9E9FCA09D74D2AB9D /* MentorResponseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorResponseModels.swift; sourceTree = "<group>"; };
+		14C4A0F9E9FCA09D74D2AC0 /* MentorSourceDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorSourceDetails.swift; sourceTree = "<group>"; };
 		14F31675FA9F8D119F5B7944 /* VNextModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VNextModels.swift; sourceTree = "<group>"; };
 		1934EE09CA2E021FA298BB08 /* HistoryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryFeatureTests.swift; sourceTree = "<group>"; };
 		1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorUnderstandingEditor.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 				831494666A2CE930CA9837F0 /* CaptureDigestModels.swift */,
 				872B3A7F78DACCAAA5F423EC /* MentorLessonModels.swift */,
 				14C4A0F9E9FCA09D74D2AB9D /* MentorResponseModels.swift */,
+				14C4A0F9E9FCA09D74D2AC0 /* MentorSourceDetails.swift */,
 				0E464B20FAB39B0E755A7452 /* Models.swift */,
 				32C5D52EA95184E3C35A976C /* SideQuestCatalog.swift */,
 				AF956BBDC2D43F308B122BFE /* SingleNudgeModels.swift */,
@@ -636,6 +639,7 @@
 				6B4F897D8F5E7B564DC02BAF /* MentorReadingPosition.swift in Sources */,
 				73FB6477F6651F843AC07BAD /* MentorRequestExecutor.swift in Sources */,
 				31148CBC90B846FE01375E43 /* MentorResponseModels.swift in Sources */,
+				31148CBC90B846FE01375E44 /* MentorSourceDetails.swift in Sources */,
 				072C0A83E0DD08C0D607DAED /* MentorUnderstandingEditor.swift in Sources */,
 				842077D34FB6E1C3E590252F /* MingSiApp.swift in Sources */,
 				E673294D5A0FC29ABB3406A1 /* MockLLMClient.swift in Sources */,

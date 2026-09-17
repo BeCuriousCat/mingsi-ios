@@ -1,7 +1,8 @@
 import Foundation
 
-struct MentorSourceReference: Hashable, Codable {
+struct MentorSourceReference: Hashable, Codable, Identifiable {
     let value: String
+    var id: String { value }
     var isLesson: Bool { value.hasPrefix("lesson:") }
 
     init(_ raw: String) throws {

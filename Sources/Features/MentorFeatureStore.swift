@@ -233,6 +233,48 @@ final class MentorFeatureStore: ObservableObject {
 
     func makeHistoryStore() -> MentorHistoryStore { MentorHistoryStore(repository: repository) }
 
+    /// Resolves references against the loaded session snapshot. This is a read-only
+    /// operation so opening a source from history cannot create a receipt or alter
+    /// the lifecycle of the viewed session.
+    func sourceDetails(for references: [MentorSourceReference]) async -> [MentorSourceDetail] {
+        guard let session = state.session else {
+            return references.map { MentorSourceDetail(id: $0, kind: "unknown", title: "来源详情", content: nil,
+                sourceVersion: nil, contentHash: nil, externalLinks: [], status: .unavailable("当前没有打开的交流。")) }
+        }
+        let timeline = state.timeline
+        let understandings = state.understandings
+        do {
+            let links = try await repository.sourceLinks(sessionID: session.id)
+            return MentorSourceResolver().resolve(references, sessionID: session.id,
+                timeline: timeline, understandings: understandings, links: links)
+        } catch {
+            return references.map { MentorSourceDetail(id: $0, kind: "unknown", title: "来源详情", content: nil,
+                sourceVersion: nil, contentHash: nil, externalLinks: [], status: .unavailable("来源详情暂时无法读取。")) }
+        }
+    }
+
+    func understandingSourceReferences() async -> [UUID: [MentorSourceReference]] {
+        guard let session = state.session else { return [:] }
+        let noteIDs = Set(state.understandings.map(\.id))
+        guard !noteIDs.isEmpty else { return [:] }
+        guard let links = try? await repository.sourceLinks(sessionID: session.id) else { return [:] }
+        var result: [UUID: [MentorSourceReference]] = [:]
+        for link in links where link.ownerKind == .understanding && noteIDs.contains(link.ownerID) {
+            let raw: String
+            if link.sourceKind.caseInsensitiveCompare("lesson") == .orderedSame {
+                raw = link.sourceID.contains("@") ? "lesson:\(link.sourceID)" :
+                    link.sourceVersion.map { "lesson:\(link.sourceID)@\($0)" } ?? ""
+            } else {
+                raw = "\(link.sourceKind):\(link.sourceID)"
+            }
+            guard let reference = try? MentorSourceReference(raw),
+                  result[link.ownerID, default: []].contains(reference) == false else { continue }
+            result[link.ownerID, default: []].append(reference)
+        }
+        guard !Task.isCancelled, state.session?.id == session.id else { return [:] }
+        return result
+    }
+
     func loadRecentSessions(limit: Int = 3) {
         historyTask?.cancel()
         let generation = UUID()

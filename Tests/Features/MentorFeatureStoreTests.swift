@@ -4,6 +4,44 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testHistorySourceDetailsAreReadOnlyAndUnderstandingUsesExplicitLinks() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        let itemID = UUID()
+        let activity = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .ended,
+            draftText: "保留草稿", draftRevision: 1, activityAt: activity))
+        try await repo.appendItem(MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user,
+            payloadJSON: "{\"text\":\"这是明确保存的用户原话\"}"))
+        let draft = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: nil)
+        let saved = try await repo.saveUnderstandingDraft(sessionID: sessionID, draftID: draft.id, editRevision: 1,
+            text: "这是一条理解")
+        let note = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: saved.id, expectedEditRevision: 1)
+        try await repo.saveSourceLink(MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .understanding,
+            ownerID: note.id, sourceKind: "item", sourceID: itemID.uuidString, sourceVersion: nil,
+            contentHash: nil, availability: .available))
+
+        let store = MentorFeatureStore(repository: repo, transport: MentorStoreFixtureTransport())
+        store.viewSession(id: sessionID)
+        try await waitUntil { store.state.isViewingHistory && !store.state.isTransitioningSession }
+        let beforeValue = try await repo.session(id: sessionID)
+        let before = try XCTUnwrap(beforeValue)
+        let reference = try MentorSourceReference("item:\(itemID.uuidString)")
+        let details = await store.sourceDetails(for: [reference])
+        let references = await store.understandingSourceReferences()
+        let afterValue = try await repo.session(id: sessionID)
+        let after = try XCTUnwrap(afterValue)
+
+        XCTAssertEqual(details.first?.status, .available)
+        XCTAssertEqual(details.first?.content, "这是明确保存的用户原话")
+        XCTAssertEqual(references[note.id], [reference])
+        XCTAssertEqual(after, before)
+        XCTAssertTrue(store.state.isViewingHistory)
+        XCTAssertEqual(store.state.phase, .ended)
+        XCTAssertNil(store.state.acknowledgedResponseItemID)
+    }
+
     func testLessonPreferencesResetFailureAndRetryPreserveReadingAndOtherFeedback() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

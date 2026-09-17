@@ -120,6 +120,7 @@ protocol MentorRepository {
     func deleteUnderstandingGroup(sessionID: UUID, groupID: UUID) async throws
     func saveSourceLink(_ link: MentorSourceLink) async throws
     func sourceLinks(sessionID: UUID, ownerID: UUID) async throws -> [MentorSourceLink]
+    func sourceLinks(sessionID: UUID) async throws -> [MentorSourceLink]
     func createSession(_ session: MentorSession) async throws
     func session(id: UUID) async throws -> MentorSession?
     func acknowledgePresentation(sessionID: UUID, itemID: UUID, at date: Date, timeZone: TimeZone) async throws
@@ -195,6 +196,12 @@ final class SQLiteMentorRepository: MentorRepository {
     func sourceLinks(sessionID: UUID, ownerID: UUID) async throws -> [MentorSourceLink] {
         try await database.dbQueue.read { db in
             try MentorSourceLinkRow.fetchAll(db, sql: "SELECT * FROM mentor_source_links WHERE session_id = ? AND owner_uuid = ? ORDER BY id", arguments: [sessionID.uuidString, ownerID.uuidString]).map { try $0.model() }
+        }
+    }
+
+    func sourceLinks(sessionID: UUID) async throws -> [MentorSourceLink] {
+        try await database.dbQueue.read { db in
+            try MentorSourceLinkRow.fetchAll(db, sql: "SELECT * FROM mentor_source_links WHERE session_id = ? AND owner_kind IN ('request', 'item', 'understanding') AND owner_uuid IS NOT NULL ORDER BY id", arguments: [sessionID.uuidString]).map { try $0.model() }
         }
     }
 
