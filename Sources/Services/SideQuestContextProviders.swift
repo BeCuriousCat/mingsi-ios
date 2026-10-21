@@ -103,11 +103,8 @@ private struct HealthKitSideQuestHealthQuery: SideQuestHealthQuerying {
     }
 
     private static func isAsleep(_ sample: HKCategorySample) -> Bool {
-        if #available(iOS 16.0, *) {
-            guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return false }
-            return HKCategoryValueSleepAnalysis.allAsleepValues.contains(value)
-        }
-        return sample.value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+        guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return false }
+        return HKCategoryValueSleepAnalysis.allAsleepValues.contains(value)
     }
 
     private static func mergedDuration(_ intervals: [DateInterval]) -> Double? {
@@ -222,20 +219,14 @@ final class SystemSideQuestContextProvider: NSObject, SideQuestContextProviding 
 
     func requestCalendarAuthorization() {
         #if canImport(EventKit)
-        if #available(iOS 17.0, *) {
-            Task { _ = try? await eventStore.requestFullAccessToEvents() }
-        } else {
-            eventStore.requestAccess(to: .event) { _, _ in }
-        }
+        eventStore.requestFullAccessToEvents { _, _ in }
         #endif
     }
 
     func requestHealthAuthorization() {
         #if canImport(HealthKit)
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        Task {
-            _ = try? await healthStore.requestAuthorization(toShare: [], read: Self.healthReadTypes())
-        }
+        healthStore.requestAuthorization(toShare: [], read: Self.healthReadTypes()) { _, _ in }
         #endif
     }
 }
@@ -259,11 +250,7 @@ extension SystemSideQuestContextProvider {
             calendarAvailabilityProvider: { now in
                 #if canImport(EventKit)
                 let status = EKEventStore.authorizationStatus(for: .event)
-                if #available(iOS 17.0, *) {
-                    guard status == .fullAccess else { return .unknown }
-                } else {
-                    guard status == .authorized else { return .unknown }
-                }
+                guard status == .fullAccess else { return .unknown }
                 let store = EKEventStore()
                 let start = Calendar.current.date(byAdding: .minute, value: -30, to: now) ?? now
                 let end = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now

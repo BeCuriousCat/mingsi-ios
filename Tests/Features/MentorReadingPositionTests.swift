@@ -4,6 +4,38 @@ import UIKit
 
 @MainActor
 final class MentorReadingPositionTests: XCTestCase {
+    func testVisibleResponseIsPresentedWithoutLessonAndSuspendedSurfaceStaysInactive() async throws {
+        let fixture = ReadingScrollFixture()
+        defer { fixture.close() }
+        let coordinator = MentorReadingPositionCoordinator()
+        let geometry = MentorReadingGeometry()
+        defer { geometry.reset(); coordinator.reset() }
+        var presented: [UUID] = []
+        var saves: [MentorReadingPositionCoordinator.Position] = []
+        geometry.configure(coordinator: coordinator, lesson: nil, layoutKey: "320/large", canSave: true,
+            save: { saves.append($0) }, presented: { presented.append($0) })
+        let marker = MentorReadingMarker.Marker(frame: CGRect(x: 0, y: 100, width: 320, height: 150))
+        marker.itemID = fixture.itemID
+        marker.geometry = geometry
+        fixture.scroll.addSubview(marker)
+        fixture.window.layoutIfNeeded()
+        try await settle { presented.contains(fixture.itemID) }
+        XCTAssertTrue(saves.isEmpty, "A response receipt must not create a lesson reading position")
+
+        geometry.suspend()
+        presented.removeAll()
+        geometry.configure(coordinator: coordinator, lesson: nil, layoutKey: "320/large", canSave: true,
+            isActive: false, save: { saves.append($0) }, presented: { presented.append($0) })
+        fixture.scroll.setContentOffset(CGPoint(x: 0, y: 20), animated: false)
+        geometry.flush()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(presented.isEmpty, "Dismissal updates must not reactivate presentation callbacks")
+
+        geometry.configure(coordinator: coordinator, lesson: nil, layoutKey: "320/large", canSave: true,
+            isActive: true, save: { saves.append($0) }, presented: { presented.append($0) })
+        try await settle { presented.contains(fixture.itemID) }
+    }
+
     func testShortContentClampsAtBottomWithoutOverwritingTheSavedOffset() async throws {
         let fixture = ReadingScrollFixture()
         defer { fixture.close() }

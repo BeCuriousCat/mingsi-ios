@@ -1,0 +1,559 @@
+{
+  "schema_version": "1.0.0",
+  "pack_id": "mingsi-mentor-m1",
+  "version": "1.1",
+  "lessons": [
+    {
+      "id": "L01",
+      "version": "1.0",
+      "editorial_order": 1,
+      "title": "改动之前，先说清希望什么变好。",
+      "theme": "iteration",
+      "applicable_contexts": [
+        "总觉得还要改一点，却说不清期待的效果"
+      ],
+      "claim": "一个改动可以顺利完成，却仍然不知道有没有改善使用。动手之前，先写一句“我预计这个改动会让谁的哪一步更容易”，能让改完之后有一个检查方向。",
+      "example": "例如，你把常用操作从菜单移到首页，希望第一次使用的人更容易找到它。按钮是否移好了，是交付检查；对方能否更快找到入口，是效果检查。可以请一个不熟悉页面的人完成相同的小任务，观察他停在哪里。这个观察能提供线索，但一个人的表现还不足以证明所有用户都会受益。",
+      "boundary": "这不是要求每次修改都做正式实验。修复明确错误、满足无障碍要求，已经有直接的判断依据。这个角度更适合“总觉得不够好，却说不清还要改什么”的时候。",
+      "observation": "愿意的话，拿最近的一次改动，试着写出希望谁的哪一步变容易。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:e3b8ce0b1c6ae1680e7dcbf44a070f98d2bb3596b888f51e53430df719c32283",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L02",
+      "version": "1.0",
+      "editorial_order": 2,
+      "title": "给观察和解释各留一个位置。",
+      "theme": "observation",
+      "applicable_contexts": [
+        "信息有限，却已经形成了一个强烈解释"
+      ],
+      "claim": "我们描述一件事时，经常把看到的情况和对它的解释放在同一句话里。把两者分别说出来，可以保留更多理解事情的空间。",
+      "example": "例如，“对方没有回复，所以他不重视这个需求”包含了两个层次：目前没有收到回复，是你能确认的情况；不重视，是一种解释。还有哪些情况可能产生同样的现象，需要结合约定的时间、对方是否收到，以及事情是否需要回复来判断。先分开，不代表原来的解释一定错误，也不要求永远替别人寻找理由。",
+      "boundary": "这个方法适合信息有限却已经形成强烈结论的时候。如果你已经有多次直接证据，就可以据此作出判断。",
+      "observation": "愿意的话，想起最近一句带着“所以”的描述，看看前半句提供了什么观察，后半句加入了什么解释。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:3487c9440e310c1cd9b09ea02697a80f4bbbbae150f3f6603fcde5eba5c439ed",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L03",
+      "version": "1.0",
+      "editorial_order": 3,
+      "title": "一次变慢，先看看它和什么相比。",
+      "theme": "observation",
+      "applicable_contexts": [
+        "看到一次变化，想判断是否需要处理"
+      ],
+      "claim": "判断变化是否异常，需要一个可比较的背景。单独看到“今天慢了”还不够，可以先看同类情况通常怎样，以及这次有没有不同条件。",
+      "example": "例如，平时十分钟能走到车站，今天用了十五分钟。多出的五分钟可能来自路口施工，也可能只是刚好遇到几次红灯。把今天和同一时段、同一路线的经历相比，比拿它和周日清晨相比更有意义。如果连续几天都被同一处施工挡住，提前出门或换路线就有了更具体的依据。这里有用的是找到可比较条件，而不是给每一分钟都建立记录。",
+      "boundary": "有明显危险信号时，应先处理安全问题，不能为了凑足样本而等待。比较背景更适合低风险、原因尚不清楚的日常波动。",
+      "observation": "愿意的话，给最近的一次“比以前差了”补上一个明确的比较对象。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:ce6f32db67e9e47a5d6043e21fb25de174833b261a2ae520f3edf485d558580a",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L04",
+      "version": "1.0",
+      "editorial_order": 4,
+      "title": "借一个第一次使用的视角。",
+      "theme": "observation",
+      "applicable_contexts": [
+        "熟悉某个流程，却不理解别人为什么会卡住"
+      ],
+      "claim": "熟悉一件事后，我们容易把自己知道的背景当成人人都知道。观察第一次接触的人怎样寻找下一步，有时能看见自己已经不再注意的提示缺口。",
+      "example": "例如，你给朋友写了一份到家路线，觉得“到楼下打电话”已经足够。朋友却停在了小区外，因为入口有两个，你没有写从哪一个进。站在门口陪对方走一次，可能比反复解释“很容易找”更有帮助。看产品也一样：先让对方尝试一个具体任务，留意停顿和寻找的地方，再询问当时在找什么，不急着接过操作。",
+      "boundary": "一个初次使用者的困难不代表所有人的困难。专业工具也可以合理要求一定基础；需要核对的是预期用户应具备的知识和实际提供的提示。",
+      "observation": "愿意的话，找出最近一次说明里，被你省略的一条背景信息。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:14cf81220daeb302b5cba250061835226ce721dbe0975ecdf7ddbde1947c0ab6",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L05",
+      "version": "1.0",
+      "editorial_order": 5,
+      "title": "顺利完成，也有东西值得看。",
+      "theme": "observation",
+      "applicable_contexts": [
+        "一天没有明显问题，不知道能回看什么"
+      ],
+      "claim": "回看不必从失败开始。一次事情顺利完成，可能包含可以再次利用的安排；把它指出来，比笼统地说“今天状态不错”更容易保留经验。",
+      "example": "例如，你和同事很快定下了一个方案。回想过程，你发现会前发出的两张对比图让大家知道差别在哪里，讨论没有从解释术语开始。可以暂时记下“这次提前展示差异似乎有帮助”。下次类似讨论再观察它是否仍然有效，也看看参与者熟悉程度和问题复杂度有没有变化。你不必把整场会议重新写一遍，只抓住一处可描述的安排就够了。",
+      "boundary": "顺利可能也与运气、他人准备或任务较简单有关。找到一个可能有用的条件，不等于证明成功全由自己造成，更不要求每天提炼一条经验。",
+      "observation": "愿意的话，留意今天哪一步比预想省力，以及当时有什么具体条件。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:66d16b9ad7514f41574f7a41f3f671f6ac524447c5527f20e7a9ef1796321434",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L06",
+      "version": "1.0",
+      "editorial_order": 6,
+      "title": "给判断补上依据的来处。",
+      "theme": "evidence",
+      "applicable_contexts": [
+        "有一个结论，但不确定依据是否足够"
+      ],
+      "claim": "判断的力度应与依据相称。“我亲自看到了”“有人告诉我”和“我据此推测”提供的支持不同。标出来，可以更清楚地知道还需要核对什么。",
+      "example": "例如，你听说用户不喜欢一个新入口。这个说法可能来自三次访谈里的直接抱怨，也可能只是同事转述了一次找不到按钮的经历。前者值得查看具体语境，后者可以作为进一步观察的线索。先问清是哪个用户、在哪一步、发生了什么，比立刻争论“要不要把入口改回去”更容易让讨论向前。依据可以暂时很少，只要没有把线索说成已经确认的普遍结论。",
+      "boundary": "不必给每句日常表达附上文献。需要更认真核对的，是影响较大、难以撤回或争议明显的决定；可靠的经验也有价值，但要说明适用背景。",
+      "observation": "愿意的话，把一个近期判断接成“我这样想，主要因为……”。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:5d90ccf4effbb54ff79d34d9a9158fa153d8931f2cf6d95e6ebde16a0f0fba38",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L07",
+      "version": "1.0",
+      "editorial_order": 7,
+      "title": "先说什么会让你改主意。",
+      "theme": "evidence",
+      "applicable_contexts": [
+        "讨论反复争执，却不知道下一步查什么"
+      ],
+      "claim": "如果一个判断无论出现什么情况都不会改变，就很难通过新信息校准它。提前说明什么迹象会让自己重新考虑，能让讨论转向可检查的条件。",
+      "example": "例如，你认为用户主要因为操作步骤多而放弃填写。可以先说：如果他们很快完成每一步，却在看到收费说明时离开，我会重新考虑原因。这样，下一次观察就有了区分解释的方向。另一种可能是用户根本没有当前需求；缩短步骤也未必让他继续。找到区分条件，并不需要先为每种原因写一套完整方案，更不用为了证明自己正确而只观察支持它的情况。",
+      "boundary": "有些价值选择无法由一条数据决定，例如是否愿意承担某种风险。此时可以明确价值前提，并分别检验支撑选择的事实判断。",
+      "observation": "愿意的话，为一个尚未确定的判断留下一条“如果出现这个情况，我会再想想”。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:88ff9580d1eead37ab3a6b9cbe56082992ddcbcad3e496cf7339480f6da6eaf6",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L08",
+      "version": "1.1",
+      "editorial_order": 8,
+      "title": "一次结果，先支持一个有限结论。",
+      "theme": "evidence",
+      "applicable_contexts": [
+        "一次成功或失败之后，想总结普遍经验"
+      ],
+      "claim": "一次结果能告诉我们这一次发生了什么，也能提供值得继续观察的线索。它对其他人的适用性，需要结合条件变化和更多证据来判断。",
+      "example": "例如，你把一段说明缩短后，一位朋友更快完成了操作。可以确认的是：他在这次任务中完成得更快。是否因为说明更容易理解，还需要核对他是否已经熟悉流程、任务是否更简单，以及有没有漏看重要限制。保留这些条件，下次找不同背景的人尝试时就知道该看什么。即使暂时没有更多样本，也可以记录这个有限结果，而不必在“完全证明”和“毫无价值”之间二选一。",
+      "boundary": "明确可复现的程序错误可以被一次失败直接暴露；高风险后果也值得立即重视。这里限制的是把一次结果推广到所有情境的幅度。",
+      "observation": "愿意的话，在一次经验后补上“至少在这次的这些条件下”。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:d1f963a2917f9b8008d40e4e2d26d539792cc315898beafaff7c6484112f36de",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L09",
+      "version": "1.0",
+      "editorial_order": 9,
+      "title": "不知道，也可以留下一个清楚的下一步。",
+      "theme": "evidence",
+      "applicable_contexts": [
+        "信息不足，担心自己必须马上得出结论"
+      ],
+      "claim": "暂时不知道不是空白结果。把已知事实、关键未知和获取信息的办法分开，可以帮助你决定先做什么，或者有依据地等待。",
+      "example": "例如，线上偶尔出现保存失败，你只知道两位用户报告过，却还不知道发生在哪个版本。现在就重写保存模块，可能花很多时间仍找不到原因。先保留失败时间、版本和具体操作，再检查是否有一致条件，会让后续调查更有方向。你可以明确写下“尚不能确认原因，先补版本与错误记录”。这句话没有给出最终解释，却让下一步比泛泛地继续排查更具体。",
+      "boundary": "不能为了获得完美信息而无限拖延。若等待本身有较大损失，可以先采取可撤回的保护措施，并说明它是在信息有限时作出的临时决定。",
+      "observation": "愿意的话，给一个卡住的问题写下最影响下一步的那项未知。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:64eeb60e29d899cc8f281d743f7579448a4e3a2291750849740e9fc33e39c3c6",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L10",
+      "version": "1.0",
+      "editorial_order": 10,
+      "title": "把目标和当前做法分开。",
+      "theme": "tradeoff",
+      "applicable_contexts": [
+        "一个方案推进困难，想知道是否还有别的路"
+      ],
+      "claim": "我们容易把正在执行的做法当成目标。重新说清希望谁获得什么结果，可以发现同一目标是否还有成本更低或限制更少的实现方式。",
+      "example": "例如，你计划做一个复杂的看板，希望团队不再反复询问进度。真正希望改善的，也许是大家不知道哪些工作被阻塞、需要谁帮助。先约定每项任务写明负责人和阻塞原因，可能已经解决一部分问题。看板依然可能值得做，只是需要说明它比现有办法额外解决了什么。把目标说清后，也更容易判断某个新需求是否真的服务于它，而不是只让方案越来越大。",
+      "boundary": "有些做法本身是明确约束，例如法规要求或既有接口承诺，不能任意替换。此时应把约束写清，在允许的范围里比较其他路径。",
+      "observation": "愿意的话，把“我要做某个功能”改写成“我希望谁能更容易做到什么”。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:258289d99c38407c04fea74bfbfdce63d21b6d89b175c7f05bdb823acc767115",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L11",
+      "version": "1.0",
+      "editorial_order": 11,
+      "title": "完成标准，要和真正需要的结果对得上。",
+      "theme": "tradeoff",
+      "applicable_contexts": [
+        "事情已经交付，仍不确定是否解决了问题"
+      ],
+      "claim": "做完一份交付物，和满足使用它的需要，可能有不同的判断标准。在开始前把两者对齐，可以减少最后才发现方向不合适的返工。",
+      "example": "例如，同事请你整理一份方案比较，你交出十页资料，信息很完整。他却仍然不知道下周应该选哪个方案。对他来说，可能更需要三项关键差异、适用条件和未解决的风险。资料页数衡量了产出数量，没有说明决策是否更容易。先问清这份材料将用于什么决定，再约定怎样算足够，往往比做完后继续补更多页面更有方向。已有资料也可以保留为附录，支持需要深入核对的人。",
+      "boundary": "有些任务的交付标准已经明确且合理，例如修复一个可复现错误。无需把每件小事都重新讨论一遍，重点检查标准模糊或多方理解不同的工作。",
+      "observation": "愿意的话，看一眼正在做的事情：谁会使用结果，他会拿它做什么。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:7c16e47fdf1053edb43f0d3471a4a00b296a159e344236f7ef9d83ed9f80523c",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L12",
+      "version": "1.0",
+      "editorial_order": 12,
+      "title": "选择下一步，也是在暂缓另一步。",
+      "theme": "tradeoff",
+      "applicable_contexts": [
+        "有许多值得做的事，不知道先做哪一件"
+      ],
+      "claim": "判断一项工作值不值得做，还可以看它占用的时间原本能够用于什么。把具体替代选项放在一起，比只问“这个功能有没有价值”更容易确定先后。",
+      "example": "例如，你有半天时间，可以继续调整图标，也可以修复一个会让用户丢失输入的问题。两项工作都可能有价值，但它们对当前使用的影响和延后的代价不同。比较时可以写出谁会受影响、问题多久出现一次、晚做一天会怎样，再决定先做哪一项。这里不需要给所有工作编出精确收益分数；只要把真实可做的替代项摆出来，就能避免孤立地为每项需求寻找充分理由。",
+      "boundary": "休息、探索和审美工作也可以是合理选择，不能因为收益难以量化就一概排到最后。比较的依据应包括你当前重视的目标和需要保留的精力。",
+      "observation": "愿意的话，在下一项工作旁边写下：做它意味着今天暂缓哪一件事。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:5067be6d107b0c78ad04272edc9a8a20609950adb8321bdb8189f07f7a2271a9",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L13",
+      "version": "1.0",
+      "editorial_order": 13,
+      "title": "暂时不做，也可以是一个明确决定。",
+      "theme": "tradeoff",
+      "applicable_contexts": [
+        "想接住每个需求，却担心精力被分散"
+      ],
+      "claim": "暂缓一件事可以包含理由和重新考虑的条件。这样既不需要假装它不重要，也能避免每次想到它就重新开始一轮犹豫。",
+      "example": "例如，你想给工具增加多人协作，但当前还没有人把个人流程完整用完。可以决定先验证个人流程，并约定当出现两位用户需要共享同一份内容时，再研究协作。这个条件把“以后再说”变成了一个可回访的选择。需求仍然被保留，却不必每天占据开发顺序的前排。到约定的观察时点，也可以发现原来的条件设得不合适，再根据实际使用调整。",
+      "boundary": "明确的安全问题、已经承诺的交付和有截止时间的义务，需要单独处理。暂缓不是推卸责任；如果影响他人，应说明当前安排及可能的替代办法。",
+      "observation": "愿意的话，为一个暂缓事项留下简短理由和重新考虑的触发条件。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:8d42616636f0cddc8b88fa7b119e46c780eaf20e62da249743138df5087ba896",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L14",
+      "version": "1.1",
+      "editorial_order": 14,
+      "title": "你想表达的，需要从对方收到的内容里确认。",
+      "theme": "communication",
+      "applicable_contexts": [
+        "觉得自己已经说清楚，对方却作出了不同反应"
+      ],
+      "claim": "表达意图和对方实际收到的信息可能有距离。与其先判断对方是否认真听，不如回到具体措辞，看看哪些意思被表达了，哪些仍只在自己心里。",
+      "example": "例如，你对同事说“这个页面有点乱”，本意是希望突出主要操作。对方可能理解为整体视觉都要重做。把反馈改成“用户第一次打开时，我希望他能先找到提交按钮，目前三个按钮的强调程度相同”，再请对方说说准备先调整哪里，就能核对收到的意思是否一致。对方仍然可以提出不同方案；表达清楚需要改善什么，并不意味着你必须提前决定所有细节。",
+      "boundary": "沟通误差不全由措辞造成，也可能来自目标冲突、时间压力或已有约定。说明具体意思只是帮助核对理解，不保证对方一定同意或能够照做。",
+      "observation": "愿意的话，把一句笼统评价改成一个具体对象、一个现象和你关心的影响。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:ef7e47d6a017604789d9e3b1e5cf21fe14953f2df31c95405419d0b57544eedb",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L15",
+      "version": "1.0",
+      "editorial_order": 15,
+      "title": "约定怎样算完成，比反复催进度更有用。",
+      "theme": "communication",
+      "applicable_contexts": [
+        "合作推进中频繁出现“我以为已经好了”"
+      ],
+      "claim": "双方都说同意一个任务，并不表示对完成的理解相同。把需要交付的结果、检查方式和不包含的部分说清，可以减少最后一刻才出现的分歧。",
+      "example": "例如，两个人约定周五把活动报名页做好。一方理解为设计稿完成，另一方以为用户已经可以提交报名。提前用一个具体动作确认——“周五下午能否让一个新用户填表并收到成功提示”——就能暴露范围差异。随后再说明是否包含支付、通知和后台查看，双方就能对同一件事讨论工作量。约定也可以很短，关键是让它足够具体，出现分歧时能回到同一个检查对象。",
+      "boundary": "探索性工作未必能预先约定最终答案，但可以约定交付哪些证据、尝试哪些方向或何时共同评估。不要用过早的细节约束阻止必要的学习。",
+      "observation": "愿意的话，为正在合作的一项工作补一句可观察的完成标准。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:738ecc93c2fa8287b85b8bd62a6738b0220918245f353a4627eda4e00ab5274a",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L16",
+      "version": "1.1",
+      "editorial_order": 16,
+      "title": "先复述问题，再决定怎么回答。",
+      "theme": "communication",
+      "applicable_contexts": [
+        "对话中很快想给方案，却担心解决错了问题"
+      ],
+      "claim": "简短复述可以检查自己接住的是不是对方真正关心的事。它不需要逐字重复，而是把听到的困难和希望获得的帮助说出来，并给对方纠正的机会。",
+      "example": "例如，朋友说“最近工作总做不完”。你可能立刻推荐时间管理工具。先说“听起来你很努力，事情却总做不完；我理解对吗？还有什么让我没听明白的地方”，给对方补充和纠正的空间。他可能解释，真正困扰的是负责人每天临时改变优先级。再根据他的回答讨论需要哪种帮助。如果他只是想说一说，也可以停在倾听。复述是校对理解，不是提前把对方归进自己的解释。",
+      "boundary": "简单、明确的请求可以直接回应，不必每句话都进行确认。紧急情况也可能需要先行动；适合复述的是目标模糊或不同理解会带来明显差别的对话。",
+      "observation": "愿意的话，下次给建议之前先用一句话确认自己听到的主要困难。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:de350448ff96cc9b96051e6dbdcbd091f76cdd4545e23a4c44c47382abaca850",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L17",
+      "version": "1.0",
+      "editorial_order": 17,
+      "title": "反馈一个行为，不急着评价一个人。",
+      "theme": "communication",
+      "applicable_contexts": [
+        "需要指出问题，希望反馈能够被理解和使用"
+      ],
+      "claim": "把反馈落在具体行为和影响上，通常更容易讨论下一次怎样调整。对一个人的性格或动机下结论，往往会让双方先争论评价是否公平。",
+      "example": "例如，“你做事太粗心”没有指出哪里需要改变。“这次交付遗漏了空输入的情况，用户会看到一个空白页；下次提交前我们一起检查这个边界”，提供了可确认的事件和可尝试的做法。对方也可能补充，当时需求说明里没有这一项。这样讨论可以继续核对责任和流程，而不必先证明谁是什么样的人。明确指出实际影响，和尊重对方，能够同时成立。",
+      "boundary": "持续失信或严重违规可能需要正式处理，具体行为反馈不能替代必要的责任判断。这里避免的是仅凭一次事件就把人格评价当作已经证明的事实。",
+      "observation": "愿意的话，把一句对人的评价还原成当时发生的行为及其具体影响。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:f7f52fbfa4dc21626cc8f49cb050fd798b15dd2ffaddba37798481b6ae7a97d3",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L18",
+      "version": "1.0",
+      "editorial_order": 18,
+      "title": "先验证最影响方向的那个假设。",
+      "theme": "iteration",
+      "applicable_contexts": [
+        "准备投入较多时间，想降低走错方向的代价"
+      ],
+      "claim": "一个方案里常常有多个尚未确认的前提。先找出最影响“值不值得继续做”的那个，再设计足够小的观察，可以让早期投入更有方向。",
+      "example": "例如，你想做自动周报，假设大家主要是不愿意整理已有记录。先让几位同事用现成模板整理一次，可能发现真正缺少的是平时没有留下材料。这个发现会影响产品应优先做捕获还是生成。小验证不必假装已经拥有完整产品，但要让参与者知道自己正在体验什么，并观察与关键假设有关的行为。验证结果也可以是“不足以判断”，这比把礼貌的赞同当成需求成立更可靠。",
+      "boundary": "涉及安全、隐私或不可撤回后果时，不能用“小验证”绕过必要保护。已经明确的修复也不需要先进行需求实验，按正确性标准检查即可。",
+      "observation": "愿意的话，找出一个方案中若不成立就会明显改变开发方向的前提。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:1e1ee783492eabf968173647b85b733b12acc4baf6e1098b239ed4c255ed99c6",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L19",
+      "version": "1.0",
+      "editorial_order": 19,
+      "title": "返工之前，先分清为什么要重做。",
+      "theme": "iteration",
+      "applicable_contexts": [
+        "同一件事修改多次，想减少没有方向的重复"
+      ],
+      "claim": "返工可能来自需求变了、理解不同、实现出错，或新增证据让原方案不再合适。把原因分清，才能选择有针对性的改进方式。",
+      "example": "例如，一个导出功能重做了三次：第一次漏掉了文件名要求，第二次出现乱码，第三次用户实际使用后提出需要按月份拆分。前两次可以分别检查约定和实现，第三次可能是正常学习带来的调整。若把它们都概括为“做事不够认真”，就难以知道下次该改变什么；若一律叫作探索，也可能忽略可以避免的遗漏。记录一次返工最直接的触发原因，往往已经足够开始区分。",
+      "boundary": "原因有时会重叠，不必强行归到唯一类别。分类的作用是找到可改变的条件，不是给自己或合作者计算过错，也不是要求所有返工都消失。",
+      "observation": "愿意的话，回想最近一次重做：是哪条新信息或哪个具体问题触发了它。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:3d4301005165883cb4dd599c6563fcaa67204703307a695adf68a35af1ecc6c0",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L20",
+      "version": "1.0",
+      "editorial_order": 20,
+      "title": "给继续修改设一个停止条件。",
+      "theme": "iteration",
+      "applicable_contexts": [
+        "作品总觉得还能再改，却越来越难判断收益"
+      ],
+      "claim": "继续修改有成本，也可能引入新的问题。提前约定当前版本需要满足的条件，可以帮助你在足够可用时停下来，留出观察实际效果的机会。",
+      "example": "例如，你反复调整一个表单的间距，始终觉得还不够好。可以先核对文字是否清晰、主要操作是否容易找到、大字号是否遮挡内容，以及输入能否可靠保存。如果这些条件已经满足，剩余差别可以记录下来，等真实使用暴露问题后再决定。停止本轮修改不是宣告设计已经完美，而是承认现在可能需要的是新的使用证据，不是更多凭感觉的微调。",
+      "boundary": "明确错误、无障碍缺陷和会导致数据丢失的问题不能因为到了时间就视为通过。停止条件需要与当前版本的用途相称，试用和正式发布可以有不同门槛。",
+      "observation": "愿意的话，给一项持续修改的工作写下本轮必须满足的几个可检查条件。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:17cc3f0f9cd9b870f0fa3dc503e261b1ab818b31a0d77de01e51a45db5e932ee",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L21",
+      "version": "1.0",
+      "editorial_order": 21,
+      "title": "切换前，给回来时的自己留个路标。",
+      "theme": "attention",
+      "applicable_contexts": [
+        "工作经常被打断，回来后要花时间重新进入"
+      ],
+      "claim": "切换任务时，一部分成本来自重新找回刚才的上下文。离开前留下当前做到哪里、下一步是什么，可以减少回来时再次重建整个问题的负担。",
+      "example": "例如，你调试到一半需要参加会议。与其只记“继续修复登录”，可以留一句“已经排除密码输入问题，下一步检查刷新令牌过期后的响应”。回来时，这句话帮助你从一个具体检查点继续，而不是重新阅读所有代码。它也能提醒你哪些只是当前猜测、哪些已经验证过。路标不需要完整工作日志，只需要让稍后的自己知道从哪里接上。",
+      "boundary": "有些切换是协作和生活的正常需要，不必把每次打断都视为失败。紧急情况可以先处理，留下路标是可选的减负办法，不应成为新的记录负担。",
+      "observation": "愿意的话，下次离开未完成的事情前，给自己留一句明确的下一步。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:fc3f5785bf25ad86999787fe383d696fb41a86bc05fe8d73aa49d9c3a30d24a0",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L22",
+      "version": "1.0",
+      "editorial_order": 22,
+      "title": "忙碌的感受之外，看看什么真正被推进了。",
+      "theme": "attention",
+      "applicable_contexts": [
+        "一天做了很多事，却不清楚主要目标的进展"
+      ],
+      "claim": "忙碌说明时间和精力被占用了，但未必说明最关心的事情正在推进。可以选一个当前重要的结果，看看今天哪些动作让它更接近，而不只数完成了多少项。",
+      "example": "例如，你回复了很多消息、调整了几处细节，却还没有确认客户真正要解决的问题。回看时可以指出“沟通维护完成了，但关键需求仍不清楚”，再决定明天是否先核对需求。这里不是把维护和回复都判为无用；它们可能维持合作，也可能是当日必须承担的责任。看清不同工作的作用，才能更准确地理解为什么一整天很充实，却仍对某个目标没有把握。",
+      "boundary": "照顾家人、恢复精力和应对突发事情，都可能是当天最重要的工作。不要把这个角度用来要求自己始终高产，也不必每天都能推进长期目标。",
+      "observation": "愿意的话，选一个你在意的结果，说说今天它有什么变化，或为什么暂时没有变化。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:bc248d18ba89ecee2af9025d3e54b9bb75066cb8a4e4a52a1fa2c29e763039a9",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L23",
+      "version": "1.0",
+      "editorial_order": 23,
+      "title": "把熟悉的流程重新看一遍。",
+      "theme": "attention",
+      "applicable_contexts": [
+        "每天重复同样的事情，觉得没有可观察的内容"
+      ],
+      "claim": "重复会让一些动作变得顺手，也可能让小麻烦不再引起注意。偶尔把一个熟悉流程当作第一次看，可以发现已经习惯、却未必必要的绕路。",
+      "example": "例如，你每天打开几份文件，复制日期，再把相同信息填进另一个表格。因为做得熟练，可能从未把这几步当作问题。重新走一遍时，你发现日期原本就能从现有记录里带出。值得记录的不一定是“必须马上自动化”，也可以只是“这里有一个重复搬运信息的环节”。先看到它，再结合频率、出错影响和修改成本决定是否处理，就不会把观察直接变成一串新任务。",
+      "boundary": "熟悉和重复也能带来稳定、安心和效率，不需要一律消除。偶尔出现、几乎没有负担的小步骤，完全可以保持原样。观察本身已经可以有价值。",
+      "observation": "愿意的话，挑一个熟悉的小流程，留意哪一步是因为习惯而一直保留的。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:f42fc4f0862f6a331a6262ee080f7c7c0e46f932cc59f78071bc172af3598d76",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    },
+    {
+      "id": "L24",
+      "version": "1.0",
+      "editorial_order": 24,
+      "title": "给生活留一个不必总结的观察点。",
+      "theme": "attention",
+      "applicable_contexts": [
+        "一天只有工作内容，想获得一点不同的输入"
+      ],
+      "claim": "观察不一定要导向效率、问题或结论。短暂注意一件平时略过的事，也可以让一天多一点具体感受，而不增加必须完成的输出任务。",
+      "example": "例如，去买晚饭时，留意店里哪一种声音最明显，或者看看同一条路在不同光线下有什么变化。你可以只记住一个细节：收摊后街道突然安静了，或树影刚好覆盖了常走的台阶。不需要为它解释人生道理，也不用拍照、写文章或证明自己有所成长。如果这个细节让你想到一个问题，可以继续想；没有后续，也可以让它停在当时的感受里。",
+      "boundary": "留意环境应以安全和个人舒适为前提，走路过街时先关注交通。精力不足时选择休息同样合理，这个观察点不需要形成连续打卡。",
+      "observation": "愿意的话，今天在工作之外留意一个具体细节；不记录也可以。",
+      "source_type": "teaching_example",
+      "citations": [],
+      "content_hash": "sha256:c581b10a2b7ff993f4bc774f8ddc3f62cb5953285e7400384a9507b9e22ad14d",
+      "review": {
+        "status": "approved",
+        "reviewed_by": "Codex (AI editor; user-authorized personal exploration)",
+        "reviewed_at": "2026-10-11T13:03:05Z",
+        "note": "用户于2026-10-11明确授权AI逐篇编辑审核并启用自用版；Codex及独立AI编辑实际阅读全文，L08/L14/L16修订后复核。教学示例，非人工审核，未证明用户获益。逐条结论见docs/content/2026-10-11-mentor-editorial-assessment.md。"
+      }
+    }
+  ]
+}

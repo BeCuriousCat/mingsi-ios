@@ -2,6 +2,281 @@ import XCTest
 @testable import MingSi
 
 final class TodayAIServiceContextTests: XCTestCase {
+    func testDirectExplanationUsesOnlyConfirmedCurrentSources() async throws {
+        for title in ["报告晚交两天", "另一件事", "未确认的猜测"] {
+            let json: [String: Any] = ["questions": [], "explanation": ["text": "晚交是已知事实，故意不配合仍是推测，原因目前未知。", "source_card_titles": [title]]]
+            let client = CapturingLLMClient(response: try JSONSerialization.data(withJSONObject: json))
+            let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            let cards = [ThinkingCard(type: .fact, title: "报告晚交两天", body: "晚交两天，请直接解释，不要提问。", isConfirmed: true),
+                ThinkingCard(type: .fact, title: "未确认的猜测", body: "猜测", isConfirmed: false)]
+            do {
+                let generated = try await service.generateQuestionTurnWithTrace(for: TodayAIContext(
+                    draft: DailyEntryDraft(rawText: cards[0].body), confirmedCards: cards.filter(\.isConfirmed)))
+                XCTAssertEqual(title, "报告晚交两天", "Foreign sources must fail, not silently disappear")
+                XCTAssertTrue(generated.value.questions.isEmpty)
+                XCTAssertEqual(generated.value.explanation?.sourceCardTitles, [title])
+            } catch {
+                XCTAssertNotEqual(title, "报告晚交两天", "Valid direct help must reach the caller: \(error)")
+            }
+            XCTAssertEqual(client.requests.count, 1)
+        }
+    }
+
+
+    func testGroundedPerspectiveCanRepresentKnownPrioritiesWithoutAnEvidenceDeficit() async throws {
+        let text = "同事说本周只有两人值班，想把演示延后一周。我想按期展示工作。他提出延期让我觉得他不重视我。我愿意想一想双方的侧重点。"
+        let response = #"""
+        {"questions":[{
+          "question":"按同事所说的两人排班，他提出延后一周更可能是在保护哪一项交付要求？",
+          "why_this_matters":"读准对方请求，才能比较双方真正的侧重点。",
+          "why_now":"你重视按期展示，他提到的是两人排班，双方关注点可以分别表述。",
+          "expected_update":"把延期请求看成可能的交付取舍，保留对其态度的判断。",
+          "proceed_when":"说出一种可能的交付取舍即可；也可以说暂时想不到。",
+          "evidence_gap_type":"none", "answer_use":"update_judgment",
+          "lens_move":"alternative_explanation", "source_card_titles":["演示排期"],
+          "calibration_target":"延期请求是否必然表示同事不重视我的工作", "expected_answer_type":"judgment"
+        }]}
+        """#
+        let client = CapturingLLMClient(response: Data(response.utf8))
+        let card = ThinkingCard(type: .decision, title: "演示排期", body: text, isConfirmed: true)
+        let result = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            .generateQuestions(for: TodayAIContext(draft: DailyEntryDraft(rawText: text, selectedLens: .perspectiveTaking), confirmedCards: [card]))
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.evidenceGapType, EvidenceGapType.none)
+        XCTAssertEqual(result.first?.sourceCardTitles, [card.title])
+        XCTAssertEqual(client.requests.count, 1)
+        let current = try XCTUnwrap(client.requests.first?.contextPayload?.userChoice.lensCatalog)
+        XCTAssertTrue(current.questionStrategy.contains("双方侧重点"))
+        var saved = try XCTUnwrap(try JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+        saved["version"] = "builtin.v2"
+        saved.removeValue(forKey: "packVersion")
+        saved["purpose"] = "准确理解另一方表达与处境，区分理解、认同和替对方找理由。"
+        let restored = try JSONDecoder().decode(PromptContextPayload.LensCatalogContext.self,
+            from: JSONSerialization.data(withJSONObject: saved))
+        XCTAssertEqual(restored.version, "builtin.v2")
+        XCTAssertEqual(restored.packVersion, "builtin.v2")
+        XCTAssertEqual(restored.purpose, saved["purpose"] as? String)
+    }
+
+    func testFramingWithoutEvidenceDeficitStillRequiresSourceAndSpecificJudgment() {
+        var question = ReflectionQuestion(question: "按这次排班，他提出延期更可能是在保护哪项交付要求？", whyItMatters: "读准请求。",
+            whyNow: "双方关注点可以分别表述。", expectedUpdate: "比较两种可能的交付取舍。", proceedWhen: "表达一种可能，也允许暂时想不到。",
+            evidenceGapType: EvidenceGapType.none, answerUse: .updateJudgment, lensMove: .alternativeExplanation,
+            sourceCardTitles: ["演示排期"], calibrationTarget: "延期请求是否必然表示同事不重视我的工作")
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question], selectedLens: .perspectiveTaking,
+            allowedSourceCardTitles: ["演示排期"]).isEmpty)
+        question.sourceCardTitles = ["另一件事"]
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question], selectedLens: .perspectiveTaking,
+            allowedSourceCardTitles: ["演示排期"]).contains { $0.reason == .invalidSourceGrounding })
+        question.sourceCardTitles = []
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingThinkingMaterialTarget })
+        question.sourceCardTitles = ["演示排期"]
+        question.calibrationTarget = "这个情况"
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingThinkingMaterialTarget })
+        question.calibrationTarget = "延期请求是否必然表示同事不重视我的工作"
+        question.expectedUpdate = ""
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingFunctionalCoachField })
+    }
+
+
+    func testCapturedExpandedLensResponsesPassWithoutRewordingOrPaidRetry() async throws {
+        let scenarios: [(ThinkingLens, String, String)] = [
+            (.controlBoundary, "今天公共交通停运，我无法保证准点到达。我已经知道可以提前告知并改线上，但一直纠结领导会不会生气。我愿意分清自己能决定和不能决定的部分，请围绕这一点问一个问题，不要把他人的反应算成我的责任。", #"""
+            {
+              "questions": [
+                {
+                  "question": "即使领导仍然生气，在“提前告知、改线上”这件事上，你认为自己能决定并负责的部分到哪里为止？",
+                  "why_this_matters": "明确责任边界，避免把他人的情绪当成自己必须保证的结果。",
+                  "why_now": "你已知道可选做法，但对领导反应的担忧仍未与自己的责任分开。",
+                  "expected_update": "明确是否能用自己可控的沟通行为，而非领导是否生气，判断是否尽责。",
+                  "proceed_when": "说清自己能决定的部分即可；领导会怎样反应可以仍然未知。",
+                  "evidence_gap_type": "missing_constraint",
+                  "answer_use": "update_judgment",
+                  "lens_move": "constraint_decomposition",
+                  "source_card_titles": ["可控边界合成验收"],
+                  "calibration_target": "这次沟通是否尽责，应以自己可控的行为还是领导的情绪反应为判断标准。",
+                  "expected_answer_type": "judgment"
+                }
+              ]
+            }
+            """#),
+            (.perspectiveTaking, "同事原话是这周人手不足，想把演示延后一周。我理解成他根本不重视我的工作，但他没有说过这句话。我想更准确地理解双方差别，愿意回答一个区分已知表达和推测的问题，不要替他猜真实动机。", #"""
+            {
+              "questions": [
+                {
+                  "question": "在你已经知道的言行中，除了这次提出延期，还有什么具体依据支持“他根本不重视我的工作”这一判断？如果没有或不确定，也可以直接说明。",
+                  "why_this_matters": "这能区分延期请求与对工作重视程度的判断，避免把两者直接等同。",
+                  "why_now": "你已分清原话与推测，但尚未说明这一推测是否有其他依据。",
+                  "expected_update": "决定是否保留“他根本不重视我的工作”的判断，或将其暂列为未证实的解释。",
+                  "proceed_when": "指出一条已知的具体依据，或说明没有其他依据、目前不确定即可。",
+                  "evidence_gap_type": "missing_causal_link",
+                  "answer_use": "update_judgment",
+                  "lens_move": "alternative_explanation",
+                  "source_card_titles": ["换位理解合成验收"],
+                  "calibration_target": "同事提出延期意味着他根本不重视我的工作。",
+                  "expected_answer_type": "fact"
+                }
+              ]
+            }
+            """#),
+            (.reversibleDecision, "我在考虑加入朋友的周末项目。我知道可以先按周参与，退出要提前一周说，不需要投钱；长期承诺的时间成本还不清楚。我愿意检查承诺边界，请问一个能用这些已知条件想清的问题，不要让我先试验。", #"""
+            {
+              "questions": [
+                {
+                  "question": "只看“退出需提前一周告知”这一条，它是否超出了你愿意为这个项目承担的时间安排约束？",
+                  "why_this_matters": "可以退出，不等于退出条件对你而言可以接受。",
+                  "why_now": "你已说明退出规则，但尚未说明这条规则是否符合你的承诺边界。",
+                  "expected_update": "判断是否接受这条已知退出条件，而不是直接决定是否长期加入。",
+                  "proceed_when": "说明可接受、不可接受，或因具体时间占用未知而暂时无法判断即可。",
+                  "evidence_gap_type": "missing_constraint",
+                  "answer_use": "choose_action",
+                  "lens_move": "constraint_decomposition",
+                  "source_card_titles": [
+                    "可逆决策合成验收"
+                  ],
+                  "calibration_target": "退出需提前一周告知，是否在我愿意接受的时间安排约束内。",
+                  "expected_answer_type": "judgment"
+                }
+              ]
+            }
+            """#),
+            (.opportunityCost, "周末只剩半天。我想接一个付费兼职，也想陪父母吃饭，两件事都对我重要，时间确实冲突。我愿意比较这两个选择，请用一个问题帮我看清取舍，不要替我排序，也不要安排任务。", #"""
+            {
+              "questions": [
+                {
+                  "question": "如果这半天只能选一件，就你已知的情况，错过这次付费兼职与错过这顿陪父母的饭，哪一种损失更难在之后弥补？",
+                  "why_this_matters": "比较放弃各自意味着什么，能避免只看所选一方的好处。",
+                  "why_now": "你已明确两件事都重要且时间冲突，但尚未比较放弃各自的代价。",
+                  "expected_update": "帮助你判断这半天更愿意留给兼职还是陪父母吃饭，不预设哪项优先。",
+                  "proceed_when": "说明哪种损失更难弥补及理由即可；同样难弥补或暂不清楚也可以。",
+                  "evidence_gap_type": "missing_constraint",
+                  "answer_use": "choose_action",
+                  "lens_move": "leverage_tradeoff",
+                  "source_card_titles": [
+                    "机会成本合成验收"
+                  ],
+                  "calibration_target": "这半天选择兼职或陪父母吃饭时，哪一方被放弃的价值更难在之后弥补。",
+                  "expected_answer_type": "tradeoff"
+                }
+              ]
+            }
+            """#)
+        ]
+        for (lens, body, exactAssistantText) in scenarios {
+            let wire = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["role": "assistant", "content": exactAssistantText]]]])
+            let client = CapturingLLMClient(response: wire)
+            let card = ThinkingCard(type: .decision, title: lens.title + "合成验收", body: body, isConfirmed: true)
+            let result = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                .generateQuestions(for: TodayAIContext(draft: DailyEntryDraft(rawText: body, selectedLens: lens), confirmedCards: [card]))
+            XCTAssertEqual(result.count, 1)
+            let raw = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(exactAssistantText.utf8)) as? [String: Any])
+            let original = try XCTUnwrap((raw["questions"] as? [[String: Any]])?.first)
+            XCTAssertEqual(result.first?.question, original["question"] as? String)
+            XCTAssertEqual(result.first?.proceedWhen, original["proceed_when"] as? String)
+            XCTAssertEqual(result.first?.sourceCardTitles, [card.title])
+            XCTAssertEqual(client.requests.count, 1)
+        }
+    }
+
+    func testBoundaryMaterialGateStillRequiresGroundingAndSpecificTarget() {
+        var question = ReflectionQuestion(question: "自己的责任到哪里为止？", whyItMatters: "明确责任边界。",
+            whyNow: "担忧仍与责任混在一起。", expectedUpdate: "区分自己的行为和他人的反应。",
+            proceedWhen: "说清自己能决定的部分即可。", evidenceGapType: .missingConstraint,
+            answerUse: .updateJudgment, lensMove: .constraintDecomposition,
+            sourceCardTitles: ["出行受阻"], calibrationTarget: "是否把领导情绪当作自己尽责的标准")
+        XCTAssertFalse(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingThinkingMaterialTarget })
+        question.sourceCardTitles = []
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingThinkingMaterialTarget })
+        question.sourceCardTitles = ["出行受阻"]
+        question.calibrationTarget = "这个情况"
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .missingThinkingMaterialTarget })
+    }
+
+    func testExpandedLensesCarryTheirOwnBoundaryAndDoNotForceQuestions() async throws {
+        for lens in [ThinkingLens.opportunityCost, .reversibleDecision, .perspectiveTaking, .controlBoundary] {
+            let client = CapturingLLMClient(response: Data("{\"questions\":[]}".utf8))
+            let draft = DailyEntryDraft(rawText: "只看已有材料，原因可以未知。", selectedLens: lens)
+            let result = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                .generateQuestions(for: TodayAIContext(draft: draft))
+            XCTAssertTrue(result.isEmpty, "Selecting a lens must not force a question")
+            let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+            let item = try XCTUnwrap(payload.userChoice.lensCatalog)
+            XCTAssertEqual(item.localId, lens.rawValue)
+            XCTAssertEqual(item.promptId, lens.catalogItem.promptId)
+            XCTAssertEqual(item.promptGuidance, lens.catalogItem.promptGuidance)
+            XCTAssertEqual(item.disableConditions, lens.catalogItem.disableConditions)
+            XCTAssertEqual(item.packVersion, "builtin.v3")
+            XCTAssertEqual(payload.userChoice.selectedLens, lens.rawValue)
+            XCTAssertEqual(client.requests.count, 1)
+        }
+    }
+
+    func testExpandedLensQualityGateUsesTheIntendedMoveWithoutChangingOldMoves() {
+        let pairs: [(ThinkingLens, QuestionLensMove)] = [(.opportunityCost, .leverageTradeoff),
+            (.reversibleDecision, .constraintDecomposition), (.perspectiveTaking, .alternativeExplanation),
+            (.controlBoundary, .constraintDecomposition)]
+        for (lens, move) in pairs {
+            var question = ReflectionQuestion(question: "哪一部分是你可以选择的？", whyItMatters: "明确这一处判断的边界。",
+                lensMove: move, sourceCardTitles: ["当前事项"], calibrationTarget: "这一部分可以选择")
+            XCTAssertFalse(PromptCoachingQualityPolicy.evaluateQuestions([question], selectedLens: lens)
+                .contains { $0.reason == .missingSelectedLensMove })
+            question.lensMove = .predictionCalibration
+            XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question], selectedLens: lens)
+                .contains { $0.reason == .missingSelectedLensMove })
+        }
+        XCTAssertEqual(Set(LensGroup.allCases.flatMap(\.lenses)), Set(ThinkingLens.allCases))
+        XCTAssertEqual(LensGroup.allCases.flatMap(\.lenses).count, ThinkingLens.allCases.count)
+    }
+
+    func testExplicitNoActionIsAValidCoachingOutcomeWithUnresolvedMaterial() async throws {
+        let client = CapturingLLMClient(response: Data(#"{"main_quest":null,"side_quests":[],"observation_quest":null}"#.utf8))
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        let quests = try await service.generateQuests(for: TodayAIContext(
+            draft: DailyEntryDraft(rawText: "这次只想保留这段复盘，不想安排后续任务。"),
+            coachTurnState: CoachTurnState(phase: .fillEvidenceGap, readiness: .notReady,
+                recommendedMove: .surfaceEvidenceGap, reason: "没有进一步的可观察材料。",
+                openEvidenceGaps: [.missingObservation], baselineChecks: [.evidenceGap],
+                decisionSource: .coachRecommended, policyVersion: CoachTurnPolicy.policyVersion,
+                turnSummary: "允许保留未知。")
+        ))
+        XCTAssertTrue(quests.isEmpty)
+        XCTAssertEqual(client.requests.count, 1)
+    }
+
+    // Exact normalized assistant body from the first 1.12.0 real call. The
+    // transport succeeded; the old local verb whitelist incorrectly rejected it.
+    func testActionClarityCapturedNaturalRetryPassesWithoutNewArtifactOrDeadline() async throws {
+        let response = #"""
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "等自然重试时观察这位朋友的提交结果",
+            "why_it_matters": "据你所述，日志显示提交前断网，但尚不能确定退出原因；这次结果也不能单独证明说明清楚或不清楚。",
+            "completion_criteria": "若这位朋友自然重试，观察网络已恢复且说明未变时，提交是否成功；未重试、网络状态不明或说明已变，则结果仍未知。",
+            "expected_resistance": "只等自然机会，不催促朋友，不改说明，不做沟通训练。",
+            "reflection_question": "这次结果支持、削弱还是仍无法判断该预测，哪些观察条件限制了判断？",
+            "calibration_target": "这位朋友在网络恢复、说明不变时再次提交，可能成功。",
+            "lens_move": "prediction_calibration",
+            "linked_cards": [
+              "先观察恢复网络后的提交"
+            ]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": []
+        }
+        """#
+        let client = CapturingLLMClient(response: Data(response.utf8))
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        let card = ThinkingCard(type: .decision, title: "先观察恢复网络后的提交",
+            body: "一位朋友填写页面时退出，我原先怀疑说明不清。后来日志确认他在提交前断网了；还不知道恢复网络后能否提交。我不想重写说明，也不想做沟通训练。愿意下次只看这位朋友网络恢复后的提交结果，保持说明不变。", isConfirmed: true)
+        let quests = try await service.generateQuests(for: TodayAIContext(draft: DailyEntryDraft(rawText: card.body), confirmedCards: [card]))
+        let quest = try XCTUnwrap(quests.first)
+        XCTAssertEqual(quests.count, 1)
+        XCTAssertEqual(quest.completionCriteria, "若这位朋友自然重试，观察网络已恢复且说明未变时，提交是否成功；未重试、网络状态不明或说明已变，则结果仍未知。")
+        XCTAssertEqual(quest.expectedResistance, "只等自然机会，不催促朋友，不改说明，不做沟通训练。")
+        XCTAssertEqual(client.requests.count, 1)
+    }
 
     func testOrganizeCards_doesNotInjectPrinciples() async throws {
         let client = CapturingLLMClient(response: Self.cardsResponse)
@@ -153,7 +428,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertNil(payload.legacyKeyValues["coachObservationRule"])
     }
 
-    func testCoachPatternSummaryIsInjectedOnlyForCoachPrompts() throws {
+    func testLegacyPatternDiagnosisCannotEnterAnyProductionPrompt() throws {
         let sourceID = UUID().uuidString
         let summary = CoachPatternSummary(
             policyVersion: CoachPatternSummaryPolicy.policyVersion,
@@ -178,11 +453,22 @@ final class TodayAIServiceContextTests: XCTestCase {
         let assembler = DefaultContextAssembler()
 
         let questionsContext = assembler.assemble(promptID: .generateQuestions, context: context)
-        XCTAssertEqual(questionsContext.contextPayload.coachPatternSummary?.policyVersion, CoachPatternSummaryPolicy.policyVersion)
-        XCTAssertEqual(questionsContext.contextPayload.coachPatternSummary?.topPatterns.first?.primaryGap, .evidenceGap)
-        XCTAssertEqual(questionsContext.contextPayload.legacyKeyValues["coachPatternSummaryTopGaps"], "evidence_gap:thinking:2")
-        XCTAssertTrue(questionsContext.contextRecordIDs.contains(sourceID))
-        XCTAssertTrue(try XCTUnwrap(questionsContext.contextPayload.legacyKeyValues["coachPatternSummaryRule"]).contains("weak prior"))
+        XCTAssertNil(questionsContext.contextPayload.coachPatternSummary)
+        XCTAssertNil(questionsContext.contextPayload.legacyKeyValues["coachPatternSummaryRule"])
+        XCTAssertFalse(questionsContext.contextRecordIDs.contains(sourceID))
+
+        let questsContext = assembler.assemble(promptID: .generateQuests, context: context)
+        XCTAssertNil(questsContext.contextPayload.coachPatternSummary)
+        XCTAssertNil(questsContext.contextPayload.legacyKeyValues["coachPatternSummaryTopGaps"])
+        XCTAssertFalse(questsContext.contextRecordIDs.contains(sourceID))
+        XCTAssertNil(questsContext.contextPayload.legacyKeyValues["coachPatternSummaryRule"])
+
+        for promptID in PromptID.allCases {
+            let payload = assembler.assemble(promptID: promptID, context: context)
+            XCTAssertNil(payload.contextPayload.coachPatternSummary, promptID.rawValue)
+            XCTAssertNil(payload.contextPayload.legacyKeyValues["coachPatternSummaryRule"], promptID.rawValue)
+            XCTAssertFalse(payload.contextRecordIDs.contains(sourceID), promptID.rawValue)
+        }
 
         let organizeContext = assembler.assemble(promptID: .organizeCards, context: context)
         XCTAssertNil(organizeContext.contextPayload.coachPatternSummary)
@@ -759,20 +1045,20 @@ final class TodayAIServiceContextTests: XCTestCase {
         let catalog = try XCTUnwrap(payload.userChoice.lensCatalog)
         XCTAssertEqual(catalog.localId, "firstPrinciples")
         XCTAssertEqual(catalog.promptId, "first_principles")
-        XCTAssertEqual(catalog.version, "builtin.v1")
+        XCTAssertEqual(catalog.version, "builtin.v3")
         XCTAssertEqual(catalog.title, "第一性原理")
         XCTAssertTrue(catalog.promptGuidance.contains("non-negotiable facts"))
-        XCTAssertTrue(catalog.purpose.contains("不可再拆的事实"))
-        XCTAssertTrue(catalog.questionStrategy.contains("硬事实"))
-        XCTAssertTrue(catalog.taskSelectionRule.contains("核心前提"))
-        XCTAssertTrue(catalog.applicability.contains("前提混杂"))
-        XCTAssertTrue(catalog.disableConditions.contains("不要用抽象原则替代当天具体证据。"))
+        XCTAssertTrue(catalog.purpose.contains("必要条件"))
+        XCTAssertTrue(catalog.questionStrategy.contains("硬约束"))
+        XCTAssertTrue(catalog.taskSelectionRule.contains("用户主动"))
+        XCTAssertTrue(catalog.applicability.contains("规则"))
+        XCTAssertTrue(catalog.disableConditions.contains { $0.contains("已知现实限制") })
         XCTAssertEqual(catalog.uiMetadata.symbolName, "square.stack.3d.down.right")
         XCTAssertEqual(catalog.uiMetadata.accentRole, .principle)
         XCTAssertEqual(catalog.uiMetadata.methodIndex, 4)
         XCTAssertEqual(catalog.sourceKind, .builtin)
         XCTAssertEqual(catalog.packId, "mingsi.builtin.lenses")
-        XCTAssertEqual(catalog.packVersion, "builtin.v1")
+        XCTAssertEqual(catalog.packVersion, "builtin.v3")
         XCTAssertEqual(catalog.packDisplayName, "MingSi Built-in Lens Pack")
     }
 
@@ -865,7 +1151,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(prescription.source, .coachRecommended)
         XCTAssertEqual(prescription.policyVersion, LocalTrainingPrescriptionPolicy.policyVersion)
         XCTAssertGreaterThanOrEqual(prescription.confidence, 0.60)
-        XCTAssertTrue(prescription.recommendationReason.contains("验清依据"))
+        XCTAssertTrue(prescription.recommendationReason == ThinkingLens.evidenceCheck.catalogItem.recommendedReason)
         XCTAssertTrue(prescription.baselineChecks.contains(.evidenceGap))
         XCTAssertTrue(prescription.baselineChecks.contains(.counterexample))
         XCTAssertFalse(prescription.alternativeLensIds.isEmpty)
@@ -903,7 +1189,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertTrue(prescription.overrideBoundary.contains("用户改选"))
     }
 
-    func testStructuredContext_includesCoachTrainingPrescriptionAndFinalLens() async throws {
+    func testStructuredContext_excludesCoachTrainingPrescriptionFromQuestionGeneration() async throws {
         let client = CapturingLLMClient(response: Self.opposingViewQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -933,32 +1219,16 @@ final class TodayAIServiceContextTests: XCTestCase {
             )
         )
 
-        let request = try XCTUnwrap(client.requests.first)
-        let payload = try XCTUnwrap(request.contextPayload)
-        let context = try XCTUnwrap(payload.trainingPrescription)
-        XCTAssertEqual(context.recommendedLensId, ThinkingLens.evidenceCheck.rawValue)
-        XCTAssertEqual(context.userSelectedLensId, ThinkingLens.opposingView.rawValue)
-        XCTAssertEqual(context.finalLensId, ThinkingLens.opposingView.rawValue)
-        XCTAssertEqual(context.source, .userOverride)
-        XCTAssertTrue(context.baselineChecks.contains(.evidenceGap))
-        XCTAssertEqual(context.primaryTrainingDimension, .evidenceDiscipline)
-        XCTAssertTrue(context.secondaryTrainingDimensions.contains(.counterexampleSeeking))
-        XCTAssertEqual(
-            context.baselineTrainingDimensions,
-            [.factInterpretationSeparation, .evidenceDiscipline, .counterexampleSeeking]
-        )
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertNil(payload.trainingPrescription)
+        XCTAssertNil(payload.legacyKeyValues["coachRecommendedLens"])
+        XCTAssertNil(payload.legacyKeyValues["primaryTrainingDimension"])
+        XCTAssertNil(payload.legacyKeyValues["finalTrainingLens"])
+        // The visible lens remains available as a user-facing viewing choice.
         XCTAssertEqual(payload.userChoice.selectedLens, ThinkingLens.opposingView.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachRecommendedLens"], ThinkingLens.evidenceCheck.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["primaryTrainingDimension"], ThinkingTrainingDimension.evidenceDiscipline.rawValue)
-        XCTAssertEqual(
-            payload.legacyKeyValues["secondaryTrainingDimensions"],
-            ThinkingTrainingDimension.factInterpretationSeparation.rawValue + "," +
-                ThinkingTrainingDimension.counterexampleSeeking.rawValue
-        )
-        XCTAssertEqual(payload.legacyKeyValues["finalTrainingLens"], ThinkingLens.opposingView.rawValue)
     }
 
-    func testStructuredContext_includesCoachTeachingPlanForMissingThinkingMove() async throws {
+    func testStructuredContext_excludesCoachTeachingPlanFromQuestionGeneration() async throws {
         let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1000,23 +1270,10 @@ final class TodayAIServiceContextTests: XCTestCase {
         )
 
         let payload = try XCTUnwrap(client.requests.first?.contextPayload)
-        let plan = try XCTUnwrap(payload.coachTeachingPlan)
-        XCTAssertEqual(plan.policyVersion, CoachTeachingPolicy.policyVersion)
-        XCTAssertTrue(plan.missingMoveTitle.contains("可观察证据"))
-        XCTAssertEqual(plan.trainingTargetTitle, ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
-        XCTAssertTrue(plan.whyNotAnswer.contains("未经验证"))
-        XCTAssertTrue(plan.proceedStandard.contains("可观察事实"))
-        XCTAssertTrue(plan.repairQuestion.contains("刚才的回答"))
-        XCTAssertTrue(plan.experienceReplayPrompt.contains("过往"))
-        XCTAssertEqual(plan.routeSteps.first, "补上一个可观察事实")
-        XCTAssertEqual(payload.legacyKeyValues["coachTeachingMissingMove"], plan.missingMoveTitle)
-        XCTAssertEqual(payload.legacyKeyValues["coachTeachingTrainingTarget"], ThinkingTrainingDimension.evidenceDiscipline.displayTitle)
-        XCTAssertEqual(payload.legacyKeyValues["coachTeachingRepairQuestion"], plan.repairQuestion)
-        XCTAssertEqual(payload.legacyKeyValues["coachTeachingExperienceReplayPrompt"], plan.experienceReplayPrompt)
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTeachingRule"]).contains("missing thinking move"))
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTeachingRule"]).contains("repairQuestion"))
-        XCTAssertTrue(try XCTUnwrap(payload.directives.coachTeachingRule).contains("missing thinking move"))
-        XCTAssertTrue(try XCTUnwrap(payload.directives.coachTeachingRule).contains("repairQuestion"))
+        XCTAssertNil(payload.coachTeachingPlan)
+        XCTAssertNil(payload.legacyKeyValues["coachTeachingMissingMove"])
+        XCTAssertNil(payload.legacyKeyValues["coachTeachingRule"])
+        XCTAssertNil(payload.directives.coachTeachingRule)
     }
 
     func testStructuredContext_reframesRecalledPrinciplesAsExperienceReplay() async throws {
@@ -1057,7 +1314,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["principleUsageRule"]).contains("experience replay"))
     }
 
-    func testStructuredContext_includesCoachDiagnosisAsPlanNotEvidence() async throws {
+    func testStructuredContext_excludesCoachDiagnosisFromQuestionGeneration() async throws {
         let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1082,28 +1339,14 @@ final class TodayAIServiceContextTests: XCTestCase {
             )
         )
 
-        let request = try XCTUnwrap(client.requests.first)
-        let payload = try XCTUnwrap(request.contextPayload)
-        let context = try XCTUnwrap(payload.coachDiagnosis)
-        XCTAssertEqual(context.phase, .fillEvidenceGap)
-        XCTAssertEqual(context.readiness, .notReady)
-        XCTAssertEqual(context.recommendedMove, .slowDownConvergence)
-        XCTAssertEqual(context.reason, diagnosis.reason)
-        XCTAssertEqual(context.source, .userSlowDown)
-        XCTAssertEqual(context.policyVersion, CoachEngine.policyVersion)
-        XCTAssertEqual(payload.legacyKeyValues["coachThinkingPhase"], ThinkingPhase.fillEvidenceGap.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachReadiness"], ConvergenceReadiness.notReady.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachRecommendedMove"], NextCoachMove.slowDownConvergence.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachDiagnosisSource"], CoachDiagnosisSource.userSlowDown.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachDiagnosisPolicyVersion"], CoachEngine.policyVersion)
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachDiagnosisReason"]).contains("关键证据不足"))
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachDiagnosisRule"]).contains("coach plan"))
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachDiagnosisRule"]).contains("not source evidence"))
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachDiagnosisRule"]).contains("user override"))
-        XCTAssertTrue(try XCTUnwrap(payload.directives.coachDiagnosisRule).contains("coach plan"))
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertNil(payload.coachDiagnosis)
+        XCTAssertNil(payload.legacyKeyValues["coachThinkingPhase"])
+        XCTAssertNil(payload.legacyKeyValues["coachDiagnosisRule"])
+        XCTAssertNil(payload.directives.coachDiagnosisRule)
     }
 
-    func testStructuredContext_includesCoachTurnStateAsStatefulPlan() async throws {
+    func testStructuredContext_excludesCoachTurnStateFromQuestionGeneration() async throws {
         let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1131,26 +1374,14 @@ final class TodayAIServiceContextTests: XCTestCase {
             )
         )
 
-        let request = try XCTUnwrap(client.requests.first)
-        let payload = try XCTUnwrap(request.contextPayload)
-        let context = try XCTUnwrap(payload.coachTurnState)
-        XCTAssertEqual(context.phase, .fillEvidenceGap)
-        XCTAssertEqual(context.readiness, .notReady)
-        XCTAssertEqual(context.recommendedMove, .surfaceEvidenceGap)
-        XCTAssertEqual(context.openEvidenceGaps, [.missingObservation, .missingBaseline])
-        XCTAssertEqual(context.baselineChecks, [.factInterpretationSplit, .evidenceGap])
-        XCTAssertEqual(context.decisionSource, .coachRecommended)
-        XCTAssertEqual(context.policyVersion, CoachTurnPolicy.policyVersion)
-        XCTAssertTrue(context.turnSummary.contains("slow down"))
-        XCTAssertEqual(payload.legacyKeyValues["coachTurnPhase"], ThinkingPhase.fillEvidenceGap.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachTurnReadiness"], ConvergenceReadiness.notReady.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachTurnRecommendedMove"], NextCoachMove.surfaceEvidenceGap.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachTurnOpenEvidenceGaps"], "missing_observation,missing_baseline")
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachTurnRule"]).contains("stateful coach turn"))
-        XCTAssertTrue(try XCTUnwrap(payload.directives.coachTurnRule).contains("stateful coach turn"))
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertNil(payload.coachTurnState)
+        XCTAssertNil(payload.legacyKeyValues["coachTurnPhase"])
+        XCTAssertNil(payload.legacyKeyValues["coachTurnRule"])
+        XCTAssertNil(payload.directives.coachTurnRule)
     }
 
-    func testStructuredContext_includesCoachObservationForQuestionGeneration() async throws {
+    func testStructuredContext_doesNotInjectLocalCoachObservationForQuestionGeneration() async throws {
         let client = CapturingLLMClient(response: Self.evidenceCheckQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1158,7 +1389,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         )
         let card = ThinkingCard(
             type: .decision,
-            title: "验收口径不清",
+            title: "Meeting ownership unclear",
             body: "会议里团队讨论方案返工，我认为原因是验收口径不清，但还缺少事实支撑。",
             isConfirmed: true
         )
@@ -1174,24 +1405,11 @@ final class TodayAIServiceContextTests: XCTestCase {
         )
 
         let payload = try XCTUnwrap(client.requests.first?.contextPayload)
-        let observation = try XCTUnwrap(payload.coachObservation)
-        XCTAssertEqual(observation.policyVersion, CoachObservationPolicy.policyVersion)
-        XCTAssertEqual(observation.primaryGap, .observation)
-        XCTAssertEqual(observation.trainingAbility, .observation)
-        XCTAssertTrue(observation.providedMaterials.contains(.judgment))
-        XCTAssertTrue(observation.missingMaterials.contains(.fact))
-        XCTAssertTrue(observation.feedback.observed.contains("判断"))
-        XCTAssertTrue(observation.feedback.ask.contains("事实"))
-        XCTAssertEqual(payload.legacyKeyValues["coachObservationPrimaryGap"], CoachObservationGap.observation.rawValue)
-        XCTAssertEqual(payload.legacyKeyValues["coachObservationTrainingAbility"], CoreTrainingAbility.observation.displayTitle)
-        XCTAssertTrue(try XCTUnwrap(payload.legacyKeyValues["coachObservationRule"]).contains("coachObservation"))
-        let coachObservationRule = try XCTUnwrap(payload.directives.coachObservationRule)
-        XCTAssertTrue(coachObservationRule.contains("coachObservation"))
-        XCTAssertTrue(coachObservationRule.contains("primary training contract"))
-        XCTAssertTrue(coachObservationRule.contains("produce missing material"))
-        XCTAssertTrue(coachObservationRule.contains("must not provide the missing material"))
-        XCTAssertTrue(coachObservationRule.contains("self-checkable standard"))
-        XCTAssertTrue(coachObservationRule.contains("reproduce, adapt, or reject"))
+        XCTAssertNil(payload.coachObservation)
+        XCTAssertNil(payload.legacyKeyValues["coachObservationPrimaryGap"])
+        XCTAssertNil(payload.legacyKeyValues["coachObservationTrainingAbility"])
+        XCTAssertNil(payload.legacyKeyValues["coachObservationRule"])
+        XCTAssertNil(payload.directives.coachObservationRule)
     }
 
     func testStructuredContext_exposesRuntimeLensAssetMetadata() async throws {
@@ -1299,20 +1517,47 @@ final class TodayAIServiceContextTests: XCTestCase {
         let legacy = try XCTUnwrap(request.contextPayload?.legacyKeyValues)
         XCTAssertEqual(legacy["selectedLens"], "first_principles")
         XCTAssertTrue(try XCTUnwrap(legacy["lensPromptGuidance"]).contains("non-negotiable facts"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensMethodLine"]).contains("从零开始"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensPurpose"]).contains("不可再拆的事实"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensQuestionStrategy"]).contains("硬事实"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensTaskSelectionRule"]).contains("核心前提"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensApplicability"]).contains("前提混杂"))
-        XCTAssertTrue(try XCTUnwrap(legacy["lensDisableConditions"]).contains("抽象原则"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensMethodLine"]).contains("规则"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensPurpose"]).contains("必要条件"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensQuestionStrategy"]).contains("硬约束"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensTaskSelectionRule"]).contains("用户主动"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensApplicability"]).contains("规则"))
+        XCTAssertTrue(try XCTUnwrap(legacy["lensDisableConditions"]).contains("现实限制"))
         XCTAssertEqual(legacy["lensSourceKind"], "builtin")
         XCTAssertEqual(legacy["lensPackId"], "mingsi.builtin.lenses")
-        XCTAssertEqual(legacy["lensPackVersion"], "builtin.v1")
+        XCTAssertEqual(legacy["lensPackVersion"], "builtin.v3")
         XCTAssertEqual(legacy["lensPackDisplayName"], "MingSi Built-in Lens Pack")
     }
 
+    func testGenerateQuestsCarriesOpenGapAsContextWithoutReopeningTheQuestionnaire() throws {
+        let turn = CoachTurnState(phase: .formAction, readiness: .ready,
+            recommendedMove: .generateQuest, reason: "用户选择带着缺口继续。",
+            openEvidenceGaps: [.missingObservation], baselineChecks: [],
+            decisionSource: .userOverrideProgress, policyVersion: "fixture", turnSummary: "保留未知，先观察。")
+        let diagnosis = CoachDiagnosis(phase: .fillEvidenceGap, readiness: .notReady,
+            recommendedMove: .surfaceEvidenceGap, reason: "仍缺观察。",
+            source: .coachRecommended, policyVersion: "fixture")
+        let assembled = DefaultContextAssembler().assemble(promptID: .generateQuests,
+            context: TodayAIContext(draft: DailyEntryDraft(rawText: "我不想再回答，先观察一次。"),
+                coachDiagnosis: diagnosis, coachTurnState: turn))
+        let payload = assembled.contextPayload
+
+        XCTAssertEqual(payload.coachTurnState?.decisionSource, .userOverrideProgress)
+        XCTAssertEqual(payload.coachTurnState?.openEvidenceGaps, [.missingObservation])
+        XCTAssertNotNil(payload.coachDiagnosis)
+        XCTAssertNotNil(payload.coachTeachingPlan)
+        // Only the versioned action-design contract supplies instructions;
+        // stored coach plans must not inject another mandatory review question.
+        XCTAssertNil(payload.directives.coachDiagnosisRule)
+        XCTAssertNil(payload.directives.coachTurnRule)
+        XCTAssertNil(payload.directives.coachTeachingRule)
+        for key in ["coachDiagnosisRule", "coachTurnRule", "coachTeachingRule"] {
+            XCTAssertNil(payload.legacyKeyValues[key])
+        }
+    }
+
     func testGenerateQuests_injectsRelevantPrinciplesAndGroundingPayload() async throws {
-        let client = CapturingLLMClient(response: Self.questsResponse)
+        let client = CapturingLLMClient(response: Self.groundedQuestsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
             llmClient: client
@@ -1539,6 +1784,28 @@ final class TodayAIServiceContextTests: XCTestCase {
         }
     }
 
+    func testGenerateQuestions_rejectsMoreThanOneQuestionInCurrentTurn() async throws {
+        let client = CapturingLLMClient(response: Self.twoQuestionsResponse)
+        let service = TodayAIService(
+            promptProvider: LocalPromptProvider(),
+            llmClient: client
+        )
+
+        do {
+            _ = try await service.generateQuestions(
+                for: TodayAIContext(
+                    draft: DailyEntryDraft(rawText: "会议返工来自验收口径不清。", selectedLens: .judgmentCalibration),
+                    confirmedCards: [
+                        ThinkingCard(type: .problem, title: "会议返工来自验收口径不清", body: "当前判断需要一个可观察的校准信号。")
+                    ]
+                )
+            )
+            XCTFail("Expected the current-turn question budget to reject a question batch.")
+        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
+            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.tooManyCurrentTurnQuestions.rawValue))
+        }
+    }
+
     func testGenerateQuestions_rejectsAppeasingOutputWithoutCorrection() async throws {
         let client = CapturingLLMClient(response: Self.appeasingQuestionsResponse)
         let service = TodayAIService(
@@ -1681,7 +1948,7 @@ final class TodayAIServiceContextTests: XCTestCase {
         }
     }
 
-    func testGenerateQuestions_usesTrainingPrescriptionDimensionsForQualityGate() async throws {
+    func testGenerateQuestions_doesNotRejectEvidenceGroundedMoveForStaleTrainingDimension() async throws {
         let client = CapturingLLMClient(response: Self.dimensionMisalignedLeverageQuestionsResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1701,20 +1968,19 @@ final class TodayAIServiceContextTests: XCTestCase {
             source: .coachRecommended
         )
 
-        do {
-            _ = try await service.generateQuestions(
-                for: TodayAIContext(
-                    draft: DailyEntryDraft(rawText: "今天做了很多看起来忙的事，但返工没有减少。"),
-                    confirmedCards: [
-                        ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
-                    ],
-                    trainingPrescription: prescription
-                )
+        let questions = try await service.generateQuestions(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(rawText: "今天做了很多看起来忙的事，但返工没有减少。"),
+                confirmedCards: [
+                    ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
+                ],
+                trainingPrescription: prescription
             )
-            XCTFail("Expected output aligned to final lens but not training dimensions to be rejected.")
-        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
-            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.missingTrainingDimensionAlignment.rawValue))
-        }
+        )
+
+        XCTAssertEqual(questions.count, 1)
+        XCTAssertEqual(questions.first?.answerUse, .chooseAction)
+        XCTAssertEqual(questions.first?.lensMove, .leverageTradeoff)
     }
 
     func testGenerateQuests_rejectsBusyworkWithoutCalibrationSignal() async throws {
@@ -1900,32 +2166,29 @@ final class TodayAIServiceContextTests: XCTestCase {
         }
     }
 
-    func testGenerateQuests_rejectsOutputWithoutSelectedLensAlignment() async throws {
+    func testGenerateQuests_acceptsGroundedActionDespiteDifferentLensMove() async throws {
         let client = CapturingLLMClient(response: Self.nonLeverageQuestResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
             llmClient: client
         )
 
-        do {
-            _ = try await service.generateQuests(
-                for: TodayAIContext(
-                    draft: DailyEntryDraft(
-                        rawText: "今天做了很多看起来忙的事，但返工没有减少。",
-                        selectedLens: .leverageAnalysis
-                    ),
-                    confirmedCards: [
-                        ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
-                    ]
-                )
+        let quests = try await service.generateQuests(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(
+                    rawText: "今天做了很多看起来忙的事，但返工没有减少。",
+                    selectedLens: .leverageAnalysis
+                ),
+                confirmedCards: [
+                    ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
+                ]
             )
-            XCTFail("Expected quest output without selected lens alignment to be rejected.")
-        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
-            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.missingSelectedLensMove.rawValue))
-        }
+        )
+        XCTAssertEqual(quests.count, 1)
+        XCTAssertEqual(quests.first?.lensMove, .alternativeExplanation)
     }
 
-    func testGenerateQuests_usesTrainingPrescriptionFinalLensForQualityGate() async throws {
+    func testGenerateQuests_doesNotTreatPrescriptionAsMethodMandate() async throws {
         let client = CapturingLLMClient(response: Self.nonLeverageQuestResponse)
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
@@ -1943,19 +2206,62 @@ final class TodayAIServiceContextTests: XCTestCase {
             source: .coachRecommended
         )
 
-        do {
-            _ = try await service.generateQuests(
-                for: TodayAIContext(
-                    draft: DailyEntryDraft(rawText: "今天做了很多看起来忙的事，但返工没有减少。"),
-                    confirmedCards: [
-                        ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
-                    ],
-                    trainingPrescription: prescription
-                )
+        let quests = try await service.generateQuests(
+            for: TodayAIContext(
+                draft: DailyEntryDraft(rawText: "今天做了很多看起来忙的事，但返工没有减少。"),
+                confirmedCards: [
+                    ThinkingCard(type: .task, title: "忙碌但低杠杆", body: "很多动作没有改变返工结果。")
+                ],
+                trainingPrescription: prescription
             )
-            XCTFail("Expected quest output without prescribed final lens move to be rejected.")
-        } catch TodayAIParsingError.qualityGateFailed(let reasons) {
-            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.missingSelectedLensMove.rawValue))
+        )
+        XCTAssertEqual(quests.count, 1)
+        XCTAssertEqual(quests.first?.lensMove, .alternativeExplanation)
+    }
+
+    func testGenerateQuests_acceptsLiveExistingRecordComparisonButRejectsInventedSource() async throws {
+        // Synthetic actual response from the first 2026-10-18 history acceptance:
+        // the old selected-lens gate rejected alternative_explanation.
+        let response = Data(#"""
+{
+  "main_quest": {
+    "type": "main",
+    "title": "明天仅用已有记录对照两次任务范围",
+    "why_it_matters": "目前缺少两次任务范围的对照，返工减少还不能归因于书面验收。此次只检查“任务更简单”这一替代解释，不追加测试；即使范围相近，也不能单凭这组对照证明书面验收有效。",
+    "completion_criteria": "基于已有记录，留下一个简短对照：用两次记录中可比的范围信息，标出本次更少、相近或更多的内容，并注明记录依据；最终得到“范围明显缩小”“未见明显缩小”或“记录不足，无法比较”之一。缺失信息标为未知，不补采、不追加测试，也无需分享内部记录。",
+    "expected_resistance": "两次记录的详细程度可能不同，不能把未记录的内容直接当成不存在；无法比较时允许保留未知。",
+    "reflection_question": "若范围明显缩小，你是否应更重视任务简单这一解释；若未见明显缩小，是否只能削弱该解释而仍不能确认书面验收的作用；若记录不足，是否继续保留原判断？",
+    "calibration_target": "目前还不能把返工减少归因于书面验收，因为尚未排查本次任务范围更小这一替代解释。",
+    "lens_move": "alternative_explanation",
+    "linked_cards": [
+      "任务变简单也可能减少返工"
+    ]
+  },
+  "side_quests": [],
+  "observation_quest": null,
+  "rejected_low_value_tasks": [
+    "追加测试或重新安排一次任务来验证书面验收",
+    "把范围相近直接当作书面验收有效的证据"
+  ]
+}
+"""#.utf8)
+        let cardTitle = "任务变简单也可能减少返工"
+        for usesActualSource in [true, false] {
+            let client = CapturingLLMClient(response: response)
+            let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            let card = ThinkingCard(type: .decision, title: usesActualSource ? cardTitle : "另一个事项",
+                body: "同事这次把验收标准写清后返工少了，但任务可能更简单。我愿意用已有记录比较范围，不追加测试。", isConfirmed: true)
+            do {
+                let quests = try await service.generateQuests(for: TodayAIContext(
+                    draft: DailyEntryDraft(rawText: card.body, selectedLens: .judgmentCalibration), confirmedCards: [card]))
+                XCTAssertTrue(usesActualSource, "Changing method flexibility must not allow an invented source")
+                XCTAssertEqual(quests.count, 1)
+                XCTAssertEqual(quests.first?.lensMove, .alternativeExplanation)
+                XCTAssertEqual(quests.first?.sourceCardTitles, [cardTitle])
+            } catch TodayAIParsingError.qualityGateFailed(let reasons) {
+                XCTAssertFalse(usesActualSource)
+                XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.invalidSourceGrounding.rawValue))
+            }
         }
     }
 
@@ -2201,8 +2507,50 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(request.contextRecordIDs, sourceIds)
     }
 
+    func testVerifyQuestCurrentSchemaAcceptsShortNaturalMissingEvidenceReview() async throws {
+        let response = Data("""
+        {
+          "calibration_assessment": {"evidence_status":"missing","criteria_status":"not_assessable","judgment_status":"unresolved","evidence_quotes":[]},
+          "calibration_note": "你选了已完成，但没有提供重试结果，暂时无法核对验收条件。关于设计的解释仍应保持开放。",
+          "likely_issue": "none",
+          "recommendation": "若还有可回查的信息，可留下一条已有观察，不必追加测试。",
+          "growth_evidence_items": []
+        }
+        """.utf8)
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: CapturingLLMClient(response: response))
+        let result = try await service.verifyQuest(input: VerifyQuestInput(
+            questTitle: "重试入口", completionCriteria: "网络正常时记录是否完成",
+            targetJudgment: "入口设计导致未完成", completion: "done", valueRating: "high",
+            judgmentUpdate: "confirmed", rawText: "没有记录结果，只点了已完成。"), sessionMode: .standard)
+        XCTAssertEqual(result.calibrationAssessment?.judgmentStatus, .unresolved)
+        XCTAssertTrue(result.growthEvidenceItems.isEmpty)
+    }
+
+    func testCalibrationAssessmentRejectsInventedQuotesAndUnsupportedConfirmation() {
+        let missing = CalibrationAssessment(evidenceStatus: .missing, criteriaStatus: .notAssessable,
+            judgmentStatus: .unresolved, evidenceQuotes: [])
+        XCTAssertTrue(missing.isGrounded(in: "我选了已确认，但没有观察结果。", hasGrowthEvidence: false))
+        XCTAssertFalse(missing.isGrounded(in: "没有观察结果。", hasGrowthEvidence: true))
+        var contradictory = missing
+        contradictory.judgmentStatus = .supported
+        XCTAssertFalse(contradictory.isGrounded(in: "没有观察结果。", hasGrowthEvidence: false))
+        contradictory = missing
+        contradictory.criteriaStatus = .met
+        XCTAssertFalse(contradictory.isGrounded(in: "没有观察结果。", hasGrowthEvidence: false))
+        let observed = CalibrationAssessment(evidenceStatus: .observed, criteriaStatus: .met,
+            judgmentStatus: .supported, evidenceQuotes: ["朋友没有完成"])
+        XCTAssertTrue(observed.isGrounded(in: "网络正常，朋友没有完成，停在第三步。", hasGrowthEvidence: false))
+        XCTAssertFalse(observed.isGrounded(in: "我没有记录朋友的结果。", hasGrowthEvidence: false))
+        var duplicate = observed
+        duplicate.evidenceQuotes.append("朋友没有完成")
+        XCTAssertFalse(duplicate.isGrounded(in: "朋友没有完成", hasGrowthEvidence: false))
+        var empty = observed
+        empty.evidenceQuotes = []
+        XCTAssertFalse(empty.isGrounded(in: "朋友没有完成", hasGrowthEvidence: false))
+    }
+
     func testVerifyQuest_usesStructuredContextAsLegacyPayloadSource() async throws {
-        let client = CapturingLLMClient(response: Self.strongVerificationResponse)
+        let client = CapturingLLMClient(response: Self.strongVerificationResponse(reportedEvidence: "It reduced ambiguity."))
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
             llmClient: client
@@ -2238,12 +2586,14 @@ final class TodayAIServiceContextTests: XCTestCase {
     }
 
     func testVerifyQuest_includesSelectedTrainingPrincipleInStructuredAndLegacyContext() async throws {
-        let client = CapturingLLMClient(response: Self.strongVerificationResponse)
+        let principleID = UUID()
+        var response = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.strongVerificationResponse(reportedEvidence: "The criteria reduced rework.")) as? [String: Any])
+        response["principle_practice_assessment"] = ["principle_id": principleID.uuidString, "status": "not_assessable", "evidence_quotes": [], "reason": "A favorable outcome does not describe whether the actions occurred."]
+        let client = CapturingLLMClient(response: try JSONSerialization.data(withJSONObject: response))
         let service = TodayAIService(
             promptProvider: LocalPromptProvider(),
             llmClient: client
         )
-        let principleID = UUID()
 
         _ = try await service.verifyQuest(
             input: VerifyQuestInput(
@@ -2254,7 +2604,9 @@ final class TodayAIServiceContextTests: XCTestCase {
                 trainingPrinciple: .init(
                     principleId: principleID,
                     principleTitle: "先写验收标准",
-                    matchSignal: "用户选择"
+                    matchSignal: "用户选择", triggerContext: "Before handoff",
+                    actions: ["Write criteria", "Ask receiver to restate"],
+                    successCriteria: "Receiver confirms shared criteria", exceptions: "Low-risk reversible work"
                 ),
                 completion: "done",
                 valueRating: "high",
@@ -2270,11 +2622,61 @@ final class TodayAIServiceContextTests: XCTestCase {
         XCTAssertEqual(verification.trainingPrinciple?.principleId, principleID.uuidString)
         XCTAssertEqual(verification.trainingPrinciple?.principleTitle, "先写验收标准")
         XCTAssertEqual(verification.trainingPrinciple?.matchSignal, "用户选择")
+        XCTAssertEqual(verification.trainingPrinciple?.actions, ["Write criteria", "Ask receiver to restate"])
         let legacy = payload.legacyKeyValues
         XCTAssertEqual(
             legacy["trainingPrinciple"],
-            "id: \(principleID.uuidString), title: 先写验收标准, matchSignal: 用户选择"
+            "id: \(principleID.uuidString), title: 先写验收标准, matchSignal: 用户选择, triggerContext: Before handoff, actions: Write criteria; Ask receiver to restate, successCriteria: Receiver confirms shared criteria, exceptions: Low-risk reversible work"
         )
+    }
+
+    func testPrinciplePracticeAssessmentValidatesOwnershipQuotesAndUnknown() {
+        let id = UUID()
+        let result = "我写了标准，但没有请对方复述。"
+        let valid = PrinciplePracticeAssessment(principleId: id, status: .partiallyPracticed,
+            evidenceQuotes: [result], reason: "Only the first action was reported.")
+        XCTAssertTrue(valid.isGrounded(in: result, expectedPrincipleID: id))
+        XCTAssertFalse(valid.isGrounded(in: result, expectedPrincipleID: UUID()))
+        XCTAssertFalse(valid.isGrounded(in: result, expectedPrincipleID: nil))
+        var invalid = valid
+        invalid.evidenceQuotes = ["我请对方复述了"]
+        XCTAssertFalse(invalid.isGrounded(in: result, expectedPrincipleID: id))
+        invalid.evidenceQuotes = [result, result]
+        XCTAssertFalse(invalid.isGrounded(in: result, expectedPrincipleID: id))
+        invalid.evidenceQuotes = []
+        XCTAssertFalse(invalid.isGrounded(in: result, expectedPrincipleID: id))
+        invalid.status = .notAssessable
+        XCTAssertTrue(invalid.isGrounded(in: result, expectedPrincipleID: id))
+    }
+
+    func testVerifyQuestRejectsPracticeWithoutBehaviorContextOrWithInventedSources() async throws {
+        let id = UUID()
+        for scenario in ["missing", "wrong-id", "invented-quote", "no-details", "no-principle"] {
+            var response: [String: Any] = [
+                "calibration_assessment": ["evidence_status": "missing", "criteria_status": "not_assessable", "judgment_status": "unresolved", "evidence_quotes": []],
+                "calibration_note": "后续结果尚未返回，无法核对完成标准。原判断仍未确定。",
+                "likely_issue": "none", "recommendation": "若以后有反馈，可再自愿更新。",
+                "expected_principle_practice_assessment": "仅根据本次行为记录评估，不证明效果。",
+                "growth_evidence_items": []
+            ]
+            if scenario != "missing" {
+                response["principle_practice_assessment"] = ["principle_id": scenario == "wrong-id" ? UUID().uuidString : id.uuidString,
+                    "status": "practiced", "evidence_quotes": [scenario == "invented-quote" ? "对方已经复述确认" : "交接前我写了标准"], "reason": "Claims a reported action."]
+            }
+            let client = CapturingLLMClient(response: try JSONSerialization.data(withJSONObject: response))
+            let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            do {
+                _ = try await service.verifyQuest(input: VerifyQuestInput(
+                    questTitle: "交接", completionCriteria: "后续没有返工",
+                    trainingPrinciple: scenario == "no-principle" ? nil : .init(principleId: id, principleTitle: "先写标准", matchSignal: "用户选择",
+                        triggerContext: scenario == "no-details" ? nil : "交接前", actions: scenario == "no-details" ? nil : ["写标准"]),
+                    completion: "done", valueRating: "high", judgmentUpdate: "confirmed", rawText: "交接前我写了标准；结果还没回来。"), sessionMode: .standard)
+                XCTFail("Expected invalid practice classification to fail: \(scenario)")
+            } catch TodayAIParsingError.qualityGateFailed(let reasons) {
+                XCTAssertTrue(reasons.contains(scenario == "missing" ? "missingPrinciplePracticeAssessment" : (scenario == "no-details" ? "missingPrincipleBehaviorContext" : "invalidPrinciplePracticeAssessment")))
+            }
+            XCTAssertEqual(client.requests.count, 1)
+        }
     }
 
     func testVerifyQuest_rejectsWeakCalibrationNoteWhenTargetJudgmentPresent() async throws {
@@ -2327,7 +2729,7 @@ final class TodayAIServiceContextTests: XCTestCase {
             )
             XCTFail("Expected verification without completion-criteria evidence to be rejected.")
         } catch TodayAIParsingError.qualityGateFailed(let reasons) {
-            XCTAssertTrue(reasons.contains(PromptCoachingQualityIssueReason.weakVerificationCalibrationNote.rawValue))
+            XCTAssertTrue(reasons.contains("invalidCalibrationAssessment"))
         }
     }
 
@@ -2628,6 +3030,39 @@ final class TodayAIServiceContextTests: XCTestCase {
         """.utf8
     )
 
+    private static let twoQuestionsResponse = Data(
+        """
+        {
+          "questions": [
+            {
+              "question": "哪一个可观察信号会改变你对验收口径的判断？",
+              "why_this_matters": "它把判断连接到可以核对的结果。",
+              "why_now": "当前还缺少校准判断的结果信号。",
+              "expected_update": "答案会更新验收口径是否是主要原因的判断。",
+              "proceed_when": "说出一个明天可以核对的结果信号时推进。",
+              "evidence_gap_type": "missing_calibration_signal",
+              "answer_use": "watch_calibration_signal",
+              "lens_move": "prediction_calibration",
+              "source_card_titles": ["会议返工来自验收口径不清"],
+              "calibration_target": "验收口径不清是会议返工的主要原因"
+            },
+            {
+              "question": "如果这个判断是错的，哪条事实最先会出现？",
+              "why_this_matters": "它提供了一个反例入口。",
+              "why_now": "同一轮不需要预先展开第二个问题。",
+              "expected_update": "答案会更新当前判断的可信度。",
+              "proceed_when": "说出一条反例事实时推进。",
+              "evidence_gap_type": "missing_counterexample",
+              "answer_use": "test_assumption",
+              "lens_move": "alternative_explanation",
+              "source_card_titles": ["会议返工来自验收口径不清"],
+              "calibration_target": "当前判断能够经受反例检验"
+            }
+          ]
+        }
+        """.utf8
+    )
+
     private static let evidenceCheckQuestionsResponse = Data(
         """
         {
@@ -2729,6 +3164,26 @@ final class TodayAIServiceContextTests: XCTestCase {
             "calibration_target": "Written ownership acknowledgement reduces meeting ambiguity",
             "lens_move": "leverage_tradeoff",
             "linked_cards": ["Meeting ownership unclear"]
+          },
+          "side_quests": [],
+          "observation_quest": null
+        }
+        """.utf8
+    )
+
+    private static let groundedQuestsResponse = Data(
+        """
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "Confirm meeting owner",
+            "why_it_matters": "It reduces ambiguity.",
+            "completion_criteria": "Owner and acceptance criteria are written and acknowledged before implementation starts.",
+            "expected_resistance": "People may assume it is obvious.",
+            "reflection_question": "Did written ownership reduce ambiguity?",
+            "calibration_target": "Written ownership acknowledgement reduces meeting ambiguity",
+            "lens_move": "leverage_tradeoff",
+            "linked_cards": ["Prepare meeting decisions"]
           },
           "side_quests": [],
           "observation_quest": null
@@ -2997,6 +3452,7 @@ final class TodayAIServiceContextTests: XCTestCase {
     private static let verificationResponse = Data(
         """
         {
+          "calibration_assessment": {"evidence_status": "missing", "criteria_status": "not_assessable", "judgment_status": "unresolved", "evidence_quotes": []},
           "calibration_note": "The quest was useful and verifiable.",
           "likely_issue": "none",
           "recommendation": "Keep criteria explicit."
@@ -3004,9 +3460,11 @@ final class TodayAIServiceContextTests: XCTestCase {
         """.utf8
     )
 
-    private static let strongVerificationResponse = Data(
+    private static func strongVerificationResponse(reportedEvidence: String) -> Data {
+        Data(
         """
         {
+          "calibration_assessment": {"evidence_status":"observed","criteria_status":"met","judgment_status":"supported","evidence_quotes":["\(reportedEvidence)"]},
           "calibration_note": "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
           "likely_issue": "none",
           "recommendation": "Next calibration: test whether adding acceptance criteria further reduces rework.",
@@ -3014,10 +3472,12 @@ final class TodayAIServiceContextTests: XCTestCase {
         }
         """.utf8
     )
+    }
 
     private static let verificationMissingExpectedPrincipleAssessmentResponse = Data(
         """
         {
+          "calibration_assessment": {"evidence_status": "observed", "criteria_status": "met", "judgment_status": "supported", "evidence_quotes": ["The owner replied and ambiguity dropped."]},
           "calibration_note": "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
           "likely_issue": "none",
           "recommendation": "Next calibration: test whether adding acceptance criteria further reduces rework."
@@ -3028,6 +3488,7 @@ final class TodayAIServiceContextTests: XCTestCase {
     private static let weakVerificationResponse = Data(
         """
         {
+          "calibration_assessment": {"evidence_status": "missing", "criteria_status": "not_assessable", "judgment_status": "unresolved", "evidence_quotes": []},
           "calibration_note": "The quest was useful.",
           "likely_issue": null,
           "recommendation": "Keep going."
@@ -3048,6 +3509,7 @@ final class TodayAIServiceContextTests: XCTestCase {
     private static let verificationWeakRecommendationResponse = Data(
         """
         {
+          "calibration_assessment": {"evidence_status": "observed", "criteria_status": "met", "judgment_status": "supported", "evidence_quotes": ["The owner replied and ambiguity dropped."]},
           "calibration_note": "Original prediction: written owner acknowledgement reduces ambiguity. Actual evidence: the owner replied in writing and follow-up ambiguity dropped. Evidence gained: the acknowledgement was the observable signal. Completion criteria met: owner acknowledgement was written before execution. Judgment update: keep written owner confirmation before execution.",
           "likely_issue": "none",
           "recommendation": "Keep going."
@@ -3080,6 +3542,142 @@ final class TodayAIServiceContextTests: XCTestCase {
             }
             """.utf8
         )
+    }
+
+    func testSingleNudge_sendsOnlyCurrentInputAndRecordsSessionSource() async throws {
+        let client = CapturingLLMClient(response: Data("{\"question\":\"下一步确认什么？\"}".utf8))
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        let sessionID = UUID().uuidString
+        let generated = try await service.generateSingleNudge(
+            input: "我担心验收范围还不清楚。",
+            sessionMode: .standard,
+            sourceRecordIDs: [sessionID]
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let payload = try XCTUnwrap(request.contextPayload)
+        XCTAssertEqual(generated.promptRunId, request.traceID)
+        XCTAssertEqual(payload.currentInput.rawText, "我担心验收范围还不清楚。")
+        XCTAssertTrue(payload.cards.isEmpty)
+        XCTAssertTrue(payload.answers.isEmpty)
+        XCTAssertTrue(payload.quests.isEmpty)
+        XCTAssertTrue(payload.principles.isEmpty)
+        XCTAssertEqual(request.sourceRecordIDs, [sessionID])
+    }
+
+    func testSingleNudgeReview_includesBeforeEvidenceForCognitiveShift() async throws {
+        let response = "{\"diagnosis\":\"材料不足。\",\"cognitive_shift\":\"发生变化\",\"thinking_action\":null,\"unresolved_uncertainty\":\"仍需确认\",\"transition_to_verification\":true}"
+        let client = CapturingLLMClient(response: Data(response.utf8))
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        let result = try await service.reviewSingleNudge(
+            input: "我担心范围不清楚", question: "下一步确认什么？", answer: "我会确认验收负责人", before: "我还没有确认负责人", sessionMode: .standard
+        )
+
+        let payload = try XCTUnwrap(client.requests.first?.contextPayload)
+        XCTAssertEqual(result.value.cognitiveShift, "发生变化")
+        XCTAssertTrue(payload.cards.isEmpty)
+        XCTAssertTrue(payload.answers.isEmpty)
+        XCTAssertTrue(payload.quests.isEmpty)
+        XCTAssertTrue(payload.principles.isEmpty)
+        XCTAssertTrue(payload.currentInput.rawText?.contains("回答前想法:\n我还没有确认负责人") == true)
+    }
+
+    func testSingleNudgeContinuationCarriesOnlyDirectParentRoundAndAuditIDs() async throws {
+        let client = CapturingLLMClient(response: Data("{\"question\":\"你刚才没有比较的哪种错题最能检验这个安排？\"}".utf8))
+        let service = TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+        let parent = SingleNudgeSession(
+            dayKey: "2026-09-02",
+            input: "学生担心复习安排没有效果。",
+            question: "哪一次练习最能说明安排有效？",
+            diagnosis: "先把效果标准说清楚。",
+            after: "我还没比较错题类型。",
+            lifecycle: .receiptPresented
+        )
+        let childID = UUID().uuidString
+        _ = try await service.generateSingleNudge(
+            input: parent.input,
+            sessionMode: .standard,
+            sourceRecordIDs: [childID, parent.id.uuidString],
+            continuationKind: .deeper,
+            previousRound: parent
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let payload = try XCTUnwrap(request.contextPayload)
+        XCTAssertEqual(request.sourceRecordIDs, [childID, parent.id.uuidString])
+        XCTAssertTrue(payload.currentInput.rawText?.contains("原卡点：学生担心复习安排没有效果。") == true)
+        XCTAssertTrue(payload.currentInput.rawText?.contains("上一问：哪一次练习最能说明安排有效？") == true)
+        XCTAssertTrue(payload.currentInput.rawText?.contains("上一轮表达：我还没比较错题类型。") == true)
+        XCTAssertTrue(payload.currentInput.rawText?.contains("上一轮点拨：先把效果标准说清楚。") == true)
+        XCTAssertTrue(payload.directives.privacyRules?.contains("continuation_mode=deeper") == true)
+        XCTAssertTrue(payload.cards.isEmpty)
+        XCTAssertTrue(payload.answers.isEmpty)
+        XCTAssertTrue(payload.quests.isEmpty)
+        XCTAssertTrue(payload.principles.isEmpty)
+    }
+
+    func testSingleNudgePromptV110HasRollbackAndGuardrailCoverage() throws {
+        let provider = LocalPromptProvider()
+        let current = provider.template(for: .singleNudge, mode: .standard)
+        XCTAssertEqual(current.version, "1.1.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.0.0")
+        XCTAssertNotNil(provider.template(for: .singleNudge, mode: .standard, version: "1.0.0"))
+
+        // Fixed guardrails that make representative quality deterministic
+        // without claiming anything about live model output.
+        let guardrails: [(fragment: String, meaning: String)] = [
+            ("high-leverage gap", "finds one gap, not a survey"),
+            ("Do not give an answer, recommendation, plan, or task", "never answers for the user"),
+            ("Do not decide for the user", "no substituted judgment"),
+            ("你怎么看", "rejects the generic non-question"),
+            ("exactly one concrete question they can answer now", "answerable now"),
+            ("Do not infer a role, ability, motive, or stereotype", "no profession stereotypes"),
+            ("single-line question with exactly one question mark", "one line, one question mark"),
+            ("alternateAngle", "continuation must change entry point"),
+            ("deeper", "continuation follows the stated expression")
+        ]
+        for guardrail in guardrails {
+            XCTAssertTrue(
+                current.userText.contains(guardrail.fragment),
+                "1.1.0 must keep guardrail for \(guardrail.meaning)"
+            )
+        }
+    }
+
+    /// Fixed representative accept/reject matrix for the student, programmer,
+    /// and finance contexts. It pins the deterministic quality gate (the
+    /// parser), not live model behavior.
+    func testSingleNudgeQualityGateAcceptsAndRejectsRepresentativeOutputs() throws {
+        let parser = TodayAIResponseParser()
+        let accepted: [(context: String, question: String)] = [
+            ("学生", "这次复习里，哪一类错题最能说明安排没有效果？"),
+            ("程序员", "评审拖慢的三次发布里，哪一次的返工数据最能检验这个判断？"),
+            ("金融", "客户这次真正担心的波动范围，哪一个可观察数据能先核对？")
+        ]
+        for representative in accepted {
+            let payload = "{\"question\":\"\(representative.question)\"}"
+            let parsed = try parser.parseSingleNudge(from: Data(payload.utf8))
+            XCTAssertEqual(parsed, representative.question, "\(representative.context) representative output should parse")
+            XCTAssertFalse(parsed.contains("你怎么看"), "\(representative.context) must not degrade to a generic ask")
+        }
+
+        // Deterministic rejects: generic ask, direct answer, multiple questions,
+        // newlines, role stereotypes. The newline case uses an escaped \n so it
+        // exercises the gate itself rather than failing as broken JSON.
+        let rejected = [
+            "你怎么看？",
+            "建议先停掉所有评审会。",
+            "先确认返工次数？再确认评审耗时？",
+            "哪一次返工最能说明问题？\\n谁来确认？",
+            "程序员是不是天生不擅长沟通？"
+        ]
+        for output in rejected {
+            let payload = "{\"question\":\"\(output)\"}"
+            XCTAssertThrowsError(
+                try parser.parseSingleNudge(from: Data(payload.utf8)),
+                "gate must reject: \(output)"
+            )
+        }
     }
 
     private static func lensFeedback(
@@ -3186,7 +3784,7 @@ private final class StreamingCapturingLLMClient: LLMClient, StreamingLLMClient {
         throw LLMClientError.invalidResponse
     }
 
-    func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+    func stream(_ request: LLMRequest, isolation: isolated (any Actor)?) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         streamRequestCount += 1
         requests.append(request)
         return AsyncThrowingStream { continuation in

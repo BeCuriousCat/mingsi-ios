@@ -946,19 +946,17 @@ final class HistoryFeatureTests: XCTestCase {
         XCTAssertEqual(growthMetricDisplayTitle(.reflectionDepth), "反思深度")
     }
 
-    func testGrowthEvidenceProgressText_showsConcreteThresholdWithoutScore() {
-        XCTAssertEqual(growthEvidenceRemainingLoopCount(1), 2)
+    func testGrowthEvidenceProgressTextShowsRecordCountWithoutPromisingGrowth() {
         XCTAssertEqual(
             growthEvidenceProgressText(completeLoopCount: 1),
-            "已完成 1 / 3 次完整复盘；再完成 2 次并保留验证结果，才会展示变化。"
+            "当前记录中有 1 次完整复盘。"
         )
     }
 
     func testGrowthEvidenceProgressText_keepsEvidenceGateAfterLoopThreshold() {
-        XCTAssertEqual(growthEvidenceRemainingLoopCount(4), 0)
         XCTAssertEqual(
             growthEvidenceProgressText(completeLoopCount: 4),
-            "已完成 4 次完整复盘，等待可追溯的验证证据进入报告。"
+            "当前记录中有 4 次完整复盘。"
         )
     }
 

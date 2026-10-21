@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mingsi:mentor-m1:lesson-pack:1.0.0",
+  "title": "MingSi M1 Lesson Pack Structure",
+  "description": "Structure only. A valid pack is not necessarily reviewed or eligible for release.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "pack_id", "version", "lessons"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "pack_id": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{0,79}$" },
+    "version": { "$ref": "#/$defs/version" },
+    "lessons": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": { "$ref": "#/$defs/lesson" }
+    }
+  },
+  "$defs": {
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$", "maxLength": 32 },
+    "paragraph": { "type": "string", "minLength": 1, "maxLength": 4000, "pattern": "\\S" },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "\\S" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://", "maxLength": 2048 }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["draft", "approved", "rejected"] },
+        "reviewed_by": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": "\\S" },
+        "reviewed_at": { "type": "string", "format": "date-time" },
+        "note": { "type": "string", "maxLength": 2000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["approved", "rejected"] } }, "required": ["status"] },
+          "then": {
+            "required": ["reviewed_by", "reviewed_at"],
+            "properties": { "reviewed_by": { "type": "string" }, "reviewed_at": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "lesson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "editorial_order", "title", "theme", "applicable_contexts", "claim", "example", "boundary", "source_type", "citations", "content_hash", "review"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^L[0-9]{2}$" },
+        "version": { "$ref": "#/$defs/version" },
+        "editorial_order": { "type": "integer", "minimum": 1, "maximum": 24 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S" },
+        "theme": { "enum": ["observation", "evidence", "tradeoff", "communication", "iteration", "attention"] },
+        "applicable_contexts": {
+          "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "\\S" }
+        },
+        "claim": { "$ref": "#/$defs/paragraph" },
+        "example": { "$ref": "#/$defs/paragraph" },
+        "boundary": { "$ref": "#/$defs/paragraph" },
+        "observation": { "$ref": "#/$defs/paragraph" },
+        "source_type": { "enum": ["teaching_example", "external_reference"] },
+        "citations": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "$ref": "#/$defs/citation" } },
+        "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "review": { "$ref": "#/$defs/review" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source_type": { "const": "external_reference" } }, "required": ["source_type"] },
+          "then": { "properties": { "citations": { "type": "array", "minItems": 1 } } },
+          "else": { "properties": { "citations": { "type": "array", "maxItems": 0 } } }
+        }
+      ]
+    }
+  }
+}

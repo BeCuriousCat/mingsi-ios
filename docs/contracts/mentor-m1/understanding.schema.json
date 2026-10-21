@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mingsi:mentor-m1:understanding:1.0.0",
+  "title": "MingSi M1 Understanding Draft Response",
+  "description": "An unconfirmed model draft. Source ownership and whether every source represents the user's own words or explicit corrections require dynamic validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "text", "source_refs"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 12000, "pattern": "\\S" },
+    "source_refs": {
+      "type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 100,
+        "pattern": "^(?:item|capture|legacy-nudge|understanding):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      }
+    }
+  }
+}

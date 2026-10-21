@@ -1,6 +1,35 @@
 import XCTest
 
 final class PromptSpecificationDocumentTests: XCTestCase {
+    func testPromptSpecDocumentsSingleNudgeBoundaryAndVerificationConsent() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+        let architecture = try readRepositoryFile("docs/data-architecture.md")
+        let goal = try readRepositoryFile("docs/mvp-current-goal.md")
+        XCTAssertTrue(spec.contains("历史兼容：明思一下单次点拨边界"))
+        XCTAssertTrue(spec.contains("alternateAngle"))
+        XCTAssertTrue(spec.contains("职业刻板推断"))
+        XCTAssertTrue(spec.contains("绝不自动创建 Quest、Verification、Principle 或 MetricContribution"))
+        XCTAssertTrue(architecture.contains("明思一下轮次链（v52）"))
+        XCTAssertTrue(architecture.contains("single_nudge_sessions"))
+        XCTAssertTrue(goal.contains("即时结束与条件验证"))
+    }
+
+    func testPromptSpecDocumentsCurrentMentorProgressiveMultiturnBoundary() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+        XCTAssertTrue(spec.contains("`mentorRespond` 当前为 2.17.0"))
+        XCTAssertTrue(spec.contains("第二个可见回合后的默认收束不是硬上限"))
+        XCTAssertTrue(spec.contains("首轮及后续每轮都不一次列出所有可能"))
+        XCTAssertTrue(spec.contains("当前界面中的“明思一下”已经统一进入"))
+        XCTAssertTrue(spec.contains("`singleNudge` 规则只保留给历史记录读取"))
+    }
+
+    func testPromptSpecDocumentsCaptureDigestBoundary() throws {
+        let spec = try readRepositoryFile("docs/prompt-spec.md")
+        XCTAssertTrue(spec.contains("digestCaptures"))
+        XCTAssertTrue(spec.contains("source_refs"))
+        XCTAssertTrue(spec.contains("不得创建事项、卡片、行动、原则、指标、通知或训练结论"))
+    }
+
     func testPromptSpecDocumentsQuestCalibrationTargetAndVerificationTargetJudgment() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
 
@@ -45,9 +74,10 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("system_feedback_awareness"))
         XCTAssertTrue(spec.contains("judgment_calibration"))
         XCTAssertTrue(spec.contains("testable_action_design"))
-        XCTAssertTrue(spec.contains("Every question must serve either the primary training dimension or one baseline training dimension"))
-        XCTAssertTrue(spec.contains("The generateQuestions prompt must apply this plan before output generation"))
-        XCTAssertTrue(spec.contains("Do not rely on the deterministic quality gate as the first place where training-dimension alignment happens"))
+        XCTAssertTrue(spec.contains("Historical `generateQuestions` prompts apply this plan before output generation"))
+        XCTAssertTrue(spec.contains("Every question in a historical coach-led turn serves either the primary training dimension or one baseline training dimension"))
+        XCTAssertTrue(spec.contains("Do not rely on the deterministic quality gate as the first place where training-dimension alignment happens in those historical assets"))
+        XCTAssertTrue(spec.contains("A current evidence-grounded question is not rejected solely because it does not match a stale training dimension"))
     }
 
     func testPromptSpecDocumentsNonAppeasingCoachStance() throws {
@@ -98,7 +128,7 @@ final class PromptSpecificationDocumentTests: XCTestCase {
         XCTAssertTrue(spec.contains("not_ready"))
         XCTAssertTrue(spec.contains("ready"))
         XCTAssertTrue(spec.contains("userOverrideProgress"))
-        XCTAssertTrue(spec.contains("ask clarification or evidence-gap questions before converging"))
+        XCTAssertTrue(spec.contains("must not reopen the review questionnaire"))
         XCTAssertTrue(spec.contains("form a verifiable action"))
         XCTAssertTrue(spec.contains("override is permission to proceed, not proof that the coach was wrong"))
         XCTAssertTrue(spec.contains("organizeCards must not receive `coachTurnState`"))
@@ -189,6 +219,7 @@ final class PromptSpecificationDocumentTests: XCTestCase {
 
         XCTAssertTrue(spec.contains("PromptCoachingQualityPolicy"))
         XCTAssertTrue(spec.contains("genericQuestion"))
+        XCTAssertTrue(spec.contains("tooManyCurrentTurnQuestions"))
         XCTAssertTrue(spec.contains("vagueCalibrationTarget"))
         XCTAssertTrue(spec.contains("repeatedAvoidedLensMove"))
         XCTAssertTrue(spec.contains("unadjustedLensMove"))

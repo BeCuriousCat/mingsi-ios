@@ -47,6 +47,9 @@ protocol VerificationSettlementRepository {
 
 protocol GuidanceRepository {
     func saveState(_ state: UserGuidanceState) async throws
+    func recordPresentation(for hintId: String, at date: Date) async throws -> UserGuidanceState
+    func recordEvidence(for item: GuidanceCatalogItem, verificationId: UUID, isCounterexample: Bool) async throws -> UserGuidanceState
+    func updatePreference(for hintId: String, snoozedUntil: Date?, mastered: Bool, now: Date) async throws -> UserGuidanceState
     func state(for hintId: String) async throws -> UserGuidanceState?
     func allStates() async throws -> [UserGuidanceState]
     func saveFeedback(_ feedback: CoachTurnFeedback) async throws
@@ -886,6 +889,56 @@ extension AppDatabase {
                 """)
         }
 
+        migrator.registerMigration("v68_mentor_legacy_nudge_wrappers") { db in
+            guard try db.tableExists("mentor_sessions") else { return }
+            let columns = Set(try db.columns(in: "mentor_sessions").map(\.name))
+            if !columns.contains("origin_legacy_root_id") {
+                try db.alter(table: "mentor_sessions") { table in
+                    table.add(column: "origin_legacy_root_id", .text)
+                }
+            }
+            // A legacy root may be wrapped at most once. The partial index keeps
+            // ordinary mentor sessions independent and makes continuation idempotent.
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS mentor_sessions_legacy_root_idx
+                ON mentor_sessions(origin_legacy_root_id)
+                WHERE origin_legacy_root_id IS NOT NULL
+                """)
+        }
+
+        migrator.registerMigration("v69_mentor_usage_events") { db in
+            guard try db.tableExists("mentor_sessions") else { return }
+            try db.create(table: "mentor_usage_events", ifNotExists: true) { t in
+                t.column("event_id", .text).primaryKey()
+                t.column("attempt_id", .text).notNull()
+                t.column("session_id", .text).references("mentor_sessions", onDelete: .cascade)
+                t.column("event_kind", .text).notNull()
+                t.column("occurred_at", .text).notNull()
+                t.column("attributes_json", .text).notNull()
+                t.check(sql: "event_kind IN ('entry_started', 'content_presented', 'request_finished', 'session_left', 'understanding_confirmed', 'benefit_feedback')")
+                t.check(sql: "json_valid(attributes_json)")
+            }
+            try db.create(index: "mentor_usage_events_attempt_idx", on: "mentor_usage_events",
+                          columns: ["attempt_id", "occurred_at"], unique: false, ifNotExists: true)
+            try db.create(index: "mentor_usage_events_session_idx", on: "mentor_usage_events",
+                          columns: ["session_id", "occurred_at"], unique: false, ifNotExists: true)
+        }
+
+        migrator.registerMigration("v70_mentor_benefit_feedback") { db in
+            guard try db.tableExists("mentor_feedback") else { return }
+            let columns = Set(try db.columns(in: "mentor_feedback").map(\.name))
+            if !columns.contains("note") {
+                try db.alter(table: "mentor_feedback") { table in
+                    table.add(column: "note", .text)
+                }
+            }
+        }
+
+        migrator.registerMigration("v71_case_reflection_state") { db in
+            try db.alter(table: "training_case_sessions") { table in
+                table.add(column: "reflection_state_json", .text)
+            }
+        }
     }
 }
 
@@ -1005,7 +1058,7 @@ final class SQLiteTrainingCaseSessionRepository: TrainingCaseSessionRepository {
     init(database: AppDatabase) { self.database = database }
     func saveSession(_ session: TrainingCaseSession) async throws {
         try await database.dbQueue.write { db in
-            var row = TrainingCaseSessionRow(session)
+            var row = try TrainingCaseSessionRow(session)
             if let existing = try TrainingCaseSessionRow
                 .filter(Column("case_id") == session.caseId.uuidString)
                 .fetchOne(db) {
@@ -1133,9 +1186,9 @@ final class SQLiteVerificationSettlementRepository: VerificationSettlementReposi
                 sql: """
                 INSERT INTO verifications (
                     id, quest_id, quest_title, source_daily_entry_id, completion, value_rating,
-                    judgment_update, evidence_text, calibration_note, likely_issue, recommendation,
+                    judgment_update, evidence_text, calibration_note, calibration_assessment_json, principle_practice_assessment_json, likely_issue, recommendation,
                     created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(id) DO UPDATE SET
                     quest_title = excluded.quest_title,
                     completion = excluded.completion,
@@ -1143,6 +1196,8 @@ final class SQLiteVerificationSettlementRepository: VerificationSettlementReposi
                     judgment_update = excluded.judgment_update,
                     evidence_text = excluded.evidence_text,
                     calibration_note = excluded.calibration_note,
+                    calibration_assessment_json = excluded.calibration_assessment_json,
+                    principle_practice_assessment_json = excluded.principle_practice_assessment_json,
                     likely_issue = excluded.likely_issue,
                     recommendation = excluded.recommendation,
                     updated_at = excluded.updated_at,
@@ -1158,6 +1213,8 @@ final class SQLiteVerificationSettlementRepository: VerificationSettlementReposi
                     verification.judgmentUpdate.rawValue,
                     verification.evidenceText,
                     verification.calibrationNote,
+                    try verification.calibrationAssessment.map { try VNextStorage.encode($0) },
+                    try verification.principlePracticeAssessment.map { try VNextStorage.encode($0) },
                     verification.likelyIssue,
                     verification.recommendation,
                     VNextStorage.string(from: verification.createdAt),
@@ -1177,6 +1234,36 @@ final class SQLiteGuidanceRepository: GuidanceRepository {
     private let database: AppDatabase
     init(database: AppDatabase) { self.database = database }
     func saveState(_ state: UserGuidanceState) async throws { try await database.dbQueue.write { db in try UserGuidanceStateRow(state).upsert(db) } }
+    func recordEvidence(for item: GuidanceCatalogItem, verificationId: UUID, isCounterexample: Bool) async throws -> UserGuidanceState {
+        try await database.dbQueue.write { db in
+            let current = try UserGuidanceStateRow.fetchOne(db, key: item.hintId)?.domainModel()
+            let updated = GuidanceEngine().recordingEvidence(for: item, state: current,
+                evidenceRef: verificationId.uuidString, isCounterexample: isCounterexample)
+            try UserGuidanceStateRow(updated).upsert(db)
+            return updated
+        }
+    }
+    func recordPresentation(for hintId: String, at date: Date) async throws -> UserGuidanceState {
+        try await database.dbQueue.write { db in
+            var current = try UserGuidanceStateRow.fetchOne(db, key: hintId)?.domainModel() ?? UserGuidanceState(hintId: hintId)
+            // A delayed UI receipt must preserve newer preferences/evidence.
+            current.lastShownAt = max(current.lastShownAt ?? date, date)
+            current.updatedAt = max(current.updatedAt, date)
+            try UserGuidanceStateRow(current).upsert(db)
+            return current
+        }
+    }
+    func updatePreference(for hintId: String, snoozedUntil: Date?, mastered: Bool, now: Date) async throws -> UserGuidanceState {
+        try await database.dbQueue.write { db in
+            var current = try UserGuidanceStateRow.fetchOne(db, key: hintId)?.domainModel() ?? UserGuidanceState(hintId: hintId)
+            if mastered { current.status = .mastered; current.counterexampleCount = 0 }
+            else { current.snoozedUntil = snoozedUntil }
+            current.lastShownAt = now
+            current.updatedAt = now
+            try UserGuidanceStateRow(current).upsert(db)
+            return current
+        }
+    }
     func state(for hintId: String) async throws -> UserGuidanceState? { try await database.dbQueue.read { db in try UserGuidanceStateRow.fetchOne(db, key: hintId)?.domainModel() } }
     func allStates() async throws -> [UserGuidanceState] { try await database.dbQueue.read { db in try UserGuidanceStateRow.fetchAll(db).map { try $0.domainModel() } } }
     func saveFeedback(_ feedback: CoachTurnFeedback) async throws { try await database.dbQueue.write { db in try CoachTurnFeedbackRow(feedback).insert(db) } }
@@ -1221,7 +1308,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             throw PersistenceError.validationFailed("A photo memory requires a local photo identifier")
         }
         try await database.dbQueue.write { db in
-            _ = try requiredRun(id: memory.runId, db: db)
+            _ = try Self.requiredRun(id: memory.runId, db: db)
             try SideQuestPhotoMemoryRow(memory).insert(db)
         }
     }
@@ -1253,7 +1340,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
     }
 
     func savePreference(_ preference: SideQuestPreference) async throws {
-        try validate(preference)
+        try Self.validate(preference)
         try await database.dbQueue.write { db in
             var value = preference
             value.updatedAt = .now
@@ -1273,7 +1360,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
     }
 
     func saveLifeContextProfile(_ profile: SideQuestLifeContextProfile) async throws {
-        try validate(profile)
+        try Self.validate(profile)
         try await database.dbQueue.write { db in
             var value = profile
             value.updatedAt = .now
@@ -1312,7 +1399,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
 
     func activeSeason(at date: Date = .now) async throws -> SideQuestExplorationSeason? {
         try await database.dbQueue.write { db in
-            try finishExpiredSeasonIfNeeded(at: date, db: db)
+            try Self.finishExpiredSeasonIfNeeded(at: date, db: db)
             return try SideQuestExplorationSeasonRow.fetchOne(
                 db,
                 sql: "SELECT * FROM side_quest_exploration_seasons WHERE status = 'active' LIMIT 1"
@@ -1352,9 +1439,9 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
 
     func startSeason(title: String, intent: String?, at date: Date = .now) async throws -> SideQuestExplorationSeason {
         let candidate = SideQuestExplorationSeason(title: title, intent: intent, startedAt: date)
-        try validate(candidate)
+        try Self.validate(candidate)
         return try await database.dbQueue.write { db in
-            try finishExpiredSeasonIfNeeded(at: date, db: db)
+            try Self.finishExpiredSeasonIfNeeded(at: date, db: db)
             if let existing = try SideQuestExplorationSeasonRow.fetchOne(
                 db,
                 sql: "SELECT * FROM side_quest_exploration_seasons WHERE status = 'active' LIMIT 1"
@@ -1414,10 +1501,10 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         guard run.status == .offered else {
             throw PersistenceError.validationFailed("A new side quest must begin as an offer")
         }
-        try validate(run)
+        try Self.validate(run)
         try await database.dbQueue.write { db in
-            try rejectIfOpenRunExists(db)
-            let linkedRun = try attachToActiveSeason(run, db: db)
+            try Self.rejectIfOpenRunExists(db)
+            let linkedRun = try Self.attachToActiveSeason(run, db: db)
             try SideQuestRunRow(linkedRun).insert(db)
         }
     }
@@ -1438,8 +1525,8 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             ) != nil {
                 return false
             }
-            try validate(preference)
-            try validate(planningRecord: planningRecord, offeredRun: offeredRun, preference: preference)
+            try Self.validate(preference)
+            try Self.validate(planningRecord: planningRecord, offeredRun: offeredRun, preference: preference)
             var value = preference
             value.updatedAt = .now
             var preferenceRow = SideQuestPreferenceRow(value)
@@ -1449,8 +1536,8 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             try preferenceRow.upsert(db)
             try SideQuestPlanningRecordRow(planningRecord).insert(db)
             if let offeredRun {
-                try rejectIfOpenRunExists(db)
-                let linkedRun = try attachToActiveSeason(offeredRun, db: db)
+                try Self.rejectIfOpenRunExists(db)
+                let linkedRun = try Self.attachToActiveSeason(offeredRun, db: db)
                 try SideQuestRunRow(linkedRun).insert(db)
             }
             return true
@@ -1459,7 +1546,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
 
     func accept(runId: UUID, at date: Date = .now) async throws -> SideQuestRun {
         try await database.dbQueue.write { db in
-            var run = try requiredRun(id: runId, db: db)
+            var run = try Self.requiredRun(id: runId, db: db)
             if run.status == .accepted { return run }
             guard run.status == .offered || run.status == .deferred else {
                 throw PersistenceError.validationFailed("Only an offered side quest can be accepted")
@@ -1469,7 +1556,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             run.deferredUntil = nil
             run.updatedAt = date
             try SideQuestRunRow(run).update(db)
-            try synchronizeSeasonProgress(for: run.seasonId, db: db)
+            try Self.synchronizeSeasonProgress(for: run.seasonId, db: db)
             return run
         }
     }
@@ -1479,7 +1566,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             throw PersistenceError.validationFailed("A side quest can only be deferred to a future time")
         }
         return try await database.dbQueue.write { db in
-            var run = try requiredRun(id: runId, db: db)
+            var run = try Self.requiredRun(id: runId, db: db)
             guard run.status == .offered || run.status == .accepted || run.status == .deferred else {
                 throw PersistenceError.validationFailed("Only an open side quest can be deferred")
             }
@@ -1488,14 +1575,14 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             run.deferredUntil = date
             run.updatedAt = now
             try SideQuestRunRow(run).update(db)
-            try synchronizeSeasonProgress(for: run.seasonId, db: db)
+            try Self.synchronizeSeasonProgress(for: run.seasonId, db: db)
             return run
         }
     }
 
     func decline(runId: UUID, at date: Date = .now) async throws -> SideQuestRun {
         try await database.dbQueue.write { db in
-            var run = try requiredRun(id: runId, db: db)
+            var run = try Self.requiredRun(id: runId, db: db)
             if run.status == .declined { return run }
             guard run.status.occupiesInvitationSlot else {
                 throw PersistenceError.validationFailed("Only an open side quest can be declined")
@@ -1504,7 +1591,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
             run.deferredUntil = nil
             run.updatedAt = date
             try SideQuestRunRow(run).update(db)
-            try synchronizeSeasonProgress(for: run.seasonId, db: db)
+            try Self.synchronizeSeasonProgress(for: run.seasonId, db: db)
             return run
         }
     }
@@ -1516,7 +1603,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
     ) async throws -> SideQuestExperienceEvent {
         let normalizedReflection = reflection?.trimmingCharacters(in: .whitespacesAndNewlines)
         return try await database.dbQueue.write { db in
-            var run = try requiredRun(id: runId, db: db)
+            var run = try Self.requiredRun(id: runId, db: db)
             if run.status == .completed,
                let existing = try SideQuestExperienceEventRow
                 .filter(Column("side_quest_run_id") == runId.uuidString)
@@ -1545,11 +1632,11 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
                 track: run.reward.track,
                 completionExperience: run.reward.completionExperience,
                 reflectionBonusExperience: run.reflection == nil ? 0 : run.reward.reflectionBonusExperience,
-                streakCount: try nextStreakCount(at: date, db: db),
+                streakCount: try Self.nextStreakCount(at: date, db: db),
                 occurredAt: date
             )
             try SideQuestExperienceEventRow(event).insert(db)
-            try synchronizeSeasonProgress(for: run.seasonId, db: db)
+            try Self.synchronizeSeasonProgress(for: run.seasonId, db: db)
             return event
         }
     }
@@ -1643,13 +1730,13 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
     func saveCorrection(_ correction: SideQuestCorrectionEvent, resolvingRunId: UUID? = nil) async throws {
         try await database.dbQueue.write { db in
             if let runId = resolvingRunId {
-                var run = try requiredRun(id: runId, db: db)
+                var run = try Self.requiredRun(id: runId, db: db)
                 if run.status.occupiesInvitationSlot {
                     run.status = run.status == .offered ? .declined : .expired
                     run.deferredUntil = nil
                     run.updatedAt = correction.occurredAt
                     try SideQuestRunRow(run).update(db)
-                    try synchronizeSeasonProgress(for: run.seasonId, db: db)
+                    try Self.synchronizeSeasonProgress(for: run.seasonId, db: db)
                 }
             }
             try SideQuestCorrectionEventRow(correction).insert(db)
@@ -1677,7 +1764,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
     }
 #endif
 
-    private func validate(_ preference: SideQuestPreference) throws {
+    private static func validate(_ preference: SideQuestPreference) throws {
         guard preference.id == SideQuestPreference.primaryID else {
             throw PersistenceError.validationFailed("Only one side quest preference profile is supported")
         }
@@ -1694,7 +1781,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func validate(_ profile: SideQuestLifeContextProfile) throws {
+    private static func validate(_ profile: SideQuestLifeContextProfile) throws {
         guard profile.id == SideQuestLifeContextProfile.primaryID else {
             throw PersistenceError.validationFailed("Only one side quest life context profile is supported")
         }
@@ -1711,7 +1798,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func validate(_ season: SideQuestExplorationSeason) throws {
+    private static func validate(_ season: SideQuestExplorationSeason) throws {
         guard !season.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               season.title.count <= 80,
               season.intent?.count ?? 0 <= 240,
@@ -1722,9 +1809,9 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func attachToActiveSeason(_ run: SideQuestRun, db: Database) throws -> SideQuestRun {
+    private static func attachToActiveSeason(_ run: SideQuestRun, db: Database) throws -> SideQuestRun {
         var linkedRun = run
-        try finishExpiredSeasonIfNeeded(at: run.offeredAt, db: db)
+        try Self.finishExpiredSeasonIfNeeded(at: run.offeredAt, db: db)
         let active = try SideQuestExplorationSeasonRow.fetchOne(
             db,
             sql: "SELECT * FROM side_quest_exploration_seasons WHERE status = 'active' LIMIT 1"
@@ -1748,7 +1835,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         return linkedRun
     }
 
-    private func synchronizeSeasonProgress(for seasonId: UUID?, db: Database) throws {
+    private static func synchronizeSeasonProgress(for seasonId: UUID?, db: Database) throws {
         guard let seasonId else { return }
         let counts = try Row.fetchOne(
             db,
@@ -1770,14 +1857,14 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         )
     }
 
-    private func finishExpiredSeasonIfNeeded(at date: Date, db: Database) throws {
+    private static func finishExpiredSeasonIfNeeded(at date: Date, db: Database) throws {
         try db.execute(
             sql: "UPDATE side_quest_exploration_seasons SET status = 'completed' WHERE status = 'active' AND ends_at <= ?",
             arguments: [VNextStorage.string(from: date)]
         )
     }
 
-    private func validate(_ run: SideQuestRun) throws {
+    private static func validate(_ run: SideQuestRun) throws {
         guard !run.catalogId.isEmpty,
               !run.catalogVersion.isEmpty,
               !run.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1797,7 +1884,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func validate(
+    private static func validate(
         planningRecord: SideQuestPlanningRecord,
         offeredRun: SideQuestRun?,
         preference: SideQuestPreference
@@ -1822,14 +1909,14 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func requiredRun(id: UUID, db: Database) throws -> SideQuestRun {
+    private static func requiredRun(id: UUID, db: Database) throws -> SideQuestRun {
         guard let row = try SideQuestRunRow.fetchOne(db, key: id.uuidString) else {
             throw PersistenceError.validationFailed("Side quest run does not exist")
         }
         return try row.domainModel()
     }
 
-    private func rejectIfOpenRunExists(_ db: Database) throws {
+    private static func rejectIfOpenRunExists(_ db: Database) throws {
         let count = try Int.fetchOne(
             db,
             sql: "SELECT COUNT(*) FROM side_quest_runs WHERE status IN ('offered', 'accepted', 'deferred')"
@@ -1839,7 +1926,7 @@ final class SQLiteSideQuestRepository: SideQuestRepository {
         }
     }
 
-    private func nextStreakCount(at date: Date, db: Database) throws -> Int {
+    private static func nextStreakCount(at date: Date, db: Database) throws -> Int {
         guard let row = try Row.fetchOne(
             db,
             sql: "SELECT occurred_at, streak_count FROM side_quest_experience_events ORDER BY occurred_at DESC LIMIT 1"
@@ -2043,15 +2130,15 @@ private struct TrainingCaseSessionRow: Codable, FetchableRecord, PersistableReco
     static let databaseColumnEncodingStrategy = DatabaseColumnEncodingStrategy.convertToSnakeCase
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
     var id, caseId, loopState, sessionMode, createdAt, updatedAt: String
-    var selectedLensId, trainingPrescriptionJson: String?
-    init(_ value: TrainingCaseSession) { id = value.id.uuidString; caseId = value.caseId.uuidString; loopState = value.loopState.rawValue; sessionMode = value.sessionMode.rawValue; selectedLensId = value.selectedLensId; trainingPrescriptionJson = value.trainingPrescription.flatMap { try? VNextStorage.encode($0) }; createdAt = VNextStorage.string(from: value.createdAt); updatedAt = VNextStorage.string(from: value.updatedAt) }
+    var selectedLensId, trainingPrescriptionJson, reflectionStateJson: String?
+    init(_ value: TrainingCaseSession) throws { id = value.id.uuidString; caseId = value.caseId.uuidString; loopState = value.loopState.rawValue; sessionMode = value.sessionMode.rawValue; selectedLensId = value.selectedLensId; trainingPrescriptionJson = value.trainingPrescription.flatMap { try? VNextStorage.encode($0) }; reflectionStateJson = try value.reflectionState.map { try VNextStorage.encode($0) }; createdAt = VNextStorage.string(from: value.createdAt); updatedAt = VNextStorage.string(from: value.updatedAt) }
     func domainModel() throws -> TrainingCaseSession {
         guard let uuid = UUID(uuidString: id), let caseUUID = UUID(uuidString: caseId), let state = DailyLoopState(rawValue: loopState), let mode = SessionMode(rawValue: sessionMode) else { throw PersistenceError.invalidStoredValue("training_case_sessions") }
         let storedPrescription = trainingPrescriptionJson?.trimmingCharacters(in: .whitespacesAndNewlines)
         let prescription: TrainingPrescription? = storedPrescription == "null"
             ? nil
             : try VNextStorage.decode(storedPrescription)
-        return TrainingCaseSession(id: uuid, caseId: caseUUID, loopState: state, sessionMode: mode, selectedLensId: selectedLensId, trainingPrescription: prescription, createdAt: VNextStorage.date(from: createdAt), updatedAt: VNextStorage.date(from: updatedAt))
+        return TrainingCaseSession(id: uuid, caseId: caseUUID, loopState: state, sessionMode: mode, selectedLensId: selectedLensId, trainingPrescription: prescription, reflectionState: try VNextStorage.decode(reflectionStateJson), createdAt: VNextStorage.date(from: createdAt), updatedAt: VNextStorage.date(from: updatedAt))
     }
 }
 
@@ -2098,11 +2185,35 @@ private struct GrowthSettlementRow: Codable, FetchableRecord, PersistableRecord 
     static let databaseColumnDecodingStrategy = DatabaseColumnDecodingStrategy.convertFromSnakeCase
     var id, verificationId, originalJudgment, actualResult, judgmentUpdate, evidenceItemsJson, createdAt: String
     var caseId: String?
-    init(_ value: GrowthSettlement) { id = value.id.uuidString; verificationId = value.verificationId.uuidString; caseId = value.caseId?.uuidString; originalJudgment = value.originalJudgment; actualResult = value.actualResult; judgmentUpdate = value.judgmentUpdate.rawValue; evidenceItemsJson = (try? VNextStorage.encode(value.evidenceItems)) ?? "[]"; createdAt = VNextStorage.string(from: value.createdAt) }
+    var calibrationAssessmentJson: String?
+    var calibrationNote: String?
+    var recommendation: String?
+
+    init(_ value: GrowthSettlement) {
+        id = value.id.uuidString
+        verificationId = value.verificationId.uuidString
+        caseId = value.caseId?.uuidString
+        originalJudgment = value.originalJudgment
+        actualResult = value.actualResult
+        judgmentUpdate = value.judgmentUpdate.rawValue
+        evidenceItemsJson = (try? VNextStorage.encode(value.evidenceItems)) ?? "[]"
+        calibrationAssessmentJson = try? value.calibrationAssessment.map { try VNextStorage.encode($0) }
+        calibrationNote = value.calibrationNote
+        recommendation = value.recommendation
+        createdAt = VNextStorage.string(from: value.createdAt)
+    }
+
     func domainModel() throws -> GrowthSettlement {
-        guard let uuid = UUID(uuidString: id), let verificationUUID = UUID(uuidString: verificationId), let update = YesterdayJudgmentUpdate(rawValue: judgmentUpdate) else { throw PersistenceError.invalidStoredValue("growth_settlements") }
+        guard let uuid = UUID(uuidString: id), let verificationUUID = UUID(uuidString: verificationId),
+              let update = YesterdayJudgmentUpdate(rawValue: judgmentUpdate)
+        else { throw PersistenceError.invalidStoredValue("growth_settlements") }
         let items: [GrowthSettlementEvidenceItem] = (try VNextStorage.decode(evidenceItemsJson)) ?? []
-        return GrowthSettlement(id: uuid, verificationId: verificationUUID, caseId: caseId.flatMap(UUID.init(uuidString:)), originalJudgment: originalJudgment, actualResult: actualResult, judgmentUpdate: update, evidenceItems: items, createdAt: VNextStorage.date(from: createdAt))
+        return GrowthSettlement(id: uuid, verificationId: verificationUUID,
+            caseId: caseId.flatMap(UUID.init(uuidString:)), originalJudgment: originalJudgment,
+            actualResult: actualResult, judgmentUpdate: update, evidenceItems: items,
+            calibrationAssessment: try VNextStorage.decode(calibrationAssessmentJson),
+            calibrationNote: calibrationNote ?? "", recommendation: recommendation,
+            createdAt: VNextStorage.date(from: createdAt))
     }
 }
 
@@ -2697,11 +2808,11 @@ private struct SingleNudgeSessionRow: Codable, FetchableRecord, PersistableRecor
 }
 
 private enum VNextStorage {
-    static let formatter: ISO8601DateFormatter = { let value = ISO8601DateFormatter(); value.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return value }()
+    static let dateStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
     static let encoder: JSONEncoder = { let value = JSONEncoder(); value.dateEncodingStrategy = .iso8601; return value }()
     static let decoder: JSONDecoder = { let value = JSONDecoder(); value.dateDecodingStrategy = .iso8601; return value }()
-    static func string(from date: Date) -> String { formatter.string(from: date) }
-    static func date(from string: String) -> Date { formatter.date(from: string) ?? .now }
+    static func string(from date: Date) -> String { date.formatted(dateStyle) }
+    static func date(from string: String) -> Date { (try? Date(string, strategy: dateStyle)) ?? .now }
     static func encode<T: Encodable>(_ value: T) throws -> String { String(data: try encoder.encode(value), encoding: .utf8) ?? "" }
     static func decode<T: Decodable>(_ value: String?) throws -> T? { guard let value, let data = value.data(using: .utf8) else { return nil }; return try decoder.decode(T.self, from: data) }
     static func defaultCaseTitle(from rawText: String) -> String { let line = rawText.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""; return line.isEmpty ? "历史事项" : String(line.prefix(36)) }

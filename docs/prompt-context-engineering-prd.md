@@ -524,7 +524,6 @@ MVP 可以接受当前实现，但所有后续改造必须保持上述接口边�
 }
 ```
 
-验收标准：
 
 - 不生成长文总结。
 - 至少能拆出事实、问题、任务中的有效类型。
@@ -535,14 +534,14 @@ MVP 可以接受当前实现，但所有后续改造必须保持上述接口边�
 
 触发时机：
 
-- 用户确认卡片并选择思考透镜后。
+- 用户确认卡片并接受、改选或跳过当前思考方向后；如果材料已经足够，可以直接返回空问题集。
 
 产品目标：
 
-- 让用户从一个明确透镜出发继续思考。
+- 让用户从一个明确但可撤回的思考方向继续思考。
 - 提问必须围绕当天材料，不能是通用鸡汤问题。
-- 至少一个问题挑战隐含假设。
-- 至少一个问题连接到明日行动。
+- 当前请求最多一个问题；只有回答会改变判断、选择、证据检查或可观察信号时才提问。
+- 不要求同一轮同时完成事实、反例和明日行动三个动作；后续轮次只在同一判断仍未闭合时继续。
 
 输入上下文：
 
@@ -572,13 +571,15 @@ MVP 可以接受当前实现，但所有后续改造必须保持上述接口边�
 }
 ```
 
+`source_card_titles` 必须是当前 `confirmedCards.title` 的逐字子集（仅忽略首尾空格）。问题、行动和原则的运行时质量门都会再次核对这条归属；无法回链的模型输出拒绝进入下一步。
+
 模式差异：
 
 | Mode | 提问策略 |
 | --- | --- |
-| Quick | 1-2 个问题，尽快把用户带到可执行任务。 |
-| Standard | 3 个问题，覆盖事实、判断、行动。 |
-| Deep | 4-5 个问题，加强反方视角、假设审查和验证设计。 |
+| Quick | 当前请求 0-1 个问题，只做最小有用动作。 |
+| Standard | 当前请求 0-1 个问题；同一判断未闭合时由下一请求给一条修补问题。 |
+| Deep | 当前请求仍为 0-1 个问题，只增加证据审查深度，不生成问卷。 |
 
 ### 6.3 `generateQuests`
 
@@ -588,8 +589,8 @@ MVP 可以接受当前实现，但所有后续改造必须保持上述接口边�
 
 产品目标：
 
-- 把当天思考转成明天可验证行动。
-- 只生成一个主任务，最多两个副任务和一个观察任务。
+- 把当天已经复盘的一个判断转成明天可验证行动。
+- 当前线上合同只生成一个主验证行动；没有已复盘判断时不制造普通待办。
 - 主任务必须指向高价值动作，不是最容易完成的动作。
 
 输入上下文：
@@ -961,7 +962,7 @@ Safety / Privacy Rules
 | Prompt | 调用入口 | 必须上下文 | 可选上下文 | 明确禁止 | 失败后的产品行为 |
 | --- | --- | --- | --- | --- | --- |
 | `organizeCards` | 今日输入后点击整理 | `rawText`、`sessionMode`、隐私规则 | 语音质量提示 | 原则、项目、成长、长期画像、trainingPrescription、lensFeedback、coachTurnState | XML-like SSE 流式生成临时卡片；失败时保留已闭合卡片或生成本地 fallback，保留重试入口。 |
-| `generateQuestions` | 卡片确认 + 透镜选择后 | 已确认且未排除的卡片、`selectedLens`、`sessionMode`、当前 CoachTurnState | Coach Context Memory v1 选出的相关 active 原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、trainingPrescription | 未确认原则、全量历史、其他 lens 的反馈、Growth 分数、历史 coach turn 全量记录 | 本地 fallback 追问，UI 展示失败原因和可重试。 |
+| `generateQuestions` | 卡片确认 + 透镜选择后 | 已确认且未排除的卡片、`selectedLens`、`sessionMode` | Coach Context Memory v1 选出的相关 active 原则 0-3 条、同 final lens 的 lensFeedback 0-2 条 | `trainingPrescription`、`coachDiagnosis`、`coachTurnState`、`coachTeachingPlan`、`coachPatternSummary`、未确认原则、全量历史、其他 lens 的反馈、Growth 分数、历史 coach turn 全量记录 | 本地 fallback 追问，UI 展示失败原因和可重试。 |
 | `generateQuests` | 用户至少回答一个追问后 | 已确认卡片、用户回答、`selectedLens`、`sessionMode`、当前 CoachTurnState | Coach Context Memory v1 选出的相关 active 原则 0-3 条、同 final lens 的 lensFeedback 0-2 条、trainingPrescription | 与当天材料无关的历史建议、其他 lens 的反馈、历史 coach turn 全量记录 | 本地 fallback 任务，保留同一步补跑。 |
 | `verifyQuest` | 次日验证昨日任务时 | 原任务、完成标准、完成情况、价值评分 | 用户补充说明 | 人格标签、全量原则库 | 保留用户验证，AI 校准可稍后补跑。 |
 | `extractPrinciple` | 明日任务确认后 | 卡片、回答、任务 | 已有 active/needsReview 原则，用于去重 | Growth 分数、项目洞察 | 如果无稳定经验返回空候选；失败时本地生成弱候选或允许跳过。 |
@@ -982,8 +983,9 @@ Coach Context Memory v1 决定历史原则、lens feedback、过往教练结果�
 当前本地策略版本为 `coach-context-memory.local-v1`：
 
 - `organizeCards` 和 `recommendLenses` 不接收任何 coach memory。它们只处理当天原始材料，不能被历史原则、训练处方、lens feedback 或 coach turn 预设解释。
-- `generateQuestions` 可以接收当前 `TrainingPrescription`、当前 `CoachTurnState`、最多 3 条相关 active 原则，以及最多 2 条与 final lens 相同的 verified `lensFeedback`。
+- 当前 `generateQuestions` 仅接收确认卡片、最新回答、用户选择视角、最多 3 条相关 active 原则及最多 2 条匹配视角的 verified `lensFeedback`；不接收 `TrainingPrescription`、`CoachTurnState`、本地诊断或教学计划作为隐藏训练目标。
 - `generateQuests` 可以接收当前 `TrainingPrescription`、当前 `CoachTurnState`、最多 3 条相关 active 原则，以及最多 2 条与 final lens 相同的 verified `lensFeedback`。
+- 2026-10-16：行动生成的教练状态和教学计划是可选参考。移除要求补问或强制达到教学标准的旧 directives；用户明确选择带着缺口继续时，当前版本化模板负责设计一个保留未知的安全行动，不能由上下文再次开启问卷。
 - `extractPrinciple` 可以接收 `TrainingPrescription` 和 existingPrinciples 作为去重/合并参考，但不接收 lens feedback 或历史 coach turn。
 - `verifyQuest` 不接收全量原则库、lens feedback 或 coach turn；它只接收昨日任务、完成结果、价值评分，以及本地已选定的 expected training principle 审计字段。
 - 历史 coach outcome 不作为独立长期记忆直接注入 Today prompt。它只有在被沉淀为已确认原则、verified lensFeedback、任务验证或其他可审计资产后，才可能通过对应策略进入上下文。

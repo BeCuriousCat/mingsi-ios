@@ -82,7 +82,10 @@ struct GrowthSettlementPolicy {
             originalJudgment: quest.calibrationTarget ?? quest.whyItMatters,
             actualResult: verification.evidenceText,
             judgmentUpdate: verification.judgmentUpdate,
-            evidenceItems: Array(evidence.prefix(3))
+            evidenceItems: Array(evidence.prefix(3)),
+            calibrationAssessment: verification.calibrationAssessment,
+            calibrationNote: verification.calibrationNote,
+            recommendation: verification.recommendation
         )
     }
 }
@@ -120,13 +123,16 @@ struct GuidanceEngine {
         isCounterexample: Bool
     ) -> UserGuidanceState {
         var updated = state ?? UserGuidanceState(hintId: item.hintId)
-        if !updated.evidenceRefs.contains(evidenceRef) { updated.evidenceRefs.append(evidenceRef) }
+        guard !evidenceRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !updated.evidenceRefs.contains(evidenceRef) else { return updated }
+        updated.evidenceRefs.append(evidenceRef)
         if isCounterexample {
             updated.counterexampleCount += 1
             updated.status = .practicing
         } else {
             updated.evidenceCount += 1
-            if updated.evidenceCount >= item.masteryEvidenceCount { updated.status = .mastered; updated.counterexampleCount = 0 }
+            // A count of reported occasions cannot establish a stable skill.
+            // Only the user's explicit preference can suppress a mastered hint.
         }
         updated.updatedAt = .now
         return updated
@@ -162,6 +168,14 @@ struct GuidanceDecisionCandidate: Codable, Hashable {
     var triggerKey: String
 }
 
+/// User answers and model assistance have separate provenance. Model feedback
+/// is context for avoiding repetition, never proof of user behavior or ability.
+struct GuidanceReflectionContext: Codable, Hashable {
+    var userQuestionsAndAnswers: [ReflectionQuestion]
+    var modelExplanation: CoachExplanation?
+    var modelReview: CoachAnswerTrainingFeedback?
+}
+
 struct GuidanceDecisionContext: Codable, Hashable {
     var stage: GuidanceStage
     var triggerKeys: [String]
@@ -170,6 +184,7 @@ struct GuidanceDecisionContext: Codable, Hashable {
     var currentCaseId: String?
     var currentCaseTitle: String?
     var evidenceSummary: String
+    var reflection: GuidanceReflectionContext? = nil
 }
 
 struct GuidanceDecision: Hashable {
@@ -191,6 +206,7 @@ struct GuidanceEvidenceDecision: Hashable {
     var hintId: String
     var reason: String
     var promptRunId: UUID
+    var evidenceQuotes: [String] = []
 }
 
 /// Model-backed guidance orchestration. The catalog remains versioned local
@@ -203,6 +219,10 @@ final class GuidanceAIService {
     init(promptProvider: PromptProvider, llmClient: LLMClient) {
         self.promptProvider = promptProvider
         self.llmClient = llmClient
+    }
+
+    var decisionTemplate: PromptTemplate {
+        promptProvider.template(for: .recommendGuidance, mode: .standard)
     }
 
     func choose(context: GuidanceDecisionContext) async throws -> GuidanceDecision {
@@ -218,7 +238,7 @@ final class GuidanceAIService {
             privacy: .init(rules: "Use only supplied local matter evidence. Do not infer private attributes or use external data.")
         )
         let request = LLMRequest(
-            prompt: promptProvider.template(for: .recommendGuidance, mode: .standard),
+            prompt: decisionTemplate,
             inputSummary: "guidance_decision; stage=\(context.stage.rawValue); candidates=\(context.candidates.count)",
             contextPayload: payload,
             sourceRecordIDs: sourceIds,
@@ -250,7 +270,11 @@ final class GuidanceAIService {
             questTitle: quest.title,
             completionCriteria: quest.completionCriteria,
             evidenceText: verification.evidenceText,
-            judgmentUpdate: verification.judgmentUpdate.rawValue
+            targetJudgment: quest.calibrationTarget,
+            completionSelfReport: verification.completion.rawValue,
+            valueSelfReport: verification.valueRating.rawValue,
+            judgmentSelfReport: verification.judgmentUpdate.rawValue,
+            calibrationAssessment: verification.calibrationAssessment
         )
         let payload = PromptContextPayload(
             currentInput: .init(dailyEntryId: verification.sourceDailyEntryId.uuidString, rawText: try Self.encode(evidence)),
@@ -266,12 +290,24 @@ final class GuidanceAIService {
             contextVersion: 1,
             contextRecordIDs: sourceIds
         )
+        guard verification.questId == quest.id else {
+            throw TodayAIParsingError.qualityGateFailed(["guidanceEvidenceQuestMismatch"])
+        }
         let decision = try Self.decode(EvidenceDecisionDTO.self, from: try await llmClient.complete(request))
         guard let result = GuidanceEvidenceResult(rawValue: decision.result),
               decision.hintId == item.hintId,
               !decision.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw TodayAIParsingError.invalidJSON }
-        return GuidanceEvidenceDecision(result: result, hintId: item.hintId, reason: decision.reason, promptRunId: request.traceID)
+        let quotes = decision.evidenceQuotes ?? []
+        if result == .insufficient {
+            guard quotes.isEmpty else { throw TodayAIParsingError.qualityGateFailed(["invalidGuidanceEvidenceQuotes"]) }
+        } else {
+            guard !quotes.isEmpty, quotes.count <= 3, Set(quotes).count == quotes.count,
+                  quotes.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && verification.evidenceText.contains($0) })
+            else { throw TodayAIParsingError.qualityGateFailed(["invalidGuidanceEvidenceQuotes"]) }
+        }
+        return GuidanceEvidenceDecision(result: result, hintId: item.hintId, reason: decision.reason,
+            promptRunId: request.traceID, evidenceQuotes: quotes)
     }
 
     private static func encode<T: Encodable>(_ value: T) throws -> String {
@@ -318,13 +354,18 @@ final class GuidanceAIService {
         var questTitle: String
         var completionCriteria: String
         var evidenceText: String
-        var judgmentUpdate: String
+        var targetJudgment: String?
+        var completionSelfReport: String
+        var valueSelfReport: String
+        var judgmentSelfReport: String
+        var calibrationAssessment: CalibrationAssessment?
     }
 
     private struct EvidenceDecisionDTO: Decodable {
         var result: String
         var hintId: String
         var reason: String
+        var evidenceQuotes: [String]?
     }
 }
 
@@ -347,7 +388,7 @@ struct CoachAnswerReviewContext: Hashable {
     var mode: SessionMode
     var cards: [ThinkingCard]
     var questions: [ReflectionQuestion]
-    var previousTurn: CoachTurnState
+    var previousTurn: CoachTurnState?
 }
 
 struct CoachAnswerReviewDecision: Hashable {
@@ -370,7 +411,10 @@ final class CoachDecisionAIService {
     }
 
     func decide(context: CoachDecisionContext) async throws -> CoachTrainingDecision {
-        let cards = context.cards.filter { !$0.isExcludedFromModel }
+        let cards = context.cards.filter {
+            $0.isConfirmed && !$0.isExcludedFromModel &&
+            (context.caseId == nil || $0.trainingCaseId == nil || $0.trainingCaseId == context.caseId)
+        }
         guard !cards.isEmpty else { throw TodayAIParsingError.emptyResult }
         let sourceIds = Array(Set(cards.map(\.id.uuidString) + [context.caseId?.uuidString].compactMap { $0 })).sorted()
         let cardText = cards.map {
@@ -387,8 +431,9 @@ final class CoachDecisionAIService {
             userChoice: .init(sessionMode: context.mode.rawValue),
             privacy: .init(rules: "Use only supplied confirmed matter cards. Do not infer private attributes or use external data.")
         )
+        let template = promptProvider.template(for: .diagnoseTrainingCase, mode: context.mode)
         let request = LLMRequest(
-            prompt: promptProvider.template(for: .diagnoseTrainingCase, mode: context.mode),
+            prompt: template,
             inputSummary: "coach_decision; cards=\(cards.count); case=\(context.caseId?.uuidString ?? "none")",
             contextPayload: payload,
             sourceRecordIDs: sourceIds,
@@ -406,13 +451,37 @@ final class CoachDecisionAIService {
               !dto.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw TodayAIParsingError.qualityGateFailed(["教练决策必须返回有效的阶段、训练维度和现有透镜。"]) }
 
+        let modelGaps: [EvidenceGapType]?
+        let modelRefs: [String]?
+        if template.outputSchemaVersion >= 2 {
+            guard let rawGaps = dto.openEvidenceGaps, rawGaps.count <= 1,
+                  let refs = dto.sourceRefs, !refs.isEmpty,
+                  Set(refs).isSubset(of: Set(cards.map(\.id.uuidString))),
+                  Set(refs).count == refs.count else {
+                throw TodayAIParsingError.qualityGateFailed(["当前教练判断需明确至多一个材料缺口，并引用本事项已确认卡片。"])
+            }
+            let gaps = rawGaps.compactMap(EvidenceGapType.init(rawValue:))
+            guard gaps.count == rawGaps.count, !gaps.contains(.none),
+                  readiness != .ready || gaps.isEmpty else {
+                throw TodayAIParsingError.qualityGateFailed(["教练材料缺口无效，或与已就绪状态冲突。"])
+            }
+            modelGaps = gaps
+            modelRefs = refs
+        } else {
+            // Historical responses did not report gaps. Keep them unknown;
+            // do not reconstruct missing observations from their broad phase.
+            modelGaps = nil
+            modelRefs = nil
+        }
         let diagnosis = CoachDiagnosis(
             phase: phase,
             readiness: readiness,
             recommendedMove: move,
             reason: dto.reason,
             source: .coachRecommended,
-            policyVersion: "coach-decision.llm.v1"
+            policyVersion: "coach-decision.llm.v\(template.outputSchemaVersion)",
+            openEvidenceGaps: modelGaps,
+            sourceRefs: modelRefs
         )
         let alternatives = BuiltinLensCatalog.items
             .filter { $0.lensId != lens.lensId }
@@ -467,6 +536,8 @@ private struct DecisionDTO: Decodable {
         var recommendedLensId: String
         var reason: String
         var confidence: Double
+        var openEvidenceGaps: [String]?
+        var sourceRefs: [String]?
     }
 }
 
@@ -492,10 +563,11 @@ final class CoachAnswerReviewAIService {
         let answered = context.questions.filter { !trimmed($0.answer).isEmpty }
         guard !answered.isEmpty else { throw TodayAIParsingError.emptyResult }
 
-        let sourceIds = Array(Set(cards.map(\.id.uuidString) + answered.map { $0.id.uuidString } + [context.caseId?.uuidString].compactMap { $0 })).sorted()
+        let evidenceIds = Set(cards.map(\.id.uuidString) + answered.map { $0.id.uuidString })
+        let sourceIds = Array(evidenceIds.union([context.caseId?.uuidString].compactMap { $0 })).sorted()
         let payload = PromptContextPayload(
             currentInput: .init(dailyEntryId: context.caseId?.uuidString, rawText: renderedContext(context, cards: cards, answered: answered)),
-            currentCase: context.caseId.map { .init(id: $0.uuidString, title: context.caseTitle ?? "当前事项", status: "in_progress", evidenceRefs: sourceIds) },
+            currentCase: context.caseId.map { .init(id: $0.uuidString, title: context.caseTitle ?? "当前事项", status: "in_progress", evidenceRefs: evidenceIds.sorted()) },
             userChoice: .init(sessionMode: context.mode.rawValue),
             privacy: .init(rules: "Use only supplied cards and answered questions from the current matter. Do not infer private attributes or use other matters.")
         )
@@ -521,28 +593,69 @@ final class CoachAnswerReviewAIService {
               let move = NextCoachMove(rawValue: dto.recommendedMove),
               !trimmed(dto.reason).isEmpty,
               !trimmed(dto.coachCritique).isEmpty,
-              !trimmed(dto.missingMaterial).isEmpty,
-              !trimmed(dto.nextRepairQuestion).isEmpty else {
+              !trimmed(dto.missingMaterial).isEmpty else {
             throw TodayAIParsingError.qualityGateFailed(["回答复盘必须返回有效的准备度、下一步和证据化反馈。"])
         }
+        let userBoundary: CoachAnswerReviewUserBoundary
+        if let rawBoundary = dto.userBoundary {
+            guard let parsedBoundary = CoachAnswerReviewUserBoundary(rawValue: rawBoundary) else {
+                throw TodayAIParsingError.qualityGateFailed(["回答复盘的用户收束状态无效。"])
+            }
+            userBoundary = parsedBoundary
+        } else {
+            // Older recorded responses predate this field. Preserve replay
+            // compatibility and treat them as ordinary answerable turns.
+            userBoundary = .continueAnswering
+        }
+        let nextRepairQuestion = trimmed(dto.nextRepairQuestion)
+        guard userBoundary != .stopHere || nextRepairQuestion.isEmpty else {
+            throw TodayAIParsingError.qualityGateFailed(["用户已停止回答时不得制造额外追问。"])
+        }
+        if userBoundary == .stopHere {
+            let alternateAssignments = [dto.experienceReplayPrompt, dto.judgmentSentencePrompt,
+                                        dto.referenceSuggestion, dto.referenceExample]
+            guard alternateAssignments.allSatisfy({ trimmed($0).isEmpty }) else {
+                throw TodayAIParsingError.qualityGateFailed(["用户已停止回答时不得通过其他提示继续安排练习。"])
+            }
+        }
+        let repairQuestionContractIsValid: Bool = {
+            switch readiness {
+            case .ready:
+                // Once the evidence is sufficient, the model must stop. An
+                // extra question here would turn a completed turn back into
+                // an unnecessary repair loop.
+                return nextRepairQuestion.isEmpty
+            case .notReady, .partiallyReady:
+                return true // A factual gap may remain without a useful, answerable follow-up.
+            }
+        }()
+        guard repairQuestionContractIsValid else {
+            throw TodayAIParsingError.qualityGateFailed(["回答复盘已就绪时不得制造额外追问。"])
+        }
+        guard move != .askClarifyingQuestion || !nextRepairQuestion.isEmpty else {
+            throw TodayAIParsingError.qualityGateFailed(["澄清建议需要实际可回答的问题；仅保留未知时应说明证据边界。"])
+        }
         let gaps = Array(Set(dto.openEvidenceGaps.compactMap(EvidenceGapType.init(aiRawValue:)).filter { $0 != .none }))
+        guard gaps.count <= 1 else {
+            throw TodayAIParsingError.qualityGateFailed(["回答复盘只能保留一个最重要的证据缺口。"])
+        }
         guard !(readiness == ConvergenceReadiness.ready && !gaps.isEmpty),
-              !(readiness != ConvergenceReadiness.ready && move == NextCoachMove.generateQuest) else {
+              !(readiness != ConvergenceReadiness.ready && move == NextCoachMove.generateQuest && userBoundary != .stopHere) else {
             throw TodayAIParsingError.qualityGateFailed(["回答复盘的准备度、缺口与下一步互相矛盾。"])
         }
         let cited = Set(dto.sourceRefs.map(trimmed).filter { !$0.isEmpty })
-        guard !cited.isEmpty, cited.isSubset(of: Set(sourceIds)) else {
+        guard !cited.isEmpty, cited.isSubset(of: evidenceIds) else {
             throw TodayAIParsingError.qualityGateFailed(["回答复盘只能引用当前事项的卡片和回答。"])
         }
 
         let turn = CoachTurnState(
-            phase: readiness == ConvergenceReadiness.ready ? .formAction : context.previousTurn.phase,
+            phase: readiness == ConvergenceReadiness.ready ? .formAction : (context.previousTurn?.phase ?? .fillEvidenceGap),
             readiness: readiness,
             recommendedMove: move,
             reason: trimmed(dto.reason),
             openEvidenceGaps: gaps,
-            baselineChecks: context.previousTurn.baselineChecks,
-            decisionSource: context.previousTurn.decisionSource,
+            baselineChecks: context.previousTurn?.baselineChecks ?? [],
+            decisionSource: context.previousTurn?.decisionSource ?? .coachRecommended,
             policyVersion: "coach-answer-review.llm.v1",
             turnSummary: fallback(dto.turnSummary, to: trimmed(dto.reason))
         )
@@ -550,11 +663,11 @@ final class CoachAnswerReviewAIService {
         let plan = CoachTeachingPlan(
             policyVersion: "coach-answer-review.llm.v1",
             missingMoveTitle: fallback(dto.missingMaterial, to: "已根据当前回答完成复盘。"),
-            trainingTargetTitle: fallback(dto.trainingTarget, to: "围绕当前事项补齐可验证材料。"),
+            trainingTargetTitle: trimmed(dto.trainingTarget),
             whyNotAnswer: fallback(dto.coachCritique, to: "保持判断与证据之间的可回链关系。"),
-            proceedStandard: fallback(dto.trainingOutput, to: "下一步必须留下可观察的结果证据。"),
-            repairQuestion: trimmed(dto.nextRepairQuestion),
-            experienceReplayPrompt: fallback(dto.experienceReplayPrompt, to: "比较这次与旧经验的条件差异，再决定复现、调整或否定。"),
+            proceedStandard: trimmed(dto.trainingOutput),
+            repairQuestion: nextRepairQuestion,
+            experienceReplayPrompt: trimmed(dto.experienceReplayPrompt),
             routeSteps: [
                 fallback(dto.turnSummary, to: "复盘当前回答"),
                 fallback(dto.proceedLine, to: "根据当前证据决定下一步")
@@ -565,24 +678,25 @@ final class CoachAnswerReviewAIService {
             readiness: readiness,
             canProceedToValidation: canProceed,
             coachCritiqueLine: trimmed(dto.coachCritique),
-            repairedLine: fallback(dto.repairedMaterial, to: "已记录本次回答的可用材料。"),
+            repairedLine: trimmed(dto.repairedMaterial),
             missingLine: trimmed(dto.missingMaterial),
-            proceedLine: fallback(dto.proceedLine, to: canProceed ? "可以继续设计明日验证。" : "可以继续补充，也可以由你决定带着缺口继续。"),
-            abilityGapLine: fallback(dto.abilityGap, to: trimmed(dto.missingMaterial)),
-            trainingOutputLine: fallback(dto.trainingOutput, to: "让判断、证据和下一步能被别人复述。"),
-            selfCheckLine: fallback(dto.selfCheck, to: "能指出哪条事实支持或削弱当前判断。"),
-            trainingTargetLine: fallback(dto.trainingTarget, to: "围绕当前事项补齐可验证材料。"),
-            nextRepairQuestion: trimmed(dto.nextRepairQuestion),
-            experienceReplayDecisionLine: fallback(dto.experienceReplayDecision, to: ExperienceReplayTraining.line),
-            experienceReplayPrompt: fallback(dto.experienceReplayPrompt, to: "比较这次与旧经验的条件差异，再决定复现、调整或否定。"),
-            judgmentSentencePrompt: fallback(dto.judgmentSentencePrompt, to: "基于什么事实，我暂时相信什么；什么结果会让我更新它？"),
-            teachingPlan: plan
+            proceedLine: fallback(dto.proceedLine, to: "可以保存当前回顾，返回今日。"),
+            abilityGapLine: trimmed(dto.abilityGap),
+            trainingOutputLine: trimmed(dto.trainingOutput),
+            selfCheckLine: trimmed(dto.selfCheck),
+            trainingTargetLine: trimmed(dto.trainingTarget),
+            nextRepairQuestion: nextRepairQuestion,
+            experienceReplayDecisionLine: trimmed(dto.experienceReplayDecision),
+            experienceReplayPrompt: trimmed(dto.experienceReplayPrompt),
+            judgmentSentencePrompt: trimmed(dto.judgmentSentencePrompt),
+            teachingPlan: plan,
+            userBoundary: userBoundary
         )
         let suggestion = trimmed(dto.referenceSuggestion)
         let reference: CoachReferenceSuggestion? = suggestion.isEmpty ? nil : {
             CoachReferenceSuggestion(
                 guidance: suggestion,
-                workedExample: fallback(dto.referenceExample, to: "请用自己的事实、判断和验证信号完成表达。"),
+                workedExample: trimmed(dto.referenceExample),
                 caveat: "这是基于当前事项材料的参考，不替代你的事实结论。"
             )
         }()
@@ -591,8 +705,11 @@ final class CoachAnswerReviewAIService {
 
     private func renderedContext(_ context: CoachAnswerReviewContext, cards: [ThinkingCard], answered: [ReflectionQuestion]) -> String {
         let cardText = cards.map { "card_id=\($0.id.uuidString); type=\($0.type.rawValue); title=\($0.title); body=\($0.body)" }.joined(separator: "\n")
-        let answerText = answered.map { "answer_id=\($0.id.uuidString); question=\($0.question); calibration_target=\($0.calibrationTarget ?? ""); answer=\($0.answer)" }.joined(separator: "\n")
-        return "case_title=\(context.caseTitle ?? "")\nprevious_reason=\(context.previousTurn.reason)\nprevious_open_gaps=\(context.previousTurn.openEvidenceGaps.map(\.rawValue).joined(separator: ","))\nCARDS:\n\(cardText)\nANSWERS:\n\(answerText)"
+        let latestAnswerID = answered.last?.id.uuidString ?? "none"
+        let answerText = answered.enumerated().map { index, question in
+            "answer_index=\(index + 1); answer_id=\(question.id.uuidString); is_latest_answer=\(question.id.uuidString == latestAnswerID); question=\(question.question); calibration_target=\(question.calibrationTarget ?? ""); answer=\(question.answer)"
+        }.joined(separator: "\n")
+        return "case_title=\(context.caseTitle ?? "")\nprevious_assessment_available=\(context.previousTurn != nil)\nprevious_reason=\(context.previousTurn?.reason ?? "No prior model assessment is available; assess the supplied answers directly.")\nprevious_open_gaps=\(context.previousTurn?.openEvidenceGaps.map(\.rawValue).joined(separator: ",") ?? "")\nlatest_answer_id=\(latestAnswerID)\nReview the ordered answers below. The row marked is_latest_answer=true is the current turn; earlier rows are context and must not be asked again.\nCARDS:\n\(cardText)\nANSWERS:\n\(answerText)"
     }
 
     private func trimmed(_ value: String) -> String {
@@ -624,6 +741,7 @@ final class CoachAnswerReviewAIService {
         var openEvidenceGaps: [String]
         var reason, turnSummary, coachCritique, repairedMaterial, missingMaterial, proceedLine: String
         var abilityGap, trainingOutput, selfCheck, trainingTarget, nextRepairQuestion: String
+        var userBoundary: String?
         var experienceReplayDecision, experienceReplayPrompt, judgmentSentencePrompt: String
         var referenceSuggestion, referenceExample: String
         var sourceRefs: [String]

@@ -3,6 +3,219 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testRequestOutcomeReturnsOnlyOwnedTerminalMetadata() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+            text: "私人原文", intent: "reply", contextSnapshotJSON: "{}"))
+        let pending = try await repo.requestOutcome(sessionID: sessionID, requestID: requestID)
+        XCTAssertNil(pending)
+        try await repo.finishRequest(sessionID: sessionID, requestID: requestID, reason: .timedOut)
+        let timedOut = try await repo.requestOutcome(sessionID: sessionID, requestID: requestID)
+        XCTAssertEqual(timedOut, .timedOut)
+        let foreign = try await repo.requestOutcome(sessionID: UUID(), requestID: requestID)
+        XCTAssertNil(foreign)
+        XCTAssertEqual(timedOut?.usageReason, "timed_out")
+        try await repo.deleteSession(id: sessionID)
+        let deleted = try await repo.requestOutcome(sessionID: sessionID, requestID: requestID)
+        XCTAssertNil(deleted)
+    }
+
+    func testUsageAttributeValuesRejectPrivateTextAndInvalidTypedMetadata() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let invalid: [[String: String]] = [
+            ["reason": "这段私人原话伪装在合法属性里"],
+            ["exit_phase": "failed(私人错误内容)"], ["entry": "私人话题"],
+            ["switched_entry": "任意文本"], ["feedback": "看清了具体私人事情"],
+            ["has_material": "yes"], ["first_content": "1"],
+            ["schema_version": "2.0.0"], ["content_version": "私人的版本描述"],
+            ["content_version": "my-private-note"], ["duration_ms": "-1"],
+            ["content_version": "1.0\n"], ["content_version": String(repeating: "1", count: 33) + ".0"],
+            ["duration_ms": "NaN"], ["duration_ms": "Infinity"],
+            ["duration_ms": "1.25"], ["duration_ms": "1e3"],
+            ["duration_ms": "18446744073709551616"], ["duration_ms": ""],
+            ["timing_scope": "私人材料"], ["content_kind": "原话"],
+            ["presentation": "成长证明"], ["exit_action": "任意操作"], ["raw_text": "正文"]
+        ]
+        for attributes in invalid {
+            do {
+                try await repo.recordUsageEvent(MentorUsageEvent(attemptID: UUID(), kind: .sessionLeft,
+                    occurredAt: .now, attributes: attributes))
+                XCTFail("Invalid typed metadata must be rejected: \(attributes.keys)")
+            } catch { }
+        }
+        let count = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_usage_events") }
+        XCTAssertEqual(count, 0)
+        let valid = ["entry": "discuss", "switched_entry": "listen", "has_material": "true",
+            "content_version": "1.0", "schema_version": "1.0.0", "duration_ms": "0",
+            "first_content": "false", "timing_scope": "attempt", "content_kind": "lesson",
+            "presentation": "revisit", "exit_phase": "history", "exit_action": "switch",
+            "reason": "switch", "feedback": "benefit_unknown"]
+        try await repo.recordUsageEvent(MentorUsageEvent(attemptID: UUID(), kind: .sessionLeft,
+            occurredAt: .now, attributes: valid))
+        let stored = try await db.dbQueue.read { try String.fetchOne($0, sql: "SELECT attributes_json FROM mentor_usage_events") }
+        let decoded = try JSONDecoder().decode([String: String].self, from: Data(try XCTUnwrap(stored).utf8))
+        XCTAssertEqual(decoded, valid)
+    }
+
+    func testUsageEventsAreWhitelistedAttachedExportedAndCascadeWithSession() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+
+        let attemptID = UUID()
+        let entry = MentorUsageEvent(id: attemptID, attemptID: attemptID, kind: .entryStarted,
+            occurredAt: .now, attributes: ["entry": "discuss", "has_material": "false", "content_version": "mentor-m1"])
+        try await repo.recordUsageEvent(entry)
+        try await repo.attachUsageEvent(attemptID, to: sessionID)
+        try await repo.recordUsageEvent(MentorUsageEvent(attemptID: attemptID, sessionID: sessionID,
+            kind: .contentPresented, occurredAt: .now))
+
+        let stored = try await db.dbQueue.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_usage_events WHERE session_id = ?", arguments: [sessionID.uuidString]) ?? 0,
+                try String.fetchOne(db, sql: "SELECT attributes_json FROM mentor_usage_events WHERE event_id = ?", arguments: [attemptID.uuidString])
+            )
+        }
+        XCTAssertEqual(stored.0, 2)
+        XCTAssertEqual(stored.1, #"{"content_version":"mentor-m1","entry":"discuss","has_material":"false"}"#)
+
+        do {
+            try await repo.recordUsageEvent(MentorUsageEvent(attemptID: attemptID, kind: .benefitFeedback,
+                occurredAt: .now, attributes: ["raw_text": "不应进入通用事件"]))
+            XCTFail("Unapproved usage attributes must be rejected")
+        } catch { }
+
+        let export = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(export.counts[DataExportSectionName.mentorUsageEvents.rawValue], 2)
+        try await repo.deleteSession(id: sessionID)
+        let remaining = try await db.dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_usage_events") ?? 0
+        }
+        XCTAssertEqual(remaining, 0)
+    }
+
+    func testUsageEventReplayIsIdempotentAndConflictIsRejected() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        let event = MentorUsageEvent(id: id, attemptID: UUID(), kind: .sessionLeft,
+            occurredAt: Date(timeIntervalSince1970: 1_700_000_000), attributes: ["exit_phase": "paused"])
+        try await repo.recordUsageEvent(event)
+        try await repo.recordUsageEvent(event)
+        let count = try await db.dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_usage_events") ?? 0 }
+        XCTAssertEqual(count, 1)
+        do {
+            try await repo.recordUsageEvent(MentorUsageEvent(id: id, attemptID: event.attemptID,
+                kind: .sessionLeft, occurredAt: event.occurredAt, attributes: ["exit_phase": "ended"]))
+            XCTFail("Conflicting event replay must be rejected")
+        } catch { }
+    }
+
+    func testBenefitFeedbackIsSessionOwnedPrivateAndIdempotent() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .ended,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let commandID = UUID()
+        let saved = try await repo.recordBenefitFeedback(sessionID: sessionID, commandID: commandID,
+            kind: .helped, note: "我明确了明天要先验证的事实。", at: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(saved.kind, .helped)
+        XCTAssertEqual(saved.note, "我明确了明天要先验证的事实。")
+        let replay = try await repo.recordBenefitFeedback(sessionID: sessionID, commandID: commandID,
+            kind: .helped, note: "我明确了明天要先验证的事实。", at: .now)
+        XCTAssertEqual(replay, saved)
+        let loaded = try await repo.benefitFeedback(sessionID: sessionID)
+        XCTAssertEqual(loaded, saved)
+
+        do {
+            _ = try await repo.recordBenefitFeedback(sessionID: sessionID, commandID: commandID,
+                kind: .notHelpful, note: nil, at: .now)
+            XCTFail("A command replay with different feedback must be rejected")
+        } catch { }
+        do {
+            _ = try await repo.recordBenefitFeedback(sessionID: UUID(), commandID: UUID(),
+                kind: .unknown, note: nil, at: .now)
+            XCTFail("Foreign session feedback must be rejected")
+        } catch { }
+        do {
+            _ = try await repo.recordBenefitFeedback(sessionID: sessionID, commandID: UUID(),
+                kind: .helped, note: String(repeating: "x", count: 2_001), at: .now)
+            XCTFail("Oversized private feedback must be rejected")
+        } catch { }
+
+        let export = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(export.counts[DataExportSectionName.mentorFeedback.rawValue], 1)
+        try await repo.deleteSession(id: sessionID)
+        let deleted = try await repo.benefitFeedback(sessionID: sessionID)
+        XCTAssertNil(deleted)
+    }
+
+    func testAIDraftUsesOnlyCurrentSessionUserSourcesAndCanBecomeConfirmedRevision() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let itemID = UUID()
+        try await repo.appendItem(MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user,
+            payloadJSON: "{\"text\":\"我会先确认实际效果\"}"))
+        let source = try MentorSourceReference("item:\(itemID.uuidString)")
+
+        let draft = try await repo.beginAIUnderstanding(sessionID: sessionID, draftID: UUID(),
+            text: "我会先确认实际效果。", sourceRefs: [source])
+        XCTAssertTrue(draft.isAIDraft)
+        XCTAssertEqual(draft.origin, MentorUnderstandingOrigin.aiDraft.rawValue)
+        XCTAssertEqual(draft.state, .draft)
+        let links = try await repo.sourceLinks(sessionID: sessionID, ownerID: draft.id)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links.first?.sourceID, itemID.uuidString)
+        XCTAssertEqual(links.first?.availability, .available)
+
+        let confirmed = try await repo.confirmUnderstanding(sessionID: sessionID, draftID: draft.id, expectedEditRevision: draft.editRevision)
+        XCTAssertEqual(confirmed.state, .confirmed)
+        XCTAssertTrue(confirmed.isAIDraft)
+        let next = try await repo.beginUserUnderstanding(sessionID: sessionID, draftID: UUID(), previousRevisionID: confirmed.id)
+        XCTAssertEqual(next.state, .draft)
+        XCTAssertEqual(next.origin, MentorUnderstandingOrigin.userNote.rawValue)
+        XCTAssertEqual(next.text, confirmed.text)
+    }
+
+    func testAIDraftRejectsForeignSessionAndNonUserSources() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        let otherSessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        try await repo.createSession(MentorSession(id: otherSessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let foreignID = UUID()
+        try await repo.appendItem(MentorTimelineItem(id: foreignID, sessionID: otherSessionID, sequence: 1, kind: .user,
+            payloadJSON: "{\"text\":\"另一段交流\"}"))
+        let assistantID = UUID()
+        try await repo.appendItem(MentorTimelineItem(id: assistantID, sessionID: sessionID, sequence: 1, kind: .assistant,
+            payloadJSON: "{\"body\":\"导师回应\"}"))
+
+        for id in [foreignID, assistantID] {
+            let reference = try MentorSourceReference("item:\(id.uuidString)")
+            do {
+                _ = try await repo.beginAIUnderstanding(sessionID: sessionID, draftID: UUID(),
+                    text: "不应保存", sourceRefs: [reference])
+                XCTFail("AI understanding accepted an invalid source")
+            } catch { }
+        }
+        let understandings = try await repo.understandings(sessionID: sessionID)
+        XCTAssertTrue(understandings.isEmpty)
+    }
+
     func testUnderstandingGroupDeletionRemovesDerivedCopiesButPreservesUserMaterial() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
@@ -101,6 +314,127 @@ final class MentorPersistenceTests: XCTestCase {
         try await repo.deleteUnderstandingGroup(sessionID: id, groupID: note.groupID)
         let deleted = try await repo.understandings(sessionID: id)
         XCTAssertTrue(deleted.isEmpty)
+    }
+
+    func testSessionDeletionRemovesOwnedAuditGraphPreservesOtherSessionAndRejectsLateAudit() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let first = SQLiteMentorRepository(database: db)
+        let deletedSession = UUID()
+        let retainedSession = UUID()
+        try await first.createSession(MentorSession(id: deletedSession, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        try await first.createSession(MentorSession(id: retainedSession, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+
+        let deletedRequest = try await first.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: deletedSession,
+            text: "要删除的原话", intent: "reply", contextSnapshotJSON: "{\"context\":\"private\"}"))
+        let retainedRequest = try await first.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: retainedSession,
+            text: "要保留的原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let deletedSessionValue = try await first.session(id: deletedSession)
+        let retainedSessionValue = try await first.session(id: retainedSession)
+        let deletedSessionSnapshot = try XCTUnwrap(deletedSessionValue)
+        let retainedSessionSnapshot = try XCTUnwrap(retainedSessionValue)
+        let deletedRun = PromptRun(promptId: PromptID.mentorRespond.rawValue, promptVersion: "1",
+            outputSchemaVersion: 1, modelProvider: "test", modelName: "test", sessionMode: "standard",
+            requestSummary: "deleted", responseJSON: "{\"body\":\"deleted\"}")
+        let retainedRun = PromptRun(promptId: PromptID.mentorRespond.rawValue, promptVersion: "1",
+            outputSchemaVersion: 1, modelProvider: "test", modelName: "test", sessionMode: "standard",
+            requestSummary: "retained", responseJSON: "{\"body\":\"retained\"}")
+        try await first.savePromptRun(deletedRun, token: .init(sessionID: deletedSession, requestID: deletedRequest,
+            requestEpoch: deletedSessionSnapshot.requestEpoch, semanticRevision: deletedSessionSnapshot.semanticRevision))
+        try await first.savePromptRun(retainedRun, token: .init(sessionID: retainedSession, requestID: retainedRequest,
+            requestEpoch: retainedSessionSnapshot.requestEpoch, semanticRevision: retainedSessionSnapshot.semanticRevision))
+
+        try await first.deleteSession(id: deletedSession)
+
+        let deletedAfter = try await first.session(id: deletedSession)
+        let retainedAfter = try await first.session(id: retainedSession)
+        XCTAssertNil(deletedAfter)
+        XCTAssertNotNil(retainedAfter)
+        let counts = try await db.dbQueue.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_requests WHERE session_id = ?", arguments: [deletedSession.uuidString]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM mentor_items WHERE session_id = ?", arguments: [deletedSession.uuidString]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM prompt_runs WHERE mentor_session_id = ?", arguments: [deletedSession.uuidString]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM prompt_runs") ?? 0
+            )
+        }
+        XCTAssertEqual(counts.0, 0)
+        XCTAssertEqual(counts.1, 0)
+        XCTAssertEqual(counts.2, 0)
+        XCTAssertEqual(counts.3, 1, "The unrelated session audit must remain")
+
+        do {
+            try await first.savePromptRun(deletedRun, token: .init(sessionID: deletedSession, requestID: deletedRequest,
+                requestEpoch: deletedSessionSnapshot.requestEpoch, semanticRevision: deletedSessionSnapshot.semanticRevision))
+            XCTFail("A late audit must not recreate a deleted session")
+        } catch { }
+    }
+
+    func testSessionDeletionRollsBackAuditCleanupWhenParentDeleteFails() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+            text: "保留原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let sessionValue = try await repo.session(id: sessionID)
+        let session = try XCTUnwrap(sessionValue)
+        let run = PromptRun(promptId: PromptID.mentorRespond.rawValue, promptVersion: "1", outputSchemaVersion: 1,
+            modelProvider: "test", modelName: "test", sessionMode: "standard", requestSummary: "rollback",
+            responseJSON: "{}")
+        try await repo.savePromptRun(run, token: .init(sessionID: sessionID, requestID: requestID,
+            requestEpoch: session.requestEpoch, semanticRevision: session.semanticRevision))
+        try await db.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_mentor_delete BEFORE DELETE ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+
+        do {
+            try await repo.deleteSession(id: sessionID)
+            XCTFail("Injected failure must abort deletion")
+        } catch { }
+
+        let retained = try await repo.session(id: sessionID)
+        XCTAssertNotNil(retained)
+        let auditCount = try await db.dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM prompt_runs WHERE id = ?", arguments: [run.id.uuidString]) ?? 0
+        }
+        XCTAssertEqual(auditCount, 1)
+        try await db.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_mentor_delete") }
+    }
+
+    func testMentorTablesAndRequestContextArePresentInExportWhitelist() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await repo.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+            text: "导出原话", intent: "reply", contextSnapshotJSON: "{\"private\":true}"))
+
+        let package = try await SQLiteDataExportRepository(database: db).exportPackage()
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+        let sections = try XCTUnwrap(payload["sections"] as? [String: Any])
+        let expected = [
+            DataExportSectionName.mentorSessions.rawValue,
+            DataExportSectionName.mentorItems.rawValue,
+            DataExportSectionName.mentorRequests.rawValue,
+            DataExportSectionName.mentorRequestResults.rawValue,
+            DataExportSectionName.mentorUnderstandings.rawValue,
+            DataExportSectionName.mentorFeedback.rawValue,
+            DataExportSectionName.mentorSourceLinks.rawValue,
+            DataExportSectionName.mentorCorrections.rawValue,
+            DataExportSectionName.mentorLessonSnapshots.rawValue,
+            DataExportSectionName.mentorFeedbackResets.rawValue,
+            DataExportSectionName.mentorRecallContinuations.rawValue
+        ]
+        XCTAssertTrue(expected.allSatisfy { sections[$0] != nil })
+        XCTAssertEqual(package.counts[DataExportSectionName.mentorSessions.rawValue], 1)
+        XCTAssertEqual(package.counts[DataExportSectionName.mentorItems.rawValue], 1)
+        XCTAssertEqual(package.counts[DataExportSectionName.mentorRequests.rawValue], 1)
+        let requests = try XCTUnwrap(sections[DataExportSectionName.mentorRequests.rawValue] as? [[String: Any]])
+        XCTAssertEqual(requests.first?["context_snapshot_json"] as? String, "{\"private\":true}")
     }
 
     func testMentorGatewayDeadlineIncludesUncooperativePreflightAndAudit() async throws {
@@ -885,6 +1219,34 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(remaining, 0)
     }
 
+    func testCorrectionAllowsNewTurnWithoutFakingPresentationOfObsoleteResponse() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let oldRequest = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "旧事实", intent: "reply", contextSnapshotJSON: "{}"))
+        let submitted = try await repo.items(sessionID: id)
+        let original = try XCTUnwrap(submitted.first)
+        let obsolete = try await repo.commitResponse(sessionID: id, requestID: oldRequest, payloadJSON: "{}")
+        _ = try await repo.correctUserItem(sessionID: id, itemID: original.id, commandID: UUID(), expectedRevision: 0, text: "新事实")
+        let freshRequest = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: nil, intent: "explain", contextSnapshotJSON: "{}"))
+        let fresh = try await repo.commitResponse(sessionID: id, requestID: freshRequest, payloadJSON: "{}")
+        let obsoletePresented = try await db.dbQueue.read { try String.fetchOne($0,
+            sql: "SELECT presented_at FROM mentor_items WHERE id = ?", arguments: [obsolete.id.uuidString]) }
+        XCTAssertNil(obsoletePresented)
+        do {
+            _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+                text: "下一轮", intent: "reply", contextSnapshotJSON: "{}"))
+            XCTFail("当前版本仍需真实呈现后才能继续")
+        } catch {}
+        try await repo.acknowledgePresentation(sessionID: id, itemID: fresh.id, at: .now, timeZone: .current)
+        _ = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "下一轮", intent: "reply", contextSnapshotJSON: "{}"))
+    }
+
     func testCorrectionConflictAndFailureRollBackAllEffects() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
@@ -991,6 +1353,44 @@ final class MentorPersistenceTests: XCTestCase {
         let items = try await repo.items(sessionID: id)
         XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 2)
         do { try await repo.acknowledgePresentation(sessionID: id, itemID: items[0].id, at: .now, timeZone: .current); XCTFail("User input marked as teaching") } catch {}
+    }
+
+    func testReviewOpeningExemptionCannotBeReusedForLaterReviewRequests() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "review", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let payload = "{\"action\":\"clarify\",\"question\":\"What happened?\",\"question_purpose\":\"material\",\"material_status\":\"missing\"}"
+        for expectedCount in 0...2 {
+            let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+                text: nil, intent: "review", contextSnapshotJSON: "{}"))
+            let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: payload)
+            try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: .now, timeZone: .current)
+            let saved = try await repo.session(id: id)
+            XCTAssertEqual(saved?.recallCount, expectedCount)
+        }
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: nil, intent: "review", contextSnapshotJSON: "{}"))
+        do {
+            _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: payload)
+            XCTFail("Labeling a later request as review must not bypass the material budget")
+        } catch {}
+    }
+
+    func testReviewRequestWithUserMaterialStillConsumesBudget() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "review", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "An actual event", intent: "review", contextSnapshotJSON: "{}"))
+        let item = try await repo.commitResponse(sessionID: id, requestID: request,
+            payloadJSON: "{\"action\":\"clarify\",\"question\":\"What changed?\",\"question_purpose\":\"material\"}")
+        try await repo.acknowledgePresentation(sessionID: id, itemID: item.id, at: .now, timeZone: .current)
+        let saved = try await repo.session(id: id)
+        XCTAssertEqual(saved?.recallCount, 1)
     }
 
     func testStartupRecoveryAndExplicitRetryReuseOriginalUserItem() async throws {
@@ -1106,5 +1506,80 @@ private actor DeadlineCountingClient: LLMClient {
     func complete(_ request: LLMRequest) async throws -> Data {
         calls += 1
         return Data("{}".utf8)
+    }
+}
+
+extension MentorPersistenceTests {
+    func testCaptureEntryCommitsOriginalSnapshotAndProvenanceOnceWithoutChangingCapture() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let captures = SQLiteCaptureFragmentRepository(database: database)
+        let capture = try await captures.save(CaptureFragment(rawText: "  一条独立闪念\n保留换行。  ", dayKey: "2026-10-03"))
+        let other = try await captures.save(CaptureFragment(rawText: "没有选择的另一条", dayKey: "2026-10-03"))
+        let baseline = try await captures.fragments(forDayKey: capture.dayKey, statuses: nil)
+        let repository = SQLiteMentorRepository(database: database)
+        let sessionID = UUID(), date = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = try await repository.beginCaptureSession(captureID: capture.id, sessionID: sessionID, at: date)
+        let replay = try await repository.beginCaptureSession(captureID: capture.id, sessionID: sessionID, at: date)
+        XCTAssertEqual(first, replay)
+        XCTAssertEqual(first.initialEntry, "capture")
+        let items = try await repository.items(sessionID: sessionID)
+        let links = try await repository.sourceLinks(sessionID: sessionID)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.kind, .user)
+        let text = try JSONDecoder().decode([String: String].self, from: Data(try XCTUnwrap(items.first).payloadJSON.utf8))
+        XCTAssertEqual(text["text"], capture.rawText)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links.first?.sourceKind, "capture")
+        XCTAssertEqual(links.first?.sourceID, capture.id.uuidString)
+        XCTAssertEqual(links.first?.ownerID, items.first?.id)
+        XCTAssertEqual(links.first?.contentHash, MentorSourceResolver.hash(capture.rawText))
+        do {
+            _ = try await repository.beginCaptureSession(captureID: other.id, sessionID: sessionID, at: date)
+            XCTFail("A reused command cannot select different material")
+        } catch {}
+        let unchanged = try await captures.fragments(forDayKey: capture.dayKey, statuses: nil)
+        XCTAssertEqual(unchanged, baseline)
+        try await repository.deleteSession(id: sessionID)
+        let remaining = try await captures.fragments(forDayKey: capture.dayKey, statuses: nil)
+        XCTAssertEqual(remaining, baseline, "The conversation only borrows the original captures")
+    }
+
+    func testCaptureEntrySourceFailureRollsBackSessionAndMaterial() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let captures = SQLiteCaptureFragmentRepository(database: database)
+        let capture = try await captures.save(CaptureFragment(rawText: "不可丢失的原文", dayKey: "2026-10-03"))
+        let baseline = try await captures.fragments(forDayKey: capture.dayKey, statuses: nil)
+        try await database.dbQueue.write {
+            try $0.execute(sql: "CREATE TRIGGER fail_capture_link BEFORE INSERT ON mentor_source_links BEGIN SELECT RAISE(ABORT, 'injected'); END")
+        }
+        let repository = SQLiteMentorRepository(database: database), sessionID = UUID()
+        do {
+            _ = try await repository.beginCaptureSession(captureID: capture.id, sessionID: sessionID, at: .now)
+            XCTFail("Source persistence failure must fail the entry")
+        } catch {}
+        let missing = try await repository.session(id: sessionID)
+        let items = try await repository.items(sessionID: sessionID)
+        let links = try await repository.sourceLinks(sessionID: sessionID)
+        XCTAssertNil(missing)
+        XCTAssertTrue(items.isEmpty)
+        XCTAssertTrue(links.isEmpty)
+        let preserved = try await captures.fragments(forDayKey: capture.dayKey, statuses: nil)
+        XCTAssertEqual(preserved, baseline)
+    }
+
+    func testCaptureEntryRejectsMissingOrBlankSourceWithoutCreatingEmptySession() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let captures = SQLiteCaptureFragmentRepository(database: database)
+        let blank = try await captures.save(CaptureFragment(rawText: " \n", dayKey: "2026-10-03"))
+        let repository = SQLiteMentorRepository(database: database)
+        for captureID in [UUID(), blank.id] {
+            let sessionID = UUID()
+            do {
+                _ = try await repository.beginCaptureSession(captureID: captureID, sessionID: sessionID, at: .now)
+                XCTFail("Unusable source must not create a conversation")
+            } catch {}
+            let saved = try await repository.session(id: sessionID)
+            XCTAssertNil(saved)
+        }
     }
 }

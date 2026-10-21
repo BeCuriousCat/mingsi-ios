@@ -70,6 +70,28 @@ struct TrainingCase: Identifiable, Hashable {
     }
 }
 
+/// Model interpretation, never a new observation or evidence of improvement.
+struct CoachExplanation: Codable, Hashable {
+    var text: String
+    var sourceCardTitles: [String]
+}
+
+struct CoachQuestionTurn: Hashable {
+    var questions: [ReflectionQuestion]
+    var explanation: CoachExplanation?
+}
+
+struct CoachReflectionState: Codable, Hashable {
+    var questions: [ReflectionQuestion]
+    var reviewTurn: CoachTurnState?
+    var reviewFeedback: CoachAnswerTrainingFeedback?
+    var referenceSuggestion: CoachReferenceSuggestion?
+    var promptRunID: UUID?
+    /// Previous model context, even when feedback for an edited answer is invalid.
+    var previousTurn: CoachTurnState? = nil
+    var explanation: CoachExplanation? = nil
+}
+
 struct TrainingCaseSession: Identifiable, Hashable {
     let id: UUID
     var caseId: UUID
@@ -77,6 +99,7 @@ struct TrainingCaseSession: Identifiable, Hashable {
     var sessionMode: SessionMode
     var selectedLensId: String?
     var trainingPrescription: TrainingPrescription?
+    var reflectionState: CoachReflectionState?
     var createdAt: Date
     var updatedAt: Date
 
@@ -87,6 +110,7 @@ struct TrainingCaseSession: Identifiable, Hashable {
         sessionMode: SessionMode = .standard,
         selectedLensId: String? = nil,
         trainingPrescription: TrainingPrescription? = nil,
+        reflectionState: CoachReflectionState? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -96,6 +120,7 @@ struct TrainingCaseSession: Identifiable, Hashable {
         self.sessionMode = sessionMode
         self.selectedLensId = selectedLensId
         self.trainingPrescription = trainingPrescription
+        self.reflectionState = reflectionState
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -336,6 +361,9 @@ struct GrowthSettlement: Identifiable, Hashable {
     var originalJudgment: String
     var actualResult: String
     var judgmentUpdate: YesterdayJudgmentUpdate
+    var calibrationAssessment: CalibrationAssessment?
+    var calibrationNote: String
+    var recommendation: String?
     var evidenceItems: [GrowthSettlementEvidenceItem]
     var createdAt: Date
 
@@ -347,6 +375,9 @@ struct GrowthSettlement: Identifiable, Hashable {
         actualResult: String,
         judgmentUpdate: YesterdayJudgmentUpdate,
         evidenceItems: [GrowthSettlementEvidenceItem],
+        calibrationAssessment: CalibrationAssessment? = nil,
+        calibrationNote: String = "",
+        recommendation: String? = nil,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -355,6 +386,9 @@ struct GrowthSettlement: Identifiable, Hashable {
         self.originalJudgment = originalJudgment
         self.actualResult = actualResult
         self.judgmentUpdate = judgmentUpdate
+        self.calibrationAssessment = calibrationAssessment
+        self.calibrationNote = calibrationNote
+        self.recommendation = recommendation
         self.evidenceItems = evidenceItems
         self.createdAt = createdAt
     }
@@ -618,6 +652,12 @@ private struct CoachPromptQualityKey: Hashable {
 }
 
 enum CoachPromptOutputFingerprint {
+    static func questionTurn(_ questions: [ReflectionQuestion], explanation: CoachExplanation?) -> String {
+        guard let explanation else { return self.questions(questions) }
+        return digest([self.questions(questions), explanation.text,
+            explanation.sourceCardTitles.joined(separator: "\u{1F}")].joined(separator: "\u{1E}"))
+    }
+
     static func questions(_ questions: [ReflectionQuestion]) -> String {
         digest(questions.map { question in
             [
@@ -666,6 +706,10 @@ enum CoachPromptOutputFingerprint {
             feedback.coachCritiqueLine,
             feedback.missingLine,
             feedback.nextRepairQuestion,
+            feedback.userBoundary?.rawValue ?? "continue",
+            feedback.proceedLine,
+            feedback.experienceReplayPrompt,
+            feedback.judgmentSentencePrompt,
             referenceSuggestion?.guidance ?? ""
         ].joined(separator: "\u{1E}"))
     }

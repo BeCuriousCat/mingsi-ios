@@ -10,6 +10,10 @@ final class MockLLMClient: LLMClient {
 
     func complete(_ request: LLMRequest) async throws -> Data {
         switch request.prompt.id {
+        case .lifeGuidanceShortlist:
+            return try encode(["itemIDs": []])
+        case .lifeGuidanceReview:
+            return try encode(["itemID": NSNull(), "eventID": NSNull(), "quote": NSNull(), "explanation": NSNull(), "confidence": 0])
         case .mentorRespond:
             return try encode(["schema_version": "1.0.0", "action": "explain", "material_status": "not_needed",
                 "body": "可以先区分完成的动作和它带来的效果。例如，提交一个改动是动作，使用者的问题是否减少是效果。两者可能需要分别观察。",
@@ -21,6 +25,24 @@ final class MockLLMClient: LLMClient {
                 throw MentorContextError.invalidUnderstanding
             }
             return try encode(["schema_version": "1.0.0", "text": source.content, "source_refs": [source.ref.value]])
+        case .singleNudge:
+            if request.prompt.outputSchemaVersion == 2 {
+                return try encode([
+                    "diagnosis": "回答已把问题从模糊感受推进到一个可观察的判断。",
+                    "cognitive_shift": "从担心结果转向先确认关键事实。",
+                    "thinking_action": "写下一个今天能核对的事实。",
+                    "unresolved_uncertainty": "尚不清楚对方是否认可这个判断。",
+                    "transition_to_verification": false
+                ])
+            }
+            return try encode(["question": "这件事里，下一步最值得确认的一个事实是什么？"])
+        case .digestCaptures:
+            return try encode([
+                "summary": "今天的闪念集中在澄清下一步与观察实际反馈。",
+                "themes": ["澄清", "反馈"],
+                "recommended_question": "哪一个可观察信号最能帮助你决定下一步？",
+                "source_refs": Array(request.sourceRecordIDs.prefix(3))
+            ])
         case .organizeCards:
             return try encode([
                 "cards": [
@@ -80,32 +102,6 @@ final class MockLLMClient: LLMClient {
                         "why_now": "The coach turn is ready to compare possible actions after ownership evidence was named.",
                         "expected_update": "The answer chooses the judgment that should drive tomorrow's main action.",
                         "proceed_when": "Proceed when one decision is named with a clear reason it reduces rework."
-                    ],
-                    [
-                        "evidence_gap_type": "missing_observation",
-                        "answer_use": "collect_evidence",
-                        "lens_move": "fact_interpretation_split",
-                        "source_card_titles": ["Meeting goal was unclear"],
-                        "calibration_target": "Unclear ownership is the real blocker behind rework",
-                        "expected_answer_type": "validation",
-                        "question": "What evidence would show that unclear ownership is the real blocker?",
-                        "why_this_matters": "It checks the hidden assumption behind the proposed action.",
-                        "why_now": "The coach turn still needs observable evidence before treating ownership as the root cause.",
-                        "expected_update": "The answer updates the evidence plan for validating the blocker.",
-                        "proceed_when": "Proceed when one observable signal can confirm or weaken the ownership explanation."
-                    ],
-                    [
-                        "evidence_gap_type": "none",
-                        "answer_use": "choose_action",
-                        "lens_move": "leverage_tradeoff",
-                        "source_card_titles": ["Clarify interface ownership", "Meeting goal was unclear"],
-                        "calibration_target": "Postponing a smaller task will protect the main unblock",
-                        "expected_answer_type": "judgment",
-                        "question": "Which smaller task should be deliberately postponed so the main unblock happens?",
-                        "why_this_matters": "It protects the highest-value action from being crowded out.",
-                        "why_now": "The coach turn is moving from diagnosis into a focused tradeoff.",
-                        "expected_update": "The answer updates the action boundary for tomorrow's quest.",
-                        "proceed_when": "Proceed when one lower-value task is explicitly postponed in favor of the main unblock."
                     ]
                 ]
             ])
@@ -149,17 +145,35 @@ final class MockLLMClient: LLMClient {
 
         case .verifyQuest:
             let refs = request.sourceRecordIDs.filter { UUID(uuidString: $0) != nil }
-            return try encode([
+            let reportedEvidence = request.contextPayload?.currentInput.rawText ?? ""
+            let hasEvidence = !reportedEvidence.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            var response: [String: Any] = [
+                "calibration_assessment": [
+                    "evidence_status": hasEvidence ? "observed" : "missing",
+                    "criteria_status": hasEvidence ? "met" : "not_assessable",
+                    "judgment_status": hasEvidence ? "supported" : "unresolved",
+                    "evidence_quotes": hasEvidence ? [reportedEvidence] : []
+                ],
                 "calibration_note": "Original prediction: a visible artifact or response would clarify ownership. Actual evidence: the completed quest produced a concrete response but criteria were still a little broad. Evidence gained: ownership signals are easier to verify when tied to one artifact. Observable signal: the owner replied on the artifact. Completion criteria met: one visible artifact received a concrete response. Judgment update: keep tomorrow's quest anchored to a single observable artifact.",
                 "likely_issue": "unclear_criteria",
                 "recommendation": "Define tomorrow's quest so completion can be verified by one visible artifact or response.",
-                "growth_evidence_items": [[
+                "growth_evidence_items": hasEvidence ? [[
                     "category": "action",
                     "metric": "execution_reliability",
                     "title": "用可见产物留下了可核对的结果",
                     "source_refs": Array(refs.prefix(2))
-                ]]
-            ])
+                ]] : []
+            ]
+            if let principle = request.contextPayload?.verification?.trainingPrinciple {
+                response["expected_principle_practice_assessment"] = "夹具不判断是否实际执行过所选原则。"
+                response["principle_practice_assessment"] = [
+                    "principle_id": principle.principleId, "status": "not_assessable",
+                    "evidence_quotes": [], "reason": "夹具没有作出实际行为判断。"
+                ]
+            } else {
+                response["principle_practice_assessment"] = NSNull()
+            }
+            return try encode(response)
 
         case .extractPrinciple:
             return try encode([
@@ -207,9 +221,10 @@ final class MockLLMClient: LLMClient {
 
         case .evaluateGuidanceEvidence:
             return try encode([
-                "result": "supports",
+                "result": "insufficient",
                 "hint_id": "verification.result_not_completion",
-                "reason": "验证中记录了实际结果，而不是只报告完成。"
+                "reason": "本地预览不判断实际提示行为。",
+                "evidence_quotes": []
             ])
 
         case .diagnoseTrainingCase:
@@ -219,6 +234,8 @@ final class MockLLMClient: LLMClient {
                 "recommended_move": "surface_evidence_gap",
                 "training_dimension": "evidence_discipline",
                 "recommended_lens_id": "evidenceCheck",
+                "open_evidence_gaps": ["missing_observation"],
+                "source_refs": Array((request.contextPayload?.currentCase?.evidenceRefs ?? request.sourceRecordIDs).prefix(1)),
                 "reason": "当前卡片有判断，但还缺少能支持或推翻它的可观察证据。",
                 "confidence": 0.78
             ])

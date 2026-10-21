@@ -1248,6 +1248,36 @@ final class AppDatabase {
             registerVNextMigrations(on: &migrator)
         }
 
+        SQLiteLifeGuidanceRepository.registerMigration(on: &migrator)
+        migrator.registerMigration("v72_principle_review_drafts") { db in
+            guard try db.tableExists("daily_entries"),
+                  !(try db.columns(in: "daily_entries")).contains(where: { $0.name == "principle_review_drafts_json" })
+            else { return }
+            try db.alter(table: "daily_entries") { table in
+                table.add(column: "principle_review_drafts_json", .text)
+            }
+        }
+        migrator.registerMigration("v73_result_calibration_receipt") { db in
+            for (name, additions) in [
+                ("verifications", ["calibration_assessment_json"]),
+                ("growth_settlements", ["calibration_assessment_json", "calibration_note", "recommendation"])
+            ] where try db.tableExists(name) {
+                let columns = Set(try db.columns(in: name).map(\.name))
+                try db.alter(table: name) { table in
+                    for column in additions where !columns.contains(column) {
+                        table.add(column: column, .text)
+                    }
+                }
+            }
+        }
+        migrator.registerMigration("v74_principle_practice_assessment") { db in
+            guard try db.tableExists("verifications"),
+                  !(try db.columns(in: "verifications")).contains(where: { $0.name == "principle_practice_assessment_json" })
+            else { return }
+            try db.alter(table: "verifications") { table in
+                table.add(column: "principle_practice_assessment_json", .text)
+            }
+        }
         return migrator
     }
 
@@ -2250,6 +2280,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
     var yesterdayValueRating: String?
     var yesterdayJudgmentUpdate: String?
     var yesterdayEvidence: String
+    var principleReviewDraftsJson: String?
     var state: String
     var privacyFlagsJson: String?
     var createdAt: String
@@ -2277,6 +2308,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
         yesterdayValueRating = draft.yesterdayValueRating?.rawValue
         yesterdayJudgmentUpdate = draft.yesterdayJudgmentUpdate?.rawValue
         yesterdayEvidence = draft.yesterdayEvidence
+        principleReviewDraftsJson = try? PersistenceJSON.encode(draft.principleReviewDrafts)
         state = draft.state.rawValue
         privacyFlagsJson = nil
         createdAt = now
@@ -2348,6 +2380,7 @@ private struct DailyEntryRow: Codable, FetchableRecord, PersistableRecord {
             yesterdayValueRating: valueRating,
             yesterdayJudgmentUpdate: judgmentUpdate,
             yesterdayEvidence: yesterdayEvidence,
+            principleReviewDrafts: try PersistenceJSON.decode(principleReviewDraftsJson) ?? [:],
             state: state
         )
     }
@@ -2821,6 +2854,8 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
     var valueRating: String
     var judgmentUpdate: String
     var evidenceText: String
+    var calibrationAssessmentJson: String?
+    var principlePracticeAssessmentJson: String?
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -2838,6 +2873,8 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
         valueRating = verification.valueRating.rawValue
         judgmentUpdate = verification.judgmentUpdate.rawValue
         evidenceText = verification.evidenceText
+        calibrationAssessmentJson = try? PersistenceJSON.encodeOptional(verification.calibrationAssessment)
+        principlePracticeAssessmentJson = try? PersistenceJSON.encodeOptional(verification.principlePracticeAssessment)
         calibrationNote = verification.calibrationNote
         likelyIssue = verification.likelyIssue
         recommendation = verification.recommendation
@@ -2875,6 +2912,8 @@ private struct VerificationRow: Codable, FetchableRecord, PersistableRecord {
             judgmentUpdate: judgmentUpdate,
             evidenceText: evidenceText,
             calibrationNote: calibrationNote,
+            calibrationAssessment: try PersistenceJSON.decode(calibrationAssessmentJson),
+            principlePracticeAssessment: try PersistenceJSON.decode(principlePracticeAssessmentJson),
             likelyIssue: likelyIssue,
             recommendation: recommendation,
             createdAt: Date(mingsiStorageString: createdAt) ?? .now,
@@ -3365,8 +3404,15 @@ final class SQLiteMetricContributionRepository: MetricContributionRepository {
                 .order(Column("created_at").asc)
                 .fetchAll(db)
                 .map { try $0.domainModel() }
+            // Filter retired local authors before version selection so a newer
+            // heuristic row cannot mask an older report for the same source.
+            let snapshots = try MetricSnapshotRow
+                .filter(Set(contributions.map { $0.snapshotId.uuidString }).contains(Column("id")))
+                .fetchAll(db)
+                .map { try $0.domainModel() }
+            let retiredIDs = Set(snapshots.filter(\.isLegacyLocalHeuristic).map(\.id))
             return MetricContribution
-                .latestVersionsForHistory(contributions)
+                .latestVersionsForHistory(contributions.filter { !retiredIDs.contains($0.snapshotId) })
                 .filter(\.isAcceptedForTrend)
         }
     }
@@ -3399,7 +3445,16 @@ final class SQLitePromptRunRepository: PromptRunRepository {
 
     func savePromptRun(_ run: PromptRun) async throws {
         try await database.dbQueue.write { db in
-            try PromptRunRow(run: run).upsert(db)
+            var row = PromptRunRow(run: run)
+            if [PromptID.lifeGuidanceReview.rawValue, PromptID.lifeGuidanceShortlist.rawValue].contains(run.promptId),
+               let owner = run.sourceRecordIds.first(where: { $0.hasPrefix("mentor-session:") }) {
+                let sessionID = String(owner.dropFirst("mentor-session:".count))
+                guard UUID(uuidString: sessionID) != nil, try db.tableExists("mentor_sessions"),
+                      try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM mentor_sessions WHERE id = ?)", arguments: [sessionID]) == true
+                else { throw PersistenceError.validationFailed("guidance review owner was deleted") }
+                row.mentorSessionId = sessionID
+            }
+            try row.upsert(db)
         }
     }
 
@@ -3881,7 +3936,7 @@ final class SQLiteAssetPackRegistrySubscriptionRepository: AssetPackRegistrySubs
     }
 }
 
-struct AssetPackSignatureVerifier {
+struct AssetPackSignatureVerifier: Sendable {
     private struct BuiltInVerificationPolicy {
         let trustedPublisherPublicKeys: [String: [String]]
         let revokedPublisherIds: Set<String>
@@ -3937,7 +3992,12 @@ struct AssetPackSignatureVerifier {
 
     static let `default` = AssetPackSignatureVerifier(
         publicKeysForPublisher: { publisherId, verificationPolicyVersion in
+            #if DEBUG
+            // Public fixture identities must never establish production trust.
             verificationPolicies[verificationPolicyVersion]?.publicKeys(for: publisherId) ?? []
+            #else
+            []
+            #endif
         }
     )
 
@@ -3954,15 +4014,15 @@ struct AssetPackSignatureVerifier {
         )
     }
 
-    private let publicKeysForPublisher: (String, String) -> [String]
+    private let publicKeysForPublisher: @Sendable (String, String) -> [String]
 
-    init(publicKeyForPublisher: @escaping (String, String) -> String?) {
+    init(publicKeyForPublisher: @escaping @Sendable (String, String) -> String?) {
         self.publicKeysForPublisher = { publisherId, verificationPolicyVersion in
             publicKeyForPublisher(publisherId, verificationPolicyVersion).map { [$0] } ?? []
         }
     }
 
-    init(publicKeysForPublisher: @escaping (String, String) -> [String]) {
+    init(publicKeysForPublisher: @escaping @Sendable (String, String) -> [String]) {
         self.publicKeysForPublisher = publicKeysForPublisher
     }
 
@@ -4016,7 +4076,7 @@ struct AssetPackSignatureVerifier {
     }
 }
 
-struct AssetPackTrustPolicySignatureVerifier {
+struct AssetPackTrustPolicySignatureVerifier: Sendable {
     private struct BuiltInVerificationPolicy {
         let trustedRegistryPublicKeys: [String: [String]]
 
@@ -4041,13 +4101,17 @@ struct AssetPackTrustPolicySignatureVerifier {
 
     static let `default` = AssetPackTrustPolicySignatureVerifier(
         publicKeysForRegistry: { registryId, verificationPolicyVersion in
+            #if DEBUG
             verificationPolicies[verificationPolicyVersion]?.publicKeys(for: registryId) ?? []
+            #else
+            []
+            #endif
         }
     )
 
-    private let publicKeysForRegistry: (String, String) -> [String]
+    private let publicKeysForRegistry: @Sendable (String, String) -> [String]
 
-    init(publicKeysForRegistry: @escaping (String, String) -> [String]) {
+    init(publicKeysForRegistry: @escaping @Sendable (String, String) -> [String]) {
         self.publicKeysForRegistry = publicKeysForRegistry
     }
 
@@ -4719,7 +4783,23 @@ enum DataExportSectionName: String, CaseIterable {
     case sideQuestCorrectionEvents = "side_quest_correction_events"
     case captureFragments = "capture_fragments"
     case dailyCaptureDigests = "daily_capture_digests"
+    case lifeGuidanceExposures = "life_guidance_exposures"
+    case lifeGuidanceFeedback = "life_guidance_feedback"
     case singleNudgeSessions = "single_nudge_sessions"
+    // Mentor tables are explicit export sections so a session can be moved
+    // without losing its request context, source ownership, or saved lesson.
+    case mentorSessions = "mentor_sessions"
+    case mentorItems = "mentor_items"
+    case mentorRequests = "mentor_requests"
+    case mentorRequestResults = "mentor_request_results"
+    case mentorUnderstandings = "mentor_understandings"
+    case mentorFeedback = "mentor_feedback"
+    case mentorSourceLinks = "mentor_source_links"
+    case mentorCorrections = "mentor_corrections"
+    case mentorLessonSnapshots = "mentor_lesson_snapshots"
+    case mentorFeedbackResets = "mentor_feedback_resets"
+    case mentorRecallContinuations = "mentor_recall_continuations"
+    case mentorUsageEvents = "mentor_usage_events"
 }
 
 final class SQLiteDataExportRepository: DataExportRepository {
@@ -4735,22 +4815,22 @@ final class SQLiteDataExportRepository: DataExportRepository {
 
     func exportPackage() async throws -> DataExportPackage {
         let createdAt = Date()
-        let sections = try await database.dbQueue.read { db -> [String: [[String: Any]]] in
-            var result: [String: [[String: Any]]] = [:]
+        return try await database.dbQueue.read { db in
+            var sections: [String: [[String: Any]]] = [:]
             for section in DataExportSectionName.allCases {
-                result[section.rawValue] = try Self.rows(in: section.rawValue, db: db)
+                sections[section.rawValue] = try Self.rows(in: section.rawValue, db: db)
             }
-            return result
+            let counts = Dictionary(uniqueKeysWithValues: sections.map { ($0.key, $0.value.count) })
+            let payload: [String: Any] = [
+                "schema_version": 1,
+                "created_at": createdAt.mingsiStorageString,
+                "sections": sections,
+                "counts": counts
+            ]
+            // Serialize on the database queue so untyped row values never cross isolation boundaries.
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            return DataExportPackage(data: data, counts: counts, createdAt: createdAt)
         }
-        let counts = Dictionary(uniqueKeysWithValues: sections.map { ($0.key, $0.value.count) })
-        let payload: [String: Any] = [
-            "schema_version": 1,
-            "created_at": createdAt.mingsiStorageString,
-            "sections": sections,
-            "counts": counts
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-        return DataExportPackage(data: data, counts: counts, createdAt: createdAt)
     }
 
     private static func rows(in tableName: String, db: Database) throws -> [[String: Any]] {
@@ -5671,18 +5751,14 @@ private enum PersistenceJSON {
 }
 
 private extension Date {
-    static let mingsiStorageFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    static let mingsiStorageDateStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
 
     var mingsiStorageString: String {
-        Self.mingsiStorageFormatter.string(from: self)
+        formatted(Self.mingsiStorageDateStyle)
     }
 
     init?(mingsiStorageString: String) {
-        guard let date = Self.mingsiStorageFormatter.date(from: mingsiStorageString) else {
+        guard let date = try? Date(mingsiStorageString, strategy: Self.mingsiStorageDateStyle) else {
             return nil
         }
         self = date

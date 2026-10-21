@@ -14,6 +14,7 @@ struct VerifyQuestInput: Hashable {
     var rawText: String
 }
 
+
 struct VerifyQuestResult: Hashable {
     var calibrationNote: String
     var likelyIssue: String?
@@ -22,6 +23,8 @@ struct VerifyQuestResult: Hashable {
     /// Model-authored evidence that may be shown in the one-time settlement.
     /// It is deliberately separate from metric contributions and scores.
     var growthEvidenceItems: [GrowthSettlementEvidenceItem] = []
+    var calibrationAssessment: CalibrationAssessment? = nil
+    var principlePracticeAssessment: PrinciplePracticeAssessment? = nil
 }
 
 struct TodayAIContext: Hashable {
@@ -64,6 +67,130 @@ final class TodayAIService {
         self.parser = parser
         self.contextAssembler = contextAssembler
         self.coachPromptTurnRepository = coachPromptTurnRepository
+    }
+
+    func generateSingleNudge(for context: TodayAIContext) async throws -> CoachGenerated<String> {
+        // Kept for source compatibility; callers should pass the dedicated nudge input overload.
+        try await generateSingleNudge(input: context.draft.rawText, sessionMode: context.draft.sessionMode)
+    }
+
+    /// Single-nudge requests intentionally bypass the daily context assembler.
+    /// A continuation may include only the root concern and its direct parent
+    /// round; cards, quests, principles, and other Today state never enter it.
+    func generateSingleNudge(
+        input: String,
+        sessionMode: SessionMode,
+        sourceRecordIDs: [String] = [],
+        alternateAngle: Bool = false,
+        continuationKind: SingleNudgeContinuationKind = .initial,
+        previousRound: SingleNudgeSession? = nil
+    ) async throws -> CoachGenerated<String> {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw TodayAIParsingError.emptyResult }
+        let continuation = alternateAngle ? SingleNudgeContinuationKind.alternateAngle : continuationKind
+        let priorMaterial: String
+        if let previousRound {
+            priorMaterial = [
+                "原卡点：\(value)",
+                previousRound.question.map { "上一问：\($0)" },
+                previousRound.after.map { "上一轮表达：\($0)" },
+                previousRound.diagnosis.map { "上一轮点拨：\($0)" }
+            ]
+            .compactMap { $0 }
+            .joined(separator: "\n")
+        } else {
+            priorMaterial = value
+        }
+        let base = promptProvider.template(for: .singleNudge, mode: sessionMode)
+        let request = LLMRequest(
+            prompt: base,
+            inputSummary: "单次点拨输入",
+            contextPayload: PromptContextPayload(
+                currentInput: .init(rawText: priorMaterial),
+                userChoice: .init(sessionMode: sessionMode.rawValue),
+                directives: .init(
+                    privacyRules: "只处理本条点拨链材料；continuation_mode=\(continuation.rawValue)。" +
+                        (continuation == .alternateAngle ? "避开上一轮的切入点。" : "") +
+                        (continuation == .deeper ? "基于用户刚才的表达进一步追问。" : "")
+                )
+            ),
+            sourceRecordIDs: sourceRecordIDs
+        )
+        do {
+            try Task.checkCancellation()
+            let data = try await llmClient.complete(request)
+            try Task.checkCancellation()
+            let question = try parser.parseSingleNudge(from: data)
+            await recordCoachTurnOutcome(request, outcome: .responseReceived, detail: nil)
+            return CoachGenerated(value: question, promptRunId: request.traceID)
+        } catch {
+            await recordCoachTurnFailure(for: request, error: error)
+            throw error
+        }
+    }
+
+    func reviewSingleNudge(
+        input: String,
+        question: String,
+        answer: String,
+        before: String? = nil,
+        sessionMode: SessionMode,
+        sourceRecordIDs: [String] = []
+    ) async throws -> CoachGenerated<SingleNudgeReview> {
+        let cleanInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanInput.isEmpty, !cleanQuestion.isEmpty, !cleanAnswer.isEmpty else {
+            throw TodayAIParsingError.emptyResult
+        }
+        let base = promptProvider.template(for: .singleNudge, mode: sessionMode)
+        let reviewPrompt = PromptTemplate(
+            id: .singleNudge,
+            version: "\(base.version)-review",
+            systemPolicyVersion: base.systemPolicyVersion,
+            contextPolicyVersion: base.contextPolicyVersion,
+            evalSuiteVersion: base.evalSuiteVersion,
+            rollbackTargetVersion: base.rollbackTargetVersion,
+            sourceKind: base.sourceKind,
+            packId: base.packId,
+            packVersion: base.packVersion,
+            packDisplayName: base.packDisplayName,
+            systemText: base.systemText,
+            userText: """
+            Give a short, in-the-moment MingSi response to only this nudge round. Return strict JSON with exactly diagnosis, cognitive_shift, thinking_action, unresolved_uncertainty, transition_to_verification; the first four are strings or null and the last is a boolean.
+            diagnosis is a brief point-out of the thinking move, not a diagnosis of the person. Set cognitive_shift only when the before/after material shows a real change in judgment criterion, assumption, or causal explanation; otherwise null. thinking_action may only be a thinking move the user can do now, never an automatic task or plan. Set transition_to_verification true only when the material contains a judgment, prediction, or action that future facts could test. Do not create any asset, quest, verification, principle, metric, or task.
+            """,
+            outputSchemaVersion: 2
+        )
+        let beforeText = (before ?? cleanInput).trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = "原始输入:\n\(cleanInput)\n\n回答前想法:\n\(beforeText)\n\n点拨问题:\n\(cleanQuestion)\n\n用户回答:\n\(cleanAnswer)"
+        let request = LLMRequest(
+            prompt: reviewPrompt,
+            inputSummary: "单次点拨回答",
+            contextPayload: PromptContextPayload(
+                currentInput: .init(rawText: raw),
+                userChoice: .init(sessionMode: sessionMode.rawValue),
+                directives: .init(privacyRules: "只分析这次点拨的输入、问题和回答。")
+            ),
+            sourceRecordIDs: sourceRecordIDs
+        )
+        do {
+            try Task.checkCancellation()
+            let data = try await llmClient.complete(request)
+            try Task.checkCancellation()
+            var review = try parser.parseSingleNudgeReview(from: data)
+            // A shift is only defensible when both sides contain distinct material.
+            let normalizedBefore = beforeText.lowercased()
+            let normalizedAfter = cleanAnswer.lowercased()
+            if normalizedBefore.count < 4 || normalizedAfter.count < 4 || normalizedBefore == normalizedAfter {
+                review.cognitiveShift = nil
+            }
+            await recordCoachTurnOutcome(request, outcome: .responseReceived, detail: nil)
+            return CoachGenerated(value: review, promptRunId: request.traceID)
+        } catch {
+            await recordCoachTurnFailure(for: request, error: error)
+            throw error
+        }
     }
 
     func organizeCards(for context: TodayAIContext) async throws -> [ThinkingCard] {
@@ -166,6 +293,14 @@ final class TodayAIService {
         for context: TodayAIContext,
         onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
     ) async throws -> CoachGenerated<[ReflectionQuestion]> {
+        let generated = try await generateQuestionTurnWithTrace(for: context, onProgress: onProgress)
+        return CoachGenerated(value: generated.value.questions, promptRunId: generated.promptRunId)
+    }
+
+    func generateQuestionTurnWithTrace(
+        for context: TodayAIContext,
+        onProgress: @escaping (LLMStreamEvent) async -> Void = { _ in }
+    ) async throws -> CoachGenerated<CoachQuestionTurn> {
         let request = request(
             promptID: .generateQuestions,
             context: context
@@ -186,8 +321,15 @@ final class TodayAIService {
         )
 
         do {
-            let questions = try parser.parseQuestions(from: data)
+            let turn = try parser.parseQuestionTurn(from: data)
+            let questions = turn.questions
             let visiblePayload = request.contextPayload
+            if let explanation = turn.explanation {
+                let allowed = Set(visiblePayload?.cards.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) } ?? [])
+                guard explanation.sourceCardTitles.allSatisfy(allowed.contains) else {
+                    throw TodayAIParsingError.qualityGateFailed(["invalid_explanation_source_grounding"])
+                }
+            }
             try validateCoachingQuality(
                 PromptCoachingQualityPolicy.evaluateQuestions(
                     questions,
@@ -197,11 +339,26 @@ final class TodayAIService {
                     baselineTrainingDimensions: visiblePayload?.trainingPrescription?.baselineTrainingDimensions ?? [],
                     coachTurnState: coachTurnState(from: visiblePayload),
                     relevantPrinciples: visiblePayload?.principles ?? [],
-                    coachObservation: visiblePayload?.coachObservation
+                    coachObservation: visiblePayload?.coachObservation,
+                    // The current 1.23 question contract treats local coach
+                    // plans as hypotheses. Keep structural checks for the
+                    // response, but do not reject an evidence-grounded move
+                    // solely because it diverges from a stale plan.
+                    enforceCoachAlignment: false,
+                    // Today is turn based. The model may decide that no
+                    // question is needed, but it must never send a batch of
+                    // future questions for the UI to reveal at once.
+                    maxQuestionsPerTurn: 1,
+                    // Retrieved principles are optional context. Only a
+                    // deliberately principle-comparison turn should require
+                    // the question to replay one; keyword retrieval alone
+                    // must not turn history into a hidden assignment.
+                    requirePrincipleReplay: false,
+                    allowedSourceCardTitles: Set(visiblePayload?.cards.map(\.title) ?? [])
                 )
             )
             return CoachGenerated(
-                value: questions,
+                value: turn,
                 promptRunId: coachPromptTurnRepository == nil ? nil : request.traceID
             )
         } catch {
@@ -275,13 +432,21 @@ final class TodayAIService {
         )
 
         do {
-            let quests = try parser.parseQuests(from: data)
+            let quests = try parser.parseQuests(from: data, enforceSingleValidationAction: true)
+            if quests.isEmpty {
+                return CoachGenerated(value: [], promptRunId: coachPromptTurnRepository == nil ? nil : request.traceID)
+            }
             let visiblePayload = request.contextPayload
             try validateCoachingQuality(
                 PromptCoachingQualityPolicy.evaluateQuests(
                     quests,
                     selectedLens: effectiveTrainingLens(forPromptPayload: visiblePayload, fallback: context),
-                    coachTurnState: coachTurnState(from: visiblePayload)
+                    coachTurnState: coachTurnState(from: visiblePayload),
+                    // The current single-action contract uses the lens only
+                    // when it fits. A useful comparison must not be rejected
+                    // solely because its method label differs from that lens.
+                    requireSelectedLensMove: false,
+                    allowedSourceCardTitles: Set(visiblePayload?.cards.map(\.title) ?? [])
                 )
             )
             return CoachGenerated(
@@ -308,7 +473,12 @@ final class TodayAIService {
         )
         let data = try await completePossiblyStreaming(request, onProgress: onProgress)
         let principles = try parser.parsePrinciples(from: data)
-        try validateCoachingQuality(PromptCoachingQualityPolicy.evaluatePrinciples(principles))
+        try validateCoachingQuality(
+            PromptCoachingQualityPolicy.evaluatePrinciples(
+                principles,
+                allowedSourceCardTitles: Set(request.contextPayload?.cards.map(\.title) ?? [])
+            )
+        )
         return principles
     }
 
@@ -353,6 +523,12 @@ final class TodayAIService {
             allowedGrowthEvidenceRefs: Set([input.sourceRecordIDs.first ?? "", input.verificationId.uuidString])
                 .filter { !$0.isEmpty }
         )
+        if template.outputSchemaVersion >= 4 {
+            guard let assessment = result.calibrationAssessment,
+                  assessment.isGrounded(in: input.rawText, hasGrowthEvidence: !result.growthEvidenceItems.isEmpty) else {
+                throw TodayAIParsingError.qualityGateFailed(["invalidCalibrationAssessment"])
+            }
+        }
         try validateCoachingQuality(
             PromptCoachingQualityPolicy.evaluateVerification(
                 result,
@@ -360,6 +536,21 @@ final class TodayAIService {
                 hasTrainingPrinciple: input.trainingPrinciple != nil
             )
         )
+        if let assessment = result.principlePracticeAssessment {
+            guard assessment.isGrounded(in: input.rawText,
+                expectedPrincipleID: input.trainingPrinciple.flatMap { UUID(uuidString: $0.principleId) }) else {
+                throw TodayAIParsingError.qualityGateFailed(["invalidPrinciplePracticeAssessment"])
+            }
+            if assessment.status != .notAssessable {
+                guard let principle = input.trainingPrinciple,
+                      principle.triggerContext?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                      principle.actions?.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) == true else {
+                    throw TodayAIParsingError.qualityGateFailed(["missingPrincipleBehaviorContext"])
+                }
+            }
+        } else if template.outputSchemaVersion >= 5, input.trainingPrinciple != nil {
+            throw TodayAIParsingError.qualityGateFailed(["missingPrinciplePracticeAssessment"])
+        }
         return result
     }
 
@@ -383,7 +574,7 @@ final class TodayAIService {
         detail: String?
     ) async {
         guard let coachPromptTurnRepository,
-              request.prompt.id == .generateQuestions || request.prompt.id == .generateQuests || request.prompt.id == .reviewCoachAnswer
+              request.prompt.id == .generateQuestions || request.prompt.id == .generateQuests || request.prompt.id == .reviewCoachAnswer || request.prompt.id == .singleNudge
         else { return }
         try? await coachPromptTurnRepository.recordOutcome(
             promptRunId: request.traceID,
@@ -420,6 +611,8 @@ final class TodayAIService {
                 return "empty_result"
             case .qualityGateFailed(let reasons):
                 return "quality_gate:\(reasons.sorted().joined(separator: ","))"
+            case .invalidSingleNudgeQuestion:
+                return "invalid_single_nudge_question"
             }
         }
         if let clientError = error as? LLMClientError {
@@ -430,6 +623,10 @@ final class TodayAIService {
                 return "invalid_endpoint"
             case .invalidResponse:
                 return "invalid_response"
+            case .incompleteResponse:
+                return "incomplete_response"
+            case .providerResponseFailed:
+                return "provider_response_failed"
             case .httpStatus(let status, _):
                 return "http_\(status)"
             case .encodingFailed:
@@ -823,95 +1020,96 @@ struct CoachContextMemoryPolicy {
 
     private func allowsCoachMemory(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
         case .generateQuestions, .generateQuests, .extractPrinciple:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
              .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
-             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsPrincipleReferences(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
         case .generateQuestions, .generateQuests:
             return true
         case .extractPrinciple, .organizeCards, .recommendLenses, .verifyQuest,
              .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
-             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsLensFeedback(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
         case .generateQuestions, .generateQuests:
             return true
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
              .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
-             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsTrainingPrescription(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
-        case .generateQuestions, .generateQuests, .extractPrinciple:
+        case .generateQuests, .extractPrinciple:
             return true
+        case .generateQuestions:
+            // Question generation decides whether the user's current material
+            // needs one useful next move. A stored training prescription is a
+            // prior, not an instruction for this turn.
+            return false
         case .organizeCards, .recommendLenses, .verifyQuest, .suggestProjectLinks,
              .generateProjectInsights, .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
-             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsCoachTurn(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
-        case .generateQuestions, .generateQuests:
+        case .generateQuests:
             return true
+        case .generateQuestions:
+            // The current question turn must interpret today's evidence before
+            // any stateful coach plan can influence the wording.
+            return false
         case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
              .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
-             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsCoachObservation(_ promptID: PromptID) -> Bool {
         switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
+        case .mentorRespond, .mentorDraftUnderstanding, .lifeGuidanceReview, .lifeGuidanceShortlist:
             return false
-        case .generateQuestions:
-            return true
-        case .organizeCards, .recommendLenses, .generateQuests, .verifyQuest,
+        case .generateQuestions, .organizeCards, .recommendLenses, .generateQuests, .verifyQuest,
              .extractPrinciple, .suggestProjectLinks, .generateProjectInsights,
              .suggestProjectMerges, .generateSideQuest, .weeklyCalibration, .monthlyGrowth,
-             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
+             .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer, .digestCaptures, .singleNudge:
             return false
         }
     }
 
     private func allowsCoachPatternSummary(_ promptID: PromptID) -> Bool {
-        switch promptID {
-        case .mentorRespond, .mentorDraftUnderstanding:
-            return false
-        case .generateQuestions, .generateQuests:
-            return true
-        case .organizeCards, .recommendLenses, .verifyQuest, .extractPrinciple,
-             .suggestProjectLinks, .generateProjectInsights, .suggestProjectMerges, .generateSideQuest,
-             .weeklyCalibration, .monthlyGrowth, .recommendGuidance, .evaluateGuidanceEvidence, .diagnoseTrainingCase, .reviewCoachAnswer:
-            return false
-        }
+        // Old local diagnoses mixed raw material and assistant-authored text.
+        // Keep decoding support, but never send them as evidence or a prior.
+        false
     }
+
 }
 
 struct DefaultContextAssembler: ContextAssembler {
@@ -943,21 +1141,16 @@ struct DefaultContextAssembler: ContextAssembler {
                 principleSelectionRule: !relevantPrinciples.isEmpty
                     ? "The principles supplied here are bounded candidate material, not a local conclusion. You are the final decision maker: select only a candidate that is materially relevant to the current matter, and ignore all candidates that do not fit today's evidence. Never claim a principle was applied unless the current evidence supports that claim."
                     : nil,
-                coachDiagnosisRule: memory.coachDiagnosis != nil
-                    ? "Use coachDiagnosis as a coach plan, not source evidence. If readiness is not_ready, ask clarification or evidence-gap questions before converging. Treat user override as a user choice to proceed, not proof that the coach diagnosis was wrong."
-                    : nil,
-                coachTurnRule: memory.coachTurnState != nil
-                    ? "Use coachTurnState as the stateful coach turn plan. If readiness is not_ready, ask clarification or evidence-gap questions before converging. If readiness is ready, form a verifiable action. Treat user override as permission to proceed, not proof that the coach was wrong."
-                    : nil,
-                coachTeachingRule: memory.coachTeachingPlan != nil
-                    ? "Use coachTeachingPlan as the teaching frame. Start from the missing thinking move, train the named target, keep why_not_answer visible, use repairQuestion when the user's answer still leaves the gap open, ask whether prior experience should be reproduced/adapted/rejected, and only proceed when the proceed standard is satisfied."
-                    : nil,
+                // The versioned action-design template governs these optional
+                // plans. Legacy directives required another repair question and
+                // contradicted the user's explicit choice to carry an open gap.
+                coachDiagnosisRule: nil,
+                coachTurnRule: nil,
+                coachTeachingRule: nil,
                 coachObservationRule: memory.coachObservation != nil
                     ? "Use coachObservation before wording questions: cite what was observed, the primary gap, the training ability, the repair ask, and the experience replay prompt. Treat coachObservation as the coach's interpretation of confirmed material, not as new source evidence. Create one primary training contract from trainingAbility, primaryGap, and feedback.ask. The first question must ask the user to produce missing material; it must not provide the missing material or solve the case. why_now must name the observed gap, expected_update must name the user-owned training output, and proceed_when must name a self-checkable standard. If experienceReplayPrompt is relevant, ask whether prior experience should reproduce, adapt, or reject today's move before applying it."
                     : nil,
-                coachPatternSummaryRule: memory.coachPatternSummary != nil
-                    ? "Use coachPatternSummary only as a weak prior about the user's repeated gaps. Do not quote or infer raw history from it. Confirm today's gap from today's material first; if the pattern repeats, choose one minimal training action that helps the user practice the named foundational ability."
-                    : nil
+                coachPatternSummaryRule: nil
             )
         )
 
@@ -970,7 +1163,8 @@ struct DefaultContextAssembler: ContextAssembler {
                 for: context,
                 relevantPrinciples: relevantPrinciples,
                 existingPrinciples: memory.existingPrinciples,
-                coachPatternSummary: memory.coachPatternSummary
+                coachPatternSummary: memory.coachPatternSummary,
+                lensFeedback: memory.lensFeedback
             )
         )
     }
@@ -1101,12 +1295,14 @@ struct DefaultContextAssembler: ContextAssembler {
         for context: TodayAIContext,
         relevantPrinciples: [PrincipleAsset],
         existingPrinciples: [PrincipleAsset],
-        coachPatternSummary: CoachPatternSummary?
+        coachPatternSummary: CoachPatternSummary?,
+        lensFeedback: [PromptContextPayload.LensFeedbackContext]
     ) -> [String] {
         var ids = sourceRecordIDs(for: context)
         ids.append(contentsOf: relevantPrinciples.map { $0.id.uuidString })
         ids.append(contentsOf: existingPrinciples.map { $0.id.uuidString })
         ids.append(contentsOf: coachPatternSummary?.sourceDailyEntryIds ?? [])
+        ids.append(contentsOf: lensFeedback.flatMap { [$0.verificationId, $0.trainingCaseId].compactMap { $0 } })
         return Array(Set(ids)).sorted()
     }
 

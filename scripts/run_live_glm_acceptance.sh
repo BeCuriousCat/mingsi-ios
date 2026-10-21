@@ -9,12 +9,14 @@ DESTINATION="$MINGSI_FIXED_SIMULATOR_DESTINATION"
 DERIVED_DATA_PATH="${TMPDIR:-/tmp}/mingsi-live-glm-acceptance-dd"
 SOURCE_XCTESTRUN=""
 OUTPUT_XCTESTRUN=""
+RESULT_BUNDLE_PATH=""
 API_KEY="${MINGSI_LIVE_GLM_API_KEY:-${MINGSI_GLM_API_KEY:-${GLM_API_KEY:-}}}"
 BASE_URL="${MINGSI_LIVE_GLM_BASE_URL:-}"
 MODEL="${MINGSI_LIVE_GLM_MODEL:-}"
 DRY_RUN=0
 PREPARE_ONLY=0
 CAREER_GOLDEN=0
+MENTOR_SEMANTIC=0
 TEST_SELECTOR="MingSiTests/LiveGLMAcceptanceTests/testLiveGLMCompleteReturnsJSONWhenExplicitlyEnabled"
 
 usage() {
@@ -31,7 +33,9 @@ Options:
   --derived-data-path PATH    DerivedData path for build-for-testing.
   --source-xctestrun PATH     Existing .xctestrun to copy and inject.
   --output-xctestrun PATH     Output .xctestrun path after injection.
+  --result-bundle-path PATH   Live test xcresult output path. Default: unique path in DerivedData.
   --career-golden             Run the three live synthetic career golden scenarios.
+  --mentor-semantic           Run the nine live synthetic mentor semantic scenarios.
   --prepare-only              Create injected .xctestrun, but do not run XCTest.
   --dry-run                   Print sanitized commands; do not write or run.
   -h, --help                  Show this help.
@@ -72,9 +76,18 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_XCTESTRUN="${2:-}"
       shift 2
       ;;
+    --result-bundle-path)
+      RESULT_BUNDLE_PATH="${2:-}"
+      shift 2
+      ;;
     --career-golden)
       CAREER_GOLDEN=1
       TEST_SELECTOR="MingSiTests/LiveGLMAcceptanceTests/testLiveGLMCareerGoldenQuestionsWhenExplicitlyEnabled"
+      shift
+      ;;
+    --mentor-semantic)
+      MENTOR_SEMANTIC=1
+      TEST_SELECTOR="MingSiTests/LiveGLMAcceptanceTests/testLiveMentorSemanticCasesWhenExplicitlyEnabled"
       shift
       ;;
     --prepare-only)
@@ -105,6 +118,9 @@ fi
 
 if [[ -z "$OUTPUT_XCTESTRUN" ]]; then
   OUTPUT_XCTESTRUN="$DERIVED_DATA_PATH/Build/Products/MingSi_MingSi_live-glm.xctestrun"
+fi
+if [[ -z "$RESULT_BUNDLE_PATH" ]]; then
+  RESULT_BUNDLE_PATH="$DERIVED_DATA_PATH/Logs/Test/Live-GLM-$(date +%Y%m%d-%H%M%S)-$$.xcresult"
 fi
 
 mask_value() {
@@ -160,17 +176,57 @@ inject_environment() {
   }
 
   mkdir -p "$(dirname "$output")"
-  cp "$source" "$output"
+  # The default output path is the build product itself. Copying a file onto
+  # itself makes `cp` fail before the semantic test can run. Use a short-lived
+  # source copy in that case so the same path remains a valid injected output.
+  local temporary_source=""
+  if [[ "$source" == "$output" ]]; then
+    temporary_source="${output}.source.$$"
+    cp "$source" "$temporary_source"
+    source="$temporary_source"
+  else
+    cp "$source" "$output"
+  fi
+
+  cleanup_injected_source() {
+    if [[ -n "$temporary_source" ]]; then
+      rm -f "$temporary_source"
+    fi
+  }
+  trap cleanup_injected_source RETURN
 
   local dict_paths=(
     ":TestConfigurations:0:TestTargets:0:EnvironmentVariables"
-    ":TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables"
+    # Xcode 26 writes the test target as a top-level dictionary keyed by its
+    # blueprint name.  Keep both locations: older xctestrun files use the
+    # nested TestConfigurations shape, while current build-for-testing output
+    # uses the top-level shape.  Without the latter the opt-in flags are
+    # written to a path xcodebuild ignores and the semantic test silently
+    # skips in the hosted app process.
+    ":MingSiTests:EnvironmentVariables"
   )
+
+  # Xcode normalizes TestingEnvironmentVariables as filesystem paths, which
+  # corrupts HTTPS URLs. Remove stale custom entries; inject only into normal
+  # EnvironmentVariables, preserving Xcode's own testing environment.
+  local testing_path variable
+  for testing_path in \
+    ":TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables" \
+    ":MingSiTests:TestingEnvironmentVariables"; do
+    for variable in MINGSI_LIVE_GLM_ACCEPTANCE MINGSI_LIVE_GLM_CAREER_GOLDEN \
+      MINGSI_LIVE_MENTOR_ACCEPTANCE MINGSI_LIVE_GLM_API_KEY \
+      MINGSI_LIVE_GLM_BASE_URL MINGSI_LIVE_GLM_MODEL; do
+      /usr/libexec/PlistBuddy -c "Delete ${testing_path}:${variable}" "$output" >/dev/null 2>&1 || true
+    done
+  done
 
   for dict_path in "${dict_paths[@]}"; do
     plist_set_string "$output" "$dict_path" "MINGSI_LIVE_GLM_ACCEPTANCE" "1"
     if [[ "$CAREER_GOLDEN" == "1" ]]; then
       plist_set_string "$output" "$dict_path" "MINGSI_LIVE_GLM_CAREER_GOLDEN" "1"
+    fi
+    if [[ "$MENTOR_SEMANTIC" == "1" ]]; then
+      plist_set_string "$output" "$dict_path" "MINGSI_LIVE_MENTOR_ACCEPTANCE" "1"
     fi
     if [[ -n "$API_KEY" ]]; then
       plist_set_string "$output" "$dict_path" "MINGSI_LIVE_GLM_API_KEY" "$API_KEY"
@@ -190,6 +246,9 @@ print_plan() {
   if [[ "$CAREER_GOLDEN" == "1" ]]; then
     mask_value "MINGSI_LIVE_GLM_CAREER_GOLDEN" "1"
   fi
+  if [[ "$MENTOR_SEMANTIC" == "1" ]]; then
+    mask_value "MINGSI_LIVE_MENTOR_ACCEPTANCE" "1"
+  fi
   if [[ -n "$API_KEY" ]]; then
     mask_value "MINGSI_LIVE_GLM_API_KEY" "$API_KEY"
   else
@@ -207,8 +266,9 @@ print_plan() {
   fi
   printf 'Would write injected .xctestrun: %s\n' "$OUTPUT_XCTESTRUN"
   printf 'Would run test-without-building:\n'
-  printf 'xcodebuild -xctestrun %q -destination %q -derivedDataPath %q -only-testing:%q test-without-building\n' \
-    "$OUTPUT_XCTESTRUN" "$DESTINATION" "$DERIVED_DATA_PATH" "$TEST_SELECTOR"
+  printf 'xcodebuild -xctestrun %q -destination %q -derivedDataPath %q -resultBundlePath %q -only-testing:%q test-without-building\n' \
+    "$OUTPUT_XCTESTRUN" "$DESTINATION" "$DERIVED_DATA_PATH" "$RESULT_BUNDLE_PATH" "$TEST_SELECTOR"
+  printf 'Acceptance requires one passed test, zero skipped tests, and zero failures.\n'
 }
 
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -246,5 +306,21 @@ xcodebuild \
   -xctestrun "$OUTPUT_XCTESTRUN" \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  -resultBundlePath "$RESULT_BUNDLE_PATH" \
   -only-testing:"$TEST_SELECTOR" \
   test-without-building
+
+# XCTest returns success for skipped tests. A live acceptance gate must prove
+# that its selected test actually ran before the Alpha runner can accept it.
+summary="$(xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE_PATH")"
+if ! jq -e '.totalTestCount == 1 and .passedTests == 1 and .skippedTests == 0 and .failedTests == 0' \
+  <<< "$summary" >/dev/null; then
+  printf 'live_glm: not_accepted\n' >&2
+  printf 'The selected live test did not pass without skips. Inspect %s.\n' "$RESULT_BUNDLE_PATH" >&2
+  exit 3
+fi
+printf 'live_glm: verified_execution\n'
+printf 'result_bundle: %s\n' "$RESULT_BUNDLE_PATH"
+if [[ "$MENTOR_SEMANTIC" == "1" ]]; then
+  printf 'semantic_review: required; inspect every captured request and raw response\n'
+fi

@@ -5,6 +5,7 @@ enum TodayAIParsingError: Error, Equatable {
     case invalidJSON
     case emptyResult
     case qualityGateFailed([String])
+    case invalidSingleNudgeQuestion
 }
 
 struct GrowthReportResult: Hashable {
@@ -18,6 +19,70 @@ struct TodayAIResponseParser {
     init() {
         decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+    }
+
+    /// Deterministic role-stereotype patterns. The nudge prompt forbids
+    /// inferring ability or motive from a person's job; this gate backs that
+    /// rule for the phrasings a model most plausibly emits.
+    private static let singleNudgeStereotypeMarkers = [
+        "天生", " inherently", " by nature",
+        "是不是不擅长", "是不是都不擅长", "是不是不适合", "都不会沟通", "都不擅长",
+        "都喜欢", "都保守", "都冒险", "都斤斤计较"
+    ]
+
+    /// Strictly parses a single-nudge response: exactly one non-empty question
+    /// and no additional keys are accepted.
+    func parseSingleNudge(from data: Data) throws -> String {
+        let object = try JSONSerialization.jsonObject(with: normalizedPayloadData(from: data), options: [])
+        guard let dictionary = object as? [String: Any], dictionary.count == 1,
+              let raw = dictionary["question"] as? String else {
+            throw TodayAIParsingError.invalidSingleNudgeQuestion
+        }
+        let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compact = question.replacingOccurrences(of: " ", with: "")
+        let lowered = question.lowercased()
+        let stereotype = Self.singleNudgeStereotypeMarkers.contains { marker in
+            compact.contains(marker.replacingOccurrences(of: " ", with: "")) ||
+                lowered.contains(marker.lowercased())
+        }
+        guard !question.isEmpty,
+              question.count <= 180,
+              !question.contains(where: \.isNewline),
+              question.filter({ $0 == "?" || $0 == "？" }).count == 1,
+              !compact.contains("你怎么看"),
+              !stereotype else {
+            throw TodayAIParsingError.invalidSingleNudgeQuestion
+        }
+        return question
+    }
+
+    func parseSingleNudgeReview(from data: Data) throws -> SingleNudgeReview {
+        let object = try JSONSerialization.jsonObject(with: normalizedPayloadData(from: data), options: [])
+        let allowed = Set(["diagnosis", "cognitive_shift", "thinking_action", "unresolved_uncertainty", "transition_to_verification"])
+        guard let d = object as? [String: Any], Set(d.keys) == allowed,
+              let diagnosis = d["diagnosis"] as? String,
+              let transition = d["transition_to_verification"] as? Bool,
+              !diagnosis.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TodayAIParsingError.invalidJSON
+        }
+        func optionalString(_ key: String) -> String? {
+            guard let value = d[key], !(value is NSNull) else { return nil }
+            guard let string = value as? String else { return nil }
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard d["cognitive_shift"] is String || d["cognitive_shift"] is NSNull,
+              d["thinking_action"] is String || d["thinking_action"] is NSNull,
+              d["unresolved_uncertainty"] is String || d["unresolved_uncertainty"] is NSNull else {
+            throw TodayAIParsingError.invalidJSON
+        }
+        return SingleNudgeReview(
+            diagnosis: diagnosis.trimmingCharacters(in: .whitespacesAndNewlines),
+            cognitiveShift: optionalString("cognitive_shift"),
+            thinkingAction: optionalString("thinking_action"),
+            unresolvedUncertainty: optionalString("unresolved_uncertainty"),
+            transitionToVerification: transition
+        )
     }
 
     func parseCards(from data: Data) throws -> [ThinkingCard] {
@@ -72,6 +137,10 @@ struct TodayAIResponseParser {
     }
 
     func parseQuestions(from data: Data) throws -> [ReflectionQuestion] {
+        try parseQuestionTurn(from: data).questions
+    }
+
+    func parseQuestionTurn(from data: Data) throws -> CoachQuestionTurn {
         let response = try decoder.decode(QuestionsResponseDTO.self, from: normalizedPayloadData(from: data))
         let questions = response.questions.compactMap { dto -> ReflectionQuestion? in
             let question = dto.question.trimmed
@@ -79,7 +148,7 @@ struct TodayAIResponseParser {
 
             return ReflectionQuestion(
                 question: question,
-                whyItMatters: dto.whyThisMatters.trimmed.ifEmpty("帮助把今天的判断转成可验证行动。"),
+                whyItMatters: dto.whyThisMatters.trimmed,
                 whyNow: dto.whyNow.trimmed.ifEmpty(nil),
                 expectedUpdate: dto.expectedUpdate.trimmed.ifEmpty(nil),
                 proceedWhen: dto.proceedWhen.trimmed.ifEmpty(nil),
@@ -91,8 +160,18 @@ struct TodayAIResponseParser {
             )
         }
 
-        guard !questions.isEmpty else { throw TodayAIParsingError.emptyResult }
-        return questions
+        // An empty array means no question was chosen for this turn. It may
+        // reflect sufficient material, unavailable evidence or a user's boundary;
+        // it does not itself establish a cause or readiness for an action.
+        let explanation = response.explanation.map {
+            CoachExplanation(text: $0.text.trimmed, sourceCardTitles: Self.normalizedTitles($0.sourceCardTitles))
+        }
+        if let explanation {
+            guard !explanation.text.isEmpty, !explanation.sourceCardTitles.isEmpty, questions.isEmpty else {
+                throw TodayAIParsingError.qualityGateFailed(["invalid_explanation_turn"])
+            }
+        }
+        return CoachQuestionTurn(questions: questions, explanation: explanation)
     }
 
     fileprivate static func normalizedTitles(_ titles: [String]) -> [String] {
@@ -104,9 +183,31 @@ struct TodayAIResponseParser {
     }
 
     func parseQuests(from data: Data) throws -> [Quest] {
+        try parseQuests(from: data, enforceSingleValidationAction: false)
+    }
+
+    /// The current Today contract turns one reviewed judgment into one action.
+    /// Keep the default parser permissive for historical PromptRun fixtures, but
+    /// let the live path reject legacy task-list output deterministically.
+    func parseQuests(from data: Data, enforceSingleValidationAction: Bool) throws -> [Quest] {
         let response = try decoder.decode(QuestsResponseDTO.self, from: normalizedPayloadData(from: data))
+        // Only the explicit current-contract null is a coaching decision.
+        // Missing keys, malformed action objects and hidden secondary actions
+        // must remain errors, rather than silently becoming permission to stop.
+        if enforceSingleValidationAction, response.isExplicitNoAction {
+            return []
+        }
         guard let mainQuest = response.mainQuest?.domainQuest(defaultType: .main) else {
             throw TodayAIParsingError.emptyResult
+        }
+
+        if enforceSingleValidationAction {
+            guard mainQuest.type == .main else {
+                throw TodayAIParsingError.qualityGateFailed(["明日验证当前轮的主行动必须使用 main 类型。"])
+            }
+            guard response.sideQuests.isEmpty, response.observationQuest == nil else {
+                throw TodayAIParsingError.qualityGateFailed(["明日验证当前轮只允许一个主验证行动，不得返回 side_quests 或 observation_quest。"])
+            }
         }
 
         var quests = [mainQuest]
@@ -139,7 +240,9 @@ struct TodayAIResponseParser {
             growthEvidenceItems: try growthEvidenceItems(
                 dto.growthEvidenceItems,
                 allowedSourceRefs: []
-            )
+            ),
+            calibrationAssessment: dto.calibrationAssessment,
+            principlePracticeAssessment: dto.principlePracticeAssessment
         )
     }
 
@@ -158,7 +261,9 @@ struct TodayAIResponseParser {
             growthEvidenceItems: try growthEvidenceItems(
                 dto.growthEvidenceItems,
                 allowedSourceRefs: allowedGrowthEvidenceRefs
-            )
+            ),
+            calibrationAssessment: dto.calibrationAssessment,
+            principlePracticeAssessment: dto.principlePracticeAssessment
         )
     }
 
@@ -388,6 +493,7 @@ private struct CardDTO: Decodable {
 
 private struct QuestionsResponseDTO: Decodable {
     let questions: [QuestionDTO]
+    let explanation: CoachExplanation?
 }
 
 private struct QuestionDTO: Decodable {
@@ -434,6 +540,7 @@ private struct QuestsResponseDTO: Decodable {
     let mainQuest: QuestDTO?
     let sideQuests: [QuestDTO]
     let observationQuest: QuestDTO?
+    let isExplicitNoAction: Bool
 
     private enum CodingKeys: String, CodingKey {
         case mainQuest
@@ -446,6 +553,11 @@ private struct QuestsResponseDTO: Decodable {
         mainQuest = try container.decodeIfPresent(QuestDTO.self, forKey: .mainQuest)
         sideQuests = try container.decodeIfPresent([QuestDTO].self, forKey: .sideQuests) ?? []
         observationQuest = try container.decodeIfPresent(QuestDTO.self, forKey: .observationQuest)
+        isExplicitNoAction = try container.contains(.mainQuest) &&
+            container.decodeNil(forKey: .mainQuest) &&
+            container.contains(.sideQuests) && !container.decodeNil(forKey: .sideQuests) &&
+            sideQuests.isEmpty && container.contains(.observationQuest) &&
+            container.decodeNil(forKey: .observationQuest)
     }
 }
 
@@ -515,6 +627,8 @@ private struct VerificationResponseDTO: Decodable {
     let recommendation: String
     let expectedPrinciplePracticeAssessment: String
     let growthEvidenceItems: [GrowthSettlementEvidenceDTO]
+    let calibrationAssessment: CalibrationAssessment?
+    let principlePracticeAssessment: PrinciplePracticeAssessment?
 
     private enum CodingKeys: String, CodingKey {
         case calibrationNote
@@ -522,6 +636,8 @@ private struct VerificationResponseDTO: Decodable {
         case recommendation
         case expectedPrinciplePracticeAssessment
         case growthEvidenceItems
+        case calibrationAssessment
+        case principlePracticeAssessment
     }
 
     init(from decoder: Decoder) throws {
@@ -537,6 +653,8 @@ private struct VerificationResponseDTO: Decodable {
             [GrowthSettlementEvidenceDTO].self,
             forKey: .growthEvidenceItems
         ) ?? []
+        calibrationAssessment = try container.decodeIfPresent(CalibrationAssessment.self, forKey: .calibrationAssessment)
+        principlePracticeAssessment = try container.decodeIfPresent(PrinciplePracticeAssessment.self, forKey: .principlePracticeAssessment)
     }
 }
 

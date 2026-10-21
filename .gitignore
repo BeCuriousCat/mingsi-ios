@@ -67,3 +67,13 @@ Build/
 .build/
 Pods/
 Vendor/GRDB.swift/Tests/
+
+# Local agent state and Python bytecode.
+.codex/delegation/
+__pycache__/
+*.py[cod]
+
+# Raw QA captures stay local; publish reports and reviewed streaming evidence.
+docs/qa/**/evidence/
+!docs/qa/2026-10-22-mentor-streaming/evidence/
+docs/qa/2026-10-22-mentor-streaming/evidence/screenshots/normal-home.png

@@ -33,6 +33,11 @@ final class MentorReadingPositionCoordinator: ObservableObject {
         let canSave: Bool
         let save: (Position) -> Void
     }
+    private struct GeometrySignature: Equatable {
+        let viewport: CGRect
+        let bounds: CGRect
+        let contentSize: CGSize
+    }
     private weak var scrollView: UIScrollView?
     private var snapshot: Snapshot?
     private var restoredKey: String?
@@ -43,6 +48,9 @@ final class MentorReadingPositionCoordinator: ObservableObject {
     private var pending: (Position, (Position) -> Void)?
     private var lastOffered: Position?
     private var restoredScrollOffset: CGPoint?
+    private var geometrySignature: GeometrySignature?
+    private var stableGeometrySamples = 0
+    private var stabilityTask: Task<Void, Never>?
 
     func attach(_ scroll: UIScrollView) {
         guard scrollView !== scroll else { return }
@@ -74,6 +82,25 @@ final class MentorReadingPositionCoordinator: ObservableObject {
         let frames = snapshot.frames.filter { $0.key.itemID == lesson.id && $0.value.height > 0 }
         guard !frames.isEmpty else { return }
         if restoredKey != key {
+            let signature = GeometrySignature(viewport: snapshot.viewport, bounds: scrollView.bounds,
+                contentSize: scrollView.contentSize)
+            if signature == geometrySignature {
+                stableGeometrySamples += 1
+            } else {
+                geometrySignature = signature
+                stableGeometrySamples = 1
+            }
+            guard stableGeometrySamples >= 2 else {
+                guard stabilityTask == nil else { return }
+                let token = generation
+                stabilityTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(16))
+                    guard let self, !Task.isCancelled, self.generation == token else { return }
+                    self.stabilityTask = nil
+                    self.process()
+                }
+                return
+            }
             // A rotation or text-size change may arrive before debounce saves.
             // Keep the most recently read section, using its offset only when
             // the layout still matches.
@@ -103,7 +130,7 @@ final class MentorReadingPositionCoordinator: ObservableObject {
                       latest.lesson.id == lesson.id, latest.layoutKey == snapshot.layoutKey,
                       let frame = latest.frames[MentorReadingAnchor(itemID: lesson.id, section: target.section)] else { return }
                 let offset = target.layoutKey == latest.layoutKey ? target.offset : 0
-                let delta = frame.minY - latest.viewport.minY + min(CGFloat(offset), frame.height)
+                let delta = frame.minY - latest.viewport.minY + CGFloat(offset)
                 let minimum = -scroll.adjustedContentInset.top
                 let maximum = max(minimum, scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom)
                 let y = min(maximum, max(minimum, scroll.contentOffset.y + delta))
@@ -122,9 +149,30 @@ final class MentorReadingPositionCoordinator: ObservableObject {
             restoredScrollOffset = nil
         }
         let visible = frames.filter { $0.value.maxY > snapshot.viewport.minY && $0.value.minY < snapshot.viewport.maxY }
-        guard let first = visible.min(by: { $0.value.minY < $1.value.minY }) else { return }
-        let offset = Double(max(0, snapshot.viewport.minY - first.value.minY).rounded())
-        let position = Position(itemID: lesson.id, section: first.key.section, offset: offset, layoutKey: snapshot.layoutKey)
+        let firstVisible = visible.min(by: { $0.value.minY < $1.value.minY })
+        // Keep the current section while it remains visible. Once it leaves
+        // above the viewport, advance to the next visible section; if a short
+        // swipe leaves no section visible, retain the current section and its
+        // exact in-paragraph offset.
+        let anchor: (MentorReadingAnchor, CGRect)
+        if let previous = lastOffered,
+           previous.itemID == lesson.id,
+           let previousFrame = frames[MentorReadingAnchor(itemID: lesson.id, section: previous.section)] {
+            let previousVisible = previousFrame.maxY > snapshot.viewport.minY && previousFrame.minY < snapshot.viewport.maxY
+            let previousIndex = MentorReadingSection.allCases.firstIndex(of: previous.section) ?? 0
+            let nextIndex = firstVisible.flatMap { MentorReadingSection.allCases.firstIndex(of: $0.key.section) }
+            if previousVisible || nextIndex == nil || nextIndex == previousIndex {
+                anchor = (MentorReadingAnchor(itemID: lesson.id, section: previous.section), previousFrame)
+            } else {
+                anchor = (firstVisible!.key, firstVisible!.value)
+            }
+        } else if let firstVisible {
+            anchor = (firstVisible.key, firstVisible.value)
+        } else {
+            return
+        }
+        let offset = Double(max(0, snapshot.viewport.minY - anchor.1.minY).rounded())
+        let position = Position(itemID: lesson.id, section: anchor.0.section, offset: offset, layoutKey: snapshot.layoutKey)
         guard lastOffered != position else { return }
         lastOffered = position
         pending = (position, snapshot.save)
@@ -147,14 +195,18 @@ final class MentorReadingPositionCoordinator: ObservableObject {
         generation = UUID()
         restoreTask?.cancel()
         saveTask?.cancel()
+        stabilityTask?.cancel()
         restoreTask = nil
         saveTask = nil
+        stabilityTask = nil
         pending = nil
         lastOffered = nil
         snapshot = nil
         restoredKey = nil
         restoringKey = nil
         restoredScrollOffset = nil
+        geometrySignature = nil
+        stableGeometrySamples = 0
     }
 }
 
@@ -170,11 +222,14 @@ final class MentorReadingGeometry: ObservableObject {
     private var sampleTask: Task<Void, Never>?
     private var sample: ((UIScrollView, [MentorReadingAnchor: CGRect], CGRect) -> Void)?
     private var presented: ((UUID) -> Void)?
+    private var isSuspended = false
 
     func configure(coordinator: MentorReadingPositionCoordinator, lesson: MentorSavedLesson?,
-                   layoutKey: String, canSave: Bool,
+                   layoutKey: String, canSave: Bool, isActive: Bool = true,
                    save: @escaping (MentorReadingPositionCoordinator.Position) -> Void,
                    presented: @escaping (UUID) -> Void) {
+        // Response presentation is independent of whether a lesson is open.
+        isSuspended = !isActive
         self.presented = presented
         sample = { [weak coordinator] scroll, frames, viewport in
             guard let coordinator, let lesson else { return }
@@ -186,6 +241,7 @@ final class MentorReadingGeometry: ObservableObject {
     }
 
     fileprivate func register(_ marker: MentorReadingMarker.Marker) {
+        guard !isSuspended else { return }
         markers[ObjectIdentifier(marker)] = WeakMarker(view: marker)
         var ancestor = marker.superview
         while let view = ancestor {
@@ -210,6 +266,7 @@ final class MentorReadingGeometry: ObservableObject {
     }
 
     fileprivate func scheduleSample() {
+        guard !isSuspended else { return }
         guard sampleTask == nil else { return }
         sampleTask = Task { @MainActor [weak self] in
             await Task.yield()
@@ -219,6 +276,7 @@ final class MentorReadingGeometry: ObservableObject {
     }
 
     func flush() {
+        guard !isSuspended else { return }
         sampleTask?.cancel()
         sampleTask = nil
         guard let scroll, scroll.window != nil else { return }
@@ -240,9 +298,19 @@ final class MentorReadingGeometry: ObservableObject {
         for id in visibleItems { presented?(id) }
     }
 
+    /// Stops callbacks before a view begins leaving its window. The final
+    /// coordinator sample remains available for a synchronous flush; any
+    /// geometry emitted by the dismissal animation is ignored.
+    func suspend() {
+        isSuspended = true
+        sampleTask?.cancel()
+        sampleTask = nil
+    }
+
     func reset() {
         sampleTask?.cancel()
         sampleTask = nil
+        isSuspended = false
         sample = nil
         presented = nil
         offsetObservation = nil
@@ -285,6 +353,7 @@ struct MentorReadingScrollProbe: UIViewRepresentable {
     let lesson: MentorSavedLesson?
     let layoutKey: String
     let canSave: Bool
+    var isActive = true
     let save: (MentorReadingPositionCoordinator.Position) -> Void
     let presented: (UUID) -> Void
     func makeUIView(context: Context) -> UIView {
@@ -295,6 +364,6 @@ struct MentorReadingScrollProbe: UIViewRepresentable {
     }
     func updateUIView(_ uiView: UIView, context: Context) {
         geometry.configure(coordinator: coordinator, lesson: lesson, layoutKey: layoutKey,
-                           canSave: canSave, save: save, presented: presented)
+                           canSave: canSave, isActive: isActive, save: save, presented: presented)
     }
 }

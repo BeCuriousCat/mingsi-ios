@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# Synthetic P256 identities are public test fixtures, not provider credentials.
+# Both the test path and the explicit fixture assignment must match.
+[[allowlists]]
+description = "Public P256 signing fixtures in persistence tests"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^Tests/(Services/PersistenceCoreTests|App/AppStoreStateMachineTests)\.swift$''']
+regexes = ['''private static let (testPublisherPrivateKeyBase64|rotatedPublisherPrivateKeyBase64|testRegistryRootPrivateKeyBase64) = "[A-Za-z0-9+/]{43}="''']

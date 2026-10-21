@@ -22,7 +22,81 @@ final class PersistenceCoreTests: XCTestCase {
         super.tearDown()
     }
 
+    func testNewBuiltinLensSelectionsPersistAndRestoreWithExistingStorage() async throws {
+        let repository = SQLiteDailyEntryRepository(database: database)
+        for (index, lens) in [ThinkingLens.opportunityCost, .reversibleDecision, .perspectiveTaking, .controlBoundary].enumerated() {
+            let draft = DailyEntryDraft(date: Date().addingTimeInterval(Double(index)), rawText: "保留这一视角", selectedLens: lens)
+            try await repository.saveDraft(draft)
+            let loaded = try await repository.latestDraft()
+            let restored = try XCTUnwrap(loaded)
+            XCTAssertEqual(restored.id, draft.id)
+            XCTAssertEqual(restored.selectedLens, lens)
+            XCTAssertEqual(restored.selectedLens?.catalogItem.promptId, lens.catalogItem.promptId)
+        }
+    }
+
+    func testDefaultAssetTrustOnlyEnablesPublicFixturesInDebug() throws {
+        let keys = AssetPackSignatureVerifier.default.publicKeyStrings(
+            for: "mingsi.test.publisher", verificationPolicyVersion: "asset-trust.test.v1"
+        )
+        let document = try Self.signedTrustPolicyDocument(AssetPackTrustPolicyDocument(policies: []))
+        #if DEBUG
+        XCTAssertEqual(keys.count, 1)
+        XCTAssertTrue(try AssetPackTrustPolicySignatureVerifier.default.hasValidSignature(document))
+        #else
+        XCTAssertTrue(keys.isEmpty)
+        XCTAssertFalse(try AssetPackTrustPolicySignatureVerifier.default.hasValidSignature(document))
+        #endif
+    }
+
     // MARK: - DailyEntryRepository
+
+    func testStoredDatesKeepISO8601MillisecondsAndReadExistingRecords() async throws {
+        let timestamp = "2026-10-03T01:02:03.125Z"
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expectedDate = try XCTUnwrap(formatter.date(from: timestamp))
+        let draft = DailyEntryDraft(date: expectedDate, rawText: "Date compatibility")
+        let repository = SQLiteDailyEntryRepository(database: database)
+        try await repository.saveDraft(draft)
+        let storedTimestamp = try await dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT date FROM daily_entries WHERE id = ?", arguments: [draft.id.uuidString])
+        }
+        XCTAssertEqual(storedTimestamp, timestamp)
+
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE daily_entries SET date = ? WHERE id = ?", arguments: [timestamp, draft.id.uuidString])
+        }
+        let loaded = try await repository.latestDraft()
+        XCTAssertEqual(try XCTUnwrap(loaded).date.timeIntervalSince1970, expectedDate.timeIntervalSince1970, accuracy: 0.000001)
+    }
+
+    func testPrincipleReviewDraftRoundTripsWithoutCreatingAssetsAndMigratesOldRecords() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v71_life_guidance")
+        let entryID = UUID()
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO daily_entries (id, schema_version, date, raw_text, session_mode, state, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?, ?, ?)",
+                arguments: [entryID.uuidString, "2026-10-18T00:00:00Z", "旧记录", SessionMode.standard.rawValue, DailyLoopState.extractPrinciple.rawValue, "2026-10-18T00:00:00Z", "2026-10-18T00:00:00Z"])
+        }
+        try AppDatabase.makeMigrator().migrate(queue)
+        let migrated = try AppDatabase(dbQueue: queue)
+        let repo = SQLiteDailyEntryRepository(database: migrated)
+        let oldDraft = try await repo.latestDraft()
+        var draft = try XCTUnwrap(oldDraft)
+        XCTAssertTrue(draft.principleReviewDrafts.isEmpty)
+        let first = PrincipleAsset(title: "候选甲", summary: "待确认", triggerContext: "场景甲",
+            actions: ["记录实际结果"], successCriteria: "有记录", exceptions: "条件不符时不用")
+        let second = PrincipleAsset(title: "候选乙", summary: "待确认", triggerContext: "场景乙",
+            actions: ["写下差异"], successCriteria: "有记录", exceptions: "暂不外推")
+        let key = UUID().uuidString
+        draft.principleReviewDrafts = ["daily": [first], key: [second]]
+        try await repo.saveDraft(draft)
+        let restored = try await repo.latestDraft()
+        XCTAssertEqual(restored?.principleReviewDrafts, draft.principleReviewDrafts)
+        let assets = try await SQLitePrincipleRepository(database: migrated).allPrinciples()
+        XCTAssertTrue(assets.isEmpty)
+    }
 
     func testSaveDraft_andLoadLatest() async throws {
         let repo = SQLiteDailyEntryRepository(database: database)
@@ -3447,7 +3521,7 @@ final class PersistenceCoreTests: XCTestCase {
         try await database.dbQueue.write { db in
             try db.execute(sql: "CREATE TRIGGER fail_prompt_audit BEFORE INSERT ON prompt_runs BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END")
         }
-        defer { Task { try? await database.dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_prompt_audit") } } }
+        defer { try? dbQueue.write { try $0.execute(sql: "DROP TRIGGER fail_prompt_audit") } }
         do {
             _ = try await client.complete(request)
             XCTFail("A successful model response must not escape an audit failure")

@@ -1,5 +1,6 @@
 import XCTest
 
+@MainActor
 final class MingSiUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -19,10 +20,113 @@ final class MingSiUITests: XCTestCase {
         typeFirstQuestionAnswer("事实是会议结束后没有明确负责人；验收标准是明天会议记录里写出负责人和可检查结果，再验证最小行动是否降低返工。", in: app)
         tapPrimaryAction(in: app, expectingState: "review_quests")
 
-        tapPrimaryAction(in: app, expectingState: "extract_principle")
         tapPrimaryAction(in: app, expectingState: "session_complete")
 
         XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+    }
+
+    func testValidationSaveOffersOptionalPrincipleAndCanFinishInNormalAndLargestText() throws {
+        var normalHeight: CGFloat = 0
+        for largest in [false, true] {
+            let app = seededTodayApp(stage: "review_quests")
+            app.launchArguments += ["-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let optional = app.buttons["today.review-quests.optional-principle-action"]
+            XCTAssertTrue(optional.waitForExistence(timeout: 8))
+            XCTAssertTrue(optional.isHittable)
+            XCTAssertTrue(optional.isEnabled)
+            XCTAssertEqual(optional.label, "保存并整理原则候选")
+            if largest { XCTAssertGreaterThan(optional.frame.height, normalHeight * 1.2) }
+            else { normalHeight = optional.frame.height }
+            let primary = app.buttons["today.primary-action"]
+            XCTAssertTrue(primary.isHittable)
+            XCTAssertEqual(primary.label, "保存验证，今天先到这里")
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = largest ? "optional-principle-dark-largest" : "optional-principle-light"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            primary.tap()
+            XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+            XCTAssertFalse(app.staticTexts["today.state.extract_principle"].exists)
+            app.terminate()
+        }
+    }
+
+    func testValidationOptionalPrincipleActionStillReachesCandidateReview() throws {
+        let app = seededTodayApp(stage: "review_quests")
+        app.launch()
+        let optional = app.buttons["today.review-quests.optional-principle-action"]
+        XCTAssertTrue(optional.waitForExistence(timeout: 8))
+        XCTAssertTrue(optional.isHittable)
+        optional.tap()
+        XCTAssertTrue(app.staticTexts["today.state.extract_principle"].waitForExistence(timeout: 10))
+        let skip = app.buttons["today.skip-principle-action"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 4))
+        XCTAssertTrue(skip.isHittable)
+        skip.tap()
+        XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["今日沉淀"].exists)
+    }
+
+    func testPrincipleCandidateShowsBoundariesAndSavesLatestEditsOnlyOnConfirmation() throws {
+        let app = seededTodayApp(stage: "extract_principle")
+        app.launch()
+        let exception = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "例外条件：")).firstMatch
+        scrollToElement(exception, in: app)
+        XCTAssertTrue(exception.label.contains("明确负责人"))
+        let criteria = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "成功标准：")).firstMatch
+        XCTAssertTrue(criteria.exists)
+        let edit = app.buttons["today.principle.edit-action"]
+        scrollToElement(edit, in: app)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "principle-candidate-boundaries"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        edit.tap()
+        let title = app.textFields["today.editable-field.标题"]
+        scrollToElement(title, in: app)
+        title.tap()
+        title.typeText("，只作待验证的假设")
+        // Confirm directly while still editing: the latest text must be used.
+        let save = app.buttons["today.primary-action"]
+        XCTAssertEqual(save.label, "保存为我的原则")
+        save.tap()
+        XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+        let saved = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "只作待验证的假设")).firstMatch
+        scrollToElement(saved, in: app)
+        XCTAssertTrue(saved.exists)
+    }
+
+    func testSingleNudgeVisualFixtureTransitionsToEditableValidationMaterial() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VNEXT_CASES_ENABLED"] = "0"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = "会议后还没有写清验收负责人。"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_MODE"] = "standard"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_STAGE"] = "capture"
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_SINGLE_NUDGE"] = "1"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "0"
+        app.launch()
+
+        let open = app.buttons["today.single-nudge.open-action"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+        XCTAssertTrue(app.scrollViews["today.single-nudge.surface"].waitForExistence(timeout: 4))
+
+        let helpful = app.buttons["today.single-nudge.helpful-action"]
+        XCTAssertTrue(helpful.waitForExistence(timeout: 8))
+        helpful.tap()
+
+        let transition = app.buttons["today.single-nudge.transition-action"]
+        XCTAssertTrue(transition.waitForExistence(timeout: 4))
+        transition.tap()
+
+        XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 4))
+        let material = app.textViews["today.capture.raw-text-field"]
+        XCTAssertTrue(material.waitForExistence(timeout: 4))
+        XCTAssertTrue((material.value as? String)?.contains("明思一下行动验证素材") == true)
     }
 
     func testVNextTodayOverviewDisplaysMultipleIndependentCases() throws {
@@ -42,6 +146,389 @@ final class MingSiUITests: XCTestCase {
         )
     }
 
+    func testTodayOverviewShowsDailyLifeGuidanceAndDetails() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let card = app.buttons["today.life-guidance.daily-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        XCTAssertTrue(card.isHittable)
+        card.tap()
+
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先做这一步"].exists)
+        XCTAssertTrue(app.staticTexts["适用边界"].exists)
+        let save = app.buttons["life-guidance.save"]
+        for _ in 0..<4 where !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(save.isHittable)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.feedback"].waitForExistence(timeout: 4))
+        XCTAssertTrue(save.label.contains("已存下来"))
+    }
+
+    func testTodayOverviewBrowsesLifeGuidanceCatalogAndFiltersCategory() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let open = app.buttons["life-guidance.catalog.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        open.tap()
+        XCTAssertTrue(app.navigationBars["建议库"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["life-guidance.catalog.life.attention.nonessential-notifications"].exists)
+        let picker = app.buttons["life-guidance.catalog.category"]
+        XCTAssertTrue(picker.exists)
+        picker.tap()
+        let attention = app.buttons["注意力"]
+        XCTAssertTrue(attention.waitForExistence(timeout: 2))
+        attention.tap()
+        XCTAssertTrue(app.buttons["life-guidance.catalog.life.attention.batch-messages"].exists)
+    }
+
+    func testTodayOverviewBrowsesCompleteLifeGuidanceReferenceBook() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test", "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryL", "-AppleInterfaceStyle", "Light"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+
+        let open = app.buttons["life-guidance.reference.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !open.isHittable { app.swipeUp() }
+        open.tap()
+        XCTAssertTrue(app.navigationBars["完整人生指南"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "34 节 · 670 条")).firstMatch.exists)
+
+        let search = app.textFields["life-guidance.reference.search"]
+        XCTAssertTrue(search.exists)
+        search.tap()
+        search.typeText("安全带")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "系安全带")).firstMatch.waitForExistence(timeout: 4))
+        let row = app.buttons["life-guidance.reference.life-reference.1.1"]
+        XCTAssertTrue(row.exists)
+        row.tap()
+        let details = XCTAttachment(screenshot: app.screenshot())
+        details.name = "reference-details-default-light"; details.lifetime = .keepAlways; add(details)
+        let useInToday = app.buttons["life-guidance.reference.use-in-today"]
+        XCTAssertTrue(useInToday.waitForExistence(timeout: 4))
+        useInToday.tap()
+        let input = app.textViews["today.captures.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        let prefill = try XCTUnwrap(input.value as? String)
+        XCTAssertTrue(prefill.contains("系安全带"))
+        XCTAssertTrue(prefill.contains("- 备注："))
+        XCTAssertTrue(prefill.contains("e73cb638b27f12a422546e5c09cadcac6fce03fe"))
+        XCTAssertTrue(prefill.contains("我自己的情况："))
+        let captureScreenshot = XCTAttachment(screenshot: app.screenshot())
+        captureScreenshot.name = "reference-full-prefill"; captureScreenshot.lifetime = .keepAlways; add(captureScreenshot)
+        let save = app.buttons["today.captures.save-action"]
+        for _ in 0..<4 where !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(save.isHittable)
+        save.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "参考《高性价比人生指南》：")).firstMatch.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        let capture = app.buttons["mentor.quick-capture.open-action"]
+        XCTAssertTrue(capture.waitForExistence(timeout: 8))
+        capture.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "来源提交：e73cb638")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testCompleteLifeGuidanceReferenceSupportsBookmarkAndOriginalText() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test", "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryL", "-AppleInterfaceStyle", "Light"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+
+        let open = app.buttons["life-guidance.reference.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !open.isHittable { app.swipeUp() }
+        open.tap()
+        let search = app.textFields["life-guidance.reference.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 4))
+        search.tap()
+        search.typeText("安全带")
+        let row = app.buttons["life-guidance.reference.life-reference.1.1"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4))
+        row.tap()
+
+        let bookmark = app.buttons["life-guidance.reference.bookmark"]
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 4))
+        for _ in 0..<5 where !bookmark.isHittable { app.swipeUp() }
+        bookmark.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "life-guidance.reference.bookmark", "已收藏")).firstMatch.waitForExistence(timeout: 4))
+        let raw = app.descendants(matching: .any)["life-guidance.reference.raw"].firstMatch
+        for _ in 0..<8 where !raw.isHittable { app.swipeUp() }
+        XCTAssertTrue(raw.isHittable)
+        raw.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "### 1.")).firstMatch.waitForExistence(timeout: 4))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let saved = app.buttons["life-guidance.reference.bookmarked.open"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 4))
+        for _ in 0..<4 where !saved.isHittable { app.swipeDown() }
+        saved.tap()
+        let rowID = "life-guidance.reference.bookmarked.life-reference.1.1"
+        XCTAssertTrue(app.buttons[rowID].waitForExistence(timeout: 4))
+        app.buttons[rowID].tap()
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 4))
+        XCTAssertTrue(bookmark.label.contains("已收藏"))
+        app.terminate()
+        app.launch()
+        let homeSaved = app.buttons["life-guidance.saved.open"]
+        XCTAssertTrue(homeSaved.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !homeSaved.isHittable { app.swipeUp() }
+        homeSaved.tap()
+        let persisted = app.buttons["life-guidance.saved.life-reference.1.1"]
+        XCTAssertTrue(persisted.waitForExistence(timeout: 4))
+        persisted.tap()
+        XCTAssertTrue(bookmark.waitForExistence(timeout: 4))
+        XCTAssertTrue(bookmark.label.contains("已收藏"))
+    }
+
+    func testReferenceDailyCardSupportsObservationAtLargestTextInDarkMode() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test", "--reference-daily-ui-test", "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryAccessibilityXXXL", "-AppleInterfaceStyle", "Dark"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+        let card = app.buttons["today.life-guidance.daily-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        for _ in 0..<5 where !card.isHittable { app.swipeUp() }
+        card.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        let top = XCTAttachment(screenshot: app.screenshot())
+        top.name = "reference-detail-largest-text-dark"; top.lifetime = .keepAlways; add(top)
+        let tried = app.buttons["life-guidance.tried"]
+        for _ in 0..<8 where !tried.isHittable { app.swipeUp() }
+        XCTAssertTrue(tried.isHittable)
+        tried.tap()
+        let input = app.textViews["life-guidance.observation"]
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        for _ in 0..<5 where !input.isHittable { app.swipeUp() }
+        input.tap(); input.typeText("我试过了，这次没有明显变化。")
+        let save = app.buttons["life-guidance.observation.save"]
+        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(save.isHittable); save.tap()
+        app.terminate(); app.launch()
+        let saved = app.buttons["life-guidance.saved.open"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 8))
+        for _ in 0..<5 where !saved.isHittable { app.swipeUp() }
+        saved.tap()
+        let row = app.buttons["life-guidance.saved.life-reference.34.11"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4)); row.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        XCTAssertTrue((input.value as? String)?.contains("这次没有明显变化") == true)
+    }
+
+    func testReferenceLongReadsRenderTablesAndOpenInternalLinks() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test", "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryL", "-AppleInterfaceStyle", "Light"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+        let open = app.buttons["life-guidance.reference.open"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        for _ in 0..<5 where !open.isHittable { app.swipeUp() }
+        open.tap()
+        let library = app.buttons["长文与术语表"]
+        XCTAssertTrue(library.waitForExistence(timeout: 4)); library.tap()
+        let tableArticle = app.buttons["life-guidance.reference.document.life-reference.doc.做平台要办哪些证"]
+        for _ in 0..<12 where !tableArticle.isHittable { app.swipeUp() }
+        XCTAssertTrue(tableArticle.isHittable); tableArticle.tap()
+        XCTAssertTrue(app.staticTexts["一、先判断你做的是哪种业务"].waitForExistence(timeout: 4))
+        let tableHeader = app.staticTexts["你在做的事"].firstMatch
+        for _ in 0..<4 where !tableHeader.isHittable { app.swipeUp() }
+        XCTAssertTrue(tableHeader.isHittable)
+        XCTAssertTrue(app.staticTexts["对应业务类别"].firstMatch.exists)
+        let tableScreenshot = XCTAttachment(screenshot: app.screenshot())
+        tableScreenshot.name = "reference-long-read-table"; tableScreenshot.lifetime = .keepAlways; add(tableScreenshot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let linkedArticle = app.buttons["life-guidance.reference.document.life-reference.doc.换工作、换城市之前"]
+        for _ in 0..<8 where !linkedArticle.isHittable { app.swipeUp() }
+        XCTAssertTrue(linkedArticle.isHittable); linkedArticle.tap()
+        let textLink = app.staticTexts["← 回总目录"]
+        let link = app.links["← 回总目录"].exists ? app.links["← 回总目录"] : textLink
+        XCTAssertTrue(link.waitForExistence(timeout: 4)); link.tap()
+        XCTAssertTrue(app.navigationBars["长文与术语表"].waitForExistence(timeout: 4), "内部链接应打开应用内目录")
+        XCTAssertTrue(app.buttons["完成"].exists)
+    }
+
+    func testTodayOverviewShowsReviewLifeGuidanceAfterCompletedReview() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_LIFE_GUIDANCE_REVIEW"] = "1"
+        app.launch()
+
+        let card = app.buttons["today.life-guidance.review-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        XCTAssertTrue(card.label.contains("消息") || card.label.contains("通知"))
+        card.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["触发这条建议的事件"].exists)
+        XCTAssertTrue(app.staticTexts["最近消息通知太多，手机不断打断我的注意力。"].exists)
+    }
+
+    func testMentorHomeGuidanceSaveReopenAfterRelaunchAndDismiss() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+        let card = app.buttons["today.life-guidance.daily-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        for _ in 0..<3 where !card.isHittable { app.swipeUp() }
+        card.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        let save = app.buttons["life-guidance.save"]
+        for _ in 0..<4 where !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(save.isHittable)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.feedback"].waitForExistence(timeout: 4))
+        app.terminate()
+        app.launch()
+        let saved = app.buttons["life-guidance.saved.open"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !saved.isHittable { app.swipeUp() }
+        saved.tap()
+        let row = app.buttons["life-guidance.saved.life.attention.single-task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        let dismiss = app.buttons["life-guidance.dismiss"]
+        for _ in 0..<4 where !dismiss.isHittable { app.swipeUp() }
+        XCTAssertTrue(dismiss.isHittable)
+        XCTAssertTrue(save.label.contains("已存下来"))
+        dismiss.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.feedback"].waitForExistence(timeout: 4))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["mentor.quick-capture.open-action"].waitForExistence(timeout: 8))
+        XCTAssertFalse(card.exists, "不适合的当天入口应在重启后仍隐藏")
+        XCTAssertTrue(app.buttons["life-guidance.saved.open"].exists)
+    }
+
+    func testGuidanceTryOpensEditableConversationWithoutSubmitting() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+        let card = app.buttons["today.life-guidance.daily-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !card.isHittable { app.swipeUp() }
+        card.tap()
+        let action = app.buttons["life-guidance.try"]
+        XCTAssertTrue(action.waitForExistence(timeout: 4))
+        for _ in 0..<4 where !action.isHittable { app.swipeUp() }
+        action.tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8))
+        XCTAssertTrue((input.value as? String)?.contains("我想试试这条建议：给重要事情留一段不被打断的时间") == true)
+        XCTAssertTrue((input.value as? String)?.contains("我想改善的是：") == true)
+        XCTAssertFalse(app.staticTexts["正在查看回顾里是否有相关建议。"].exists)
+        XCTAssertTrue(app.navigationBars["这次交流"].buttons["返回"].isHittable)
+    }
+
+    func testGuidanceAtLargestTextSizeInDarkModeKeepsActionsAndObservationReachable() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--life-guidance-ui-test", "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryAccessibilityXXXL", "-AppleInterfaceStyle", "Dark"]
+        app.launchEnvironment["MINGSI_LIFE_GUIDANCE_TEST_ID"] = UUID().uuidString
+        app.launch()
+        let card = app.buttons["today.life-guidance.daily-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 8))
+        for _ in 0..<10 where !card.isHittable { app.swipeUp() }
+        XCTAssertTrue(card.isHittable)
+        let home = XCTAttachment(screenshot: app.screenshot())
+        home.name = "life-guidance-home-largest-text-dark"; home.lifetime = .keepAlways; add(home)
+        card.tap()
+        XCTAssertTrue(app.staticTexts["today.life-guidance.details.title"].waitForExistence(timeout: 4))
+        let tried = app.buttons["life-guidance.tried"]
+        for _ in 0..<10 where !tried.isHittable { app.swipeUp() }
+        XCTAssertTrue(tried.isHittable)
+        XCTAssertGreaterThanOrEqual(tried.frame.height, 44)
+        let details = XCTAttachment(screenshot: app.screenshot())
+        details.name = "life-guidance-details-largest-text-dark"; details.lifetime = .keepAlways; add(details)
+        tried.tap()
+        let observation = app.textViews["life-guidance.observation"]
+        XCTAssertTrue(observation.waitForExistence(timeout: 4))
+        for _ in 0..<10 where !observation.isHittable { app.swipeUp() }
+        XCTAssertTrue(observation.isHittable)
+        observation.tap()
+        observation.typeText("这次试过后没有明显变化。")
+        let record = app.buttons["life-guidance.observation.save"]
+        for _ in 0..<6 where !record.isHittable { app.swipeUp() }
+        XCTAssertTrue(record.isHittable)
+        record.tap()
+        app.terminate()
+        app.launch()
+        let saved = app.buttons["life-guidance.saved.open"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 8))
+        for _ in 0..<10 where !saved.isHittable { app.swipeUp() }
+        saved.tap()
+        let row = app.buttons["life-guidance.saved.life.attention.single-task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4))
+        row.tap()
+        for _ in 0..<10 where !observation.isHittable { app.swipeUp() }
+        XCTAssertEqual(observation.value as? String, "这次试过后没有明显变化。")
+    }
+
+    func testTodayOverviewOpensCaptureSheet() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let open = app.buttons["today.captures.open-action"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+        XCTAssertTrue(app.scrollViews["today.captures.sheet"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["today.captures.save-action"].exists)
+        let speechToggle = app.scrollViews["today.captures.sheet"].buttons["today.captures.input.voice-toggle"]
+        XCTAssertTrue(speechToggle.waitForExistence(timeout: 4))
+        XCTAssertTrue(speechToggle.label.contains("开始语音输入"))
+        XCTAssertTrue(speechToggle.isHittable)
+
+        let input = app.textViews["today.captures.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        XCTAssertLessThanOrEqual(speechToggle.frame.width, 52, "语音入口应保持为小型图标按钮")
+        XCTAssertLessThanOrEqual(speechToggle.frame.height, 52, "语音入口应保持为小型图标按钮")
+        XCTAssertGreaterThan(speechToggle.frame.midX, input.frame.midX, "语音入口应位于输入框右侧")
+        XCTAssertFalse(app.buttons["点击开始录音"].exists, "不应再显示输入框外的横向录音按钮")
+    }
+
+    func testTodayOverviewSavesCaptureFragmentAndClearsInput() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "today"
+        app.launchEnvironment["MINGSI_VISUAL_QA_VNEXT_OVERVIEW"] = "1"
+        app.launch()
+
+        let open = app.buttons["today.captures.open-action"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        open.tap()
+
+        let input = app.textViews["today.captures.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 4))
+        let capture = "UI 闪念保存验收 20260827"
+        input.tap()
+        input.typeText(capture)
+        let dismissKeyboard = app.buttons["收起键盘"]
+        if dismissKeyboard.waitForExistence(timeout: 2) {
+            dismissKeyboard.tap()
+        } else {
+            // Some simulator profiles use a hardware keyboard and do not
+            // expose SwiftUI's keyboard toolbar. The input still supports
+            // interactive scroll dismissal in that environment.
+            app.scrollViews["today.captures.sheet"].swipeDown()
+        }
+
+        let save = app.buttons["today.captures.save-action"]
+        XCTAssertTrue(save.waitForExistence(timeout: 4))
+        XCTAssertTrue(save.isHittable)
+        save.tap()
+
+        XCTAssertTrue(app.staticTexts[capture].waitForExistence(timeout: 4))
+        XCTAssertEqual(input.value as? String, "")
+    }
+
     func testVNextOverviewMissingKeyCTAOpensAPIConfigurationAtAccessibilityXXXL() throws {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -54,7 +541,9 @@ final class MingSiUITests: XCTestCase {
         let configureCentralModel = app.buttons["today.central-model-key.settings-action"]
         XCTAssertTrue(configureCentralModel.waitForExistence(timeout: 8))
         XCTAssertTrue(configureCentralModel.label.contains("配置中央模型后整理"))
-        XCTAssertTrue(configureCentralModel.isHittable)
+        // At XXXL the overview adds the quick-capture and single-nudge entries;
+        // the CTA may start below the fold, so bring it into the tappable area.
+        scrollToElement(configureCentralModel, in: app)
         configureCentralModel.tap()
 
         XCTAssertTrue(app.staticTexts["设置"].waitForExistence(timeout: 4))
@@ -120,6 +609,32 @@ final class MingSiUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "这一刻已被收下")
         ).firstMatch
         XCTAssertTrue(reward.waitForExistence(timeout: 4))
+    }
+
+    func testProjectsStatusRailFiltersEvidenceByStatus() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["MINGSI_VISUAL_QA_PROJECT_DETAIL"]
+        app.launchEnvironment["MINGSI_VISUAL_QA_PROJECT_DETAIL_VARIANT"] = "normal"
+        app.launch()
+
+        let detailNavigationBar = app.navigationBars["长期议题"]
+        XCTAssertTrue(detailNavigationBar.waitForExistence(timeout: 8))
+        let backButton = detailNavigationBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(backButton.waitForExistence(timeout: 4))
+        backButton.tap()
+
+        let currentFilter = app.buttons["projects.status-filter.all"]
+        let activeFilter = app.buttons["projects.status-filter.active"]
+        let archivedFilter = app.buttons["projects.status-filter.archived"]
+        XCTAssertTrue(currentFilter.waitForExistence(timeout: 6))
+        XCTAssertTrue(activeFilter.exists)
+        XCTAssertTrue(archivedFilter.exists)
+
+        archivedFilter.tap()
+        XCTAssertTrue(app.staticTexts["没有匹配「已结束」状态的项目。"].waitForExistence(timeout: 4))
+
+        currentFilter.tap()
+        XCTAssertTrue(app.staticTexts["Visual QA - 会议机制优化"].waitForExistence(timeout: 4))
     }
 
     func testSideQuestV2SettingsShowsPlaceScopedPracticalSamplesWithoutPlaceNames() throws {
@@ -211,9 +726,113 @@ final class MingSiUITests: XCTestCase {
         let app = seededGrowthApp()
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["最近 7 天：0 / 3 次验证 · 0 / 2 天"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["达到条件后，可以由你主动生成一次下周训练重点。还需 3 次验证，再覆盖 2 天。"].exists)
+        XCTAssertTrue(app.staticTexts["最近 7 天：1 / 3 次验证 · 1 / 2 天"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["达到条件后，可以由你主动生成一次下周训练重点。还需 2 次验证，再覆盖 1 天。"].exists)
         XCTAssertFalse(app.buttons["growth.weekly-guidance.generate-action"].exists)
+    }
+
+    func testGrowthRecordCountDoesNotClaimGrowthInNormalAndLargestText() throws {
+        for variant in ["empty", "three", "legacy"] {
+            for largest in [false, true] {
+                let app = XCUIApplication()
+                app.launchArguments = ["--growth-evidence-ui-fixture", "-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                    "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+                if variant == "empty" { app.launchArguments.append("--growth-zero-records") }
+                if variant == "legacy" { app.launchArguments.append("--growth-legacy-local") }
+                app.launch()
+                let progress = app.staticTexts["growth.record-progress"]
+                scrollToElement(progress, in: app)
+                XCTAssertEqual(progress.label, "当前记录中有 \(variant == "empty" ? 0 : 3) 次完整复盘。")
+                XCTAssertFalse(app.staticTexts["已满足展示变化的最小证据"].exists)
+                XCTAssertFalse(app.staticTexts["训练指标"].exists)
+                let explanation = app.staticTexts["growth.evidence-status"]
+                scrollToElement(explanation, in: app)
+                XCTAssertTrue(explanation.label.contains(variant == "legacy" ? "旧版汇总" : "次数和自评不代表能力变化"))
+                XCTAssertTrue(explanation.isHittable)
+                let image = XCTAttachment(screenshot: app.screenshot())
+                image.name = "growth-evidence-\(variant)-\(largest ? "dark-largest" : "light")"
+                image.lifetime = .keepAlways
+                add(image)
+                let back = app.buttons["growth.record-progress.continue"]
+                scrollToElement(back, in: app)
+                XCTAssertTrue(back.isHittable)
+                back.tap()
+                XCTAssertTrue(app.tabBars.buttons["今日"].isSelected)
+                app.terminate()
+            }
+        }
+    }
+
+    func testGrowthShowsBeforeAfterEvidenceAndCanOpenHistorySource() throws {
+        let app = seededGrowthApp()
+        app.launch()
+
+        let before = app.staticTexts["只要会后补发结论，就能避免后续返工。"]
+        let after = app.staticTexts["返工追问减少，但关键参与方仍需在会前参与确认。"]
+        XCTAssertTrue(before.waitForExistence(timeout: 8))
+        XCTAssertTrue(after.exists)
+        XCTAssertTrue(app.staticTexts["判断变化"].exists)
+        XCTAssertTrue(app.staticTexts["来源证据 1 条"].exists)
+
+        before.tap()
+        XCTAssertTrue(app.staticTexts["已定位到来源证据"].waitForExistence(timeout: 4))
+    }
+
+    func testGrowthShowsCycleSummaryOnlyWithReviewableEvidence() throws {
+        let app = seededGrowthApp()
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["周期概览"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["本周期把会议推进拆成了可检查的责任和验收条件；会前关键参与方仍需提前确认。"].exists)
+        XCTAssertTrue(app.staticTexts["最近报告审查"].exists)
+        XCTAssertTrue(app.staticTexts["训练指标"].exists)
+        XCTAssertTrue(app.staticTexts["下次会议前确认关键参与方，并在会后记录负责人和验收信号。"].exists)
+    }
+
+    func testGrowthReflectionTopicsPreserveUncertaintyAndOpenSourceInNormalAndLargestText() throws {
+        for largest in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--growth-evidence-ui-fixture", "--reflection-topics-populated",
+                "-AppleInterfaceStyle", largest ? "Dark" : "Light", "-UIPreferredContentSizeCategory",
+                largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts["复盘中讨论过"].waitForExistence(timeout: 8))
+            XCTAssertFalse(app.staticTexts["讲不清"].exists)
+            XCTAssertFalse(app.staticTexts["沟通力"].exists)
+            let control = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "比较依据")).firstMatch
+            scrollToElement(control, in: app)
+            XCTAssertTrue(control.isHittable)
+            control.tap()
+            let answer = app.staticTexts["这次交接少了一种例外，暂时无法判断是标准还是范围起作用。"]
+            scrollToElement(answer, in: app)
+            XCTAssertTrue(answer.exists)
+            let image = XCTAttachment(screenshot: app.screenshot())
+            image.name = "reflection-topics-\(largest ? "dark-largest" : "light")"
+            image.lifetime = .keepAlways
+            add(image)
+            let source = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "growth.reflection-topic.source.")).firstMatch
+            scrollToElement(source, in: app)
+            XCTAssertTrue(source.isHittable)
+            source.tap()
+            XCTAssertTrue(app.staticTexts["已定位到来源证据"].waitForExistence(timeout: 4))
+            XCTAssertTrue(app.tabBars.buttons["历史"].isSelected)
+            app.terminate()
+        }
+    }
+
+    func testGrowthGenericRecordsDoNotBecomeAbilityDiagnoses() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--growth-evidence-ui-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["复盘中讨论过"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["当前记录中还没有可按主题对照的已回答问题。你仍可以在历史中回看原文。"].exists)
+        XCTAssertFalse(app.staticTexts["讲不清"].exists)
+        XCTAssertFalse(app.staticTexts["沟通力"].exists)
+        XCTAssertFalse(app.staticTexts["出现 3 次"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "reflection-topics-unclassified"
+        image.lifetime = .keepAlways
+        add(image)
     }
 
     func testTodayTrainingPrescriptionShowsPrimaryFocusAndBaselineChecks() throws {
@@ -227,14 +846,69 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["推荐怎么练"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["诊断主要缺口"].exists)
         XCTAssertFalse(app.staticTexts["推荐训练处方"].exists)
-        XCTAssertTrue(app.staticTexts["教练判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["当前材料的暂定理解"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["当前阶段：补证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["建议：先减缓收敛，补齐关键证据。"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["缺口：缺观察事实、缺基线"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["主练：证据意识"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["思考方向：证据意识"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["基础检查"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["底盘检查"].exists)
         XCTAssertTrue(app.staticTexts["证据缺口"].exists)
+    }
+
+    func testInitialModelGapDoesNotInventObservationAndCanBeSkipped() throws {
+        for largest in [false, true] {
+            let app = seededTodayApp(stage: "select_lens", input: "事实：两次提交都在上传时超时，权限是否限制重试未知。")
+            app.launchEnvironment["MINGSI_VISUAL_QA_INITIAL_COACH_GAP"] = "missing_constraint"
+            app.launchArguments += ["-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let gap = app.staticTexts["today.coach-decision.material-gap"]
+            scrollToElement(gap, in: app)
+            XCTAssertTrue(isElementInTappableScrollArea(gap, app: app))
+            XCTAssertTrue(gap.label.contains("缺约束"))
+            XCTAssertFalse(gap.label.contains("缺观察事实"))
+            XCTAssertFalse(gap.label.contains("缺基线"))
+            let reason = app.staticTexts["today.coach-decision.reason"]
+            scrollToElement(reason, in: app)
+            XCTAssertTrue(isElementInTappableScrollArea(reason, app: app))
+            XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", reason.label)).count, 1,
+                           "Do not repeat the model diagnosis in its optional recommendation card")
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "initial-coach-gap-\(largest ? "dark-largest" : "light")"
+            shot.lifetime = .keepAlways; add(shot)
+            XCTAssertTrue(app.staticTexts["可选视角"].exists, "The fixture must render the actual method recommendation card")
+            XCTAssertFalse(app.staticTexts["教练建议 · 84%"].exists)
+            XCTAssertFalse(app.buttons["today.training-prescription.teaching-toggle"].exists,
+                           "Do not add a locally invented training route to a model suggestion")
+            XCTAssertFalse(app.staticTexts["推荐怎么练"].exists, "Local keyword diagnosis must not precede the model decision")
+            XCTAssertFalse(app.buttons["today.coach-diagnosis.slow-down-action"].exists)
+            XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "建议：先标出")).firstMatch.exists,
+                           "A generic move label must not reintroduce an assignment absent from the model reason")
+            XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "轮次：教练初始轮次")).firstMatch.exists,
+                           "Do not repeat the same model reason as a turn summary")
+            if largest {
+                XCTAssertFalse(app.descendants(matching: .any)["today.fixed-action-bar"].exists)
+            }
+            let accept = app.buttons["today.training-prescription.accept-action"]
+            scrollToElement(accept, in: app)
+            XCTAssertTrue(accept.isHittable)
+            accept.tap()
+            let skip = app.buttons[largest ? "today.training-prescription.skip-action" : "today.select-lens.continue-without-lens"]
+            scrollToElement(skip, in: app)
+            XCTAssertTrue(skip.isHittable)
+            skip.tap()
+            XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
+            app.terminate()
+        }
+        let app = seededTodayApp(stage: "select_lens", input: "事实：提交超时，原因未知；今天先不继续调查。")
+        app.launchEnvironment["MINGSI_VISUAL_QA_INITIAL_COACH_GAP"] = "none"
+        app.launch()
+        let reason = app.staticTexts["today.coach-decision.reason"]
+        scrollToElement(reason, in: app)
+        XCTAssertTrue(reason.label.contains("不必继续调查"))
+        XCTAssertFalse(app.staticTexts["today.coach-decision.material-gap"].exists)
+        app.terminate()
     }
 
     func testTodayTrainingPrescriptionShowsTeachingRoute() throws {
@@ -356,6 +1030,23 @@ final class MingSiUITests: XCTestCase {
         XCTAssertLessThan(abs(materialAction.frame.midY - materialThought.frame.midY), 2)
         XCTAssertLessThan(materialEvent.frame.maxX, materialAction.frame.minX)
         XCTAssertLessThan(materialAction.frame.maxX, materialThought.frame.minX)
+
+        let guide = app.buttons["today.capture.guidance-toggle"]
+        for _ in 0..<8 where !guide.isHittable { app.swipeUp() }
+        guide.tap()
+        let optional = app.staticTexts["只选对当前困惑有用的一项，不必逐项填写。"]
+        XCTAssertTrue(optional.waitForExistence(timeout: 4))
+        for _ in 0..<8 where !optional.isHittable { app.swipeUp() }
+        let guideShot = XCTAttachment(screenshot: app.screenshot())
+        guideShot.name = "capture-optional-input-guide"
+        guideShot.lifetime = .keepAlways; add(guideShot)
+        let deepDescription = app.staticTexts["更仔细检查假设和其他解释，不增加提问数量。"]
+        for _ in 0..<12 where !deepDescription.isHittable { app.swipeUp() }
+        XCTAssertTrue(deepDescription.isHittable)
+        XCTAssertFalse(app.staticTexts["追问更深，适合重要事件和周复盘。"].exists)
+        let modeShot = XCTAttachment(screenshot: app.screenshot())
+        modeShot.name = "capture-mode-matches-prompt"
+        modeShot.lifetime = .keepAlways; add(modeShot)
 
         XCTAssertFalse(app.buttons["today.reset-action"].exists)
         let moreActions = app.buttons["today.more-actions"]
@@ -687,6 +1378,42 @@ final class MingSiUITests: XCTestCase {
             primaryAction.frame.minY,
             "answerField: \(answerField.frame), primaryAction: \(primaryAction.frame)"
         )
+    }
+
+    func testGuidanceLayoutAndDismissalInLightAndLargestDarkText() throws {
+        for (name, size, appearance) in [("light-normal", "UICTContentSizeCategoryL", "Light"),
+                                         ("dark-largest", "UICTContentSizeCategoryAccessibilityXXXL", "Dark")] {
+            let app = seededVNextTodayApp(stage: "answer_questions")
+            app.launchArguments = ["--today-loop-ui-fixture", "--guidance-presentation-ui-fixture",
+                "-UIPreferredContentSizeCategory", size, "-AppleInterfaceStyle", appearance]
+            app.launch()
+            let toggle = app.buttons["today.active-guidance-toggle"]
+            XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+            for _ in 0..<8 where !toggle.isHittable { app.swipeUp() }
+            XCTAssertTrue(toggle.isHittable)
+            toggle.tap()
+            let snooze = app.buttons["暂不显示"]
+            let mastered = app.buttons["我已掌握"]
+            XCTAssertTrue(snooze.waitForExistence(timeout: 4))
+            for _ in 0..<8 where !mastered.isHittable { app.swipeUp() }
+            XCTAssertTrue(mastered.isHittable)
+            XCTAssertGreaterThanOrEqual(snooze.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(mastered.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(snooze.frame.minX, 18)
+            XCTAssertLessThanOrEqual(mastered.frame.maxX, app.frame.maxX - 18)
+            if name == "dark-largest" {
+                XCTAssertLessThanOrEqual(snooze.frame.maxY, mastered.frame.minY)
+            }
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "guidance-expanded-\(name)"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            for _ in 0..<8 where !snooze.isHittable { app.swipeDown() }
+            XCTAssertTrue(snooze.isHittable)
+            snooze.tap()
+            XCTAssertTrue(toggle.waitForNonExistence(timeout: 4))
+            app.terminate()
+        }
     }
 
     func testVNextGuidanceRevealsExplanationAndStateActionsOnDemand() throws {
@@ -1051,25 +1778,99 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(validationStage.label.contains("行动验证"))
         XCTAssertTrue(validationStage.label.contains("进行中"))
         XCTAssertFalse(app.staticTexts["闭环二：明日验证与结果校准"].exists)
-        XCTAssertTrue(app.staticTexts["设计明日验证"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["设计验证行动"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["本页只设计明天的验证行动"].exists)
         XCTAssertFalse(app.staticTexts["今日复盘交接点"].exists)
         XCTAssertFalse(app.buttons["today.review-quests.guidance-toggle"].exists)
         XCTAssertTrue(app.staticTexts["今天要验证"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["明天的验证动作"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["先完成「明天做什么」，再用「完成证据」回答「校准问题」，据此更新今天的判断。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["对应判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["准备怎么做"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["先看行动和观察结果，再决定是否保存。"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["对应判断"].exists)
         XCTAssertTrue(app.staticTexts["完成证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["校准问题"].waitForExistence(timeout: 4))
-        for (identifier, label) in [
+        let details = app.buttons["today.quest.details-toggle"].firstMatch
+        scrollToElement(details, in: app)
+        details.tap()
+        for (_, label) in [
             ("today.quest.validation.action", "明天做什么"),
             ("today.quest.validation.evidence", "什么算完成"),
             ("today.quest.validation.judgment", "验证什么判断"),
             ("today.quest.validation.calibration", "结果怎么用")
         ] {
-            let qualityCheck = app.staticTexts[identifier].firstMatch
+            let qualityCheck = app.staticTexts[label].firstMatch
             XCTAssertTrue(qualityCheck.waitForExistence(timeout: 4))
             XCTAssertEqual(qualityCheck.label, label)
+        }
+    }
+
+    func testCapturedActionAllowsNaturalRetryAndUnknownResultInLightAndLargestDark() throws {
+        let response = #"""
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "等自然重试时观察这位朋友的提交结果",
+            "why_it_matters": "据你所述，日志显示提交前断网，但尚不能确定退出原因；这次结果也不能单独证明说明清楚或不清楚。",
+            "completion_criteria": "若这位朋友自然重试，观察网络已恢复且说明未变时，提交是否成功；未重试、网络状态不明或说明已变，则结果仍未知。",
+            "expected_resistance": "只等自然机会，不催促朋友，不改说明，不做沟通训练。",
+            "reflection_question": "这次结果支持、削弱还是仍无法判断该预测，哪些观察条件限制了判断？",
+            "calibration_target": "这位朋友在网络恢复、说明不变时再次提交，可能成功。",
+            "lens_move": "prediction_calibration",
+            "linked_cards": [
+              "先观察恢复网络后的提交"
+            ]
+          },
+          "side_quests": [],
+          "observation_quest": null,
+          "rejected_low_value_tasks": []
+        }
+        """#
+        let target = "这位朋友在网络恢复、说明不变时再次提交，可能成功。"
+        let criteria = "若这位朋友自然重试，观察网络已恢复且说明未变时，提交是否成功；未重试、网络状态不明或说明已变，则结果仍未知。"
+        for largest in [false, true] {
+            let app = seededTodayApp(stage: "review_quests", input: "一位朋友填写页面时退出，我原先怀疑说明不清。后来日志确认他在提交前断网了；还不知道恢复网络后能否提交。我不想重写说明，也不想做沟通训练。愿意下次只看这位朋友网络恢复后的提交结果，保持说明不变。")
+            app.launchEnvironment["MINGSI_VISUAL_QA_QUEST_RESPONSE"] = response
+            app.launchArguments += ["-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
+            let anchor = app.staticTexts[target].firstMatch
+            scrollToElement(anchor, in: app)
+            XCTAssertTrue(anchor.exists)
+            XCTAssertTrue(isElementInTappableScrollArea(anchor, app: app))
+            XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", target)).count, 1)
+            XCTAssertFalse(app.staticTexts["对应判断"].exists)
+            XCTAssertFalse(app.staticTexts["today.quest.validation.action"].exists)
+            let top = XCTAttachment(screenshot: app.screenshot())
+            top.name = largest ? "action-target-dark-largest" : "action-target-light"
+            top.lifetime = .keepAlways
+            add(top)
+            let evidence = app.staticTexts[criteria].firstMatch
+            scrollToElement(evidence, in: app)
+            XCTAssertTrue(isElementInTappableScrollArea(evidence, app: app))
+            let signal = XCTAttachment(screenshot: app.screenshot())
+            signal.name = largest ? "action-signal-dark-largest" : "action-signal-light"
+            signal.lifetime = .keepAlways
+            add(signal)
+            let review = app.staticTexts["这次结果支持、削弱还是仍无法判断该预测，哪些观察条件限制了判断？"].firstMatch
+            scrollToElement(review, in: app)
+            XCTAssertTrue(isElementInTappableScrollArea(review, app: app))
+            if largest {
+                XCTAssertFalse(app.descendants(matching: .any)["today.fixed-action-bar"].exists)
+            }
+            let primary = app.buttons["today.primary-action"]
+            if largest {
+                scrollToElement(primary, in: app)
+            }
+            XCTAssertTrue(primary.isHittable)
+            XCTAssertGreaterThanOrEqual(primary.frame.minY, 64)
+            XCTAssertLessThanOrEqual(primary.frame.maxY, app.tabBars.firstMatch.frame.minY - 8)
+            let actionShot = XCTAttachment(screenshot: app.screenshot())
+            actionShot.name = largest ? "action-save-dark-largest" : "action-save-light"
+            actionShot.lifetime = .keepAlways
+            add(actionShot)
+            primary.tap()
+            XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+            app.terminate()
         }
     }
 
@@ -1080,7 +1881,7 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["先补一个判断"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["还没有明确的待验证判断。请回到今日复盘，把一个判断写成明天能观察的信号。"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["对应判断"].firstMatch.waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["对应判断"].exists)
 
         let repairAction = app.buttons["today.return-to-review-for-judgment-action"]
         scrollToElement(repairAction, in: app)
@@ -1089,6 +1890,42 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["教练追问"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["先补一处没讲清的地方。"].waitForExistence(timeout: 4))
+    }
+
+    func testNoActionOutcomeCanBeReadSavedOrReturnedToReview() throws {
+        for largest in [false, true] {
+            let app = seededTodayApp(stage: "review_quests", input: "我现在只想保留这段回顾，不安排行动。")
+            app.launchEnvironment["MINGSI_VISUAL_QA_QUEST_RESPONSE"] = #"{"main_quest":null,"side_quests":[],"observation_quest":null}"#
+            app.launchArguments += ["-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            XCTAssertTrue(app.staticTexts["today.state.review_without_action"].waitForExistence(timeout: 8))
+            let explanation = app.staticTexts["today.no-action.explanation"]
+            scrollToElement(explanation, in: app)
+            XCTAssertFalse(app.buttons["today.review-quests.optional-principle-action"].exists)
+            XCTAssertFalse(app.staticTexts["先补一个判断"].exists)
+            let reading = XCTAttachment(screenshot: app.screenshot())
+            reading.name = largest ? "no-action-reading-dark-largest" : "no-action-reading-light"
+            reading.lifetime = .keepAlways
+            add(reading)
+            let save = app.buttons["today.primary-action"]
+            XCTAssertEqual(save.label, "保存回顾，今天先到这里")
+            if largest { scrollToElement(save, in: app) }
+            XCTAssertTrue(save.isHittable)
+            save.tap()
+            XCTAssertTrue(app.staticTexts["today.state.session_complete"].waitForExistence(timeout: 8))
+            XCTAssertTrue(app.staticTexts["回顾已保存，这次没有安排行动。"].exists)
+            XCTAssertFalse(app.staticTexts["明日验证行动"].exists)
+            XCTAssertFalse(app.buttons["today.previous-action"].exists)
+            app.terminate()
+        }
+        let app = seededTodayApp(stage: "review_quests")
+        app.launchEnvironment["MINGSI_VISUAL_QA_QUEST_RESPONSE"] = #"{"main_quest":null,"side_quests":[],"observation_quest":null}"#
+        app.launch()
+        let back = app.buttons["today.no-action.return-to-review"]
+        scrollToElement(back, in: app)
+        back.tap()
+        XCTAssertTrue(app.staticTexts["today.state.answer_questions"].waitForExistence(timeout: 8))
     }
 
     func testTodayVerifyYesterdayFramesResultCalibration() throws {
@@ -1106,10 +1943,71 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["先校准昨天的明日验证，再开始收集今天的新材料。"].exists)
         XCTAssertFalse(app.staticTexts["本页只校准昨天结果"].exists)
         XCTAssertFalse(app.staticTexts["只检查做没做、有没有实际价值、昨天判断要不要更新；新的今日内容在下一段填写。"].exists)
-        XCTAssertTrue(app.staticTexts["昨天判断怎么更新？"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.buttons["确认判断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.buttons["调整判断"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.buttons["推翻判断"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["你的判断自评"].waitForExistence(timeout: 4))
+        for title in ["暂不能判断", "确认判断", "调整判断", "推翻判断"] {
+            let option = app.buttons[title]
+            scrollToElement(option, in: app)
+            XCTAssertTrue(option.isHittable)
+        }
+    }
+
+    func testResultInputAllowsUnknownAndCancellationKeepsInputInNormalAndLargestText() throws {
+        var normalInputHeight: CGFloat = 0
+        for largest in [false, true] {
+            let app = seededTodayApp(stage: "verify_yesterday")
+            app.launchArguments += ["--verification-submission-delay", "-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            // This fixture already owns a real in-memory quest; generic stage
+            // seeding would trim it away and skip verification on submission.
+            app.launchEnvironment.removeValue(forKey: "MINGSI_VISUAL_QA_TODAY_INPUT")
+            app.launch()
+            XCTAssertTrue(app.staticTexts["网络正常时重试一次填写"].waitForExistence(timeout: 8))
+            let resultLabel = app.staticTexts["today.verification.result-label"]
+            scrollToElement(resultLabel, in: app)
+            XCTAssertTrue(resultLabel.isHittable)
+            let field = app.textFields["today.yesterday-evidence.input"]
+            scrollToElement(field, in: app)
+            XCTAssertTrue(field.isHittable)
+            XCTAssertTrue(field.placeholderValue?.contains("没有观察、出现反例或记录冲突") == true)
+            if largest { XCTAssertGreaterThan(resultLabel.frame.height, normalInputHeight * 1.15) }
+            else { normalInputHeight = resultLabel.frame.height }
+            field.tap()
+            let input = "我还没有记录重试结果，暂时不能判断。"
+            field.typeText(input)
+            let dismiss = app.buttons["today.yesterday-evidence.input.keyboard-dismiss"]
+            XCTAssertTrue(dismiss.waitForExistence(timeout: 3))
+            dismiss.tap()
+            for label in ["完成", "不确定", "暂不能判断"] {
+                let button = app.buttons[label].firstMatch
+                scrollToElement(button, in: app)
+                XCTAssertTrue(button.isHittable)
+                button.tap()
+            }
+            let before = XCTAttachment(screenshot: app.screenshot())
+            before.name = largest ? "result-input-unknown-dark-largest" : "result-input-unknown-light"
+            before.lifetime = .keepAlways
+            add(before)
+            let primary = app.buttons["today.primary-action"]
+            XCTAssertEqual(primary.label, "保存结果回顾")
+            primary.tap()
+            let cancel = app.buttons["today.cancel-current-ai-action"]
+            XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+            XCTAssertFalse(primary.isEnabled)
+            XCTAssertTrue(cancel.isEnabled)
+            XCTAssertTrue(cancel.isHittable)
+            cancel.tap()
+            XCTAssertTrue(primary.waitForExistence(timeout: 3))
+            XCTAssertTrue(primary.isEnabled)
+            scrollToElement(field, in: app, towardTop: true)
+            XCTAssertEqual(field.value as? String, input)
+            let after = XCTAttachment(screenshot: app.screenshot())
+            after.name = largest ? "result-input-cancelled-dark-largest" : "result-input-cancelled-light"
+            after.lifetime = .keepAlways
+            add(after)
+            primary.tap()
+            XCTAssertTrue(app.staticTexts["today.state.capture"].waitForExistence(timeout: 10))
+            app.terminate()
+        }
     }
 
     func testTodayReviewQuestsSeedShowsQuestTrainingTarget() throws {
@@ -1117,10 +2015,10 @@ final class MingSiUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["today.state.review_quests"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["today.quest.validation.action"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["today.quest.validation.evidence"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["today.quest.validation.judgment"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["today.quest.validation.calibration"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.staticTexts["today.quest.validation.action"].exists)
+        XCTAssertFalse(app.staticTexts["today.quest.validation.evidence"].exists)
+        XCTAssertFalse(app.staticTexts["today.quest.validation.judgment"].exists)
+        XCTAssertFalse(app.staticTexts["today.quest.validation.calibration"].exists)
         XCTAssertTrue(app.staticTexts["完成证据"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["校准问题"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.staticTexts["为什么重要"].exists)
@@ -1263,6 +2161,35 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(disputeAction.exists)
     }
 
+    func testGrowthPracticeDistinguishesBehaviorFromUnassessedHistoryInNormalAndLargestText() throws {
+        for largest in [false, true] {
+            let app = seededGrowthApp()
+            app.launchArguments += ["--principle-practice-ui-fixture", "-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            expandFirstGrowthPrincipleDetails(in: app)
+            let notice = app.staticTexts.matching(NSPredicate(format: "identifier ENDSWITH %@", ".unassessed-practice")).firstMatch
+            scrollToElement(notice, in: app)
+            XCTAssertEqual(notice.label, "有 1 条历史关联尚缺实际行为记录，暂不计为实践。")
+            let latest = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "最近证据：")).firstMatch
+            scrollToElement(latest, in: app)
+            XCTAssertTrue(latest.label.contains("交接前我写了验收标准，请对方复述确认"))
+            XCTAssertTrue(latest.label.contains("不证明效果或已经内化"))
+            let dispute = app.buttons.matching(NSPredicate(format: "identifier ENDSWITH %@", ".dispute-action")).firstMatch
+            scrollToElement(dispute, in: app)
+            XCTAssertTrue(dispute.isHittable)
+            let image = XCTAttachment(screenshot: app.screenshot())
+            image.name = largest ? "practice-record-dark-largest" : "practice-record-light"
+            image.lifetime = .keepAlways
+            add(image)
+            dispute.tap()
+            XCTAssertTrue(latest.waitForNonExistence(timeout: 4))
+            scrollToElement(notice, in: app, towardTop: true)
+            XCTAssertTrue(notice.label.contains("暂不计为实践"))
+            app.terminate()
+        }
+    }
+
     func testGrowthPrinciplePracticeCorrectionActionRemovesLatestEvidence() throws {
         let app = seededGrowthApp()
         app.launch()
@@ -1284,7 +2211,7 @@ final class MingSiUITests: XCTestCase {
         let disputedAudit = app.staticTexts.matching(NSPredicate(format: "identifier ENDSWITH %@", ".disputed-audit")).firstMatch
         scrollToElement(disputedAudit, in: app)
         XCTAssertTrue(disputedAudit.label.contains("已否认归因："))
-        XCTAssertTrue(disputedAudit.label.contains("验证中实践了验收标准"))
+        XCTAssertTrue(disputedAudit.label.contains("交接前我写了验收标准"))
     }
 
     func testGrowthNeedsReviewRecallAuditRendersThroughIdentifier() throws {
@@ -1312,12 +2239,54 @@ final class MingSiUITests: XCTestCase {
         XCTAssertFalse(app.buttons["history.ai-repair.disclosure"].exists)
     }
 
+    func testResultReviewSeparatesEvidenceAssessmentFromPositiveSelfRating() throws {
+        for variant in ["observed", "conflicting", "missing"] {
+            let largest = variant == "missing"
+            let app = XCUIApplication()
+            app.launchArguments = ["--result-review-ui-fixture", "-AppleInterfaceStyle", largest ? "Dark" : "Light",
+                "-UIPreferredContentSizeCategory", largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launchEnvironment["MINGSI_RESULT_REVIEW_VARIANT"] = variant
+            app.launch()
+            let title = app.staticTexts[variant == "observed" ? "本次证据削弱原判断" : "原判断仍未确定"]
+            scrollToElement(title, in: app)
+            XCTAssertTrue(title.exists)
+            let status = app.staticTexts[variant == "observed" ? "有结果记录 · 未达到本次验收标准" :
+                (variant == "missing" ? "缺少结果证据 · 验收暂不能判断" : "记录存在冲突 · 验收暂不能判断")]
+            scrollToElement(status, in: app)
+            XCTAssertTrue(status.isHittable)
+            XCTAssertFalse(app.staticTexts["本次成长证据"].exists)
+            XCTAssertFalse(app.staticTexts["判断更新"].exists)
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "result-review-\(variant)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let details = app.buttons["today.result-review.details"]
+            scrollToElement(details, in: app)
+            details.tap()
+            let selfRating = app.staticTexts["你的判断自评"]
+            scrollToElement(selfRating, in: app)
+            XCTAssertTrue(selfRating.exists)
+            XCTAssertTrue(app.staticTexts["确认判断"].exists)
+            if variant == "observed" {
+                let quotes = app.buttons["引用的记录"]
+                scrollToElement(quotes, in: app)
+                quotes.tap()
+                XCTAssertTrue(app.staticTexts["“朋友仍有两个字段空着，最后退出”"].exists)
+            }
+            let dismiss = app.buttons["today.result-review.dismiss"]
+            scrollToElement(dismiss, in: app)
+            dismiss.tap()
+            XCTAssertFalse(app.staticTexts[variant == "observed" ? "本次证据削弱原判断" : "原判断仍未确定"].exists)
+            app.terminate()
+        }
+    }
+
     func testHistoryCaseSettlementShowsOriginalResultAndJudgmentUpdate() throws {
         let app = historyCaseSettlementApp()
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["验证证据"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["判断更新 · 调整判断"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["结果记录"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["你的判断自评 · 调整判断"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["原判断：只要会后补发结论，就能避免后续返工。"].exists)
         XCTAssertTrue(app.staticTexts["实际结果：返工追问减少，但关键参与方仍需在会前参与确认。"].exists)
         XCTAssertTrue(
@@ -1337,6 +2306,7 @@ final class MingSiUITests: XCTestCase {
         missingCalibrationTarget: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchArguments = ["--today-loop-ui-fixture"]
         // These regression fixtures exercise the legacy single-entry flow.
         app.launchEnvironment["MINGSI_VNEXT_CASES_ENABLED"] = "0"
         app.launchEnvironment["MINGSI_VISUAL_QA_TODAY_INPUT"] = input
@@ -1423,19 +2393,34 @@ final class MingSiUITests: XCTestCase {
         detailsToggle.tap()
     }
 
-    private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication) {
+    private func scrollToElement(_ element: XCUIElement, in app: XCUIApplication, towardTop: Bool = false) {
         let scrollView = primaryScrollView(in: app)
 
-        var remainingScrolls = 12
+        // Growth's largest accessibility layout can span more than twelve
+        // viewports before its principle section. Keep the same visibility
+        // requirements while allowing the full content to be traversed.
+        var remainingScrolls = 32
         while (!element.exists || !isElementInTappableScrollArea(element, app: app)) && remainingScrolls > 0 {
-            let beforeMidY = element.exists ? element.frame.midY : nil
-            if element.exists, element.frame.midY < app.frame.height * 0.24 {
-                drag(scrollView, fromY: 0.35, toY: 0.62)
+            // SwiftUI can expose an offscreen field with an infinite, empty
+            // frame. Its position cannot tell us which way to scroll.
+            let beforeMidY = element.exists && element.frame.midY.isFinite ? element.frame.midY : nil
+            // At accessibility sizes the fixed action bar can start above 72%
+            // of the screen. Keep both ends of the gesture in visible content.
+            let fixedBar = app.descendants(matching: .any)["today.fixed-action-bar"].firstMatch
+            let overlayTop = fixedBar.exists ? fixedBar.frame.minY : app.frame.height
+            let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY : app.frame.height
+            let top = max(90, app.frame.height * 0.16)
+            let bottom = max(top + 80, min(overlayTop, keyboardTop, app.frame.height * 0.82) - 14)
+            let high = (top + (bottom - top) * 0.20) / app.frame.height
+            let low = (top + (bottom - top) * 0.85) / app.frame.height
+            let scrollDown = beforeMidY != nil ? element.frame.minY < app.frame.minY + 64 : towardTop
+            if scrollDown {
+                drag(scrollView, fromY: high, toY: low)
             } else {
-                drag(scrollView, fromY: 0.72, toY: 0.45)
+                drag(scrollView, fromY: low, toY: high)
             }
             if let beforeMidY, element.exists, abs(element.frame.midY - beforeMidY) < 1 {
-                if element.frame.midY < app.frame.height * 0.24 {
+                if scrollDown {
                     scrollView.swipeDown()
                 } else {
                     scrollView.swipeUp()
@@ -1447,21 +2432,18 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 4))
         XCTAssertTrue(
             isElementInTappableScrollArea(element, app: app),
-            "Element frame \(element.frame) is outside tappable area for app frame \(app.frame)."
+            "Element frame \(element.frame) is outside readable/tappable area for app frame \(app.frame)."
         )
     }
 
     private func isElementInTappableScrollArea(_ element: XCUIElement, app: XCUIApplication) -> Bool {
         guard element.exists, !element.frame.isEmpty else { return false }
-        let bottomOverlayTop = app.buttons["today.primary-action"].firstMatch.exists
-            ? app.buttons["today.primary-action"].firstMatch.frame.minY
-            : app.frame.height
-        let keyboardTop = app.keyboards.firstMatch.exists
-            ? app.keyboards.firstMatch.frame.minY
-            : app.frame.height
-        let tappableBottom = min(bottomOverlayTop, keyboardTop) - 12
-        return element.frame.minY >= app.frame.minY + 44 &&
-            element.frame.maxY <= tappableBottom
+        let fixedBar = app.descendants(matching: .any)["today.fixed-action-bar"].firstMatch
+        let bottomOverlayTop = fixedBar.exists ? fixedBar.frame.minY : app.frame.height
+        let keyboardTop = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame.minY : app.frame.height
+        let tabTop = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame.minY : app.frame.height
+        let readableBottom = min(bottomOverlayTop, keyboardTop, tabTop) - 8
+        return element.frame.minY >= app.frame.minY + 64 && element.frame.maxY <= readableBottom
     }
 
     private func primaryScrollView(in app: XCUIApplication) -> XCUIElement {

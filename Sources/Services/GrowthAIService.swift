@@ -22,6 +22,11 @@ struct GrowthRecordSummary: Hashable {
     var calibrationNote: String?
     var hasLensSessionAnswers: Bool
     var principleTitles: [String]
+    var verificationId: UUID? = nil
+    var trainingCaseId: UUID? = nil
+    var verificationEvidenceText: String? = nil
+    var calibrationAssessment: CalibrationAssessment? = nil
+    var verifications: [HistoricalVerificationEvidence] = []
 }
 
 struct GrowthAIService {
@@ -48,7 +53,9 @@ struct GrowthAIService {
         let template = promptProvider.template(for: promptID, mode: .standard)
         let contextPayload = buildContextPayload(from: context)
 
-        let sourceRecordIDs = Array(Set(context.historyRecords.map { $0.dailyEntryId.uuidString })).sorted()
+        let sourceRecordIDs = Array(Set(context.historyRecords.flatMap { record in
+            [record.dailyEntryId.uuidString] + record.verifications.flatMap { [$0.verificationId, $0.questId] }
+        })).sorted()
         let request = LLMRequest(
             prompt: template,
             inputSummary: "period=\(context.period); loops=\(context.completeLoopCount); records=\(context.historyRecords.count)",
@@ -75,7 +82,9 @@ struct GrowthAIService {
         let template = promptProvider.template(for: promptID, mode: .standard)
         let contextPayload = buildContextPayload(from: context)
 
-        let sourceRecordIDs = Array(Set(context.historyRecords.map { $0.dailyEntryId.uuidString })).sorted()
+        let sourceRecordIDs = Array(Set(context.historyRecords.flatMap { record in
+            [record.dailyEntryId.uuidString] + record.verifications.flatMap { [$0.verificationId, $0.questId] }
+        })).sorted()
         let request = LLMRequest(
             prompt: template,
             inputSummary: "period=\(context.period); loops=\(context.completeLoopCount); records=\(context.historyRecords.count)",
@@ -113,11 +122,12 @@ struct GrowthAIService {
             {"training_focus":"one concrete next-week focus","hint_ids":["existing hint id"],"evidence_refs":["verification id"]}
             You may select only from these existing hint IDs: \(catalog.map(\.hintId).joined(separator: ", ")).
             Do not create UI copy, scores, metric contributions, personality claims, or new hint IDs.
+            \(HistoricalEvidenceContract.text)
             """,
             outputSchemaVersion: 1
         )
         let payload = PromptContextPayload(
-            currentInput: .init(dailyEntryId: nil, rawText: recent.map { "\($0.id.uuidString): \($0.evidenceText) \($0.calibrationNote)" }.joined(separator: "\n")),
+            currentInput: .init(dailyEntryId: nil, rawText: try Self.weeklyEvidenceJSON(recent)),
             userChoice: .init(sessionMode: SessionMode.standard.rawValue),
             privacy: .init(rules: "Use only supplied verification evidence."),
             growth: .init(
@@ -136,6 +146,10 @@ struct GrowthAIService {
             throw TodayAIParsingError.qualityGateFailed(["周复盘必须只选择已有提示和真实验证证据。"])
         }
         return selection
+    }
+
+    private static func weeklyEvidenceJSON(_ verifications: [Verification]) throws -> String {
+        String(decoding: try JSONEncoder().encode(verifications.map(HistoricalVerificationEvidence.init)), as: UTF8.self)
     }
 
     private static func parseWeeklyGuidanceSelection(_ data: Data) throws -> WeeklyGuidanceReviewSelection {
@@ -164,10 +178,10 @@ struct GrowthAIService {
             executionReliability: 3.0,
             calibration: 3.0,
             reflectionDepth: 3.0,
-            summary: "完成 \(completeLoopCount) 次完整复盘，需要至少 3 次才能生成可解释的成长趋势。",
+            summary: "当前有 \(completeLoopCount) 次完整复盘，尚未达到报告整理所需的 3 次记录。次数达标后仍需核对实际结果与来源，不能据此确认成长。",
             status: .insufficientEvidence,
             completeLoopCount: completeLoopCount,
-            nextTrainingFocus: "先稳定完成输入、卡片确认、明日验证和次日结果校准。"
+            nextTrainingFocus: nil
         )
         return GrowthReportResult(snapshot: snapshot, contributions: [])
     }
@@ -176,7 +190,7 @@ struct GrowthAIService {
         PromptContextPayload(
             userChoice: .init(sessionMode: SessionMode.standard.rawValue),
             privacy: .init(
-                rules: "Use only user-confirmed local evidence. Do not infer personality traits or expose sensitive company details."
+                rules: "Completion and value ratings are user self-reports, not verified outcomes. Use the reported result and saved calibrationAssessment, retaining missing, conflicting, or unresolved status. A supported target judgment does not establish thinking-method effectiveness or ability growth. Do not infer personality traits or expose sensitive company details."
             ),
             growth: .init(
                 period: context.period,
@@ -195,7 +209,11 @@ struct GrowthAIService {
                         verificationValueRating: record.verificationValueRating,
                         calibrationNote: record.calibrationNote,
                         hasLensSessionAnswers: record.hasLensSessionAnswers,
-                        principleTitles: record.principleTitles
+                        principleTitles: record.principleTitles,
+                        verificationId: record.verificationId?.uuidString, trainingCaseId: record.trainingCaseId?.uuidString,
+                        verificationEvidenceText: record.verificationEvidenceText,
+                        calibrationAssessment: record.calibrationAssessment,
+                        verifications: record.verifications
                     )
                 },
                 previousSnapshot: context.previousSnapshot?.canDisplayScores == true ? context.previousSnapshot.map { snapshot in

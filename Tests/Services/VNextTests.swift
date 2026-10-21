@@ -210,6 +210,337 @@ final class VNextTests: XCTestCase {
         XCTAssertEqual(savedQuests.first?.status, .completed)
     }
 
+    func testCalibrationReceiptRoundTripKeepsModelAssessmentAndSeparateSelfRating() async throws {
+        for status in [CalibrationAssessment.JudgmentStatus.supported, .weakened, .unresolved] {
+            let fixture = try await makeQuestFixture()
+            var verification = makeVerification(quest: fixture.quest, entryId: fixture.entry.id)
+            verification.judgmentUpdate = .confirmed
+            verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: status == .unresolved ? .conflicting : .observed,
+                criteriaStatus: status == .supported ? .met : .notAssessable,
+                judgmentStatus: status, evidenceQuotes: ["Observed result"])
+            verification.calibrationNote = "只根据本次记录判断，保留其他解释。"
+            verification.recommendation = "可自愿核对已有记录。"
+            verification.principlePracticeAssessment = PrinciplePracticeAssessment(
+                principleId: UUID(), status: .notAssessable, evidenceQuotes: [], reason: "没有行为记录。")
+            let settlement = GrowthSettlementPolicy().make(verification: verification, quest: fixture.quest,
+                caseId: fixture.trainingCase.id, modelEvidenceItems: [])
+            try await SQLiteVerificationSettlementRepository(database: database).saveVerification(
+                verification, questStatus: .completed, settlement: settlement)
+            let saved = try await SQLiteVerificationRepository(database: database).verification(forQuestId: fixture.quest.id)
+            let receipt = try await SQLiteGrowthSettlementRepository(database: database).settlement(for: verification.id)
+            XCTAssertEqual(saved?.calibrationAssessment, verification.calibrationAssessment)
+            XCTAssertEqual(saved?.principlePracticeAssessment, verification.principlePracticeAssessment)
+            XCTAssertEqual(receipt?.calibrationAssessment, verification.calibrationAssessment)
+            XCTAssertEqual(saved?.judgmentUpdate, .confirmed)
+            XCTAssertEqual(receipt?.judgmentUpdate, .confirmed)
+            XCTAssertEqual(receipt?.calibrationNote, verification.calibrationNote)
+            XCTAssertEqual(receipt?.recommendation, verification.recommendation)
+            // Exercise the independent verification repository update as well.
+            verification.calibrationAssessment?.judgmentStatus = .unresolved
+            verification.principlePracticeAssessment?.status = .partiallyPracticed
+            verification.principlePracticeAssessment?.evidenceQuotes = ["Observed result"]
+            verification.principlePracticeAssessment?.reason = "只报告了部分动作。"
+            try await SQLiteVerificationRepository(database: database).saveVerification(verification)
+            let updated = try await SQLiteVerificationRepository(database: database).verification(forQuestId: fixture.quest.id)
+            XCTAssertEqual(updated?.calibrationAssessment?.judgmentStatus, .unresolved)
+            XCTAssertEqual(updated?.principlePracticeAssessment, verification.principlePracticeAssessment)
+        }
+    }
+
+    func testV73MigrationPreservesLegacySelfRatingWithoutInventingAssessment() async throws {
+        let queue = try DatabaseQueue()
+        let migrator = AppDatabase.makeMigrator()
+        try migrator.migrate(queue, upTo: "v72_principle_review_drafts")
+        let id = UUID(), questID = UUID(), entryID = UUID()
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO verifications (id, quest_id, quest_title, source_daily_entry_id, completion, value_rating, judgment_update, evidence_text, calibration_note, created_at, updated_at) VALUES (?, ?, 'legacy', ?, 'done', 'high', 'confirmed', 'old record', 'old feedback', '2026-10-17T00:00:00Z', '2026-10-17T00:00:00Z')",
+                arguments: [id.uuidString, questID.uuidString, entryID.uuidString])
+            try db.execute(sql: "INSERT INTO growth_settlements (id, verification_id, original_judgment, actual_result, judgment_update, evidence_items_json, created_at) VALUES (?, ?, 'old target', 'old result', 'confirmed', '[]', '2026-10-17T00:00:00Z')",
+                arguments: [UUID().uuidString, id.uuidString])
+        }
+        let migrated = try AppDatabase(dbQueue: queue)
+        let verification = try await SQLiteVerificationRepository(database: migrated).verification(forQuestId: questID)
+        let receipt = try await SQLiteGrowthSettlementRepository(database: migrated).settlement(for: id)
+        XCTAssertEqual(verification?.judgmentUpdate, .confirmed)
+        XCTAssertEqual(verification?.calibrationNote, "old feedback")
+        XCTAssertNil(verification?.calibrationAssessment)
+        XCTAssertNil(verification?.principlePracticeAssessment)
+        XCTAssertEqual(receipt?.judgmentUpdate, .confirmed)
+        XCTAssertNil(receipt?.calibrationAssessment)
+        XCTAssertEqual(receipt?.calibrationNote, "")
+        XCTAssertNil(receipt?.recommendation)
+    }
+
+    func testV74MigrationKeepsCalibrationAndDoesNotInventHistoricalPractice() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v73_result_calibration_receipt")
+        let id = UUID(), questID = UUID(), entryID = UUID()
+        let calibration = CalibrationAssessment(evidenceStatus: .observed, criteriaStatus: .met,
+            judgmentStatus: .supported, evidenceQuotes: ["交回没有返工"])
+        let encoded = String(decoding: try JSONEncoder().encode(calibration), as: UTF8.self)
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO verifications (id, quest_id, quest_title, source_daily_entry_id, completion, value_rating, judgment_update, evidence_text, calibration_note, calibration_assessment_json, created_at, updated_at) VALUES (?, ?, 'legacy', ?, 'done', 'high', 'confirmed', '交回没有返工', '仅一次观察', ?, '2026-10-17T00:00:00Z', '2026-10-17T00:00:00Z')",
+                arguments: [id.uuidString, questID.uuidString, entryID.uuidString, encoded])
+        }
+        let migrated = try AppDatabase(dbQueue: queue)
+        let saved = try await SQLiteVerificationRepository(database: migrated).verification(forQuestId: questID)
+        XCTAssertEqual(saved?.id, id)
+        XCTAssertEqual(saved?.evidenceText, "交回没有返工")
+        XCTAssertEqual(saved?.judgmentUpdate, .confirmed)
+        XCTAssertEqual(saved?.calibrationAssessment, calibration)
+        XCTAssertNil(saved?.principlePracticeAssessment)
+    }
+
+    @MainActor
+    func testResultReviewPersistsUnresolvedEvidenceWithoutRecordingSelectedPrinciplePractice() async throws {
+        for conflicting in [false, true] {
+            let fixture = try await makeQuestFixture()
+            let principle = completionFixturePrinciple(title: "先确认结果")
+            let principleRepo = SQLitePrincipleRepository(database: database)
+            try await principleRepo.savePrinciple(principle, sourceDailyEntryId: fixture.entry.id)
+            var quest = fixture.quest
+            quest.trainingPrincipleId = principle.id
+            try await SQLiteQuestRepository(database: database).saveQuest(quest, sourceDailyEntryId: fixture.entry.id)
+            let evidence = conflicting ? "一条记录说完成，另一条记录说没有完成，来源待查。" : "没有记录这次结果。"
+            let quotes = conflicting ? ["一条记录说完成", "另一条记录说没有完成"] : []
+            let note = conflicting ? "两条记录存在冲突，无法核对验收条件或确认原判断。完成和高价值的自评暂不能解决冲突。" : "没有结果记录，无法核对验收条件或确认原判断。完成和高价值的自评暂不能替代结果。"
+            let response = try JSONSerialization.data(withJSONObject: [
+                "calibration_assessment": ["evidence_status": conflicting ? "conflicting" : "missing",
+                    "criteria_status": "not_assessable", "judgment_status": "unresolved", "evidence_quotes": quotes],
+                "calibration_note": note, "likely_issue": "none", "growth_evidence_items": [],
+                "recommendation": "如果愿意，可只核对已有记录的来源和时间，不必重新测试。",
+                "expected_principle_practice_assessment": "当前结果不足以确认练习过所选原则。",
+                "principle_practice_assessment": ["principle_id": principle.id.uuidString, "status": "not_assessable", "evidence_quotes": [], "reason": "没有所选原则具体行为的记录。"]
+            ])
+            var draft = fixture.entry
+            draft.state = .verifyYesterday
+            let practiceRepo = SQLitePrinciplePracticeEvidenceRepository(database: database)
+            let verifyingStore = AppStore(todayDraft: draft, quests: [quest], principles: [principle],
+                dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
+                questRepository: SQLiteQuestRepository(database: database),
+                principleRepository: principleRepo,
+                verificationRepository: SQLiteVerificationRepository(database: database),
+                principlePracticeEvidenceRepository: practiceRepo,
+                growthSettlementRepository: SQLiteGrowthSettlementRepository(database: database),
+                verificationSettlementRepository: SQLiteVerificationSettlementRepository(database: database),
+                todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: VNextResponseClient(response: response)),
+                refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: true)
+            verifyingStore.selectYesterdayCompletion(.done)
+            verifyingStore.selectYesterdayValueRating(.high)
+            verifyingStore.selectYesterdayJudgmentUpdate(.confirmed)
+            verifyingStore.updateYesterdayEvidence(evidence)
+            verifyingStore.submitTodayStep()
+            for _ in 0..<300 where verifyingStore.latestGrowthSettlement == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let receipt = try XCTUnwrap(verifyingStore.latestGrowthSettlement, verifyingStore.todayLoopMessage)
+            XCTAssertEqual(receipt.calibrationAssessment?.judgmentStatus, .unresolved)
+            XCTAssertEqual(receipt.calibrationNote, note)
+            XCTAssertEqual(receipt.judgmentUpdate, .confirmed)
+            XCTAssertTrue(receipt.evidenceItems.isEmpty)
+            let practice = try await practiceRepo.evidence(for: principle.id, limit: 10)
+            XCTAssertTrue(practice.isEmpty)
+            let saved = try await SQLiteVerificationRepository(database: database).verification(forQuestId: quest.id)
+            XCTAssertEqual(saved?.calibrationAssessment, receipt.calibrationAssessment)
+            let savedReceipt = try await SQLiteGrowthSettlementRepository(database: database).settlement(for: receipt.verificationId)
+            XCTAssertEqual(savedReceipt?.calibrationAssessment, receipt.calibrationAssessment)
+            XCTAssertEqual(savedReceipt?.calibrationNote, note)
+        }
+    }
+
+    @MainActor
+    func testSelectedPrincipleAndObservedResultDoNotProvePractice() async throws {
+        let fixture = try await makeQuestFixture()
+        var principle = completionFixturePrinciple(title: "动手前请对方复述验收标准")
+        principle.triggerContext = "跨人交接、动手之前"
+        principle.actions = ["请对方复述验收标准"]
+        let principles = SQLitePrincipleRepository(database: database)
+        try await principles.savePrinciple(principle, sourceDailyEntryId: fixture.entry.id)
+        var quest = fixture.quest
+        quest.trainingPrincipleId = principle.id
+        let quests = SQLiteQuestRepository(database: database)
+        try await quests.saveQuest(quest, sourceDailyEntryId: fixture.entry.id)
+        let result = "这次没有请对方复述验收标准；提交后仍返工两次。"
+        let response = try JSONSerialization.data(withJSONObject: [
+            "calibration_assessment": ["evidence_status": "observed", "criteria_status": "not_met", "judgment_status": "unresolved", "evidence_quotes": ["提交后仍返工两次"]],
+            "calibration_note": "记录显示提交后仍返工两次，不能核对原行动已达标，也不能确认原判断。所选原则要求的复述未执行。",
+            "likely_issue": "none", "recommendation": "以后若自愿再试，可记录是否先复述标准。",
+            "expected_principle_practice_assessment": "用户明确说没有请对方复述，所选原则未实践。",
+            "principle_practice_assessment": ["principle_id": principle.id.uuidString, "status": "not_practiced", "evidence_quotes": ["这次没有请对方复述验收标准"], "reason": "记录明确说明没有执行复述动作。"],
+            "growth_evidence_items": []
+        ])
+        let practice = SQLitePrinciplePracticeEvidenceRepository(database: database)
+        let subject = AppStore(todayDraft: fixture.entry, quests: [quest], principles: [principle],
+            dailyEntryRepository: SQLiteDailyEntryRepository(database: database), questRepository: quests,
+            principleRepository: principles, verificationRepository: SQLiteVerificationRepository(database: database),
+            principlePracticeEvidenceRepository: practice,
+            growthSettlementRepository: SQLiteGrowthSettlementRepository(database: database),
+            verificationSettlementRepository: SQLiteVerificationSettlementRepository(database: database),
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: VNextResponseClient(response: response)),
+            refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: true)
+        await subject.beginVerification(quest)
+        subject.selectYesterdayCompletion(.done)
+        subject.selectYesterdayValueRating(.high)
+        subject.selectYesterdayJudgmentUpdate(.confirmed)
+        subject.updateYesterdayEvidence(result)
+        subject.submitTodayStep()
+        for _ in 0..<300 where subject.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(subject.latestGrowthSettlement, subject.todayLoopMessage)
+        let recorded = try await practice.evidence(for: principle.id, limit: 20)
+        XCTAssertTrue(recorded.isEmpty, "Selecting a principle and reporting a result cannot establish practice of its actions")
+    }
+
+    func testLegacyAutomaticPrincipleMatchesDoNotCountAsPracticeOrInternalization() {
+        let principle = completionFixturePrinciple(title: "先复述标准")
+        let evidence = (0..<3).map { _ in
+            PrinciplePracticeEvidence(principleId: principle.id, sourceDailyEntryId: UUID(),
+                evidenceSource: .verification, strength: .intentionalPractice,
+                evidenceSummary: "用户选择后被自动记为实际练习。", matchSignal: "用户选择",
+                attributionPolicyVersion: "principle-practice-attribution.local-match.v1")
+        }
+        let summary = PrincipleTrainingSummary.summary(for: principle, practiceEvidence: evidence, recallFeedback: [])
+        XCTAssertEqual(summary.practiceEvidenceCount, 0)
+        XCTAssertEqual(summary.state, .knownButUnused)
+        XCTAssertEqual(summary.unassessedPracticeEvidenceCount, 3)
+    }
+
+    func testRepeatedPracticeAndHelpfulRecallDoNotEstablishInternalization() {
+        let principle = completionFixturePrinciple(title: "先复述标准")
+        let evidence = (0..<3).map { index in
+            PrinciplePracticeEvidence(schemaVersion: 2, principleId: principle.id, sourceDailyEntryId: UUID(),
+                evidenceSource: .verification, strength: .intentionalPractice,
+                evidenceSummary: "第\(index)次报告先复述了标准。", matchSignal: "我请对方复述了标准",
+                attributionPolicyVersion: PrinciplePracticeEvidence.resultEvidencePolicyVersion)
+        }
+        let summary = PrincipleTrainingSummary.summary(for: principle, practiceEvidence: evidence, recallFeedback: [])
+        XCTAssertEqual(summary.practiceEvidenceCount, 3)
+        XCTAssertEqual(summary.state, .consciouslyPracticed)
+        let recall = PrincipleRecallFeedback(principleId: principle.id, promptId: .generateQuestions,
+            retrievalPolicyVersion: "test", retrievalReason: "Useful reminder", feedback: .helpful)
+        let recalled = PrincipleTrainingSummary.summary(for: principle, practiceEvidence: [], recallFeedback: [recall])
+        XCTAssertEqual(recalled.state, .knownButUnused)
+    }
+
+    @MainActor
+    func testGroundedPrinciplePracticePersistsIndependentlyOfOutcomeAndDeduplicates() async throws {
+        for partial in [false, true] {
+            let fixture = try await makeQuestFixture()
+            var principle = completionFixturePrinciple(title: "交接前先复述验收标准")
+            principle.triggerContext = "交接开始前"
+            principle.actions = ["写出验收标准", "请对方复述确认"]
+            let principles = SQLitePrincipleRepository(database: database)
+            try await principles.savePrinciple(principle, sourceDailyEntryId: fixture.entry.id)
+            var quest = fixture.quest
+            quest.trainingPrincipleId = principle.id
+            let quests = SQLiteQuestRepository(database: database)
+            try await quests.saveQuest(quest, sourceDailyEntryId: fixture.entry.id)
+            let result = partial ? "交接前我写出了验收标准，但没有请对方复述；结果还没回来。" : "交接前我写出了验收标准，请对方复述确认；结果还没回来。"
+            let quote = partial ? "交接前我写出了验收标准，但没有请对方复述" : "交接前我写出了验收标准，请对方复述确认"
+            let response = try JSONSerialization.data(withJSONObject: [
+                "calibration_assessment": ["evidence_status": "missing", "criteria_status": "not_assessable", "judgment_status": "unresolved", "evidence_quotes": []],
+                "calibration_note": "记录了交接时的动作，但后续结果尚未回来，无法核对结果标准。原判断仍未确定。",
+                "likely_issue": "none", "recommendation": "若以后有结果，可自愿补记已有反馈。",
+                "expected_principle_practice_assessment": partial ? "只写了标准，没有执行复述动作，部分实践。" : "记录支持这次做过写标准和复述动作，不证明效果。",
+                "principle_practice_assessment": ["principle_id": principle.id.uuidString, "status": partial ? "partially_practiced" : "practiced", "evidence_quotes": [quote], "reason": partial ? "只执行了写标准这部分。" : "本次报告写了标准并复述，不代表产生效果。"],
+                "growth_evidence_items": []
+            ])
+            let practice = SQLitePrinciplePracticeEvidenceRepository(database: database)
+            let legacy = PrinciplePracticeEvidence(principleId: principle.id,
+                sourceDailyEntryId: fixture.entry.id, questId: quest.id,
+                evidenceSource: .verification, strength: .intentionalPractice,
+                evidenceSummary: "旧版根据选择自动关联", matchSignal: "用户选择",
+                createdAt: .now.addingTimeInterval(-60))
+            try await practice.saveEvidence(legacy)
+            let client = VNextResponseClient(response: response)
+            let verificationRepo = SQLiteVerificationRepository(database: database)
+            let subject = AppStore(todayDraft: fixture.entry, quests: [quest], principles: [principle],
+                dailyEntryRepository: SQLiteDailyEntryRepository(database: database), questRepository: quests,
+                principleRepository: principles, verificationRepository: verificationRepo,
+                principlePracticeEvidenceRepository: practice,
+                growthSettlementRepository: SQLiteGrowthSettlementRepository(database: database),
+                verificationSettlementRepository: SQLiteVerificationSettlementRepository(database: database),
+                todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+                refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: true)
+            for _ in 0..<2 {
+                await subject.beginVerification(quest)
+                subject.selectYesterdayCompletion(.done)
+                subject.selectYesterdayValueRating(.high)
+                subject.selectYesterdayJudgmentUpdate(.confirmed)
+                subject.updateYesterdayEvidence(result)
+                subject.submitTodayStep()
+                for _ in 0..<300 where subject.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+                XCTAssertNotNil(subject.latestGrowthSettlement, subject.todayLoopMessage)
+            }
+            let loaded = try await verificationRepo.verification(forQuestId: quest.id)
+            let stored = try XCTUnwrap(loaded)
+            let assessment = try XCTUnwrap(stored.principlePracticeAssessment)
+            XCTAssertEqual(assessment.status, partial ? .partiallyPracticed : .practiced)
+            XCTAssertEqual(assessment.evidenceQuotes, [quote])
+            XCTAssertEqual(stored.calibrationAssessment?.evidenceStatus, .missing)
+            XCTAssertEqual(HistoricalVerificationEvidence(stored).principlePracticeAssessment, assessment)
+            let evidence = try await practice.evidence(for: principle.id, limit: 20)
+            XCTAssertEqual(evidence.count, 2)
+            let retainedLegacy = try XCTUnwrap(evidence.first(where: { $0.id == legacy.id }))
+            XCTAssertEqual(retainedLegacy.evidenceSummary, legacy.evidenceSummary)
+            XCTAssertEqual(retainedLegacy.matchSignal, legacy.matchSignal)
+            XCTAssertEqual(retainedLegacy.schemaVersion, 1)
+            XCTAssertEqual(retainedLegacy.attributionPolicyVersion, legacy.attributionPolicyVersion)
+            XCTAssertEqual(retainedLegacy.createdAt.timeIntervalSince1970, legacy.createdAt.timeIntervalSince1970, accuracy: 0.001)
+            XCTAssertEqual(retainedLegacy.updatedAt.timeIntervalSince1970, legacy.updatedAt.timeIntervalSince1970, accuracy: 0.001)
+            let supported = evidence.filter(\.supportsPracticeRecord)
+            XCTAssertEqual(supported.count, 1)
+            XCTAssertEqual(supported.first?.id, supported.first?.verificationId)
+            XCTAssertEqual(supported.first?.strength, partial ? .attempted : .intentionalPractice)
+            XCTAssertEqual(supported.first?.sourceDailyEntryId, fixture.entry.id)
+            XCTAssertEqual(supported.first?.questId, quest.id)
+            XCTAssertEqual(supported.first?.matchSignal, quote)
+            XCTAssertTrue(supported.first?.evidenceSummary.contains("不证明效果或已经内化") == true)
+            XCTAssertEqual(subject.principleTrainingSummaries.first?.state, .consciouslyPracticed)
+            XCTAssertEqual(subject.principleTrainingSummaries.first?.practiceEvidenceCount, 1)
+            XCTAssertEqual(subject.principleTrainingSummaries.first?.unassessedPracticeEvidenceCount, 1)
+        }
+    }
+
+    @MainActor
+    func testDueVerificationCompletesHistoricalCaseWithoutLoadingItAsTodaysCase() async throws {
+        let fixture = try await makeQuestFixture()
+        var oldEntry = fixture.entry
+        oldEntry.date = Calendar.current.date(byAdding: .day, value: -1, to: .now)!
+        try await SQLiteDailyEntryRepository(database: database).saveDraft(oldEntry)
+        let today = DailyEntryDraft(state: .capture)
+        try await SQLiteDailyEntryRepository(database: database).saveDraft(today)
+        let cases = SQLiteTrainingCaseRepository(database: database)
+        let response = Data(#"""
+        {"calibration_assessment":{"evidence_status":"missing","criteria_status":"not_assessable","judgment_status":"unresolved","evidence_quotes":[]},"calibration_note":"没有记录实际结果，暂不能核对原验收标准，也不能确认或推翻原判断。完成动作的自评仍保留。","likely_issue":"none","growth_evidence_items":[],"recommendation":"如果以后有结果，可再更新判断；现在无需补做测试。","expected_principle_practice_assessment":"没有结果，不能确认原则实践。"}
+        """#.utf8)
+        let subject = AppStore(todayDraft: today,
+            dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
+            questRepository: SQLiteQuestRepository(database: database),
+            verificationRepository: SQLiteVerificationRepository(database: database),
+            trainingCaseRepository: cases,
+            growthSettlementRepository: SQLiteGrowthSettlementRepository(database: database),
+            verificationSettlementRepository: SQLiteVerificationSettlementRepository(database: database),
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: VNextResponseClient(response: response)),
+            refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: true)
+        XCTAssertTrue(subject.trainingCases.isEmpty)
+        await subject.beginVerification(fixture.quest)
+        subject.selectYesterdayCompletion(.done)
+        subject.selectYesterdayValueRating(.uncertain)
+        subject.selectYesterdayJudgmentUpdate(.unresolved)
+        subject.updateYesterdayEvidence("没有记录实际结果。")
+        subject.submitTodayStep()
+        for _ in 0..<300 where subject.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(subject.isSavingTodayCompletion, subject.todayLoopMessage)
+        XCTAssertTrue(subject.isTodayOverviewPresented, subject.todayLoopMessage)
+        XCTAssertEqual(subject.todayDraft.id, today.id)
+        XCTAssertTrue(subject.trainingCases.isEmpty)
+        let savedCase = try await cases.caseRecord(id: fixture.trainingCase.id)
+        XCTAssertEqual(savedCase?.status, .completed)
+        let saved = try await SQLiteVerificationRepository(database: database).verification(forQuestId: fixture.quest.id)
+        XCTAssertEqual(saved?.sourceDailyEntryId, fixture.entry.id)
+        XCTAssertEqual(saved?.judgmentUpdate, .unresolved)
+    }
+
     func testGrowthSettlementDoesNotInventEvidenceWhenModelReturnsNone() async throws {
         let fixture = try await makeQuestFixture()
         let verification = makeVerification(quest: fixture.quest, entryId: fixture.entry.id)
@@ -370,13 +701,42 @@ final class VNextTests: XCTestCase {
         }
     }
 
-    func testGuidanceEvidenceClassificationIsModelBacked() async throws {
+    func testGuidanceRepeatedResultDoesNotCountAgainOrCreateMastery() throws {
+        let engine = GuidanceEngine()
+        let item = BuiltinGuidanceCatalog.items[0]
+        let once = engine.recordingEvidence(for: item, state: nil, evidenceRef: "result-1", isCounterexample: false)
+        let duplicate = engine.recordingEvidence(for: item, state: once, evidenceRef: "result-1", isCounterexample: false)
+        XCTAssertEqual(duplicate, once)
+        let second = engine.recordingEvidence(for: item, state: once, evidenceRef: "result-2", isCounterexample: false)
+        XCTAssertEqual(second.evidenceCount, 2)
+        XCTAssertEqual(second.status, .practicing, "Two reported occasions do not establish mastery")
+        let counterexample = engine.recordingEvidence(for: item, state: once, evidenceRef: "result-1", isCounterexample: true)
+        XCTAssertEqual(counterexample, once, "Repeated or contradictory classification of one immutable result cannot count twice")
+    }
+
+    func testGuidanceEvidenceRejectsFabricatedBehaviorQuote() async throws {
         let client = GuidanceFixtureLLMClient(response: """
-        {"result":"counterexample","hint_id":"verification.result_not_completion","reason":"只记录了完成，没有实际结果。"}
+        {"result":"supports","hint_id":"verification.result_not_completion","reason":"写了具体结果。","evidence_quotes":["我检查了三次结果并比较原因。"]}
         """)
         let item = try XCTUnwrap(BuiltinGuidanceCatalog.items.first { $0.hintId == "verification.result_not_completion" })
         let quest = makeQuest(caseId: UUID(), title: "验证结果")
-        let verification = makeVerification(quest: quest, entryId: UUID())
+        var verification = makeVerification(quest: quest, entryId: UUID())
+        verification.evidenceText = "只记得完成，没记结果。"
+        do {
+            _ = try await GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                .evaluateEvidence(item: item, quest: quest, verification: verification)
+            XCTFail("Fabricated behavior quotes must not change guidance state")
+        } catch { XCTAssertTrue(error is TodayAIParsingError) }
+    }
+
+    func testGuidanceEvidenceClassificationIsModelBacked() async throws {
+        let client = GuidanceFixtureLLMClient(response: """
+        {"result":"counterexample","hint_id":"verification.result_not_completion","reason":"明确没记录结果。","evidence_quotes":["只记录完成，没有记录任何结果。"]}
+        """)
+        let item = try XCTUnwrap(BuiltinGuidanceCatalog.items.first { $0.hintId == "verification.result_not_completion" })
+        let quest = makeQuest(caseId: UUID(), title: "验证结果")
+        var verification = makeVerification(quest: quest, entryId: UUID())
+        verification.evidenceText = "只记录完成，没有记录任何结果。"
         let decision = try await GuidanceAIService(
             promptProvider: LocalPromptProvider(),
             llmClient: client
@@ -387,28 +747,284 @@ final class VNextTests: XCTestCase {
         XCTAssertEqual(client.promptIDs, [.evaluateGuidanceEvidence])
     }
 
-    func testCoachTrainingDecisionUsesCentralModelForLensAndDiagnosis() async throws {
-        let client = GuidanceFixtureLLMClient(response: """
-        {"phase":"fill_evidence_gap","readiness":"not_ready","recommended_move":"surface_evidence_gap","training_dimension":"evidence_discipline","recommended_lens_id":"evidenceCheck","reason":"当前判断缺少可观察证据，需要先补齐支持或推翻它的信号。","confidence":0.84}
-        """)
-        let card = ThinkingCard(type: .decision, title: "判断", body: "应该直接推进", isConfirmed: true)
-        let result = try await CoachDecisionAIService(
-            promptProvider: LocalPromptProvider(),
-            llmClient: client
-        ).decide(
-            context: CoachDecisionContext(
-                caseId: UUID(),
-                caseTitle: "验证事项",
-                mode: .standard,
-                cards: [card]
-            )
-        )
+    func testGuidanceEvidenceContextAndQuoteBoundaries() async throws {
+        let item = BuiltinGuidanceCatalog.items[0]
+        let quest = makeQuest(caseId: UUID(), title: "交接")
+        var verification = makeVerification(quest: quest, entryId: UUID())
+        verification.evidenceText = "动手前写了标准，但交回仍返工。"
+        verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: .observed,
+            criteriaStatus: .notMet, judgmentStatus: .unresolved, evidenceQuotes: ["交回仍返工"])
+        let cases: [(String, [String]?, String?, Bool)] = [
+            ("supports", ["动手前写了标准"], item.hintId, true),
+            ("counterexample", ["交回仍返工"], item.hintId, true), // Provenance only; meaning needs model review.
+            ("insufficient", [], item.hintId, true),
+            ("supports", [], item.hintId, false),
+            ("supports", [" "], item.hintId, false),
+            ("supports", ["动手前写了标准", "动手前写了标准"], item.hintId, false),
+            ("counterexample", ["编造行为"], item.hintId, false),
+            ("insufficient", ["交回仍返工"], item.hintId, false),
+            ("supports", ["动手前写了标准"], "unknown", false)
+        ]
+        for (result, quotes, hint, valid) in cases {
+            let raw = try JSONSerialization.data(withJSONObject: ["result": result,
+                "hint_id": hint!, "reason": "只描述本次报告。", "evidence_quotes": quotes ?? []])
+            let client = GuidanceFixtureLLMClient(response: String(decoding: raw, as: UTF8.self))
+            do {
+                let decision = try await GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                    .evaluateEvidence(item: item, quest: quest, verification: verification)
+                XCTAssertTrue(valid)
+                XCTAssertEqual(decision.evidenceQuotes, quotes)
+            } catch { XCTAssertFalse(valid, "Unexpected rejection: \(error)") }
+            let request = try XCTUnwrap(client.requests.first)
+            let encoded = try XCTUnwrap(request.contextPayload?.currentInput.rawText)
+            let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [String: Any])
+            XCTAssertEqual(payload["judgmentSelfReport"] as? String, "adjusted")
+            XCTAssertEqual(payload["completionSelfReport"] as? String, "done")
+            XCTAssertEqual(payload["valueSelfReport"] as? String, "high")
+            XCTAssertNotNil(payload["calibrationAssessment"])
+            XCTAssertEqual(payload["evidenceText"] as? String, verification.evidenceText)
+        }
+    }
 
+    func testGuidanceRepositoryDeduplicatesAndPreservesUserPreferencesAcrossWriters() async throws {
+        let first = SQLiteGuidanceRepository(database: database)
+        let second = SQLiteGuidanceRepository(database: database)
+        let item = BuiltinGuidanceCatalog.items[0]
+        let id = UUID()
+        _ = try await first.recordEvidence(for: item, verificationId: id, isCounterexample: false)
+        _ = try await second.recordEvidence(for: item, verificationId: id, isCounterexample: true)
+        let once = try await first.state(for: item.hintId)
+        XCTAssertEqual(once?.evidenceCount, 1)
+        XCTAssertEqual(once?.counterexampleCount, 0)
+        // Whole-second fixture avoids submillisecond ISO serialization drift.
+        let until = Date(timeIntervalSince1970: 2_000_000_000)
+        _ = try await second.updatePreference(for: item.hintId, snoozedUntil: until, mastered: false, now: .now)
+        // Share GRDB's Sendable queue, and create each non-Sendable repository
+        // inside its own task rather than transferring a retained repository.
+        let queue = database.dbQueue
+        let a = Task.detached {
+            let repository = SQLiteGuidanceRepository(database: try AppDatabase(dbQueue: queue))
+            _ = try await repository.recordEvidence(for: item, verificationId: UUID(), isCounterexample: false)
+        }
+        let b = Task.detached {
+            let repository = SQLiteGuidanceRepository(database: try AppDatabase(dbQueue: queue))
+            _ = try await repository.recordEvidence(for: item, verificationId: UUID(), isCounterexample: false)
+        }
+        _ = try await (a.value, b.value)
+        var loaded = try await first.state(for: item.hintId)
+        XCTAssertEqual(loaded?.evidenceCount, 3)
+        XCTAssertEqual(loaded?.evidenceRefs.count, 3)
+        XCTAssertEqual(loaded?.status, .practicing)
+        XCTAssertEqual(try XCTUnwrap(loaded?.snoozedUntil).timeIntervalSince1970, until.timeIntervalSince1970, accuracy: 0.001)
+        _ = try await first.updatePreference(for: item.hintId, snoozedUntil: nil, mastered: true, now: .now)
+        _ = try await second.recordEvidence(for: item, verificationId: UUID(), isCounterexample: true)
+        loaded = try await first.state(for: item.hintId)
+        XCTAssertEqual(loaded?.status, .practicing)
+        XCTAssertEqual(loaded?.counterexampleCount, 1)
+        XCTAssertEqual(loaded?.evidenceCount, 3)
+        XCTAssertNotNil(loaded?.snoozedUntil)
+    }
+
+    @MainActor
+    func testGuidanceAttributionIgnoresLegacyMissingConflictingAndMismatchedResultsWithoutCalls() async throws {
+        let quest = makeQuest(caseId: UUID(), title: "交接")
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        let store = AppStore(guidanceRepository: SQLiteGuidanceRepository(database: database),
+            refreshesAIServiceFromKeychain: false,
+            guidanceAIService: GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            trainingCasesVNextEnabled: true)
+        var verification = makeVerification(quest: quest, entryId: UUID())
+        await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+        for status in [CalibrationAssessment.EvidenceStatus.missing, .conflicting] {
+            verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: status,
+                criteriaStatus: .notAssessable, judgmentStatus: .unresolved, evidenceQuotes: [])
+            await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+        }
+        verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: .observed,
+            criteriaStatus: .met, judgmentStatus: .supported, evidenceQuotes: ["编造记录"])
+        await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+        verification.calibrationAssessment?.evidenceQuotes = ["Observed result"]
+        verification.questId = UUID()
+        await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+        XCTAssertTrue(client.promptIDs.isEmpty)
+        XCTAssertTrue(store.guidanceStates.isEmpty)
+    }
+
+    @MainActor
+    func testGuidanceAttributionCoalescesDuplicateWorkAndIgnoresCancelledOrReconfiguredResponse() async throws {
+        for changeConfiguration in [false, true] {
+            let quest = makeQuest(caseId: UUID(), title: "交接")
+            var verification = makeVerification(quest: quest, entryId: UUID())
+            verification.evidenceText = "动手前写了验收标准，交回后没有返工。"
+            verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: .observed,
+                criteriaStatus: .met, judgmentStatus: .unresolved, evidenceQuotes: ["交回后没有返工"])
+            let client = GuidanceFixtureLLMClient(response: """
+            {"result":"supports","hint_id":"action.completion_criteria","reason":"明确报告写了标准。","evidence_quotes":["动手前写了验收标准"]}
+            """)
+            client.suspendBeforeResponse = true
+            let repo = SQLiteGuidanceRepository(database: database)
+            let store = AppStore(guidanceRepository: repo,
+                refreshesAIServiceFromKeychain: changeConfiguration,
+                guidanceAIService: GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+                trainingCasesVNextEnabled: true)
+            let first = Task { await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification) }
+            for _ in 0..<100 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertNotNil(client.responseGate)
+            await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+            XCTAssertEqual(client.promptIDs.count, 1)
+            if changeConfiguration { store.refreshAPIKeyStatus() } else { first.cancel() }
+            client.responseGate?.resume()
+            client.responseGate = nil
+            await first.value
+            let states = try await repo.allStates()
+            XCTAssertTrue(states.isEmpty)
+            XCTAssertTrue(store.guidanceStates.isEmpty)
+            XCTAssertEqual(client.promptIDs.count, 1)
+        }
+    }
+
+    @MainActor
+    func testGuidanceAttributionPersistsOnceAcrossStoreRecreationAndStopsOnWriteFailure() async throws {
+        for failWrite in [false, true] {
+            let queue = try DatabaseQueue()
+            let localDatabase = try AppDatabase(dbQueue: queue)
+            let repo = SQLiteGuidanceRepository(database: localDatabase)
+            let client = GuidanceEvidenceEchoTestClient()
+            let quest = makeQuest(caseId: UUID(), title: "交接")
+            var verification = makeVerification(quest: quest, entryId: UUID())
+            verification.evidenceText = "动手前写了标准，交回仍返工两次。"
+            verification.calibrationAssessment = CalibrationAssessment(evidenceStatus: .observed,
+                criteriaStatus: .met, judgmentStatus: .unresolved, evidenceQuotes: ["交回仍返工两次"])
+            if failWrite {
+                try await queue.write { db in
+                    try db.execute(sql: "CREATE TRIGGER reject_guidance BEFORE INSERT ON user_guidance_states BEGIN SELECT RAISE(ABORT, 'synthetic guidance failure'); END")
+                }
+            }
+            for _ in 0..<2 {
+                let store = AppStore(guidanceRepository: repo, refreshesAIServiceFromKeychain: false,
+                    guidanceAIService: GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+                    trainingCasesVNextEnabled: true)
+                let page = store.todayDraft.id
+                let message = store.todayLoopMessage
+                await store.recordGuidanceEvidenceAfterVerification(quest: quest, verification: verification)
+                XCTAssertEqual(store.todayDraft.id, page)
+                XCTAssertEqual(store.todayLoopMessage, message)
+            }
+            let states = try await repo.allStates()
+            if failWrite {
+                XCTAssertTrue(states.isEmpty)
+                XCTAssertEqual(client.requests.count, 2, "One request per attempt, no subsequent catalog calls after storage failure")
+            } else {
+                XCTAssertEqual(states.count, BuiltinGuidanceCatalog.items.count)
+                XCTAssertTrue(states.allSatisfy { $0.evidenceCount == 1 && $0.evidenceRefs == [verification.id.uuidString] && $0.status == .practicing })
+                XCTAssertEqual(client.requests.count, BuiltinGuidanceCatalog.items.count, "Persisted source IDs avoid model calls on a repeated result")
+            }
+        }
+    }
+
+    func testCoachTrainingDecisionPreservesModelGapRatherThanInferringFromPhase() async throws {
+        let card = ThinkingCard(type: .fact, title: "已观察", body: "两次提交都在上传时超时；暂不清楚权限是否影响重试。", isConfirmed: true)
+        let context = CoachDecisionContext(caseId: UUID(), caseTitle: "重试", mode: .standard, cards: [card])
+        let client = GuidanceFixtureLLMClient(response: try coachDecisionJSON(gaps: ["missing_constraint"], refs: [card.id.uuidString]))
+        let result = try await CoachDecisionAIService(promptProvider: LocalPromptProvider(), llmClient: client).decide(context: context)
         XCTAssertEqual(result.diagnosis.phase, .fillEvidenceGap)
-        XCTAssertEqual(result.diagnosis.recommendedMove, .surfaceEvidenceGap)
+        XCTAssertEqual(result.diagnosis.openEvidenceGaps, [.missingConstraint])
+        XCTAssertEqual(result.diagnosis.sourceRefs, [card.id.uuidString])
+        let turn = CoachTurnPolicy().makeInitialTurn(cards: [card], diagnosis: result.diagnosis)
+        XCTAssertEqual(turn.openEvidenceGaps, [.missingConstraint], "Observed material must not become missing observation or baseline because of its phase")
         XCTAssertEqual(result.prescription.recommendedLensId, "evidenceCheck")
-        XCTAssertEqual(result.prescription.primaryTrainingDimension, .evidenceDiscipline)
         XCTAssertEqual(client.promptIDs, [.diagnoseTrainingCase])
+        let roundTrip = try JSONDecoder().decode(CoachDiagnosis.self, from: JSONEncoder().encode(result.diagnosis))
+        XCTAssertEqual(roundTrip, result.diagnosis)
+    }
+
+    func testCoachTrainingDecisionAllowsUnknownWithoutInventingRepair() async throws {
+        let card = ThinkingCard(type: .idea, title: "先停下", body: "我知道提交超时，但原因不明；今天先记录，不再调查。", isConfirmed: true)
+        let client = GuidanceFixtureLLMClient(response: try coachDecisionJSON(gaps: [], refs: [card.id.uuidString]))
+        let result = try await CoachDecisionAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            .decide(context: .init(caseId: nil, caseTitle: nil, mode: .deep, cards: [card]))
+        XCTAssertEqual(result.diagnosis.readiness, .notReady)
+        XCTAssertEqual(CoachTurnPolicy().makeInitialTurn(cards: [card], diagnosis: result.diagnosis).openEvidenceGaps, [])
+        var legacy = result.diagnosis
+        legacy.policyVersion = "coach-decision.llm.v1"
+        legacy.openEvidenceGaps = nil
+        legacy.sourceRefs = nil
+        XCTAssertTrue(CoachTurnPolicy().makeInitialTurn(cards: [card], diagnosis: legacy).openEvidenceGaps.isEmpty,
+                      "An old model phase cannot establish new missing materials")
+        legacy.policyVersion = CoachEngine.policyVersion
+        XCTAssertFalse(CoachTurnPolicy().makeInitialTurn(cards: [card], diagnosis: legacy).openEvidenceGaps.isEmpty,
+                       "Explicit preview policies retain historical behavior")
+    }
+
+    func testCoachTrainingDecisionRejectsUngroundedOrContradictoryCurrentContract() async throws {
+        let caseID = UUID()
+        let card = ThinkingCard(type: .fact, title: "已确认", body: "观察到一次超时。", isConfirmed: true)
+        let valid = try coachDecisionJSON(gaps: ["missing_constraint"], refs: [card.id.uuidString])
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(valid.utf8)) as? [String: Any])
+        var invalid: [[String: Any]] = []
+        for field in ["open_evidence_gaps", "source_refs"] {
+            var copy = object; copy.removeValue(forKey: field); invalid.append(copy)
+            copy = object; copy[field] = NSNull(); invalid.append(copy)
+        }
+        for gaps in [["none"], ["unknown"], ["missing_observation", "missing_constraint"]] {
+            var copy = object; copy["open_evidence_gaps"] = gaps; invalid.append(copy)
+        }
+        for refs in [[], [UUID().uuidString], [caseID.uuidString], [card.id.uuidString, card.id.uuidString]] {
+            var copy = object; copy["source_refs"] = refs; invalid.append(copy)
+        }
+        object["readiness"] = "ready"; invalid.append(object)
+        for (index, response) in invalid.enumerated() {
+            let json = String(decoding: try JSONSerialization.data(withJSONObject: response), as: UTF8.self)
+            let client = GuidanceFixtureLLMClient(response: json)
+            do {
+                _ = try await CoachDecisionAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                    .decide(context: .init(caseId: caseID, caseTitle: nil, mode: .standard, cards: [card]))
+                XCTFail("Accepted invalid decision \(index)")
+            } catch { XCTAssertEqual(client.promptIDs, [.diagnoseTrainingCase], "No automatic retry") }
+        }
+    }
+
+    func testCoachTrainingDecisionDoesNotTransmitUnconfirmedExcludedOrOtherCaseMaterial() async throws {
+        let caseID = UUID()
+        var own = ThinkingCard(type: .fact, title: "确认来源", body: "观察到一次超时。", isConfirmed: true)
+        own.trainingCaseId = caseID
+        let unconfirmed = ThinkingCard(type: .idea, title: "未确认", body: "UNCONFIRMED_PRIVATE_MARKER")
+        var excluded = ThinkingCard(type: .idea, title: "已排除", body: "EXCLUDED_PRIVATE_MARKER", isConfirmed: true)
+        excluded.isExcludedFromModel = true
+        var other = ThinkingCard(type: .idea, title: "其他事项", body: "OTHER_CASE_PRIVATE_MARKER", isConfirmed: true)
+        other.trainingCaseId = UUID()
+        for invalidRef in [unconfirmed.id, excluded.id, other.id] {
+            let client = RecordingCoachDecisionClient(response: try coachDecisionJSON(gaps: [], refs: [invalidRef.uuidString]))
+            do {
+                _ = try await CoachDecisionAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                    .decide(context: .init(caseId: caseID, caseTitle: nil, mode: .standard, cards: [own, unconfirmed, excluded, other]))
+                XCTFail("Unconfirmed, excluded or foreign source was accepted")
+            } catch {}
+            let request = try XCTUnwrap(client.requests.first)
+            let payload = String(decoding: try JSONEncoder().encode(request.contextPayload), as: UTF8.self)
+            for marker in ["UNCONFIRMED_PRIVATE_MARKER", "EXCLUDED_PRIVATE_MARKER", "OTHER_CASE_PRIVATE_MARKER"] {
+                XCTAssertFalse(payload.contains(marker))
+            }
+            XCTAssertEqual(request.contextPayload?.currentCase?.evidenceRefs, [own.id.uuidString])
+        }
+    }
+
+    private func coachDecisionJSON(gaps: [String], refs: [String]) throws -> String {
+        let response: [String: Any] = ["phase": "fill_evidence_gap", "readiness": "not_ready",
+            "recommended_move": "surface_evidence_gap", "training_dimension": "evidence_discipline",
+            "recommended_lens_id": "evidenceCheck", "reason": "已有超时观察，权限限制仍未知；可以先保留这个未知。",
+            "open_evidence_gaps": gaps, "source_refs": refs, "confidence": 0.84]
+        return String(decoding: try JSONSerialization.data(withJSONObject: response), as: UTF8.self)
+    }
+
+    private final class RecordingCoachDecisionClient: LLMClient {
+        let response: String
+        var requests: [LLMRequest] = []
+        init(response: String) { self.response = response }
+        func complete(_ request: LLMRequest) async throws -> Data {
+            requests.append(request)
+            return Data(response.utf8)
+        }
     }
 
     func testCoachAnswerReviewUsesCentralModelAndCurrentMatterReferences() async throws {
@@ -424,6 +1040,208 @@ final class VNextTests: XCTestCase {
         XCTAssertEqual(result.turn.readiness, .notReady)
         XCTAssertEqual(result.feedback.nextRepairQuestion, "哪条记录能直接核对这个判断？")
         XCTAssertEqual(client.promptIDs, [.reviewCoachAnswer])
+    }
+
+    func testCoachAnswerReviewReadyAllowsEmptyRepairQuestion() async throws {
+        let caseId = UUID()
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人已确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "负责人在会议纪要中确认了交付时间。")
+        let refs = [card.id.uuidString, question.id.uuidString].map { "\"\($0)\"" }.joined(separator: ",")
+        let client = GuidanceFixtureLLMClient(response: """
+        {"readiness":"ready","recommended_move":"generate_quest","open_evidence_gaps":[],"reason":"回答给出了可核对事实，可以进入一个可观察的验证行动。","turn_summary":"证据缺口已闭合。","coach_critique":"这次回答把判断和来源连起来了。","repaired_material":"会议纪要中的负责人确认。","missing_material":"当前材料已足以设计明日验证。","proceed_line":"可以设计明日验证。","ability_gap":"把判断和事实连起来。","training_output":"留下一个可观察的验证信号。","self_check":"别人能找到你引用的事实。","training_target":"证据纪律。","next_repair_question":"","experience_replay_decision":"比较旧经验条件。","experience_replay_prompt":"旧经验的哪个条件不同？","judgment_sentence_prompt":"基于「事实」，我暂时判断「……」。","reference_suggestion":"","reference_example":"","source_refs":[\(refs)]}
+        """)
+
+        let result = try await CoachAnswerReviewAIService(
+            promptProvider: LocalPromptProvider(), llmClient: client
+        ).review(context: coachAnswerReviewContext(caseId: caseId, card: card, question: question))
+
+        XCTAssertEqual(result.turn.readiness, .ready)
+        XCTAssertTrue(result.feedback.canProceedToValidation)
+        XCTAssertTrue(result.feedback.nextRepairQuestion.isEmpty)
+        XCTAssertTrue(result.feedback.teachingPlan.repairQuestion.isEmpty)
+    }
+
+    func testCoachAnswerReviewRejectsReadyWithRepairQuestion() async throws {
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人已确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "负责人已确认。")
+        let response = coachAnswerReviewJSON(refs: [card.id.uuidString, question.id.uuidString])
+            .replacingOccurrences(of: "\"readiness\":\"not_ready\"", with: "\"readiness\":\"ready\"")
+            .replacingOccurrences(of: "\"recommended_move\":\"surface_evidence_gap\"", with: "\"recommended_move\":\"generate_quest\"")
+            .replacingOccurrences(of: "\"open_evidence_gaps\":[\"missing_observation\"]", with: "\"open_evidence_gaps\":[]")
+        let client = GuidanceFixtureLLMClient(response: response)
+
+        do {
+            _ = try await CoachAnswerReviewAIService(
+                promptProvider: LocalPromptProvider(), llmClient: client
+            ).review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+            XCTFail("Expected ready response with a repair question to be rejected")
+        } catch {
+            XCTAssertTrue(error is TodayAIParsingError)
+        }
+    }
+
+    func testCoachAnswerReviewRejectsMultipleOpenEvidenceGaps() async throws {
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人没有确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "会议纪要没有负责人。")
+        let response = coachAnswerReviewJSON(refs: [card.id.uuidString, question.id.uuidString])
+            .replacingOccurrences(
+                of: "\"open_evidence_gaps\":[\"missing_observation\"]",
+                with: "\"open_evidence_gaps\":[\"missing_observation\",\"missing_baseline\"]"
+            )
+        let client = GuidanceFixtureLLMClient(response: response)
+
+        do {
+            _ = try await CoachAnswerReviewAIService(
+                promptProvider: LocalPromptProvider(), llmClient: client
+            ).review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+            XCTFail("Expected multiple open evidence gaps to be rejected")
+        } catch {
+            XCTAssertEqual(
+                error as? TodayAIParsingError,
+                .qualityGateFailed(["回答复盘只能保留一个最重要的证据缺口。"])
+            )
+        }
+    }
+
+    func testCoachAnswerReviewStopsWhenUserExplicitlyDeclinesRepairQuestion() async throws {
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人没有确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "我现在不知道，也不想继续回答了。")
+        let response = try reviewJSONWithEmptyOptionalGuidance(
+            coachAnswerReviewJSON(refs: [card.id.uuidString, question.id.uuidString], userBoundary: "stop"))
+        let client = GuidanceFixtureLLMClient(response: response)
+
+        let result = try await CoachAnswerReviewAIService(
+            promptProvider: LocalPromptProvider(), llmClient: client
+        ).review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+
+        XCTAssertEqual(result.turn.readiness, .notReady)
+        XCTAssertTrue(result.feedback.nextRepairQuestion.isEmpty)
+        XCTAssertFalse(result.feedback.canProceedToValidation)
+        XCTAssertTrue(result.feedback.experienceReplayPrompt.isEmpty,
+            "An intentionally empty prompt must not become a local recall task")
+        XCTAssertTrue(result.feedback.judgmentSentencePrompt.isEmpty)
+        XCTAssertTrue(result.feedback.teachingPlan.experienceReplayPrompt.isEmpty)
+        XCTAssertNil(result.referenceSuggestion)
+        XCTAssertTrue(result.feedback.hasStopped)
+        let encoded = try JSONEncoder().encode(result.feedback)
+        XCTAssertTrue(try JSONDecoder().decode(CoachAnswerTrainingFeedback.self, from: encoded).hasStopped)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "userBoundary")
+        let old = try JSONDecoder().decode(CoachAnswerTrainingFeedback.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(old.userBoundary)
+        XCTAssertFalse(old.hasStopped)
+    }
+
+    private func reviewJSONWithEmptyOptionalGuidance(_ response: String) throws -> String {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any])
+        for field in ["next_repair_question", "experience_replay_prompt", "judgment_sentence_prompt", "reference_suggestion", "reference_example"] {
+            object[field] = ""
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+    }
+
+    func testCoachAnswerReviewRejectsAlternateAssignmentsAfterStop() async throws {
+        let card = ThinkingCard(type: .fact, title: "事实", body: "仅一次未完成。", isConfirmed: true)
+        let question = ReflectionQuestion(question: "看到什么？", whyItMatters: "区分原因。", answer: "不记得了，先不继续。")
+        let stopped = try reviewJSONWithEmptyOptionalGuidance(coachAnswerReviewJSON(refs: [question.id.uuidString], userBoundary: "stop"))
+        for field in ["experience_replay_prompt", "judgment_sentence_prompt", "reference_suggestion", "reference_example"] {
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(stopped.utf8)) as? [String: Any])
+            object[field] = "再回想一次，然后补写一条判断。"
+            let response = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+            do {
+                _ = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(),
+                    llmClient: GuidanceFixtureLLMClient(response: response)).review(
+                        context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+                XCTFail("Stopped review must reject a disguised assignment in \(field)")
+            } catch {
+                XCTAssertEqual(error as? TodayAIParsingError,
+                    .qualityGateFailed(["用户已停止回答时不得通过其他提示继续安排练习。"]))
+            }
+        }
+    }
+
+    func testCoachAnswerReviewRejectsRepairQuestionWhenUserBoundaryIsStop() async throws {
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人没有确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "不想继续回答了。")
+        for readiness in ["not_ready", "partially_ready", "ready"] {
+            var response = coachAnswerReviewJSON(refs: [question.id.uuidString], userBoundary: "stop")
+                .replacingOccurrences(of: "\"readiness\":\"not_ready\"", with: "\"readiness\":\"\(readiness)\"")
+            if readiness == "ready" {
+                response = response.replacingOccurrences(of: "\"open_evidence_gaps\":[\"missing_observation\"]", with: "\"open_evidence_gaps\":[]")
+            }
+            do {
+                _ = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(),
+                    llmClient: GuidanceFixtureLLMClient(response: response))
+                    .review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+                XCTFail("A stopped \(readiness) review must not ask another question")
+            } catch {
+                XCTAssertEqual(error as? TodayAIParsingError,
+                    .qualityGateFailed(["用户已停止回答时不得制造额外追问。"]))
+            }
+        }
+    }
+
+    func testCoachAnswerReviewRejectsMatterIdentityAsEvidenceEvenAlongsideValidAnswer() async throws {
+        let caseId = UUID()
+        let card = ThinkingCard(type: .fact, title: "事实", body: "负责人没有确认", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪个事实支持判断？", whyItMatters: "补齐证据。", answer: "会议纪要没有负责人。")
+        for refs in [[caseId.uuidString], [question.id.uuidString, caseId.uuidString]] {
+            let client = GuidanceFixtureLLMClient(response: coachAnswerReviewJSON(refs: refs))
+            do {
+                _ = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                    .review(context: coachAnswerReviewContext(caseId: caseId, card: card, question: question))
+                XCTFail("The matter ID is routing context, not card or answer evidence")
+            } catch {
+                XCTAssertEqual(error as? TodayAIParsingError,
+                    .qualityGateFailed(["回答复盘只能引用当前事项的卡片和回答。"]))
+            }
+        }
+    }
+
+    func testCoachAnswerReviewCanKeepUncertaintyWithoutAnotherQuestionOrStopClaim() async throws {
+        let card = ThinkingCard(type: .fact, title: "报告晚交两天", body: "只知道晚交，原因未知。", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪些是观察，哪些是推测？", whyItMatters: "分开事实和动机。", answer: "晚交是事实，故意是推测；我现在已能分开这两点。")
+        for readiness in ["not_ready", "partially_ready"] {
+            let response = try reviewJSONWithEmptyOptionalGuidance(
+                coachAnswerReviewJSON(refs: [question.id.uuidString], userBoundary: "continue"))
+                .replacingOccurrences(of: "\"readiness\":\"not_ready\"", with: "\"readiness\":\"\(readiness)\"")
+            let client = GuidanceFixtureLLMClient(response: response)
+            let result = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                .review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+            XCTAssertEqual(result.turn.readiness.rawValue, readiness)
+            XCTAssertEqual(result.turn.openEvidenceGaps, [.missingObservation])
+            XCTAssertFalse(result.feedback.canProceedToValidation)
+            XCTAssertFalse(result.feedback.hasStopped, "No useful follow-up must not be mislabeled as user refusal")
+            XCTAssertTrue(result.feedback.nextRepairQuestion.isEmpty)
+            XCTAssertEqual(client.promptIDs, [.reviewCoachAnswer])
+        }
+    }
+
+    func testCoachAnswerReviewRejectsClarificationMoveWithoutActualQuestion() async throws {
+        let card = ThinkingCard(type: .fact, title: "晚交", body: "原因未知。", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪些是观察？", whyItMatters: "区分原因。", answer: "晚交是观察。")
+        let response = try reviewJSONWithEmptyOptionalGuidance(coachAnswerReviewJSON(refs: [question.id.uuidString]))
+            .replacingOccurrences(of: "surface_evidence_gap", with: "ask_clarifying_question")
+        do {
+            _ = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: GuidanceFixtureLLMClient(response: response))
+                .review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+            XCTFail("An empty question must not be presented as a clarification request")
+        } catch { XCTAssertTrue(error is TodayAIParsingError) }
+    }
+
+    func testCoachAnswerReviewDoesNotInventTrainingStandardsInEmptyModelFields() async throws {
+        let card = ThinkingCard(type: .fact, title: "报告晚交两天", body: "原因未知。", isConfirmed: true)
+        let question = ReflectionQuestion(question: "哪些是推测？", whyItMatters: "保留边界。", answer: "故意是推测。")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(coachAnswerReviewJSON(refs: [question.id.uuidString]).utf8)) as? [String: Any])
+        for field in ["ability_gap", "training_output", "self_check", "training_target", "experience_replay_decision", "experience_replay_prompt", "judgment_sentence_prompt", "reference_suggestion", "reference_example", "repaired_material"] { object[field] = "" }
+        let response = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+        let result = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: GuidanceFixtureLLMClient(response: response))
+            .review(context: coachAnswerReviewContext(caseId: UUID(), card: card, question: question))
+        XCTAssertTrue([result.feedback.abilityGapLine, result.feedback.trainingOutputLine,
+            result.feedback.selfCheckLine, result.feedback.trainingTargetLine,
+            result.feedback.experienceReplayDecisionLine, result.feedback.repairedLine,
+            result.feedback.teachingPlan.trainingTargetTitle, result.feedback.teachingPlan.proceedStandard].allSatisfy { $0.isEmpty })
+        XCTAssertNil(result.referenceSuggestion)
     }
 
     func testCoachAnswerReviewRejectsReferencesOutsideCurrentMatter() async throws {
@@ -540,6 +1358,29 @@ final class VNextTests: XCTestCase {
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM metric_contributions")
         }
         XCTAssertEqual(metricCount, 0)
+    }
+
+    func testSideQuestDatesReadLegacyMillisecondsAndTimeZoneOffsets() async throws {
+        let timestamp = "2026-10-03T01:02:03.125Z"
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expectedDate = try XCTUnwrap(formatter.date(from: timestamp))
+        let repository = SQLiteSideQuestRepository(database: database)
+        let run = SideQuestRun.offered(from: try XCTUnwrap(BuiltinSideQuestCatalog.items.first), at: expectedDate)
+        try await repository.offer(run)
+        let storedTimestamp = try await database.dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT offered_at FROM side_quest_runs WHERE id = ?", arguments: [run.id.uuidString])
+        }
+        XCTAssertEqual(storedTimestamp, timestamp)
+
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "UPDATE side_quest_runs SET offered_at = ?, updated_at = ? WHERE id = ?",
+                           arguments: [timestamp, "2026-10-03T09:02:03.125+08:00", run.id.uuidString])
+        }
+        let storedRun = try await repository.run(id: run.id)
+        let loaded = try XCTUnwrap(storedRun)
+        XCTAssertEqual(loaded.offeredAt.timeIntervalSince1970, expectedDate.timeIntervalSince1970, accuracy: 0.000001)
+        XCTAssertEqual(loaded.updatedAt.timeIntervalSince1970, expectedDate.timeIntervalSince1970, accuracy: 0.000001)
     }
 
     func testSideQuestPhotoMemoryRoundTripsAndCanBeMarkedUnavailable() async throws {
@@ -1672,6 +2513,7 @@ final class VNextTests: XCTestCase {
     @MainActor
     func testVNextProductionNeverPromotesLocalCaptureWithoutCentralModel() async throws {
         let store = AppStore(
+            apiKeyStore: KeychainAPIKeyStore(service: "com.codex.mingsi.tests.missing-key.\(UUID().uuidString)"),
             refreshesAIServiceFromKeychain: false,
             trainingCasesVNextEnabled: true
         )
@@ -2471,7 +3313,7 @@ final class VNextTests: XCTestCase {
     }
 
     @MainActor
-    func testLocalGrowthIncludesEveryCaseVerificationWithCaseAttribution() async throws {
+    func testRestoringMultipleCasesKeepsResultsWithoutAutomaticGrowthScores() async throws {
         let entryRepository = SQLiteDailyEntryRepository(database: database)
         let caseRepository = SQLiteTrainingCaseRepository(database: database)
         let sessionRepository = SQLiteTrainingCaseSessionRepository(database: database)
@@ -2555,16 +3397,16 @@ final class VNextTests: XCTestCase {
 
         await store.loadPersistedState()
 
-        XCTAssertTrue(store.growthSnapshot.canDisplayScores)
-        let contributions = try await contributionRepository.contributions(for: store.growthSnapshot.id)
-        XCTAssertTrue(contributions.allSatisfy { $0.sourceCaseId != nil })
-        for caseID in caseIDs {
-            XCTAssertTrue(
-                contributions.contains { contribution in
-                    contribution.sourceCaseId == caseID && contribution.sourceType == .verification
-                },
-                "Every case verification must remain attributable to its own case."
-            )
+        XCTAssertFalse(store.growthSnapshot.canDisplayScores)
+        let snapshot = try await snapshotRepository.latestSnapshot()
+        XCTAssertNil(snapshot)
+        let results = store.historyRecords.flatMap(\.allVerifications)
+        XCTAssertEqual(results.count, 4)
+        XCTAssertTrue(results.allSatisfy { $0.valueRating == .high })
+        XCTAssertEqual(Set(store.historyRecords.flatMap { $0.caseRecords.map { $0.trainingCase.id } }), caseIDs)
+        for record in store.historyRecords {
+            let contributions = try await contributionRepository.contributions(forDailyEntryId: record.draft.id)
+            XCTAssertTrue(contributions.isEmpty)
         }
         let expectedSecondCaseID = try XCTUnwrap(secondCaseID)
         XCTAssertTrue(store.historyRecords.contains { record in
@@ -2685,16 +3527,13 @@ final class VNextTests: XCTestCase {
         })
         XCTAssertFalse(secondRecord.allVerifications.contains { $0.questId == quests[0].id })
 
-        let contributions = try await contributionRepository.contributions(for: store.growthSnapshot.id)
-        XCTAssertFalse(contributions.isEmpty)
-        XCTAssertTrue(contributions.allSatisfy { $0.sourceCaseId != nil })
-        let firstLensContributions = contributions.filter { contribution in
-            contribution.sourceType == .dailyEntry &&
-                contribution.sourceDailyEntryId == entries[0].id &&
-                contribution.title == "完成透镜追问"
-        }
-        XCTAssertEqual(firstLensContributions.count, 1)
-        XCTAssertEqual(firstLensContributions.first?.sourceCaseId, cases[0].id)
+        XCTAssertFalse(store.growthSnapshot.canDisplayScores)
+        let snapshot = try await snapshotRepository.latestSnapshot()
+        XCTAssertNil(snapshot)
+        let firstCase = try XCTUnwrap(firstRecord.caseRecords.first { $0.trainingCase.id == cases[0].id })
+        XCTAssertEqual(firstCase.lensSession?.selectedLens, .evidenceCheck)
+        XCTAssertEqual(firstCase.lensSession?.questions.first?.answer, "A concrete result.")
+        XCTAssertTrue(firstRecord.growthContributions.isEmpty)
     }
 
     @MainActor
@@ -2823,15 +3662,1012 @@ final class VNextTests: XCTestCase {
         )
     }
 
-    private func coachAnswerReviewJSON(refs: [String]) -> String {
+    private func coachAnswerReviewJSON(refs: [String], userBoundary: String? = nil) -> String {
         let encodedRefs = refs.map { "\"\($0)\"" }.joined(separator: ",")
+        let boundaryField = userBoundary.map { ",\"user_boundary\":\"\($0)\"" } ?? ""
         return """
-        {"readiness":"not_ready","recommended_move":"surface_evidence_gap","open_evidence_gaps":["missing_observation"],"reason":"回答仍缺少可核对的来源。","turn_summary":"判断更清楚，但证据尚未闭合。","coach_critique":"你给出了方向，还需要一条可核对事实。","repaired_material":"明确了判断。","missing_material":"缺少可回查的观察。","proceed_line":"补充观察，或由你选择带着缺口继续。","ability_gap":"把判断和事实分开。","training_output":"写出可核对的来源。","self_check":"别人能找到你引用的事实。","training_target":"证据纪律。","next_repair_question":"哪条记录能直接核对这个判断？","experience_replay_decision":"比较旧经验条件。","experience_replay_prompt":"旧经验的哪个条件不同？","judgment_sentence_prompt":"基于什么事实，我暂时相信什么。","reference_suggestion":"先写事实，再写判断。","reference_example":"基于「事实」，我暂时判断「……」。","source_refs":[\(encodedRefs)]}
+        {"readiness":"not_ready","recommended_move":"surface_evidence_gap","open_evidence_gaps":["missing_observation"],"reason":"回答仍缺少可核对的来源。","turn_summary":"判断更清楚，但证据尚未闭合。","coach_critique":"你给出了方向，还需要一条可核对事实。","repaired_material":"明确了判断。","missing_material":"缺少可回查的观察。","proceed_line":"补充观察，或由你选择带着缺口继续。","ability_gap":"把判断和事实分开。","training_output":"写出可核对的来源。","self_check":"别人能找到你引用的事实。","training_target":"证据纪律。","next_repair_question":"哪条记录能直接核对这个判断？"\(boundaryField),"experience_replay_decision":"比较旧经验条件。","experience_replay_prompt":"旧经验的哪个条件不同？","judgment_sentence_prompt":"基于什么事实，我暂时相信什么。","reference_suggestion":"先写事实，再写判断。","reference_example":"基于「事实」，我暂时判断「……」。","source_refs":[\(encodedRefs)]}
         """
     }
 
+    func testReflectionStateMigrationPreservesExistingSessionWithoutInventingReview() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue, upTo: "v70_mentor_benefit_feedback")
+        let entryID = UUID(), caseID = UUID(), sessionID = UUID()
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO daily_entries (id, schema_version, date, raw_text, session_mode, state, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?, ?, ?)",
+                arguments: [entryID.uuidString, "2026-10-17T00:00:00Z", "旧记录", SessionMode.standard.rawValue, DailyLoopState.answerQuestions.rawValue, "2026-10-17T00:00:00Z", "2026-10-17T00:00:00Z"])
+            try db.execute(sql: "INSERT INTO training_cases (id, daily_entry_id, title, status, sort_order, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
+                arguments: [caseID.uuidString, entryID.uuidString, "旧事项", TrainingCaseStatus.inProgress.rawValue, TrainingCaseCreatedBy.user.rawValue, "2026-10-17T00:00:00Z", "2026-10-17T00:00:00Z"])
+            try db.execute(sql: "INSERT INTO training_case_sessions (id, case_id, loop_state, session_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                arguments: [sessionID.uuidString, caseID.uuidString, DailyLoopState.answerQuestions.rawValue, SessionMode.standard.rawValue, "2026-10-17T00:00:00Z", "2026-10-17T00:00:00Z"])
+        }
+        try AppDatabase.makeMigrator().migrate(queue)
+        let migratedDB = try AppDatabase(dbQueue: queue)
+        let migrated = try await SQLiteTrainingCaseSessionRepository(database: migratedDB).session(for: caseID)
+        XCTAssertEqual(migrated?.id, sessionID)
+        XCTAssertEqual(migrated?.loopState, .answerQuestions)
+        XCTAssertNil(migrated?.reflectionState)
+    }
+
     @MainActor
-    private func makeCoachFeedbackStore() async throws -> (
+    func testReturnToTodayOverviewPreservesLensFreeAnswersAndStoppedReview() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.selectedLens = nil
+        let question = ReflectionQuestion(question: "看到什么？", whyItMatters: "区分原因。", answer: "只有一次，没有其他记录，今天先不继续。")
+        store.questions = [question]
+        await store.returnToTodayOverview()
+        let loadedSession = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        let saved = try XCTUnwrap(loadedSession)
+        XCTAssertEqual(saved.reflectionState?.questions, [question])
+        XCTAssertNil(saved.selectedLensId)
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        XCTAssertNil(store.activeTrainingCase)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.questions, [question])
+        XCTAssertNil(store.todayDraft.selectedLens)
+
+        let card = try XCTUnwrap(store.thinkingCards.first)
+        let response = try reviewJSONWithEmptyOptionalGuidance(coachAnswerReviewJSON(refs: [question.id.uuidString], userBoundary: "stop"))
+        let decision = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(),
+            llmClient: GuidanceFixtureLLMClient(response: response)).review(
+                context: coachAnswerReviewContext(caseId: fixture.trainingCase.id, card: card, question: question))
+        var snapshot = saved
+        snapshot.reflectionState = CoachReflectionState(questions: [question], reviewTurn: decision.turn,
+            reviewFeedback: decision.feedback, referenceSuggestion: nil, promptRunID: decision.promptRunId)
+        await store.returnToTodayOverview()
+        try await fixture.sessionRepository.saveSession(snapshot)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertTrue(store.coachAnswerTrainingFeedback?.hasStopped == true)
+        XCTAssertTrue(store.coachAnswerTrainingFeedback?.experienceReplayPrompt.isEmpty == true)
+        XCTAssertEqual(store.coachAnswerFeedbackPreview, decision.turn)
+        XCTAssertEqual(store.questions, [question])
+    }
+
+    @MainActor
+    private func makeAnswerRetryFixture() async throws -> (store: AppStore, client: AnswerReviewRetryClient, question: ReflectionQuestion, response: Data) {
+        let client = AnswerReviewRetryClient()
+        let traced = PromptTracingLLMClient(base: client,
+            repository: SQLitePromptRunRepository(database: database), modelProvider: "synthetic", modelName: "review-retry")
+        let fixture = try await makeCoachFeedbackStore(answerReviewService:
+            CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: traced,
+                coachPromptTurnRepository: SQLiteCoachPromptTurnRepository(database: database)))
+        let store = fixture.store
+        let question = ReflectionQuestion(question: "哪些是观察，哪些是推测？", whyItMatters: "区分意图。",
+            answer: "晚交是观察，故意是推测，原因还不知道。")
+        let card = try XCTUnwrap(store.thinkingCards.first)
+        let response = try reviewJSONWithEmptyOptionalGuidance(coachAnswerReviewJSON(refs: [question.id.uuidString]))
+        let decision = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(),
+            llmClient: GuidanceFixtureLLMClient(response: response)).review(
+                context: coachAnswerReviewContext(caseId: fixture.trainingCase.id, card: card, question: question))
+        store.todayDraft.state = .answerQuestions
+        store.questions = [question]
+        await store.returnToTodayOverview()
+        let loaded = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        var session = try XCTUnwrap(loaded)
+        var previousTurn = decision.turn
+        previousTurn.reason = "上轮模型指出尚缺观察，等待用户补充。"
+        session.reflectionState = CoachReflectionState(questions: [question], reviewTurn: previousTurn,
+            reviewFeedback: decision.feedback, referenceSuggestion: nil, promptRunID: decision.promptRunId)
+        try await fixture.sessionRepository.saveSession(session)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        return (store, client, question, Data(response.utf8))
+    }
+
+    @MainActor
+    func testAnswerReviewWithoutPriorDiagnosisUsesCurrentAnswersAndHonestMissingContext() async throws {
+        let client = AnswerReviewRetryClient()
+        let traced = PromptTracingLLMClient(base: client, repository: SQLitePromptRunRepository(database: database),
+            modelProvider: "synthetic", modelName: "no-prior-review")
+        let fixture = try await makeCoachFeedbackStore(answerReviewService:
+            CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: traced,
+                coachPromptTurnRepository: SQLiteCoachPromptTurnRepository(database: database)))
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        let question = ReflectionQuestion(question: "观察和推测分别是什么？", whyItMatters: "区分原因。", answer: "未完成是事实，原因未知。")
+        store.questions = [question]
+        XCTAssertNil(store.coachTurnState)
+        store.submitCoachAnswerReview()
+        for _ in 0..<100 where client.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(client.requests.map(\.prompt.id), [.reviewCoachAnswer])
+        let request = try XCTUnwrap(client.requests.first)
+        XCTAssertTrue(request.contextPayload?.currentInput.rawText?.contains("previous_assessment_available=false") == true)
+        XCTAssertTrue(request.contextPayload?.currentInput.rawText?.contains(question.answer) == true)
+        client.resolveAll(with: .success(Data(try reviewJSONWithEmptyOptionalGuidance(
+            coachAnswerReviewJSON(refs: [question.id.uuidString])).utf8)))
+        for _ in 0..<100 where store.isAIRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(store.coachAnswerTrainingFeedback)
+        XCTAssertEqual(store.questions, [question])
+    }
+
+    @MainActor
+    func testRestoredReviewCanContinueAfterAnswerEditWithoutLosingPreviousTurn() async throws {
+        let fixture = try await makeAnswerRetryFixture()
+        let store = fixture.store
+        XCTAssertNotNil(store.coachTurnState, "Restore the previous model turn for the next exchange")
+        store.updateQuestionAnswer(questionID: fixture.question.id, answer: "我补充了原话，意图仍未知。")
+        let caseID = try XCTUnwrap(store.activeTrainingCase?.id)
+        await store.saveAnswerReviewAndReturn()
+        await store.openTrainingCase(caseID)
+        XCTAssertEqual(store.questions.first?.answer, "我补充了原话，意图仍未知。")
+        XCTAssertNotNil(store.coachTurnState)
+        XCTAssertNil(store.coachAnswerTrainingFeedback, "Old feedback is context, not a review of the changed answer")
+        store.submitCoachAnswerReview()
+        for _ in 0..<100 where fixture.client.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(fixture.client.requests.map(\.prompt.id), [.reviewCoachAnswer])
+        store.cancelCurrentAIRequest()
+        fixture.client.resolveAll(with: .success(fixture.response))
+    }
+
+    @MainActor
+    func testCancelledAnswerReviewRetriesReviewAndIgnoresLateResponseWithoutReplacingAnswers() async throws {
+        let fixture = try await makeAnswerRetryFixture()
+        let store = fixture.store
+        let caseID = store.activeTrainingCase?.id
+        store.submitCoachAnswerReview()
+        for _ in 0..<100 where fixture.client.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.isAIRunning, "Review must expose waiting and cancellation controls")
+        store.cancelCurrentAIRequest()
+        XCTAssertFalse(store.isAIRunning)
+        XCTAssertTrue(store.canRetryCurrentAI)
+        store.retryCurrentAIStep()
+        store.retryCurrentAIStep() // A double tap must not create another request.
+        for _ in 0..<100 where fixture.client.requests.count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(fixture.client.requests.map(\.prompt.id), [.reviewCoachAnswer, .reviewCoachAnswer])
+        guard fixture.client.requests.count == 2 else {
+            store.cancelCurrentAIRequest()
+            fixture.client.resolveAll(with: .success(fixture.response))
+            return
+        }
+        fixture.client.resolve(0, with: .success(fixture.response))
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertNil(store.coachAnswerTrainingFeedback, "Cancelled response cannot become the current review")
+        XCTAssertTrue(store.isAIRunning, "Old request cleanup cannot finish the retry")
+        fixture.client.resolve(1, with: .success(fixture.response))
+        for _ in 0..<100 where store.isAIRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(store.isAIRunning)
+        XCTAssertFalse(store.canRetryCurrentAI)
+        XCTAssertNotNil(store.coachAnswerTrainingFeedback)
+        XCTAssertEqual(store.coachTurnState, store.coachAnswerFeedbackPreview, "The next turn uses the latest model review")
+        XCTAssertEqual(store.questions, [fixture.question])
+        XCTAssertEqual(store.activeTrainingCase?.id, caseID)
+        XCTAssertNil(store.todayDraft.selectedLens)
+        XCTAssertTrue(store.quests.isEmpty)
+    }
+
+    @MainActor
+    func testFailedAnswerReviewKeepsAnswersAndRetriesTheSameOperation() async throws {
+        let fixture = try await makeAnswerRetryFixture()
+        let store = fixture.store
+        store.submitCoachAnswerReview()
+        for _ in 0..<100 where fixture.client.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        fixture.client.resolveAll(with: .failure(URLError(.timedOut)))
+        for _ in 0..<100 where !store.canRetryCurrentAI { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.canRetryCurrentAI)
+        XCTAssertNotNil(store.lastAIFailureMessage)
+        XCTAssertEqual(store.questions, [fixture.question])
+        store.retryCurrentAIStep()
+        for _ in 0..<100 where fixture.client.requests.count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(fixture.client.requests.map(\.prompt.id), [.reviewCoachAnswer, .reviewCoachAnswer])
+        fixture.client.resolveAll(with: .success(fixture.response))
+        for _ in 0..<100 where store.isAIRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(store.coachAnswerTrainingFeedback)
+        XCTAssertNil(store.lastAIFailureMessage)
+        XCTAssertEqual(store.questions, [fixture.question])
+    }
+
+    @MainActor
+    func testReviewedUncertaintyPrimarySavesWithoutActionOrFalseReadinessAndRestores() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.selectedLens = nil
+        let question = ReflectionQuestion(question: "哪些是观察，哪些是推测？", whyItMatters: "区分意图。",
+            answer: "晚交是观察，故意是推测，原因还不知道。")
+        store.questions = [question]
+        let card = try XCTUnwrap(store.thinkingCards.first)
+        let response = try reviewJSONWithEmptyOptionalGuidance(coachAnswerReviewJSON(refs: [question.id.uuidString], userBoundary: "continue"))
+        let client = GuidanceFixtureLLMClient(response: response)
+        let decision = try await CoachAnswerReviewAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            .review(context: coachAnswerReviewContext(caseId: fixture.trainingCase.id, card: card, question: question))
+        await store.returnToTodayOverview()
+        let loaded = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        var snapshot = try XCTUnwrap(loaded)
+        snapshot.reflectionState = CoachReflectionState(questions: [question], reviewTurn: decision.turn,
+            reviewFeedback: decision.feedback, referenceSuggestion: nil, promptRunID: decision.promptRunId)
+        try await fixture.sessionRepository.saveSession(snapshot)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertTrue(store.answerReviewPrimaryActionSaves)
+        XCTAssertFalse(store.isTodayPrimaryActionDisabled, "Saving uncertainty must not require an action target")
+        XCTAssertFalse(store.canChooseAnswerValidation, "There is no validation target in this reflection")
+        XCTAssertFalse(store.coachAnswerTrainingFeedback?.hasStopped ?? true)
+        let statusBeforeSaving = store.activeTrainingCase?.status
+        store.submitTodayStep()
+        store.submitTodayStep()
+        for _ in 0..<200 where !store.isTodayOverviewPresented { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.questions, [question])
+        XCTAssertNil(store.todayDraft.selectedLens)
+        XCTAssertEqual(store.coachAnswerTrainingFeedback?.readiness, .notReady)
+        XCTAssertEqual(store.coachAnswerFeedbackPreview?.openEvidenceGaps, [.missingObservation])
+        XCTAssertFalse(store.coachAnswerTrainingFeedback?.canProceedToValidation ?? true)
+        XCTAssertFalse(store.coachAnswerTrainingFeedback?.hasStopped ?? true)
+        XCTAssertTrue(store.quests.isEmpty)
+        XCTAssertEqual(client.promptIDs, [.reviewCoachAnswer], "Saving and reopening do not call the model")
+        let savedCase = try await SQLiteTrainingCaseRepository(database: database).caseRecord(id: fixture.trainingCase.id)
+        XCTAssertEqual(savedCase?.status, statusBeforeSaving, "Saving does not complete the real matter")
+        try await database.dbQueue.read { db in
+            for table in ["quests", "principle_assets", "metric_contributions"] {
+                XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)"), 0, table)
+            }
+        }
+    }
+
+    @MainActor
+    func testUnansweredRepairCanBeSavedWithoutForcingAnAnswer() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.selectedLens = nil
+        let questions = [ReflectionQuestion(question: "看到什么？", whyItMatters: "区分原因。", answer: "一次晚交。"),
+            ReflectionQuestion(question: "原约定具体是哪天？", isRepairQuestion: true, whyItMatters: "核对约定。")]
+        store.questions = questions
+        XCTAssertTrue(store.hasUnansweredRepairQuestion)
+        XCTAssertFalse(store.answerReviewPrimaryActionSaves)
+        XCTAssertTrue(store.canSaveAnswerReview)
+        await store.saveAnswerReviewAndReturn()
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.questions, questions)
+        XCTAssertTrue(store.hasUnansweredRepairQuestion)
+        XCTAssertTrue(store.quests.isEmpty)
+        XCTAssertNil(store.coachAnswerTrainingFeedback, "Saving must not fabricate a review")
+    }
+
+    @MainActor
+    func testGuidanceCoalescesIdenticalPendingAndCompletedDecisions() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"show","hint_id":"judgment.observable_evidence","reason":"测试展示生命周期"}"#)
+        client.suspendBeforeResponse = true
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(client.responseGate)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(client.requests.count, 1, "Reading unchanged material must reuse the pending decision")
+        // Release every fixture request even on the failing pre-fix path.
+        gate.resume()
+        if client.requests.count > 1, let otherGate = client.responseGate { otherGate.resume() }
+        client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        client.suspendBeforeResponse = false
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(client.requests.count, 1, "A validated result should be reused for identical material")
+        XCTAssertNotNil(fixture.store.activeGuidance)
+    }
+
+    @MainActor
+    func testGuidanceLateDecisionCannotReappearAfterOverview() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"show","hint_id":"judgment.observable_evidence","reason":"测试过期结果"}"#)
+        client.suspendBeforeResponse = true
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(client.responseGate)
+        await fixture.store.returnToTodayOverview()
+        gate.resume(); client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(fixture.store.activeGuidance)
+    }
+
+    @MainActor
+    func testGuidanceRejectsChangedMaterialWithSameCardID() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"show","hint_id":"judgment.observable_evidence","reason":"测试过期材料"}"#)
+        client.suspendBeforeResponse = true
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(client.responseGate)
+        fixture.store.thinkingCards[0].body = "我已经弄清楚区别，现在只想保存结束。"
+        gate.resume(); client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(fixture.store.activeGuidance)
+    }
+
+    @MainActor
+    func testGuidanceHoldIsReusedButChangedAnswerRequestsFreshDecision() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"hold","hint_id":null,"reason":"已有说明，不再打断"}"#)
+        let question = ReflectionQuestion(question: "哪些代价不会退？", whyItMatters: "区分可逆范围。", answer: "时间。")
+        let reflection = CoachReflectionState(questions: [question], reviewTurn: nil, reviewFeedback: nil,
+            referenceSuggestion: nil, promptRunID: nil, explanation: CoachExplanation(text: "可退学费，时间不能退。", sourceCardTitles: ["课程退款"]))
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: reflection, guidanceClient: client)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        await fixture.store.returnToTodayOverview()
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(client.requests.count, 1, "Hold is a validated decision, not an absence to retry")
+        XCTAssertNil(fixture.store.activeGuidance)
+        let initialRaw = try XCTUnwrap(client.requests.first?.contextPayload?.currentInput.rawText)
+        let initialContext = try JSONDecoder().decode(GuidanceDecisionContext.self, from: Data(initialRaw.utf8))
+        XCTAssertEqual(initialContext.reflection?.modelExplanation?.text, reflection.explanation?.text)
+        fixture.store.updateQuestionAnswer(questionID: question.id, answer: "时间不能退，今天先到这里。")
+        await fixture.store.returnToTodayOverview()
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(client.requests.count, 2, "New answers must not use the old hold")
+        let raw = try XCTUnwrap(client.requests.last?.contextPayload?.currentInput.rawText)
+        let context = try JSONDecoder().decode(GuidanceDecisionContext.self, from: Data(raw.utf8))
+        XCTAssertEqual(context.reflection?.userQuestionsAndAnswers.first?.answer, "时间不能退，今天先到这里。")
+        XCTAssertNil(context.reflection?.modelExplanation, "Editing the answer invalidates the prior explanation in the existing reflection contract")
+    }
+
+    @MainActor
+    func testGuidanceFailureRemainsRetryableAndIsNotCached() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        for _ in 0..<2 {
+            await fixture.store.openTrainingCase(fixture.trainingCase.id)
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        XCTAssertEqual(client.requests.count, 2)
+        XCTAssertNil(fixture.store.activeGuidance)
+    }
+
+    @MainActor
+    func testGuidancePresentationReceiptStartsCooldownAcrossStoreRecreation() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"show","hint_id":"judgment.observable_evidence","reason":"测试展示回执"}"#)
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        let store = fixture.store
+        let repository = SQLiteGuidanceRepository(database: database)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where store.activeGuidanceOfferID == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let offer = try XCTUnwrap(store.activeGuidanceOfferID)
+        let before = try await repository.state(for: "judgment.observable_evidence")
+        XCTAssertNil(before?.lastShownAt, "Selecting a hint is not presentation")
+        await store.recordActiveGuidancePresentation(offerID: offer)
+        let shown = try XCTUnwrap(store.guidanceStates.first?.lastShownAt)
+        await store.recordActiveGuidancePresentation(offerID: offer)
+        let repeated = try await repository.state(for: "judgment.observable_evidence")
+        XCTAssertEqual(try XCTUnwrap(repeated?.lastShownAt).timeIntervalSince1970, shown.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertNotNil(store.activeGuidance, "Receipt alone should not make the displayed hint disappear")
+        let restarted = AppStore(todayDraft: store.todayDraft,
+            dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
+            thinkingCardRepository: SQLiteThinkingCardRepository(database: database),
+            lensSessionRepository: SQLiteLensSessionRepository(database: database),
+            trainingCaseRepository: SQLiteTrainingCaseRepository(database: database),
+            trainingCaseSessionRepository: SQLiteTrainingCaseSessionRepository(database: database),
+            guidanceRepository: SQLiteGuidanceRepository(database: database), refreshesAIServiceFromKeychain: false,
+            guidanceAIService: GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: client), trainingCasesVNextEnabled: true)
+        await restarted.loadPersistedState()
+        await restarted.openTrainingCase(fixture.trainingCase.id)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertNil(restarted.activeGuidance)
+    }
+
+    func testDelayedGuidanceReceiptPreservesNewerPreferencesAndEvidence() async throws {
+        let repository = SQLiteGuidanceRepository(database: database)
+        let item = BuiltinGuidanceCatalog.items[1]
+        let newer = Date.now
+        let evidence = UUID()
+        _ = try await repository.recordEvidence(for: item, verificationId: evidence, isCounterexample: false)
+        _ = try await repository.updatePreference(for: item.hintId, snoozedUntil: newer.addingTimeInterval(1000), mastered: true, now: newer)
+        let receipt = try await repository.recordPresentation(for: item.hintId, at: newer.addingTimeInterval(-500))
+        XCTAssertEqual(receipt.status, .mastered)
+        XCTAssertEqual(receipt.evidenceRefs, [evidence.uuidString])
+        XCTAssertEqual(try XCTUnwrap(receipt.lastShownAt).timeIntervalSince1970, newer.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    @MainActor
+    func testGuidanceCannotReappearAfterNoActionStageOrAnswerEdit() async throws {
+        let client = GuidanceFixtureLLMClient(response: #"{"decision":"show","hint_id":"judgment.observable_evidence","reason":"测试停止边界"}"#)
+        client.suspendBeforeResponse = true
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: nil, guidanceClient: client)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(client.responseGate)
+        fixture.store.todayDraft.state = .reviewWithoutAction
+        gate.resume(); client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(fixture.store.activeGuidance)
+        client.suspendBeforeResponse = false
+        fixture.store.todayDraft.state = .answerQuestions
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.store.activeGuidance == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let question = ReflectionQuestion(question: "哪些不能退？", whyItMatters: "区分退出代价。")
+        fixture.store.questions = [question]
+        fixture.store.updateQuestionAnswer(questionID: question.id, answer: "时间，先停在这里。")
+        XCTAssertNil(fixture.store.activeGuidance)
+    }
+
+    func testLegacyGuidanceContextDecodesWithoutReflection() throws {
+        let legacy = GuidanceDecisionContext(stage: .judgment, triggerKeys: [], candidates: [], states: [],
+            currentCaseId: nil, currentCaseTitle: nil, evidenceSummary: "旧材料")
+        let oldJSON = try JSONEncoder().encode(legacy)
+        XCTAssertNil(try JSONDecoder().decode(GuidanceDecisionContext.self, from: oldJSON).reflection)
+    }
+
+    @MainActor
+    func testRestoringSavedReflectionNeverRestartsInitialDiagnosis() async throws {
+        for hasExplanation in [true, false] {
+            let explanation = hasExplanation ? CoachExplanation(text: "退款能撤回金钱承诺，已花时间不能退回。", sourceCardTitles: ["课程退款"]) : nil
+            let questions = hasExplanation ? [] : [ReflectionQuestion(question: "退款承诺覆盖哪些成本？", whyItMatters: "区分退出代价。", answer: "只退学费，不退已经投入的时间。")]
+            let reflection = CoachReflectionState(questions: questions, reviewTurn: nil, reviewFeedback: nil,
+                referenceSuggestion: nil, promptRunID: nil, explanation: explanation)
+            let fixture = try await makeInitialDecisionRestoreFixture(state: .answerQuestions, reflection: reflection)
+            await fixture.store.openTrainingCase(fixture.trainingCase.id)
+            for _ in 0..<10 { await Task.yield() }
+            XCTAssertTrue(fixture.client.requests.isEmpty, "Opening saved help is reading, not a new diagnosis")
+            XCTAssertEqual(fixture.store.coachExplanation, explanation)
+            XCTAssertEqual(fixture.store.questions, questions)
+            XCTAssertEqual(fixture.store.todayDraft.state, .answerQuestions)
+        }
+    }
+
+    @MainActor
+    func testInitialDiagnosisCannotReplaceReflectionAfterUserAdvancesWithLens() async throws {
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .selectLens, reflection: nil)
+        fixture.client.suspendBeforeResponse = true
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(fixture.client.responseGate)
+        fixture.store.todayDraft.selectedLens = .reversibleDecision
+        let question = ReflectionQuestion(question: "哪些成本不能退款？", whyItMatters: "认识承诺边界。")
+        fixture.store.questions = [question]
+        fixture.store.submitTodayStep()
+        XCTAssertEqual(fixture.store.todayDraft.state, .answerQuestions)
+        gate.resume(); fixture.client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(fixture.store.coachTurnState, "A late initial assessment must not replace the current discussion")
+        XCTAssertEqual(fixture.store.questions, [question])
+        XCTAssertEqual(fixture.store.todayDraft.selectedLens, .reversibleDecision)
+    }
+
+    @MainActor
+    func testInitialDiagnosisFailureAfterReturningDoesNotPolluteOverview() async throws {
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .selectLens, reflection: nil)
+        fixture.client.suspendThenFail = true
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(fixture.client.responseGate)
+        await fixture.store.returnToTodayOverview()
+        let message = fixture.store.todayLoopMessage
+        gate.resume(); fixture.client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(fixture.store.isTodayOverviewPresented)
+        XCTAssertEqual(fixture.store.todayLoopMessage, message, "An abandoned request must not add an error to another surface")
+    }
+
+    @MainActor
+    func testInitialDiagnosisRejectsChangedCardTextWithSameIdentity() async throws {
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .selectLens, reflection: nil)
+        fixture.client.suspendBeforeResponse = true
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(fixture.client.responseGate)
+        fixture.store.thinkingCards[0].body = "退款条款已改为不退款，原先的条件作废。"
+        gate.resume(); fixture.client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertNil(fixture.store.coachTurnState, "Matching source IDs do not make an old assessment current")
+    }
+
+    @MainActor
+    func testChoosingLensDuringReassessmentPreservesUserChoice() async throws {
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .selectLens, reflection: nil)
+        fixture.client.suspendBeforeResponse = true
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.client.responseGate == nil { try await Task.sleep(for: .milliseconds(5)) }
+        let gate = try XCTUnwrap(fixture.client.responseGate)
+        fixture.store.selectThinkingLens(.opportunityCost)
+        XCTAssertEqual(fixture.store.todayDraft.state, .selectLens)
+        gate.resume(); fixture.client.responseGate = nil
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(fixture.store.todayDraft.selectedLens, .opportunityCost)
+        XCTAssertEqual(fixture.store.trainingPrescription?.finalLensId, "opportunityCost")
+        XCTAssertEqual(fixture.store.trainingPrescription?.source, .userOverride)
+        XCTAssertNil(fixture.store.coachTurnState)
+    }
+
+    @MainActor
+    func testInitialDiagnosisStillRunsForUnfinishedLensSelection() async throws {
+        let fixture = try await makeInitialDecisionRestoreFixture(state: .selectLens, reflection: nil)
+        await fixture.store.openTrainingCase(fixture.trainingCase.id)
+        for _ in 0..<200 where fixture.store.coachTurnState == nil { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(fixture.client.requests.map(\.prompt.id), [.diagnoseTrainingCase])
+        XCTAssertNotNil(fixture.store.coachTurnState)
+    }
+
+    @MainActor
+    private func makeInitialDecisionRestoreFixture(state: DailyLoopState, reflection: CoachReflectionState?, guidanceClient: GuidanceFixtureLLMClient? = nil) async throws ->
+        (store: AppStore, trainingCase: TrainingCase, client: GuidanceFixtureLLMClient) {
+        let entry = DailyEntryDraft(rawText: "退款条款的承诺边界", state: .capture)
+        let trainingCase = TrainingCase(dailyEntryId: entry.id, title: "课程退款")
+        let card = ThinkingCard(trainingCaseId: trainingCase.id, type: .decision, title: "课程退款",
+            body: "报名一周内全额退款，但已花的时间不能退回。", isConfirmed: true)
+        let entries = SQLiteDailyEntryRepository(database: database)
+        let cards = SQLiteThinkingCardRepository(database: database)
+        let cases = SQLiteTrainingCaseRepository(database: database)
+        let sessions = SQLiteTrainingCaseSessionRepository(database: database)
+        let prescription = TrainingPrescription(recommendedLensId: "reversibleDecision", recommendedPromptId: "reversible_decision",
+            recommendationReason: "区分退出代价。", confidence: 0.7, policyVersion: "coach-decision.llm.v2",
+            alternativeLensIds: [], baselineChecks: [], finalLensId: "reversibleDecision", source: .coachRecommended)
+        try await entries.saveDraft(entry)
+        try await cases.saveCase(trainingCase)
+        try await cards.saveCards([card], dailyEntryId: entry.id, trainingCaseId: trainingCase.id)
+        try await sessions.saveSession(TrainingCaseSession(caseId: trainingCase.id, loopState: state,
+            selectedLensId: "reversibleDecision", trainingPrescription: prescription, reflectionState: reflection))
+        let client = GuidanceFixtureLLMClient(response: try coachDecisionJSON(gaps: ["missing_constraint"], refs: [card.id.uuidString]))
+        let store = AppStore(todayDraft: entry, dailyEntryRepository: entries, thinkingCardRepository: cards,
+            questRepository: SQLiteQuestRepository(database: database), lensSessionRepository: SQLiteLensSessionRepository(database: database),
+            trainingCaseRepository: cases, trainingCaseSessionRepository: sessions,
+            trainingCaseRelationshipRepository: SQLiteTrainingCaseRelationshipRepository(database: database),
+            guidanceRepository: SQLiteGuidanceRepository(database: database),
+            refreshesAIServiceFromKeychain: false,
+            guidanceAIService: guidanceClient.map { GuidanceAIService(promptProvider: LocalPromptProvider(), llmClient: $0) },
+            coachDecisionAIService: CoachDecisionAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            trainingCasesVNextEnabled: true)
+        await store.loadPersistedState()
+        return (store, trainingCase, client)
+    }
+
+    @MainActor
+    func testDirectExplanationIsPresentedSavedRestoredAndClearedAcrossCases() async throws {
+        let json = #"{"questions":[],"explanation":{"text":"晚交是观察，故意是推测；目前不知道原因。","source_card_titles":["报告晚交两天"]}}"#
+        let client = GuidanceFixtureLLMClient(response: json)
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.thinkingCards = [ThinkingCard(type: .fact, title: "报告晚交两天", body: "晚交两天，我觉得是故意的，请直接解释，不要追问。", isConfirmed: true)]
+        store.todayDraft.state = .selectLens
+        store.todayDraft.selectedLens = nil
+        store.todayDraft.selectedCustomLensId = nil
+        store.submitTodayStep()
+        for _ in 0..<300 where store.coachExplanation == nil || store.isAIRunning { try await Task.sleep(for: .milliseconds(10)) }
+        let explanation = try XCTUnwrap(store.coachExplanation)
+        XCTAssertEqual(explanation.text, "晚交是观察，故意是推测；目前不知道原因。")
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertTrue(store.questions.isEmpty)
+        XCTAssertTrue(store.answerReviewPrimaryActionSaves)
+        await store.saveAnswerReviewAndReturn()
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        XCTAssertNil(store.coachExplanation)
+        let saved = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        XCTAssertEqual(saved?.reflectionState?.explanation, explanation)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.coachExplanation, explanation)
+        store.todayDraft.state = .selectLens
+        store.submitTodayStep()
+        XCTAssertEqual(store.todayDraft.state, .answerQuestions)
+        XCTAssertEqual(client.promptIDs, [.generateQuestions], "Returning to an explanation must not regenerate it")
+        await store.returnToTodayOverview()
+        await store.addManualTrainingCase(title: "另一件事")
+        let other = try XCTUnwrap(store.trainingCases.first { $0.id != fixture.trainingCase.id })
+        await store.openTrainingCase(other.id)
+        XCTAssertNil(store.coachExplanation, "An interpretation belongs to its original matter")
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.coachExplanation, explanation)
+        store.questions = []
+        XCTAssertNil(store.coachExplanation, "Resetting the current turn invalidates its interpretation")
+        XCTAssertTrue(store.quests.isEmpty)
+        XCTAssertTrue(store.principles.isEmpty)
+    }
+
+    func testExplanationFingerprintIncludesTextAndSourcesAndPreservesLegacyFingerprint() {
+        let a = CoachExplanation(text: "一种解释", sourceCardTitles: ["报告"])
+        let b = CoachExplanation(text: "另一种解释", sourceCardTitles: ["报告"])
+        let c = CoachExplanation(text: a.text, sourceCardTitles: ["排期"])
+        XCTAssertEqual(CoachPromptOutputFingerprint.questionTurn([], explanation: nil), CoachPromptOutputFingerprint.questions([]))
+        XCTAssertNotEqual(CoachPromptOutputFingerprint.questionTurn([], explanation: a), CoachPromptOutputFingerprint.questionTurn([], explanation: b))
+        XCTAssertNotEqual(CoachPromptOutputFingerprint.questionTurn([], explanation: a), CoachPromptOutputFingerprint.questionTurn([], explanation: c))
+    }
+
+    @MainActor
+    func testNoQuestionsPrimarySavesWithoutGeneratingValidation() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        store.questions = []
+        XCTAssertTrue(store.answerReviewPrimaryActionSaves)
+        XCTAssertFalse(store.isTodayPrimaryActionDisabled)
+        store.submitTodayStep()
+        for _ in 0..<200 where !store.isTodayOverviewPresented { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        let saved = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        XCTAssertEqual(saved?.loopState, .answerQuestions)
+        XCTAssertTrue(saved?.reflectionState?.questions.isEmpty ?? false)
+        XCTAssertTrue(store.quests.isEmpty)
+    }
+
+    @MainActor
+    func testCurrentNoLensChoiceOverridesLegacyLensRowWithoutDeletingAnswers() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        let legacyQuestion = ReflectionQuestion(question: "旧透镜问题", whyItMatters: "旧视角", answer: "旧回答")
+        let lenses = SQLiteLensSessionRepository(database: database)
+        try await lenses.saveLensSession(.init(dailyEntryId: store.todayDraft.id,
+            trainingCaseId: fixture.trainingCase.id, selectedLens: .opposingView, questions: [legacyQuestion]))
+        let current = ReflectionQuestion(question: "当前材料的问题", whyItMatters: "保留当前问题", answer: "当前回答，暂时未知。")
+        store.todayDraft.state = .answerQuestions
+        store.todayDraft.selectedLens = nil
+        store.todayDraft.selectedCustomLensId = nil
+        store.questions = [current]
+        await store.returnToTodayOverview()
+        let saved = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        XCTAssertNil(saved?.selectedLensId)
+        XCTAssertEqual(saved?.reflectionState?.questions, [current])
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertNil(store.todayDraft.selectedLens, "A stale LensSession must not reinstate a lens explicitly absent from the current reflection")
+        XCTAssertNil(store.todayDraft.selectedCustomLensId)
+        XCTAssertEqual(store.questions, [current])
+        let old = try await lenses.lensSession(forTrainingCaseId: fixture.trainingCase.id)
+        XCTAssertEqual(old?.selectedLens, .opposingView, "Keep the old record; precedence is not deletion")
+    }
+
+    @MainActor
+    func testReturnToTodayOverviewKeepsPageAndAnswersWhenSavingFails() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        store.todayDraft.state = .answerQuestions
+        store.questions = [ReflectionQuestion(question: "看到什么？", whyItMatters: "区分原因。", answer: "暂时不记得。")]
+        let before = store.questions
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_review_exit BEFORE INSERT ON training_case_sessions BEGIN SELECT RAISE(ABORT, 'synthetic disk failure'); END")
+        }
+        await store.saveAnswerReviewAndReturn()
+        XCTAssertEqual(store.activeTrainingCase?.id, fixture.trainingCase.id)
+        XCTAssertFalse(store.isTodayOverviewPresented)
+        XCTAssertEqual(store.questions, before)
+        XCTAssertTrue(store.todayLoopMessage.contains("已保留当前页面"))
+        try await database.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_review_exit") }
+        await store.saveAnswerReviewAndReturn()
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        let saved = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        XCTAssertEqual(saved?.reflectionState?.questions, before)
+    }
+
+    @MainActor
+    func testSaveValidationEndsWithoutRequestingPrincipleAndRestoresSavedAction() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.todayDraft.state = .reviewQuests
+        let quest = completionFixtureQuest()
+        store.quests = [quest]
+        store.submitTodayStep()
+        XCTAssertTrue(store.isSavingTodayCompletion)
+        store.submitTodayStep() // A second tap must not reset the completed day.
+        await store.returnToTodayOverview() // Navigation must not clear a pending save.
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(store.isSavingTodayCompletion)
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+        XCTAssertTrue(store.isTodayOverviewPresented)
+        XCTAssertNil(store.activeTrainingCase)
+        XCTAssertTrue(client.promptIDs.isEmpty)
+        let savedQuests = try await SQLiteQuestRepository(database: database).quests(forTrainingCaseId: fixture.trainingCase.id)
+        XCTAssertEqual(savedQuests.map(\.id), [quest.id])
+        XCTAssertEqual(savedQuests.first?.status, .active)
+        let session = try await fixture.sessionRepository.session(for: fixture.trainingCase.id)
+        XCTAssertEqual(session?.loopState, .sessionComplete)
+        let savedCase = try await SQLiteTrainingCaseRepository(database: database).caseRecord(id: fixture.trainingCase.id)
+        XCTAssertEqual(savedCase?.status, .awaitingVerification)
+    }
+
+    @MainActor
+    func testSaveValidationFailureRetainsPageAndDoesNotRequestPrincipleThenRetries() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.todayDraft.state = .reviewQuests
+        let quest = completionFixtureQuest()
+        store.quests = [quest]
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_validation_save BEFORE INSERT ON quests BEGIN SELECT RAISE(ABORT, 'synthetic disk failure'); END")
+        }
+        store.submitTodayStep()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(store.isSavingTodayCompletion)
+        XCTAssertEqual(store.todayDraft.state, .reviewQuests)
+        XCTAssertEqual(store.activeTrainingCase?.id, fixture.trainingCase.id)
+        XCTAssertFalse(store.isTodayOverviewPresented)
+        XCTAssertEqual(store.quests, [quest])
+        XCTAssertTrue(store.todayLoopMessage.contains("已保留当前页面"))
+        XCTAssertTrue(client.promptIDs.isEmpty)
+        try await database.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_validation_save") }
+        store.submitTodayStep()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+        let saved = try await SQLiteQuestRepository(database: database).quests(forTrainingCaseId: fixture.trainingCase.id)
+        XCTAssertEqual(saved.map(\.id), [quest.id])
+    }
+
+    @MainActor
+    func testPrincipleExtractionRequiresExplicitSecondaryAction() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{\"principle_candidate\":null}")
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.todayDraft.state = .reviewQuests
+        store.quests = [completionFixtureQuest()]
+        store.saveValidationAndReviewPrinciple()
+        for _ in 0..<200 where store.isSavingTodayCompletion || store.todayDraft.state != .extractPrinciple {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(store.todayDraft.state, .extractPrinciple)
+        XCTAssertEqual(client.promptIDs, [.extractPrinciple])
+        XCTAssertTrue(store.principles.isEmpty)
+    }
+
+    @MainActor
+    func testUnconfirmedPrincipleEditAndSkipDoNotTouchSavedAssets() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        let repo = SQLitePrincipleRepository(database: database)
+        let saved = completionFixturePrinciple(title: "已确认的旧原则")
+        try await repo.savePrinciple(saved, sourceDailyEntryId: store.todayDraft.id)
+        store.todayDraft.state = .extractPrinciple
+        let candidate = completionFixturePrinciple(title: "AI 尚未确认的候选")
+        store.principles = [candidate]
+        store.updatePrinciple(candidate.id, title: "编辑中的候选", summary: candidate.summary,
+            triggerContext: candidate.triggerContext, actionsText: "记录结果",
+            successCriteria: candidate.successCriteria, exceptions: candidate.exceptions)
+        await store.returnToTodayOverview()
+        let beforeSkip = try await repo.activePrinciples()
+        XCTAssertEqual(beforeSkip.map(\.id), [saved.id])
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.principles.first?.title, "编辑中的候选")
+        store.skipPrinciple()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        await store.returnToTodayOverview()
+        let afterSkip = try await repo.activePrinciples()
+        XCTAssertEqual(afterSkip.map(\.id), [saved.id])
+    }
+
+    @MainActor
+    func testPrincipleAssetSaveFailureRetainsCandidateAndRetriesWithoutDeletingOtherAssets() async throws {
+        let fixture = try await makeCoachFeedbackStore()
+        let store = fixture.store
+        let repo = SQLitePrincipleRepository(database: database)
+        let saved = completionFixturePrinciple(title: "已保存原则")
+        try await repo.savePrinciple(saved, sourceDailyEntryId: store.todayDraft.id)
+        let candidate = completionFixturePrinciple(title: "待保存候选")
+        store.todayDraft.state = .extractPrinciple
+        store.principles = [candidate]
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_principle_save BEFORE INSERT ON principle_assets BEGIN SELECT RAISE(ABORT, 'synthetic principle write failure'); END")
+        }
+        store.submitTodayStep()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(store.todayDraft.state, .extractPrinciple)
+        XCTAssertEqual(store.principles, [candidate])
+        XCTAssertFalse(store.isTodayOverviewPresented)
+        await store.returnToTodayOverview()
+        try await database.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_principle_save") }
+        await store.openTrainingCase(fixture.trainingCase.id)
+        store.submitTodayStep()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        let assets = try await repo.activePrinciples()
+        XCTAssertEqual(Set(assets.map(\.id)), Set([saved.id, candidate.id]))
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+    }
+
+    @MainActor
+    func testGeneratedPrincipleStaysDraftAcrossCaseSwitchAndFreshStoreRestoration() async throws {
+        let client = GuidanceFixtureLLMClient(response: """
+        {"principle_candidate":{"title":"先确认负责人再执行","summary":"执行前先写清负责人和验收标准。",
+        "trigger_context":"跨角色交接时","actions":["写下唯一负责人并确认","写下可以检查的验收标准"],
+        "success_criteria":"执行前记录里能看到唯一负责人和可检查的验收标准。",
+        "exceptions":"低风险同步可简化。","source_card_titles":["交接记录"]}}
+        """)
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.todayDraft.state = .reviewQuests
+        store.thinkingCards = [ThinkingCard(trainingCaseId: fixture.trainingCase.id,
+            type: .problem, title: "交接记录", body: "会后没有明确负责人。", isConfirmed: true)]
+        store.quests = [completionFixtureQuest()]
+        store.saveValidationAndReviewPrinciple()
+        for _ in 0..<200 where store.isSavingTodayCompletion || store.todayDraft.state != .extractPrinciple || store.isAIRunning {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(client.promptIDs, [.extractPrinciple])
+        let candidate = try XCTUnwrap(store.principles.first)
+        let repo = SQLitePrincipleRepository(database: database)
+        let assets = try await repo.activePrinciples()
+        XCTAssertTrue(assets.isEmpty)
+        XCTAssertTrue(store.activePrinciples.isEmpty)
+        await store.returnToTodayOverview()
+        await store.addManualTrainingCase(title: "另一个事项")
+        let other = try XCTUnwrap(store.trainingCases.first { $0.id != fixture.trainingCase.id })
+        await store.openTrainingCase(other.id)
+        XCTAssertTrue(store.principles.isEmpty)
+        await store.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(store.principles, [candidate])
+        await store.returnToTodayOverview()
+        let fresh = AppStore(dailyEntryRepository: SQLiteDailyEntryRepository(database: database),
+            thinkingCardRepository: SQLiteThinkingCardRepository(database: database),
+            questRepository: SQLiteQuestRepository(database: database), principleRepository: repo,
+            trainingCaseRepository: SQLiteTrainingCaseRepository(database: database),
+            trainingCaseSessionRepository: fixture.sessionRepository,
+            refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: true)
+        await fresh.loadPersistedState()
+        await fresh.openTrainingCase(fixture.trainingCase.id)
+        XCTAssertEqual(fresh.principles, [candidate])
+        XCTAssertTrue(fresh.activePrinciples.isEmpty)
+    }
+
+    @MainActor
+    func testOptionalPrincipleCompletionWriteFailuresRetainPageAndCanRetry() async throws {
+        for (table, condition) in [
+            ("training_case_sessions", "NEW.loop_state = 'sessionComplete'"),
+            ("training_cases", "NEW.status = 'awaiting_verification'"),
+            ("daily_entries", "NEW.state = 'sessionComplete'")
+        ] {
+            let fixture = try await makeCoachFeedbackStore()
+            let store = fixture.store
+            let candidate = completionFixturePrinciple(title: "待保存候选")
+            store.todayDraft.state = .extractPrinciple
+            store.principles = [candidate]
+            try await database.dbQueue.write { db in
+                try db.execute(sql: "CREATE TRIGGER fail_optional_finish BEFORE INSERT ON \(table) WHEN \(condition) BEGIN SELECT RAISE(ABORT, 'synthetic completion failure'); END")
+            }
+            store.submitTodayStep()
+            XCTAssertTrue(store.isSavingTodayCompletion)
+            store.skipPrinciple()
+            store.resetTodayLoop()
+            for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(store.todayDraft.state, .extractPrinciple, table)
+            XCTAssertEqual(store.principles, [candidate], table)
+            XCTAssertFalse(store.isTodayOverviewPresented, table)
+            try await database.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_optional_finish") }
+            store.submitTodayStep()
+            for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(store.todayDraft.state, .sessionComplete, table)
+            let saved = try await SQLitePrincipleRepository(database: database).principles(for: store.todayDraft.id)
+            XCTAssertEqual(saved.map(\.id), [candidate.id], table)
+        }
+    }
+
+    @MainActor
+    func testLegacyPrincipleCandidateRestoresAsDraftAndEmptyEditCannotBeConfirmed() async throws {
+        let entry = DailyEntryDraft(rawText: "今日回顾", state: .extractPrinciple)
+        let repo = SQLitePrincipleRepository(database: database)
+        let entries = SQLiteDailyEntryRepository(database: database)
+        let candidate = completionFixturePrinciple(title: "尚未确认")
+        let store = AppStore(todayDraft: entry, principles: [candidate], dailyEntryRepository: entries,
+            principleRepository: repo, refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: false)
+        store.updatePrinciple(candidate.id, title: "已编辑的草稿", summary: candidate.summary,
+            triggerContext: candidate.triggerContext, actionsText: "记录结果",
+            successCriteria: candidate.successCriteria, exceptions: candidate.exceptions)
+        // Drain the existing persistence chain through a serialized save.
+        store.submitTodayStep()
+        for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+        let confirmed = try await repo.activePrinciples()
+        XCTAssertEqual(confirmed.first?.title, "已编辑的草稿")
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+
+        var pending = entry
+        pending.principleReviewDrafts = ["daily": [candidate]]
+        try await entries.saveDraft(pending)
+        let restored = AppStore(dailyEntryRepository: entries, principleRepository: repo,
+            refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: false)
+        await restored.loadPersistedState()
+        XCTAssertEqual(restored.principles, [candidate])
+        XCTAssertEqual(restored.activePrinciples.map(\.id), [candidate.id])
+        // Keep the saved asset intact while an empty draft edit remains unconfirmed.
+        restored.updatePrinciple(candidate.id, title: " ", summary: candidate.summary,
+            triggerContext: candidate.triggerContext, actionsText: "",
+            successCriteria: candidate.successCriteria, exceptions: candidate.exceptions)
+        restored.submitTodayStep()
+        XCTAssertFalse(restored.isSavingTodayCompletion)
+        XCTAssertEqual(restored.todayDraft.state, .extractPrinciple)
+        XCTAssertTrue(restored.todayLoopMessage.contains("至少一个具体动作"))
+        let unchanged = try await repo.activePrinciples()
+        XCTAssertEqual(unchanged, confirmed)
+    }
+
+    @MainActor
+    func testLatePrincipleErrorDoesNotChangeAnotherCase() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        client.suspendThenFail = true
+        let fixture = try await makeCoachFeedbackStore(todayAIService:
+            TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client))
+        let store = fixture.store
+        store.todayDraft.state = .reviewQuests
+        store.quests = [completionFixtureQuest()]
+        store.saveValidationAndReviewPrinciple()
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(client.responseGate)
+        await store.returnToTodayOverview()
+        await store.addManualTrainingCase(title: "新事项")
+        let other = try XCTUnwrap(store.trainingCases.first { $0.id != fixture.trainingCase.id })
+        await store.openTrainingCase(other.id)
+        let state = store.todayDraft.state
+        let message = store.todayLoopMessage
+        client.responseGate?.resume()
+        client.responseGate = nil
+        for _ in 0..<200 where store.isAIRunning { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(store.activeTrainingCase?.id, other.id)
+        XCTAssertEqual(store.todayDraft.state, state)
+        XCTAssertEqual(store.todayLoopMessage, message)
+        XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertFalse(store.canRetryCurrentAI)
+    }
+
+    @MainActor
+    func testSkipPrincipleCancelsPendingRetryAndDoesNotReopenCompletedFlow() async throws {
+        let client = GuidanceFixtureLLMClient(response: "{}")
+        client.suspendThenFail = true
+        let store = AppStore(todayDraft: DailyEntryDraft(rawText: "今日回顾", state: .extractPrinciple),
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            refreshesAIServiceFromKeychain: false, trainingCasesVNextEnabled: false)
+        store.retryCurrentAIStep()
+        for _ in 0..<200 where client.responseGate == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(client.responseGate)
+        store.skipPrinciple()
+        client.responseGate?.resume()
+        client.responseGate = nil
+        for _ in 0..<200 where store.isAIRunning || store.isSavingTodayCompletion {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(store.todayDraft.state, .sessionComplete)
+        XCTAssertTrue(store.principles.isEmpty)
+        XCTAssertFalse(store.canRetryCurrentAI)
+    }
+
+    private func completionFixturePrinciple(title: String) -> PrincipleAsset {
+        PrincipleAsset(title: title, summary: "在相同条件下观察实际结果，暂不确定因果。",
+            triggerContext: "怀疑入口影响完成时", actions: ["记录一次结果"],
+            successCriteria: "留下一次可检查的观察", exceptions: "条件不一致时不外推")
+    }
+
+    private func completionFixtureQuest() -> Quest {
+        Quest(type: .main, title: "记录一次重试结果", whyItMatters: "区分网络与设计影响。",
+            completionCriteria: "网络正常时记录同一任务是否完成及具体卡点。",
+            expectedResistance: "对方可能不愿意。", reflectionQuestion: "结果是否改变了对入口设计的怀疑？",
+            calibrationTarget: "入口设计导致未完成")
+    }
+
+    @MainActor
+    func testFinalCompletionWritesMustSucceedBeforeLeavingValidation() async throws {
+        for (table, condition) in [
+            ("training_case_sessions", "NEW.loop_state = 'sessionComplete'"),
+            ("training_cases", "NEW.status = 'awaiting_verification'"),
+            ("daily_entries", "NEW.state = 'sessionComplete'")
+        ] {
+            let fixture = try await makeCoachFeedbackStore()
+            let store = fixture.store
+            store.todayDraft.state = .reviewQuests
+            let quest = completionFixtureQuest()
+            store.quests = [quest]
+            try await database.dbQueue.write { db in
+                try db.execute(sql: "CREATE TRIGGER fail_final_save BEFORE INSERT ON \(table) WHEN \(condition) BEGIN SELECT RAISE(ABORT, 'synthetic final write failure'); END")
+            }
+            store.submitTodayStep()
+            for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(store.todayDraft.state, .reviewQuests, table)
+            XCTAssertEqual(store.activeTrainingCase?.id, fixture.trainingCase.id, table)
+            XCTAssertFalse(store.isTodayOverviewPresented, table)
+            XCTAssertEqual(store.quests, [quest], table)
+            XCTAssertTrue(store.todayLoopMessage.contains("已保留当前页面"), table)
+            try await database.dbQueue.write { db in try db.execute(sql: "DROP TRIGGER fail_final_save") }
+            store.submitTodayStep()
+            for _ in 0..<200 where store.isSavingTodayCompletion { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(store.todayDraft.state, .sessionComplete, table)
+        }
+    }
+
+    @MainActor
+    private func makeCoachFeedbackStore(
+        todayAIService: TodayAIService? = nil,
+        answerReviewService: CoachAnswerReviewAIService? = nil
+    ) async throws -> (
         store: AppStore,
         trainingCase: TrainingCase,
         promptRunRepository: SQLitePromptRunRepository,
@@ -2855,6 +4691,7 @@ final class VNextTests: XCTestCase {
             dailyEntryRepository: entryRepository,
             thinkingCardRepository: cardRepository,
             questRepository: questRepository,
+            principleRepository: SQLitePrincipleRepository(database: database),
             lensSessionRepository: lensSessionRepository,
             promptRunRepository: promptRunRepository,
             trainingCaseRepository: caseRepository,
@@ -2862,7 +4699,9 @@ final class VNextTests: XCTestCase {
             trainingCaseRelationshipRepository: relationshipRepository,
             guidanceRepository: SQLiteGuidanceRepository(database: database),
             coachPromptTurnRepository: coachPromptTurnRepository,
+            todayAIService: todayAIService,
             refreshesAIServiceFromKeychain: false,
+            coachAnswerReviewAIService: answerReviewService,
             trainingCasesVNextEnabled: true
         )
         await store.addManualTrainingCase(title: "反馈事项")
@@ -2928,6 +4767,231 @@ final class VNextTests: XCTestCase {
         )
     }
 
+    func testCaptureFragmentsDigestMigrationRepositoryAndExport() async throws {
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let day = "2026-08-26"
+        let first = try await repository.save(CaptureFragment(rawText: "先确认负责人", dayKey: day, sourceID: "fixture-1"))
+        let duplicate = try await repository.save(CaptureFragment(rawText: "不应覆盖", dayKey: day, sourceID: "fixture-1"))
+        let second = try await repository.save(CaptureFragment(rawText: "再看验收信号", dayKey: day, sourceID: "fixture-2"))
+        XCTAssertEqual(first.id, duplicate.id)
+
+        let digest = try await CaptureDigestService(promptProvider: LocalPromptProvider(), llmClient: MockLLMClient()).generate(for: [first, second], dayKey: day)
+        XCTAssertEqual(Set(digest.sourceFragmentIDs), Set([first.id, second.id]))
+        try await repository.saveDigest(digest, markingIncluded: digest.sourceFragmentIDs)
+        let pending = try await repository.fragments(forDayKey: day, statuses: [.pending])
+        let currentDigest = try await repository.currentDigest(forDayKey: day)
+        XCTAssertEqual(pending.count, 0)
+        XCTAssertEqual(currentDigest?.id, digest.id)
+
+        let export = try await SQLiteDataExportRepository(database: database).exportPackage()
+        XCTAssertEqual(export.counts["capture_fragments"], 2)
+        XCTAssertEqual(export.counts["daily_capture_digests"], 1)
+    }
+
+    func testSingleNudgeRepositoryRestoresLatestUnfinishedSessionForSameDay() async throws {
+        let repository = SQLiteSingleNudgeSessionRepository(database: database)
+        let day = "2026-08-29"
+        let completed = SingleNudgeSession(
+            dayKey: day,
+            input: "已完成的点拨",
+            lifecycle: .completed,
+            result: .completed,
+            updatedAt: Date(timeIntervalSince1970: 100)
+        )
+        let earlierUnfinished = SingleNudgeSession(
+            dayKey: day,
+            input: "较早未完成的点拨",
+            lifecycle: .questionPresented,
+            updatedAt: Date(timeIntervalSince1970: 200)
+        )
+        let latestUnfinished = SingleNudgeSession(
+            dayKey: day,
+            input: "最新未完成的点拨",
+            lifecycle: .draft,
+            updatedAt: Date(timeIntervalSince1970: 300)
+        )
+        try await repository.save(completed)
+        try await repository.save(earlierUnfinished)
+        try await repository.save(latestUnfinished)
+
+        let restored = try await repository.session(for: day)
+
+        XCTAssertEqual(restored?.id, latestUnfinished.id)
+        XCTAssertEqual(restored?.input, "最新未完成的点拨")
+    }
+
+    func testSingleNudgeV52LineagePreservesParentAndExportsLinkedRounds() async throws {
+        let repository = SQLiteSingleNudgeSessionRepository(database: database)
+        let day = "2026-09-02"
+        let parent = SingleNudgeSession(
+            dayKey: day,
+            input: "学生担心复习安排没有效果。",
+            question: "哪一次练习最能说明安排有效？",
+            diagnosis: "先把效果标准说清楚。",
+            after: "我还没比较错题类型。",
+            promptRunID: UUID(),
+            reviewPromptRunID: UUID(),
+            lifecycle: .receiptPresented,
+            updatedAt: Date(timeIntervalSince1970: 100)
+        )
+        let child = SingleNudgeSession(
+            dayKey: day,
+            input: parent.input,
+            parentSessionID: parent.id,
+            rootSessionID: parent.rootSessionID,
+            continuationKind: .alternateAngle,
+            lifecycle: .questionPresented,
+            updatedAt: Date(timeIntervalSince1970: 200)
+        )
+        try await repository.save(parent)
+        try await repository.save(child)
+
+        let persistedParentValue = try await repository.session(id: parent.id)
+        let restoredValue = try await repository.session(for: day)
+        let persistedParent = try XCTUnwrap(persistedParentValue)
+        let restored = try XCTUnwrap(restoredValue)
+        XCTAssertEqual(persistedParent.question, parent.question)
+        XCTAssertEqual(persistedParent.after, parent.after)
+        XCTAssertEqual(persistedParent.promptRunID, parent.promptRunID)
+        XCTAssertEqual(persistedParent.reviewPromptRunID, parent.reviewPromptRunID)
+        XCTAssertEqual(restored.id, child.id)
+        XCTAssertEqual(restored.parentSessionID, parent.id)
+        XCTAssertEqual(restored.rootSessionID, parent.id)
+        XCTAssertEqual(restored.continuationKind, .alternateAngle)
+
+        let export = try await SQLiteDataExportRepository(database: database).exportPackage()
+        XCTAssertEqual(export.counts["single_nudge_sessions"], 2)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: export.data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let rows = try XCTUnwrap(sections["single_nudge_sessions"] as? [[String: Any]])
+        XCTAssertTrue(rows.contains { ($0["parent_session_id"] as? String) == parent.id.uuidString })
+        try await database.dbQueue.read { db in
+            let columns = try db.columns(in: "single_nudge_sessions").map(\.name)
+            XCTAssertTrue(columns.contains("parent_session_id"))
+            XCTAssertTrue(columns.contains("root_session_id"))
+            XCTAssertTrue(columns.contains("continuation_kind"))
+        }
+    }
+
+    func testCaptureDigestRequiresTwoPendingFragments() async throws {
+        let fragment = CaptureFragment(rawText: "一条素材", dayKey: "2026-08-26")
+        do {
+            _ = try await CaptureDigestService(promptProvider: LocalPromptProvider(), llmClient: MockLLMClient()).generate(for: [fragment], dayKey: fragment.dayKey)
+            XCTFail("Expected insufficient fragments")
+        } catch let error as CaptureDigestError {
+            XCTAssertEqual(error, .insufficientFragments)
+        }
+    }
+
+    func testCaptureDigestRejectsInvalidInputsBeforeCallingLLM() async throws {
+        let day = "2026-08-26"
+        let first = CaptureFragment(rawText: "第一条", dayKey: day)
+        let invalidFragmentSets = [
+            [first, CaptureFragment(rawText: "跨日素材", dayKey: "2026-08-25")],
+            [first, CaptureFragment(rawText: "已整理素材", status: .included, dayKey: day)],
+            [first, CaptureFragment(id: first.id, rawText: "重复 ID 素材", dayKey: day)],
+            [first, CaptureFragment(rawText: "  ", dayKey: day)]
+        ]
+
+        for fragments in invalidFragmentSets {
+            let client = GuidanceFixtureLLMClient(response: "{}")
+            let service = CaptureDigestService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: client
+            )
+
+            do {
+                _ = try await service.generate(for: fragments, dayKey: day)
+                XCTFail("Expected invalid capture fragments to be rejected")
+            } catch let error as CaptureDigestError {
+                XCTAssertEqual(error, .invalidResponse)
+            }
+            XCTAssertTrue(client.promptIDs.isEmpty)
+        }
+    }
+
+    func testCaptureDigestTransactionRejectsMixedDaySourcesWithoutReplacingCurrentDigest() async throws {
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let day = "2026-08-26"
+        let first = try await repository.save(CaptureFragment(rawText: "第一条", dayKey: day))
+        let second = try await repository.save(CaptureFragment(rawText: "第二条", dayKey: day))
+        let current = DailyCaptureDigest(
+            dayKey: day,
+            summary: "原有整理",
+            themes: ["原有主题"],
+            sourceFragmentIDs: [first.id, second.id]
+        )
+        try await repository.saveDigest(current, markingIncluded: current.sourceFragmentIDs)
+
+        let sameDay = try await repository.save(CaptureFragment(rawText: "同日待整理", dayKey: day))
+        let otherDay = try await repository.save(CaptureFragment(rawText: "跨日素材", dayKey: "2026-08-25"))
+        let invalid = DailyCaptureDigest(
+            dayKey: day,
+            summary: "不应保存",
+            themes: ["错误来源"],
+            sourceFragmentIDs: [sameDay.id, otherDay.id]
+        )
+
+        do {
+            try await repository.saveDigest(invalid, markingIncluded: invalid.sourceFragmentIDs)
+            XCTFail("Expected mixed-day digest sources to be rejected")
+        } catch MingSi.PersistenceError.validationFailed {
+            // Expected: all sources must be pending fragments for the requested day.
+        } catch {
+            XCTFail("Expected validation failure, got \(error)")
+        }
+
+        let currentDigestID = try await repository.currentDigest(forDayKey: day)?.id
+        XCTAssertEqual(currentDigestID, current.id)
+        let sameDayPendingIDs = try await repository.fragments(forDayKey: day, statuses: [.pending]).map(\.id)
+        XCTAssertEqual(
+            sameDayPendingIDs,
+            [sameDay.id]
+        )
+        let otherDayPendingIDs = try await repository.fragments(forDayKey: "2026-08-25", statuses: [.pending]).map(\.id)
+        XCTAssertEqual(
+            otherDayPendingIDs,
+            [otherDay.id]
+        )
+    }
+
+    func testCaptureDigestRejectsIncompleteReferencesAndBlankThemes() async throws {
+        let fragments = [
+            CaptureFragment(rawText: "第一条", dayKey: "2026-08-26"),
+            CaptureFragment(rawText: "第二条", dayKey: "2026-08-26")
+        ]
+        let responses = [
+            """
+            {"summary":"摘要","themes":["主题"],"recommended_question":null,"source_refs":["\(fragments[0].id.uuidString)"]}
+            """,
+            """
+            {"summary":"摘要","themes":["  "],"recommended_question":null,"source_refs":["\(fragments[0].id.uuidString)","\(fragments[1].id.uuidString)"]}
+            """
+        ]
+
+        for response in responses {
+            let service = CaptureDigestService(
+                promptProvider: LocalPromptProvider(),
+                llmClient: GuidanceFixtureLLMClient(response: response)
+            )
+            do {
+                _ = try await service.generate(for: fragments, dayKey: "2026-08-26")
+                XCTFail("Expected invalid response")
+            } catch let error as CaptureDigestError {
+                XCTAssertEqual(error, .invalidResponse)
+            }
+        }
+    }
+
+    func testCaptureIntentSaverPersistsNonEmptyText() async throws {
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let saver = CaptureIntentSaver(repository: repository)
+        try await saver.saveIntentCapture("Siri 保存的闪念")
+        let saved = try await repository.fragments(forDayKey: CaptureDayKey.value(for: .now), statuses: nil)
+        XCTAssertEqual(saved.first?.source, .appIntent)
+        XCTAssertEqual(saved.first?.rawText, "Siri 保存的闪念")
+    }
+
     private func createV1FixtureSchema(in queue: DatabaseQueue) throws {
         try queue.write { db in
             try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
@@ -2963,6 +5027,10 @@ private final class RecordingReminderService: ReminderService {
 }
 
 private final class GuidanceFixtureLLMClient: LLMClient {
+    var suspendThenFail = false
+    var suspendBeforeResponse = false
+    private(set) var requests: [LLMRequest] = []
+    var responseGate: CheckedContinuation<Void, Never>?
     let response: Data
     private(set) var promptIDs: [PromptID] = []
 
@@ -2972,6 +5040,12 @@ private final class GuidanceFixtureLLMClient: LLMClient {
 
     func complete(_ request: LLMRequest) async throws -> Data {
         promptIDs.append(request.prompt.id)
+        requests.append(request)
+        if suspendBeforeResponse { await withCheckedContinuation { responseGate = $0 } }
+        if suspendThenFail {
+            await withCheckedContinuation { responseGate = $0 }
+            throw NSError(domain: "SyntheticLatePrincipleError", code: 1)
+        }
         return response
     }
 }
@@ -2989,5 +5063,44 @@ private final class SideQuestRecordingLLMClient: LLMClient {
         requestCount += 1
         lastRequest = request
         return response
+    }
+}
+
+private final class VNextResponseClient: LLMClient {
+    let response: Data
+    init(response: Data) { self.response = response }
+    func complete(_ request: LLMRequest) async throws -> Data { response }
+}
+
+// Fixtures test orchestration/provenance, not semantic classification quality.
+private final class GuidanceEvidenceEchoTestClient: LLMClient {
+    private(set) var requests: [LLMRequest] = []
+    func complete(_ request: LLMRequest) async throws -> Data {
+        requests.append(request)
+        let raw = try XCTUnwrap(request.contextPayload?.currentInput.rawText)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        return try JSONSerialization.data(withJSONObject: ["result": "supports", "hint_id": object["hintId"]!,
+            "reason": "只测试保存流程，不代表真实语义判断。", "evidence_quotes": ["动手前写了标准"]])
+    }
+}
+
+private final class AnswerReviewRetryClient: LLMClient {
+    private(set) var requests: [LLMRequest] = []
+    private var continuations: [Int: CheckedContinuation<Data, Error>] = [:]
+
+    func complete(_ request: LLMRequest) async throws -> Data {
+        let index = requests.count
+        requests.append(request)
+        return try await withCheckedThrowingContinuation { continuations[index] = $0 }
+    }
+
+    func resolve(_ index: Int, with result: Result<Data, Error>) {
+        continuations.removeValue(forKey: index)?.resume(with: result)
+    }
+
+    func resolveAll(with result: Result<Data, Error>) {
+        let pending = continuations.values
+        continuations.removeAll()
+        for continuation in pending { continuation.resume(with: result) }
     }
 }

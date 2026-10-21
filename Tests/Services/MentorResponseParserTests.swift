@@ -118,7 +118,7 @@ final class MentorResponseParserTests: XCTestCase {
     private func turn(_ mutate: (inout [String: Any]) -> Void = { _ in }) throws -> Data {
         var value: [String: Any] = ["schema_version": "1.0.0", "action": "explain", "material_status": "usable",
             "body": "区分完成修改和改善效果，可以为下一次观察留下明确方向。", "question": NSNull(), "question_purpose": NSNull(),
-            "source_refs": [user], "lesson_ref": NSNull(), "suggested_actions": ["reply", "draft_understanding", "finish"]]
+            "source_refs": [user], "lesson_ref": NSNull(), "suggested_actions": ["reply", "finish"]]
         mutate(&value)
         return try JSONSerialization.data(withJSONObject: value)
     }
@@ -137,6 +137,24 @@ final class MentorResponseParserTests: XCTestCase {
         }
     }
 
+    func testTransportEnvelopeUnwrapsWithoutRepairingInvalidModelContent() throws {
+        func envelope(_ content: String) throws -> Data {
+            try JSONSerialization.data(withJSONObject: ["choices": [["message": ["role": "assistant", "content": content]]]])
+        }
+        let content = String(decoding: try turn(), as: UTF8.self)
+        XCTAssertEqual(try parser.parseTurn(envelope(content), context: context()),
+                       try parser.parseTurn(turn(), context: context()))
+        let draft = try JSONSerialization.data(withJSONObject: ["schema_version": "1.0.0", "text": "我还不确定适不适合我", "source_refs": [user]])
+        XCTAssertEqual(try parser.parseUnderstanding(envelope(String(decoding: draft, as: UTF8.self)), context: context()).text,
+                       "我还不确定适不适合我")
+        for invalid in ["```json\n\(content)\n```", "说明\n\(content)", "", "{}"] {
+            XCTAssertThrowsError(try parser.parseTurn(envelope(invalid), context: context()))
+        }
+        for choices: [[String: Any]] in [[], [["message": ["content": content]], ["message": ["content": content]]], [["message": ["content": NSNull()]]]] {
+            XCTAssertThrowsError(try parser.parseTurn(JSONSerialization.data(withJSONObject: ["choices": choices]), context: context()))
+        }
+    }
+
     func testStrictStructuralCounterexamples() throws {
         let mutations: [(inout [String: Any]) -> Void] = [
             { $0["create_task"] = true }, { $0.removeValue(forKey: "question") },
@@ -147,6 +165,7 @@ final class MentorResponseParserTests: XCTestCase {
             { $0["question"] = "具体是什么？" },
             { $0["question"] = ["one", "two"] },
             { $0["question"] = "为什么？"; $0["question_purpose"] = "reflection"; $0["material_status"] = "missing" },
+            { $0["suggested_actions"] = ["reply", "finish", "draft_understanding"] },
             { $0["suggested_actions"] = ["finish", "finish"] },
             { $0["suggested_actions"] = ["save_understanding"] },
             { $0["source_refs"] = ["item:not-a-uuid"] },
@@ -187,7 +206,150 @@ final class MentorResponseParserTests: XCTestCase {
         XCTAssertNoThrow(try parser.parseTurn(turn(), context: context(intent: .directTeaching)))
         let reflection = try turn { $0["question"] = "愿意试着区分一下吗？"; $0["question_purpose"] = "reflection" }
         XCTAssertNoThrow(try parser.parseTurn(reflection, context: context(count: 2)))
+        XCTAssertThrowsError(try parser.parseTurn(reflection, context: context(intent: .directTeaching))) {
+            XCTAssertEqual($0 as? MentorResponseError, .intentMismatch)
+        }
         XCTAssertThrowsError(try parser.parseTurn(turn(), context: context(intent: .finish)))
+    }
+
+    func testRepeatedPreviousQuestionIsRejectedDeterministically() throws {
+        let previous = "这次具体哪一步发生了变化？"
+        let context = try MentorResponseValidationContext(
+            sentSources: [try MentorSourceReference(user)], userExpressionSources: [try MentorSourceReference(user)],
+            materialQuestionCount: 0, previousAssistantQuestion: previous)
+        let repeated = try turn {
+            $0["question"] = "这次具体哪一步发生了变化？"
+            $0["question_purpose"] = "material"
+        }
+        XCTAssertThrowsError(try parser.parseTurn(repeated, context: context)) {
+            XCTAssertEqual($0 as? MentorResponseError, .repeatedQuestion)
+        }
+        let changed = try turn {
+            $0["question"] = "哪一个结果最值得先核对？"
+            $0["question_purpose"] = "reflection"
+        }
+        XCTAssertNoThrow(try parser.parseTurn(changed, context: context))
+    }
+
+    func testMentorQualityPolicyRequiresGroundingAndAReviewDoorway() throws {
+        let grounded = try parser.parseTurn(turn(), context: context())
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(grounded.response, context: context(),
+            initialEntry: "discuss", intent: "reply"))
+
+        let ungroundedData = try turn { $0["source_refs"] = [] }
+        let ungrounded = try parser.parseTurn(ungroundedData, context: context())
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(ungrounded.response, context: context(),
+            initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.missingSourceGrounding))
+        }
+
+        let ungroundedMaterialGapData = try turn {
+            $0["material_status"] = "missing"
+            $0["action"] = "clarify"
+            $0["question"] = "当时具体发生了什么？"
+            $0["question_purpose"] = "material"
+            $0["source_refs"] = []
+        }
+        let ungroundedMaterialGap = try parser.parseTurn(ungroundedMaterialGapData, context: context())
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(ungroundedMaterialGap.response, context: context(),
+            initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.missingSourceGrounding))
+        }
+        let groundedMaterialGapData = try turn {
+            $0["material_status"] = "missing"
+            $0["action"] = "clarify"
+            $0["question"] = "当时具体发生了什么？"
+            $0["question_purpose"] = "material"
+        }
+        let groundedMaterialGap = try parser.parseTurn(groundedMaterialGapData, context: context())
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(groundedMaterialGap.response, context: context(),
+            initialEntry: "discuss", intent: "reply"))
+
+        let olderRef = try MentorSourceReference("item:cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        let latestRef = try MentorSourceReference(user)
+        let multiTurnContext = try MentorResponseValidationContext(
+            sentSources: [olderRef, latestRef], userExpressionSources: [olderRef, latestRef],
+            materialQuestionCount: 0, latestUserExpressionSource: latestRef)
+        let anchoredToOlderTurnData = try turn { $0["source_refs"] = [olderRef.value] }
+        let anchoredToOlderTurn = try parser.parseTurn(anchoredToOlderTurnData, context: multiTurnContext)
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(anchoredToOlderTurn.response,
+            context: multiTurnContext, initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.missingSourceGrounding))
+        }
+        let anchoredToLatestTurn = try parser.parseTurn(turn(), context: multiTurnContext)
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(anchoredToLatestTurn.response,
+            context: multiTurnContext, initialEntry: "discuss", intent: "reply"))
+
+        let directTeachingWithoutSource = try parser.parseTurn(
+            turn { $0["source_refs"] = [] }, context: context(intent: .directTeaching))
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(directTeachingWithoutSource.response,
+            context: context(intent: .directTeaching), initialEntry: "discuss", intent: "explain")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.missingSourceGrounding))
+        }
+
+        let genericData = try turn { $0["body"] = "请说说你的感受" }
+        let generic = try parser.parseTurn(genericData, context: context())
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(generic.response, context: context(),
+            initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.genericResponse))
+        }
+
+        let hiddenQuestionData = try turn { $0["body"] = "你已经完成了这一步？接下来可以直接结束。" }
+        let hiddenQuestion = try parser.parseTurn(hiddenQuestionData, context: context())
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(hiddenQuestion.response, context: context(),
+            initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.hiddenQuestionInBody))
+        }
+
+        let quotedQuestionData = try turn { $0["body"] = "你写过“我是不是漏掉某一步？”；这句话显示你在找因果链。" }
+        let quotedQuestion = try parser.parseTurn(quotedQuestionData, context: context())
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(quotedQuestion.response, context: context(),
+            initialEntry: "discuss", intent: "reply"))
+
+        let demonstrationData = try turn {
+            $0["body"] = "可以这样问：“这场兼职能否改到周日，具体时间是什么时候？”；这只是询问，并未承诺参加。"
+            $0["question"] = NSNull(); $0["question_purpose"] = NSNull()
+        }
+        let demonstration = try parser.parseTurn(demonstrationData, context: context())
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(demonstration.response, context: context(),
+            initialEntry: "discuss", intent: "reply"))
+        let hiddenFollowup = try turn {
+            $0["body"] = "可以这样问：“这场兼职能否改到周日？”；你打算什么时候去问？"
+        }
+        let extraQuestion = try parser.parseTurn(hiddenFollowup, context: context())
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(extraQuestion.response, context: context(),
+            initialEntry: "discuss", intent: "reply")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.hiddenQuestionInBody))
+        }
+
+        let emptyContext = try context(hasUser: false)
+        let openingData = try turn { $0["source_refs"] = []; $0["question"] = NSNull(); $0["question_purpose"] = NSNull() }
+        let opening = try parser.parseTurn(openingData, context: emptyContext)
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(opening.response, context: emptyContext,
+            initialEntry: "review", intent: "review")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.reviewOpeningNeedsQuestion))
+        }
+
+        let genericOpeningData = try turn {
+            $0["source_refs"] = []
+            $0["question"] = "你今天想聊什么？"
+            $0["question_purpose"] = "material"
+        }
+        let genericOpening = try parser.parseTurn(genericOpeningData, context: emptyContext)
+        XCTAssertThrowsError(try MentorResponseQualityPolicy.validate(genericOpening.response, context: emptyContext,
+            initialEntry: "review", intent: "review")) {
+            XCTAssertEqual($0 as? MentorResponseError, .qualityGateFailed(.reviewOpeningNeedsSpecificDoorway))
+        }
+
+        let validOpeningData = try turn {
+            $0["source_refs"] = []
+            $0["question"] = "你想先回想哪一个片段？"
+            $0["question_purpose"] = "material"
+            $0["material_status"] = "missing"
+        }
+        let validOpening = try parser.parseTurn(validOpeningData, context: emptyContext)
+        XCTAssertNoThrow(try MentorResponseQualityPolicy.validate(validOpening.response, context: emptyContext,
+            initialEntry: "review", intent: "review"))
     }
 
     func testSuggestionsCannotGrantCapabilitiesOrUserAuthorship() throws {
@@ -214,5 +376,76 @@ final class MentorResponseParserTests: XCTestCase {
         XCTAssertThrowsError(try parser.parseUnderstanding(draft([user]), context: context(hasUser: false))) {
             XCTAssertEqual($0 as? MentorResponseError, .noUserExpression)
         }
+    }
+}
+
+extension MentorResponseParserTests {
+    func testCaptureSourceResolverRequiresOwnedOriginalSnapshotAndValidHash() throws {
+        let sessionID = UUID(), itemID = UUID(), captureID = UUID()
+        let reference = try MentorSourceReference("capture:\(captureID.uuidString)")
+        let item = MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user, payloadJSON: "{\"text\":\"所选择的闪念原文\"}")
+        let link = MentorSourceLink(id: UUID(), sessionID: sessionID, ownerKind: .item, ownerID: itemID,
+            sourceKind: "capture", sourceID: captureID.uuidString, sourceVersion: nil,
+            contentHash: MentorSourceResolver.hash("所选择的闪念原文"), availability: .available)
+        let resolver = MentorSourceResolver()
+        let resolved = resolver.resolve([reference], sessionID: sessionID, timeline: [item], understandings: [], links: [link])
+        XCTAssertEqual(resolved.first?.status, .available)
+        XCTAssertEqual(resolved.first?.title, "闪念来源")
+        XCTAssertEqual(resolved.first?.content, "所选择的闪念原文")
+        XCTAssertFalse(resolver.resolve([reference], sessionID: sessionID, timeline: [item], understandings: [], links: []).first?.isAvailable ?? true)
+        XCTAssertFalse(resolver.resolve([reference], sessionID: UUID(), timeline: [item], understandings: [], links: [link]).first?.isAvailable ?? true)
+        let mismatched = MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user, payloadJSON: "{\"text\":\"被替换的文字\"}")
+        XCTAssertFalse(resolver.resolve([reference], sessionID: sessionID, timeline: [mismatched], understandings: [], links: [link]).first?.isAvailable ?? true)
+        let deleted = MentorSourceLink(id: link.id, sessionID: sessionID, ownerKind: .item, ownerID: itemID,
+            sourceKind: "capture", sourceID: captureID.uuidString, sourceVersion: nil, contentHash: link.contentHash, availability: .deleted)
+        XCTAssertEqual(resolver.resolve([reference], sessionID: sessionID, timeline: [item], understandings: [], links: [deleted]).first?.status, .deleted)
+    }
+}
+
+
+extension MentorResponseParserTests {
+    func testLegacySourcesRequireExplicitScopeAndPreserveOriginalRoles() throws {
+        let sessionID = UUID(), roundID = UUID(), itemID = UUID()
+        let original = SingleNudgeSession(id: roundID, dayKey: "2026-10-03", input: "  用户原文\n保留换行  ",
+            question: "模型提出的问题", diagnosis: "旧模型的判断", before: "最初想法", after: "我后来写的回答",
+            cognitiveShift: "模型推测的变化", thinkingAction: "模型给的建议", unresolvedUncertainty: "尚未明确")
+        let round = LegacyNudgeRound(session: original, promptRun: nil, reviewPromptRun: nil)
+        let ref = try MentorSourceReference("legacy-nudge:\(roundID.uuidString)")
+        let item = MentorTimelineItem(id: itemID, sessionID: sessionID, sequence: 1, kind: .user,
+            payloadJSON: String(decoding: try JSONEncoder().encode(["text": original.input]), as: UTF8.self))
+        func link(owner: UUID = itemID, ownerSession: UUID = sessionID, hash: String? = nil,
+                  availability: MentorSourceAvailability = .available) -> MentorSourceLink {
+            MentorSourceLink(id: UUID(), sessionID: ownerSession, ownerKind: .item, ownerID: owner,
+                sourceKind: "legacy-nudge", sourceID: roundID.uuidString, sourceVersion: nil,
+                contentHash: hash, availability: availability)
+        }
+        let resolver = MentorSourceResolver()
+        let content = MentorSourceResolver.legacyContent(original)
+        let signed = link(hash: MentorSourceResolver.hash(content))
+        let detail = try XCTUnwrap(resolver.resolve([ref], sessionID: sessionID, timeline: [item],
+            understandings: [], links: [signed], legacyRounds: [round]).first)
+        XCTAssertTrue(detail.isAvailable)
+        XCTAssertTrue(try XCTUnwrap(detail.content).contains(original.input))
+        XCTAssertTrue(content.contains("当时的问题（AI）\n模型提出的问题"))
+        XCTAssertTrue(content.contains("你的回答\n我后来写的回答"))
+        XCTAssertTrue(content.contains("当时的分析（AI）\n旧模型的判断"))
+        XCTAssertTrue(content.contains("不等于你已确认"))
+        for invalid in [[], [link(owner: UUID())], [link(ownerSession: UUID())], [link(hash: "sha256:wrong")]] {
+            XCTAssertFalse(resolver.resolve([ref], sessionID: sessionID, timeline: [item], understandings: [],
+                links: invalid, legacyRounds: [round]).first?.isAvailable ?? true)
+        }
+        XCTAssertFalse(resolver.resolve([ref], sessionID: sessionID, timeline: [item], understandings: [],
+            links: [signed], legacyRounds: []).first?.isAvailable ?? true)
+        XCTAssertEqual(resolver.resolve([ref], sessionID: sessionID, timeline: [item], understandings: [],
+            links: [link(availability: .deleted)], legacyRounds: [round]).first?.status, .deleted)
+        let history = LegacyNudgeChain(rootID: sessionID, rounds: [round], issues: [])
+        XCTAssertTrue(resolver.resolve([ref], sessionID: sessionID, timeline: [], understandings: [], links: [],
+            legacyRounds: [round], legacyHistory: history).first?.isAvailable ?? false)
+        let foreignHistory = LegacyNudgeChain(rootID: UUID(), rounds: [round], issues: [])
+        XCTAssertFalse(resolver.resolve([ref], sessionID: sessionID, timeline: [], understandings: [], links: [],
+            legacyRounds: [round], legacyHistory: foreignHistory).first?.isAvailable ?? true)
+        // Existing links without hashes remain readable through their real owner.
+        XCTAssertTrue(resolver.resolve([ref], sessionID: sessionID, timeline: [item], understandings: [],
+            links: [link()], legacyRounds: [round]).first?.isAvailable ?? false)
     }
 }

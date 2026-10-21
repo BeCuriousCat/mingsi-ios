@@ -85,6 +85,7 @@ enum YesterdayValueRating: String, CaseIterable, Identifiable {
 }
 
 enum YesterdayJudgmentUpdate: String, CaseIterable, Identifiable {
+    case unresolved
     case confirmed
     case adjusted
     case rejected
@@ -93,6 +94,7 @@ enum YesterdayJudgmentUpdate: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .unresolved: return "暂不能判断"
         case .confirmed: return "确认判断"
         case .adjusted: return "调整判断"
         case .rejected: return "推翻判断"
@@ -109,6 +111,7 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
     case selectLens
     case answerQuestions
     case reviewQuests
+    case reviewWithoutAction
     case extractPrinciple
     case sessionComplete
 
@@ -124,6 +127,7 @@ enum DailyLoopState: String, CaseIterable, Identifiable {
         case .selectLens: return "选择透镜"
         case .answerQuestions: return "今日复盘"
         case .reviewQuests: return "明日验证"
+        case .reviewWithoutAction: return "暂不安排行动"
         case .extractPrinciple: return "原则沉淀"
         case .sessionComplete: return "今日完成"
         }
@@ -231,7 +235,7 @@ struct PromptAssetPack: Codable, Hashable {
     }
 }
 
-struct LensCatalogItem: Codable, Hashable {
+struct LensCatalogItem: Codable, Hashable, Identifiable {
     struct UIMetadata: Codable, Hashable {
         let symbolName: String
         let accentRole: LensAccentRole
@@ -523,7 +527,7 @@ struct LensLibrary: LensCatalogProviding {
 enum BuiltinLensCatalog {
     private static let pack = LensAssetPack(
         id: "mingsi.builtin.lenses",
-        version: "builtin.v1",
+        version: "builtin.v3",
         displayName: "MingSi Built-in Lens Pack",
         sourceKind: .builtin,
         items: builtinItems
@@ -535,170 +539,202 @@ enum BuiltinLensCatalog {
         LensCatalogItem(
             lensId: "evidenceCheck",
             promptId: "evidence_check",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "证据校验",
-            subtitle: "把事实、判断和假设分开，先清理地基。",
+            subtitle: "把看见的事和自己的解释分开。",
             shortLabel: "事实",
-            methodLine: "先问：我知道什么，还是我以为什么？",
-            promptGuidance: "Separate facts, interpretations, assumptions, and validation gaps before asking the user to decide.",
+            methodLine: "哪些是你亲眼看到的，哪些是你的解释？",
+            promptGuidance: "Separate reported facts from interpretations. Ask for one distinction in available material; an unavailable cause stays unknown. Success is a more defensible claim, not more evidence gathering. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move fact_interpretation_split.",
             symbolName: "checklist",
-            recommendedReason: "当前材料里有事实、风险或问题需要先验清依据。",
-            questionSeeds: [
-                "我知道什么，还是我以为什么？",
-                "哪条判断现在缺少可验证证据？",
-                "如果只保留事实，这件事还剩什么？"
-            ],
+            recommendedReason: "当结论比已有依据更确定，或事实与推测混在一起时。",
+            questionSeeds: ["哪些是你亲眼看到的，哪些是你的解释？"],
             accentRole: .graphite,
             methodIndex: 1,
-            purpose: "把事实、判断、假设和待验证缺口拆开，避免在证据不足时推进决策。",
-            questionStrategy: "先要求用户区分已知事实和解释性判断，再找出最需要补证据的一处。",
-            taskSelectionRule: "优先设计能补齐关键证据、确认验收口径或降低事实不确定性的明日验证行动。",
-            applicability: "适用于事实、风险、问题或高优先级卡片较多，且当前判断依赖未验证依据的场景。",
-            disableConditions: [
-                "不要用于用户已经明确选择其他透镜的请求。",
-                "不要把未经确认的推测包装成事实。",
-                "不要要求用户暴露公司、客户或个人敏感细节。"
-            ]
+            purpose: "识别事实与解释的边界，让判断与已有证据相称。",
+            questionStrategy: "从材料中找一处把解释当事实的跳跃，只请用户区分这一处。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当结论比已有依据更确定，或事实与推测混在一起时。",
+            disableConditions: ["不要要求先调查或证明原因才能回答。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
         LensCatalogItem(
             lensId: "opposingView",
             promptId: "opposing_view",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "反方视角",
-            subtitle: "主动寻找相反证据，避免只证明自己是对的。",
+            subtitle: "寻找能改变当前结论的反证。",
             shortLabel: "反证",
-            methodLine: "先问：如果我错了，证据会长什么样？",
-            promptGuidance: "Challenge the user's current interpretation by looking for contrary evidence, missing stakeholders, and plausible alternative explanations.",
+            methodLine: "什么已有迹象会让你怀疑这个结论？",
+            promptGuidance: "Seek one plausible alternative explanation or disconfirming observation for the current claim. Do not invent contrary facts or argue merely to oppose. Success is a stated condition for revising the claim. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move alternative_explanation.",
             symbolName: "arrow.left.arrow.right",
-            recommendedReason: "当前材料里问题和风险偏多，适合先挑战默认判断。",
-            questionSeeds: [
-                "如果我错了，证据会长什么样？",
-                "谁会不同意这个判断，理由是什么？",
-                "有没有一个更便宜的解释？"
-            ],
+            recommendedReason: "当已经有明确结论，却只在寻找支持它的理由时。",
+            questionSeeds: ["什么已有迹象会让你怀疑这个结论？"],
             accentRole: .brick,
             methodIndex: 2,
-            purpose: "主动寻找反证、替代解释和被忽略的利益相关方，降低只证明自己正确的风险。",
-            questionStrategy: "先让用户描述相反证据会是什么，再追问谁会不同意以及最强反方理由。",
-            taskSelectionRule: "优先设计能验证关键反方假设、暴露盲点或让不同角色参与校准的明日验证行动。",
-            applicability: "适用于问题和风险偏多、用户判断较强、或 Deep 模式下需要挑战默认解释的场景。",
-            disableConditions: [
-                "不要为了反对而反对，必须回到当天确认卡片。",
-                "不要把反方视角变成替用户否定自己。",
-                "不要在事实明显不足时输出确定性结论。"
-            ]
+            purpose: "发现确认偏误，为自己的判断留下可被推翻的条件。",
+            questionStrategy: "只针对当前结论找一个合理替代解释或已有反证，不展开辩论清单。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当已经有明确结论，却只在寻找支持它的理由时。",
+            disableConditions: ["不要为了反对而反对，也不要把猜测说成反证。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
         LensCatalogItem(
             lensId: "leverageAnalysis",
             promptId: "leverage_analysis",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "杠杆分析",
-            subtitle: "找出最能改变结果的一步，把精力放在关键处。",
+            subtitle: "找出真正限制结果的关键环节。",
             shortLabel: "杠杆",
-            methodLine: "先问：哪一步最能改变结果？",
-            promptGuidance: "Focus questions and quests on the smallest action, decision, or constraint that can most change the outcome.",
+            methodLine: "如果只能改变一个环节，哪个最影响结果？",
+            promptGuidance: "Compare the effect of one bottleneck or action on the user-owned outcome. Use available constraints; do not equate easiest completion with highest value. Success is a reasoned priority, not a compulsory task. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move leverage_tradeoff.",
             symbolName: "point.topleft.down.curvedto.point.bottomright.up",
-            recommendedReason: "当前材料已经出现任务或决策，适合收敛最高杠杆动作。",
-            questionSeeds: [
-                "哪一步最能改变结果？",
-                "如果只做一件事，哪件事会让其他事变简单？",
-                "当前真正卡住结果的约束是什么？"
-            ],
+            recommendedReason: "当事情很多、精力有限，需要确定先做什么时。",
+            questionSeeds: ["如果只能改变一个环节，哪个最影响结果？"],
             accentRole: .accent,
             methodIndex: 3,
-            purpose: "识别最小但最能改变结果的动作、约束或决策，避免把容易完成误判为高价值。",
-            questionStrategy: "先比较不同动作的结果影响，再排除低杠杆忙碌，最后收敛一个关键约束。",
-            taskSelectionRule: "优先设计能改变关键结果、解除瓶颈或让后续动作变简单的明日验证行动。",
-            applicability: "适用于任务、决策或行动卡片较多，且用户需要从多个动作中选择下一步的场景。",
-            disableConditions: [
-                "不要在事实和验收口径明显不清时跳过证据校验。",
-                "不要把轻松完成当作高杠杆。",
-                "不要生成多个并列验证行动。"
-            ]
+            purpose: "区分忙碌与影响，识别限制当前结果的关键环节。",
+            questionStrategy: "围绕一个具体目标找一个关键约束或比较两项已有做法的影响。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当事情很多、精力有限，需要确定先做什么时。",
+            disableConditions: ["不要把容易完成当作高杠杆，也不要承诺一个动作必然有效。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
         LensCatalogItem(
             lensId: "firstPrinciples",
             promptId: "first_principles",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "第一性原理",
-            subtitle: "拆掉默认前提，只保留不可再拆的事实和约束。",
-            shortLabel: "本质",
-            methodLine: "先问：如果从零开始，这件事必须成立的条件是什么？",
-            promptGuidance: "Decompose the situation into non-negotiable facts, hard constraints, assumed rules, and rebuild the next action from those primitives.",
+            subtitle: "区分硬约束与沿用的做法。",
+            shortLabel: "前提",
+            methodLine: "这条规则是必须遵守，还是一直这样做？",
+            promptGuidance: "Decompose non-negotiable facts, hard constraints and assumed rules. Inspect one inherited assumption and rebuild an option only from known primitives. Unknown constraints stay unknown; do not demand an abstract from-zero exercise. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move constraint_decomposition.",
             symbolName: "square.stack.3d.down.right",
-            recommendedReason: "当前材料没有单一主导类型，适合先拆前提和硬约束。",
-            questionSeeds: [
-                "如果从零开始，这件事必须成立的条件是什么？",
-                "哪些规则是事实，哪些只是沿用的假设？",
-                "去掉默认做法后，最小可行动作是什么？"
-            ],
+            recommendedReason: "当“只能这样做”限制了选择，却不清楚规则从哪里来时。",
+            questionSeeds: ["这条规则是必须遵守，还是一直这样做？"],
             accentRole: .principle,
             methodIndex: 4,
-            purpose: "拆掉默认前提，保留不可再拆的事实、约束和目标，再从这些基本条件重建下一步。",
-            questionStrategy: "先识别硬事实和不可变约束，再分离沿用假设，最后从零重建一个最小行动。",
-            taskSelectionRule: "优先设计能验证核心前提、澄清必要条件或重建行动路径的明日验证行动。",
-            applicability: "适用于卡片类型没有明显主导、前提混杂、或用户需要重新定义问题的场景。",
-            disableConditions: [
-                "不要用抽象原则替代当天具体证据。",
-                "不要把复杂问题简化成口号。",
-                "不要在用户只需要快速执行时过度拆解。"
-            ]
+            purpose: "识别必要条件与沿用假设，打开被默认做法遮住的选择。",
+            questionStrategy: "从当前材料挑一条默认规则，只区分它是硬约束还是可改变的假设。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当“只能这样做”限制了选择，却不清楚规则从哪里来时。",
+            disableConditions: ["不要忽略法律、健康、安全或已知现实限制，也不要用口号替代事实。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
         LensCatalogItem(
             lensId: "systemThinking",
             promptId: "system_thinking",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "系统思维",
-            subtitle: "看见反馈回路、延迟影响和二阶后果。",
+            subtitle: "看清反复发生的回路和延迟。",
             shortLabel: "系统",
-            methodLine: "先问：这个结果是由什么回路持续制造的？",
-            promptGuidance: "Map feedback loops, delayed effects, constraints, second-order consequences, and observable calibration signals before choosing the next action.",
+            methodLine: "哪个环节让这个问题一次次出现？",
+            promptGuidance: "Inspect one reported relationship from feedback loops, delayed effects or second-order consequences. A proposed loop is a hypothesis until observed. Success is a concrete relationship and possible calibration signal, not a grand systems story. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move feedback_loop.",
             symbolName: "point.3.connected.trianglepath.dotted",
-            recommendedReason: "当前材料出现返工、延迟影响或连锁后果，适合先看系统结构。",
-            questionSeeds: [
-                "这个结果是由什么回路持续制造的？",
-                "哪个短期动作会在之后放大成本？",
-                "明天能观察到什么信号，证明这个系统判断对或错？"
-            ],
+            recommendedReason: "当问题反复发生、依赖相互影响，或短期改善伴随后续代价时。",
+            questionSeeds: ["哪个环节让这个问题一次次出现？"],
             accentRole: .accent,
             methodIndex: 5,
-            purpose: "识别事件背后的反馈回路、延迟影响、约束瓶颈和二阶后果，避免只修表面症状。",
-            questionStrategy: "先画出反馈回路和延迟影响，再追问二阶后果、关键约束和下一次可观察的校准信号。",
-            taskSelectionRule: "优先设计能打断负反馈、验证关键约束或采集校准信号的明日验证行动。",
-            applicability: "适用于同类问题反复出现、短期动作带来长期代价、返工增加、依赖传导或结果延迟显现的场景。",
-            disableConditions: [
-                "不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。",
-                "不要在用户只需要事实校验时跳过证据缺口。",
-                "不要输出无法在明天或近期观察的抽象判断。"
-            ]
+            purpose: "发现反馈回路、延迟影响或二阶后果，减少只处理表面症状。",
+            questionStrategy: "只挑反馈回路、延迟影响、二阶后果中的一条关系，区分观察与猜想。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当问题反复发生、依赖相互影响，或短期改善伴随后续代价时。",
+            disableConditions: ["不要把系统思维变成宏大叙事，必须落到当天证据和下一步观察。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
         LensCatalogItem(
             lensId: "judgmentCalibration",
             promptId: "judgment_calibration",
-            version: "builtin.v1",
+            version: "builtin.v3",
             title: "判断校准",
-            subtitle: "用实际证据更新预测、信心和下一步判断。",
+            subtitle: "用新证据修正原来的预期。",
             shortLabel: "校准",
-            methodLine: "先问：原判断是什么，实际证据让它怎么更新？",
-            promptGuidance: "Compare the user's original prediction, confidence, actual evidence, evidence gained, and judgment update before choosing the next calibration signal.",
+            methodLine: "这次结果让你对原判断改了哪一处？",
+            promptGuidance: "Compare the original prediction with actual evidence. Do not reconstruct past confidence as if recorded or treat a single outcome as proof of skill. Success is a conditional judgment update, including no update when evidence is insufficient. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move prediction_calibration.",
             symbolName: "scope",
-            recommendedReason: "当前材料出现预测、信心或实际结果偏差，适合校准判断。",
-            questionSeeds: [
-                "原判断是什么，实际证据让它怎么更新？",
-                "你当时有多大把握？现在证据支持几分？",
-                "下一次要观察哪个信号，避免重复误判？"
-            ],
+            recommendedReason: "当有原先预期和新结果，需要决定是否更新判断时。",
+            questionSeeds: ["这次结果让你对原判断改了哪一处？"],
             accentRole: .principle,
             methodIndex: 6,
-            purpose: "把原判断、置信度、实际证据和判断更新放在同一张桌面上，训练可校准的判断能力。",
-            questionStrategy: "先还原原判断和信心，再对照实际证据，最后要求用户说清判断如何更新和下一次校准信号。",
-            taskSelectionRule: "优先设计能验证一个预测、采集一个校准信号或降低下一次误判概率的明日验证行动。",
-            applicability: "适用于用户提到预测、预期、把握、信心、实际结果、判断反转、复盘偏差或需要更新判断的场景。",
-            disableConditions: [
-                "不要把校准变成事后诸葛，必须先明确原判断或可观察预测。",
-                "不要在缺少实际证据时强行评价判断质量。",
-                "不要用分数羞辱用户，重点是下一次如何更可校准。"
-            ]
+            purpose: "让确信程度与实际证据相称，区分结果好坏与判断质量。",
+            questionStrategy: "只比较原判断与已有实际结果的一处差异，不编造当时的把握。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当有原先预期和新结果，需要决定是否更新判断时。",
+            disableConditions: ["不要把校准变成事后诸葛，必须先明确原判断或可观察预测。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
+        ),
+        LensCatalogItem(
+            lensId: "opportunityCost",
+            promptId: "opportunity_cost",
+            version: "builtin.v3",
+            title: "机会成本",
+            subtitle: "看见选择背后放弃的东西。",
+            shortLabel: "取舍",
+            methodLine: "选了这件事，你会少给哪件重要的事留时间？",
+            promptGuidance: "Compare one real alternative displaced by the current choice, including rest, relationships or doing nothing. Use the user stated values rather than maximizing productivity. Success is an explicit tradeoff; do not prescribe priorities. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move leverage_tradeoff.",
+            symbolName: "arrow.triangle.branch",
+            recommendedReason: "当多个选择争用同一段时间、金钱或精力，难以取舍时。",
+            questionSeeds: ["选了这件事，你会少给哪件重要的事留时间？"],
+            accentRole: .principle,
+            methodIndex: 7,
+            purpose: "比较真实备选及放弃的价值，让选择符合自己在意的事。",
+            questionStrategy: "只比较当前选择与一个真实备选，聚焦用户自己在意的一项代价。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当多个选择争用同一段时间、金钱或精力，难以取舍时。",
+            disableConditions: ["不要把休息或关系默认为低价值，也不要替用户决定人生优先级。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
+        ),
+        LensCatalogItem(
+            lensId: "reversibleDecision",
+            promptId: "reversible_decision",
+            version: "builtin.v3",
+            title: "可逆决策",
+            subtitle: "区分能回头的尝试和难撤回的承诺。",
+            shortLabel: "可逆",
+            methodLine: "这次决定里，哪部分可以低成本撤回？",
+            promptGuidance: "Distinguish reversible steps from irreversible commitments using known exit costs and limits. Never call a trial safe without evidence. Success is a bounded option and a stopping condition, not an obligation to experiment. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move constraint_decomposition.",
+            symbolName: "arrow.uturn.backward",
+            recommendedReason: "当决定有不确定性，但可以考虑分阶段承诺时。",
+            questionSeeds: ["这次决定里，哪部分可以低成本撤回？"],
+            accentRole: .accent,
+            methodIndex: 8,
+            purpose: "识别退出成本与承诺边界，避免把小尝试做成无法撤回的决定。",
+            questionStrategy: "只核对一个决定的已知退出成本或停止边界，未知风险保留未知。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当决定有不确定性，但可以考虑分阶段承诺时。",
+            disableConditions: ["不要建议高风险试错；医疗、法律、财务和人身风险需专业判断。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
+        ),
+        LensCatalogItem(
+            lensId: "perspectiveTaking",
+            promptId: "perspective_taking",
+            version: "builtin.v3",
+            title: "换位理解",
+            subtitle: "理解双方各自在意什么、受什么限制。",
+            shortLabel: "换位",
+            methodLine: "只按已知的表达，对方的请求主要在回应什么处境？",
+            promptGuidance: "Represent the other person's stated aim, request or constraint alongside the user's stated aim. Use one known difference to consider a possible perspective, explicitly as a hypothesis. Once facts and inferred motives are already distinguished, do not repeat evidence checking. Without a supplied position or constraint, preserve the absence rather than inventing a sympathetic story. Success is an accurate representation, not agreement, mind reading or excusing harm. Ask at most one answerable question only when useful; no new conversation or action is required. Preserve uncertainty and user choice. Use lens_move alternative_explanation.",
+            symbolName: "person.2",
+            recommendedReason: "当分歧来自双方信息、目标或约束不同，需要理解而非辩赢时。",
+            questionSeeds: ["只按已知的表达，对方的请求主要在回应什么处境？"],
+            accentRole: .graphite,
+            methodIndex: 9,
+            purpose: "准确表述双方已知的诉求与限制，看见分歧可能来自不同侧重点，理解不等于认同。",
+            questionStrategy: "从对方明说的诉求或限制出发，只问一个能看清双方侧重点的问题；已分清事实与推测时不重复核对，没有表达过的动机继续未知，不要求新谈话。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当分歧来自双方信息、目标或约束不同，需要理解而非辩赢时。",
+            disableConditions: ["不要猜测隐藏动机，不要求原谅伤害，也不要求暴露他人隐私。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
+        ),
+        LensCatalogItem(
+            lensId: "controlBoundary",
+            promptId: "control_boundary",
+            version: "builtin.v3",
+            title: "可控边界",
+            subtitle: "分清能决定、能影响和暂时无法改变的事。",
+            shortLabel: "边界",
+            methodLine: "这件事里，哪一部分由你决定，哪部分不是？",
+            promptGuidance: "Separate a personally controllable choice from influence and external conditions in one current concern. Do not imply responsibility for uncontrollable outcomes. Success is a realistic boundary, which can include rest, seeking support or no action. Ask at most one answerable question only when useful. Preserve uncertainty and user choice. Use lens_move constraint_decomposition.",
+            symbolName: "circle.dashed.inset.filled",
+            recommendedReason: "当反复为他人反应或外部结果耗费精力，且控制范围不清时。",
+            questionSeeds: ["这件事里，哪一部分由你决定，哪部分不是？"],
+            accentRole: .graphite,
+            methodIndex: 10,
+            purpose: "辨认控制范围与责任边界，把精力用在自己能够选择的部分。",
+            questionStrategy: "只区分一个具体担忧中可决定的部分与外部条件，不把责任推给用户。",
+            taskSelectionRule: "只有用户主动希望行动时，才考虑一个与当前判断相关的可选观察或校准信号；不默认安排明日任务，也允许不行动。",
+            applicability: "当反复为他人反应或外部结果耗费精力，且控制范围不清时。",
+            disableConditions: ["不要否认真实的结构限制，不把受害或无力改变归为个人缺陷。", "不适合当前材料、用户需要直接帮助或希望停下时，不强行使用这个视角。"]
         ),
     ]
 
@@ -726,6 +762,10 @@ enum ThinkingLens: String, CaseIterable, Identifiable {
     case firstPrinciples
     case systemThinking
     case judgmentCalibration
+    case opportunityCost
+    case reversibleDecision
+    case perspectiveTaking
+    case controlBoundary
 
     var id: String { rawValue }
 
@@ -751,8 +791,35 @@ enum ThinkingLens: String, CaseIterable, Identifiable {
             return .systemFeedbackAwareness
         case .judgmentCalibration:
             return .judgmentCalibration
+        case .opportunityCost:
+            return .testableActionDesign
+        case .reversibleDecision, .controlBoundary:
+            return .assumptionTesting
+        case .perspectiveTaking:
+            return .factInterpretationSeparation
         }
     }
+
+    var group: LensGroup {
+        switch self {
+        case .evidenceCheck, .opposingView, .judgmentCalibration, .perspectiveTaking: return .understand
+        case .leverageAnalysis, .opportunityCost, .reversibleDecision: return .choose
+        case .firstPrinciples, .systemThinking, .controlBoundary: return .reframe
+        }
+    }
+}
+
+enum LensGroup: String, CaseIterable, Identifiable {
+    case understand, choose, reframe
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .understand: return "看清事实与解释"
+        case .choose: return "比较选择与代价"
+        case .reframe: return "重看前提与边界"
+        }
+    }
+    var lenses: [ThinkingLens] { ThinkingLens.allCases.filter { $0.group == self } }
 }
 
 enum TrainingPrescriptionSource: String, Codable, Hashable {
@@ -1135,6 +1202,10 @@ struct CoachDiagnosis: Codable, Hashable {
     var reason: String
     var source: CoachDiagnosisSource
     var policyVersion: String
+    // Model decisions name their own gaps. A phase alone cannot establish
+    // which observations or constraints the user has already supplied.
+    var openEvidenceGaps: [EvidenceGapType]? = nil
+    var sourceRefs: [String]? = nil
 }
 
 struct CoachTurnState: Codable, Hashable {
@@ -1147,6 +1218,11 @@ struct CoachTurnState: Codable, Hashable {
     var decisionSource: CoachDiagnosisSource
     var policyVersion: String
     var turnSummary: String
+}
+
+enum CoachAnswerReviewUserBoundary: String, Codable, Hashable {
+    case continueAnswering = "continue"
+    case stopHere = "stop"
 }
 
 struct CoachAnswerTrainingFeedback: Codable, Hashable {
@@ -1165,9 +1241,20 @@ struct CoachAnswerTrainingFeedback: Codable, Hashable {
     var experienceReplayPrompt: String
     var judgmentSentencePrompt: String
     var teachingPlan: CoachTeachingPlan
+    // Optional for decoding recorded feedback that predates this boundary.
+    var userBoundary: CoachAnswerReviewUserBoundary? = nil
+
+    var hasStopped: Bool { userBoundary == .stopHere }
+
+    var hasOptionalGuidance: Bool {
+        [abilityGapLine, trainingOutputLine, selfCheckLine,
+         trainingTargetLine, experienceReplayPrompt, judgmentSentencePrompt]
+            .contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
 }
 
-struct CoachReferenceSuggestion: Hashable {
+struct CoachReferenceSuggestion: Codable, Hashable {
     let guidance: String
     let workedExample: String
     let caveat: String
@@ -1234,7 +1321,9 @@ struct CoachTurnPolicy {
             readiness: resolvedDiagnosis.readiness,
             recommendedMove: resolvedDiagnosis.recommendedMove,
             reason: resolvedDiagnosis.reason,
-            openEvidenceGaps: openEvidenceGaps(for: resolvedDiagnosis),
+            openEvidenceGaps: resolvedDiagnosis.openEvidenceGaps
+                ?? (resolvedDiagnosis.policyVersion.hasPrefix("coach-decision.llm")
+                    ? [] : openEvidenceGaps(for: resolvedDiagnosis)),
             baselineChecks: defaultBaselineChecks,
             decisionSource: resolvedDiagnosis.source,
             policyVersion: Self.policyVersion,
@@ -1827,73 +1916,113 @@ struct CoachPatternSummary: Codable, Hashable {
     var guidanceLine: String
 }
 
+/// Compatibility surface for old callers. These heuristic diagnoses are no
+/// longer generated; historical Codable payloads above remain readable.
 struct CoachPatternSummaryPolicy {
-    static let policyVersion = "coach-pattern-summary.local-v1"
+    static let policyVersion = "coach-pattern-summary.retired-v2"
 
+    func summarize(records: [HistoryRecord], excluding: DailyEntryDraft.ID? = nil) -> CoachPatternSummary? {
+        nil
+    }
+}
+
+/// An index of saved, answered questions. A topic is a question classification,
+/// not evidence that the user has a recurring deficit or used a method.
+struct ReflectionTopicSource: Identifiable, Hashable {
+    var dailyEntryId: UUID
+    var caseId: UUID?
+    var date: Date
+    var title: String
+    var question: ReflectionQuestion
+
+    var id: String { "\(dailyEntryId):\(question.id)" }
+}
+
+struct ReflectionTopic: Identifiable, Hashable {
+    var type: EvidenceGapType
+    var sources: [ReflectionTopicSource]
+    var id: String { type.rawValue }
+
+    var title: String {
+        switch type {
+        case .missingObservation: return "观察事实"
+        case .missingBaseline: return "比较依据"
+        case .missingCausalLink: return "原因与解释"
+        case .missingCounterexample: return "反例"
+        case .missingConstraint: return "限制条件"
+        case .missingCalibrationSignal: return "结果信号"
+        case .none: return "其他问题"
+        }
+    }
+}
+
+struct ReflectionTopicSummary: Hashable {
+    var analyzedRecordCount: Int
+    var topics: [ReflectionTopic]
+}
+
+struct ReflectionTopicSummaryPolicy {
     var recordLimit = 14
-    var patternLimit = 2
+    var topicLimit = 2
 
-    func summarize(
-        records: [HistoryRecord],
-        excluding excludedDailyEntryId: DailyEntryDraft.ID? = nil
-    ) -> CoachPatternSummary? {
-        let completedRecords = records
-            .filter { record in
-                record.draft.state == .sessionComplete &&
-                    record.draft.id != excludedDailyEntryId &&
-                    !record.coachPatternText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    func summarize(records: [HistoryRecord], excluding excludedID: UUID? = nil) -> ReflectionTopicSummary {
+        var seenEntries = Set<UUID>()
+        let recent = records.filter { $0.draft.state == .sessionComplete && $0.id != excludedID }
+            .sorted { lhs, rhs in
+                lhs.draft.date == rhs.draft.date ? lhs.id.uuidString < rhs.id.uuidString : lhs.draft.date > rhs.draft.date
             }
-            .sorted { $0.draft.date > $1.draft.date }
-            .prefix(recordLimit)
-
-        guard !completedRecords.isEmpty else { return nil }
-
-        let decisions = completedRecords.map { record in
-            (
-                record: record,
-                decision: CoachObservationPolicy().diagnoseBaseline(text: record.coachPatternText)
-            )
-        }
-        let grouped = Dictionary(grouping: decisions) { item in
-            CoachPatternKey(
-                gap: item.decision.primaryGap,
-                ability: item.decision.foundationalAbility
-            )
-        }
-
-        let patterns = grouped.map { key, items in
-            let latest = items.max { lhs, rhs in lhs.record.draft.date < rhs.record.draft.date }
-            return CoachPatternSignal(
-                primaryGap: key.gap,
-                foundationalAbility: key.ability,
-                count: items.count,
-                latestDate: latest?.record.draft.date ?? .distantPast,
-                minimalTrainingAction: latest?.decision.minimalTrainingAction ?? ""
-            )
-        }
-        .sorted { lhs, rhs in
-            if lhs.count == rhs.count {
-                return lhs.latestDate > rhs.latestDate
+            .filter { seenEntries.insert($0.id).inserted }
+            .prefix(max(0, recordLimit))
+        var seenQuestions = Set<UUID>()
+        var grouped: [EvidenceGapType: [ReflectionTopicSource]] = [:]
+        for record in recent {
+            var seenTopics = Set<EvidenceGapType>()
+            for source in sources(in: record) {
+                guard let type = source.question.evidenceGapType, type != .none,
+                      seenQuestions.insert(source.question.id).inserted,
+                      seenTopics.insert(type).inserted else { continue }
+                grouped[type, default: []].append(source)
             }
-            return lhs.count > rhs.count
         }
-        .prefix(patternLimit)
-
-        guard !patterns.isEmpty else { return nil }
-        let topPattern = patterns[0]
-        return CoachPatternSummary(
-            policyVersion: Self.policyVersion,
-            analyzedRecordCount: completedRecords.count,
-            totalSignalCount: decisions.count,
-            sourceDailyEntryIds: completedRecords.map { $0.draft.id.uuidString },
-            topPatterns: Array(patterns),
-            guidanceLine: "历史只作为提示：最近常见的是\(topPattern.primaryGap.displayTitle)，本次仍要先看今天材料；如果复现，再让用户补一个最小训练动作。"
-        )
+        let topics = grouped.filter { $0.value.count >= 2 }
+            .map { ReflectionTopic(type: $0.key, sources: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.sources.count != rhs.sources.count { return lhs.sources.count > rhs.sources.count }
+                let leftDate = lhs.sources.first?.date ?? .distantPast
+                let rightDate = rhs.sources.first?.date ?? .distantPast
+                return leftDate == rightDate ? lhs.id < rhs.id : leftDate > rightDate
+            }
+        return ReflectionTopicSummary(analyzedRecordCount: recent.count, topics: Array(topics.prefix(max(0, topicLimit))))
     }
 
-    private struct CoachPatternKey: Hashable {
-        var gap: CoachQualityGap
-        var ability: CoachFoundationalAbility
+    private func sources(in record: HistoryRecord) -> [ReflectionTopicSource] {
+        func eligible(_ questions: [ReflectionQuestion], cards: [ThinkingCard], caseID: UUID?, title: String) -> [ReflectionTopicSource] {
+            let titles = Set(cards.filter { $0.isConfirmed && !$0.isExcludedFromModel && $0.trainingCaseId == caseID }
+                .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) })
+            return questions.compactMap { question in
+                let references = question.sourceCardTitles.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                guard !question.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !question.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !references.isEmpty, references.allSatisfy({ !$0.isEmpty && titles.contains($0) }) else { return nil }
+                return ReflectionTopicSource(dailyEntryId: record.id, caseId: caseID, date: record.draft.date,
+                    title: title, question: question)
+            }
+        }
+        if !record.caseRecords.isEmpty {
+            return record.caseRecords.sorted { $0.trainingCase.sortOrder < $1.trainingCase.sortOrder }.flatMap { scope in
+                guard scope.trainingCase.dailyEntryId == record.id, scope.trainingCase.status != .merged else { return [ReflectionTopicSource]() }
+                if let session = scope.session, session.caseId != scope.id { return [] }
+                // An intentionally empty canonical state supersedes the old lens copy.
+                if let state = scope.session?.reflectionState {
+                    return eligible(state.questions, cards: scope.cards, caseID: scope.id, title: scope.trainingCase.title)
+                }
+                guard let lens = scope.lensSession, lens.dailyEntryId == record.id,
+                      lens.trainingCaseId == scope.id else { return [] }
+                return eligible(lens.questions, cards: scope.cards, caseID: scope.id, title: scope.trainingCase.title)
+            }
+        }
+        guard let lens = record.lensSession, lens.dailyEntryId == record.id, lens.trainingCaseId == nil else { return [] }
+        return eligible(lens.questions, cards: record.cards, caseID: nil, title: "")
     }
 }
 
@@ -2987,9 +3116,8 @@ struct CoachLensLearningSignal: Codable, Hashable {
 }
 
 struct CoachLensLearningPolicy {
-    static let reinforceSignal = "reinforce"
-    static let adjustSignal = "adjust"
-    static let avoidSignal = "avoid"
+    static let reviewEvidenceSignal = "review_evidence"
+    static let selfReportOnlySignal = "self_report_only"
     static let overrideAuditSignalName = "override_audit"
 
     func signals(from session: LensSession, verification: Verification) -> [CoachLensLearningSignal] {
@@ -3000,20 +3128,13 @@ struct CoachLensLearningPolicy {
 
             let calibrationTarget = question.calibrationTarget?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let signal = Self.signal(
-                completion: verification.completion,
-                valueRating: verification.valueRating
-            )
+            let signal = verification.calibrationAssessment == nil ? Self.selfReportOnlySignal : Self.reviewEvidenceSignal
 
             return CoachLensLearningSignal(
                 signal: signal,
                 lensMove: lensMove,
                 calibrationTarget: calibrationTarget?.isEmpty == true ? nil : calibrationTarget,
-                reason: Self.reason(
-                    signal: signal,
-                    completion: verification.completion,
-                    valueRating: verification.valueRating
-                )
+                reason: Self.reason(verification: verification)
             )
         }
     }
@@ -3035,33 +3156,13 @@ struct CoachLensLearningPolicy {
         )
     }
 
-    static func signal(
-        completion: YesterdayCompletion,
-        valueRating: YesterdayValueRating
-    ) -> String {
-        if completion == .done, valueRating == .high {
-            return reinforceSignal
+    private static func reason(verification: Verification) -> String {
+        if let assessment = verification.calibrationAssessment {
+            return "Historical reported result: \(assessment.evidenceStatus.rawValue)/\(assessment.criteriaStatus.rawValue)/\(assessment.judgmentStatus.rawValue). This does not establish thinking-method effectiveness or transfer to another matter; inspect the actual evidence and current fit."
         }
-        if completion == .missed || valueRating == .low {
-            return avoidSignal
-        }
-        return adjustSignal
+        return "Legacy self-report: \(verification.completion.rawValue)/\(verification.valueRating.rawValue). This does not establish completion, value, or thinking-method effectiveness; no structured evidence assessment was saved."
     }
 
-    private static func reason(
-        signal: String,
-        completion: YesterdayCompletion,
-        valueRating: YesterdayValueRating
-    ) -> String {
-        switch signal {
-        case reinforceSignal:
-            return "done/high verification produced useful evidence; reinforce this lens move when current cards fit."
-        case avoidSignal:
-            return "\(completion.rawValue)/\(valueRating.rawValue) verification did not produce usable evidence; avoid repeating this lens move and target pattern."
-        default:
-            return "\(completion.rawValue)/\(valueRating.rawValue) verification was partially useful; make this lens move smaller and more observable next time."
-        }
-    }
 }
 
 struct CoachDecisionAssessment: Codable, Hashable {
@@ -3780,6 +3881,10 @@ enum QuestionLensMove: String, Codable, CaseIterable {
 struct ReflectionQuestion: Identifiable, Hashable, Codable {
     let id: UUID
     var question: String
+    /// Set when an answer review creates an adaptive follow-up question.
+    /// The marker is persisted so a resumed Today session keeps the same
+    /// coaching turn instead of reducing the follow-up to static feedback.
+    var isRepairQuestion: Bool
     var whyItMatters: String
     var whyNow: String?
     var expectedUpdate: String?
@@ -3794,6 +3899,7 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
     init(
         id: UUID = UUID(),
         question: String,
+        isRepairQuestion: Bool = false,
         whyItMatters: String,
         whyNow: String? = nil,
         expectedUpdate: String? = nil,
@@ -3807,6 +3913,7 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
     ) {
         self.id = id
         self.question = question
+        self.isRepairQuestion = isRepairQuestion
         self.whyItMatters = whyItMatters
         self.whyNow = whyNow
         self.expectedUpdate = expectedUpdate
@@ -3822,6 +3929,7 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
     private enum CodingKeys: String, CodingKey {
         case id
         case question
+        case isRepairQuestion
         case whyItMatters
         case whyNow
         case expectedUpdate
@@ -3838,6 +3946,7 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         question = try container.decode(String.self, forKey: .question)
+        isRepairQuestion = try container.decodeIfPresent(Bool.self, forKey: .isRepairQuestion) ?? false
         whyItMatters = try container.decode(String.self, forKey: .whyItMatters)
         whyNow = try container.decodeIfPresent(String.self, forKey: .whyNow)
         expectedUpdate = try container.decodeIfPresent(String.self, forKey: .expectedUpdate)
@@ -3854,6 +3963,7 @@ struct ReflectionQuestion: Identifiable, Hashable, Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(question, forKey: .question)
+        try container.encode(isRepairQuestion, forKey: .isRepairQuestion)
         try container.encode(whyItMatters, forKey: .whyItMatters)
         try container.encodeIfPresent(whyNow, forKey: .whyNow)
         try container.encodeIfPresent(expectedUpdate, forKey: .expectedUpdate)
@@ -4019,7 +4129,7 @@ enum QuestValidationDimension: String, CaseIterable, Identifiable {
         case .action: return "行动必须具体到明天能够直接开始。"
         case .evidence: return "完成标准要能让明天回看时可检查。"
         case .judgment: return "验证行动要验证今天的判断，不是普通待办。"
-        case .calibration: return "结果只有能够支持、调整或推翻判断，才算完成验证。"
+        case .calibration: return "说明结果支持、减弱判断，还是暂不能判断；不必强行得出结论。"
         }
     }
 }
@@ -4086,11 +4196,11 @@ struct QuestExecutionTrainingPolicy {
         let targetJudgment = trimmed(quest.calibrationTarget)
             ?? "这条验证行动必须回到今天的一个明确判断。"
         let completionEvidence = trimmed(quest.completionCriteria)
-            ?? "明天需要留下一个可检查结果。"
+            ?? "观察一个可检查的结果；还没有结果时保留未知。"
         let expectedResistance = trimmed(quest.expectedResistance)
-            ?? "先写出最可能阻断执行的一件事。"
+            ?? "暂无已知阻力，可以留空。"
         let calibrationPrompt = trimmed(quest.reflectionQuestion)
-            ?? "明天用结果校准这个判断是否成立。"
+            ?? "结果支持、减弱这个判断，还是暂不能判断？"
 
         return QuestExecutionTrainingFeedback(
             trainingDimension: .testableActionDesign,
@@ -4104,12 +4214,12 @@ struct QuestExecutionTrainingPolicy {
     }
 
     private func contractLine() -> String {
-        "这不是普通待办；明天必须留下完成证据，并用结果校准信号更新今天的判断。"
+        "按你愿意的节奏观察结果；没有重试、记录不足或条件不可比时，可以暂不能判断。"
     }
 
     private func trainingLine(for quest: Quest) -> String {
         let move = quest.lensMove?.displayTitle ?? ThinkingTrainingDimension.testableActionDesign.displayTitle
-        return "执行力：把今天的判断转成一个可验证行动，并用\(move)检查它是否真的改变结果。"
+        return "可验证行动设计：用\(move)检查结果能说明什么，不把完成行动当作判断成立。"
     }
 
     private func trimmed(_ text: String?) -> String? {
@@ -4127,7 +4237,7 @@ enum PrincipleStatus: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
-struct PrincipleAsset: Identifiable, Hashable {
+struct PrincipleAsset: Identifiable, Hashable, Codable {
     let id: UUID
     var title: String
     var summary: String
@@ -4295,6 +4405,16 @@ enum PrinciplePracticeEvidenceStrength: String, CaseIterable, Identifiable, Coda
 }
 
 struct PrinciplePracticeEvidence: Identifiable, Hashable {
+    static let resultEvidencePolicyVersion = "principle-practice-attribution.result-evidence.v2"
+
+    /// Old keyword/selection matches are retained for audit, not counted as behavior.
+    var supportsPracticeRecord: Bool {
+        guard !isDisputed else { return false }
+        if evidenceSource == .manual { return true }
+        return evidenceSource == .verification && schemaVersion >= 2 &&
+            attributionPolicyVersion == Self.resultEvidencePolicyVersion &&
+            !matchSignal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     let id: UUID
     var schemaVersion: Int
     var principleId: UUID
@@ -4359,9 +4479,9 @@ enum PrincipleTrainingState: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .knownButUnused: return "已知未使用"
-        case .consciouslyPracticed: return "有意识练习"
-        case .stablyInternalized: return "稳定内化"
+        case .knownButUnused: return "尚无实践证据"
+        case .consciouslyPracticed: return "有实践记录"
+        case .stablyInternalized: return "自报已形成习惯"
         case .needsReview: return "需要复审"
         }
     }
@@ -4390,6 +4510,12 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
     var latestNegativeRecallFeedbackReason: String?
     var latestNegativeRecallFeedbackSignal: String?
     var latestNegativeRecallFeedbackNote: String?
+    var unassessedPracticeEvidenceCount: Int = 0
+
+    var unassessedPracticeNotice: String? {
+        guard unassessedPracticeEvidenceCount > 0 else { return nil }
+        return "有 \(unassessedPracticeEvidenceCount) 条历史关联尚缺实际行为记录，暂不计为实践。"
+    }
 
     static func summaries(
         for principles: [PrincipleAsset],
@@ -4413,13 +4539,14 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
         recallFeedback: [PrincipleRecallFeedback],
         disputedPracticeEvidence: [PrinciplePracticeEvidence] = []
     ) -> PrincipleTrainingSummary {
+        let unassessedCount = practiceEvidence.filter { !$0.isDisputed && !$0.supportsPracticeRecord }.count
+        let practiceEvidence = practiceEvidence.filter(\.supportsPracticeRecord)
         let helpfulCount = recallFeedback.filter { $0.feedback.isConstructiveUse }.count
         let negativeCount = recallFeedback.filter { $0.feedback.isNegativeRecall }.count
         let intentionalPracticeCount = practiceEvidence.filter {
             $0.strength == .intentionalPractice || $0.strength == .internalized
         }.count
-        let internalizedEvidenceCount = practiceEvidence.filter { $0.strength == .internalized }.count
-        let distinctPracticeDays = Set(practiceEvidence.map(\.sourceDailyEntryId)).count
+        let internalizedEvidenceCount = practiceEvidence.filter { $0.evidenceSource == .manual && $0.strength == .internalized }.count
         let latestPracticeEvidence = practiceEvidence.max { lhs, rhs in
             lhs.createdAt < rhs.createdAt
         }
@@ -4435,9 +4562,9 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
 
         if principle.status == .needsReview || negativeCount >= 2 {
             state = .needsReview
-        } else if internalizedEvidenceCount > 0 || distinctPracticeDays >= 3 {
+        } else if internalizedEvidenceCount > 0 {
             state = .stablyInternalized
-        } else if intentionalPracticeCount > 0 || helpfulCount > 0 {
+        } else if !practiceEvidence.isEmpty {
             state = .consciouslyPracticed
         } else {
             state = .knownButUnused
@@ -4464,7 +4591,8 @@ struct PrincipleTrainingSummary: Identifiable, Hashable {
             latestNegativeRecallFeedbackValue: latestNegativeRecallFeedback?.feedback,
             latestNegativeRecallFeedbackReason: latestNegativeRecallFeedback?.retrievalReason,
             latestNegativeRecallFeedbackSignal: latestNegativeRecallFeedback?.retrievalSignal,
-            latestNegativeRecallFeedbackNote: latestNegativeRecallFeedback?.note
+            latestNegativeRecallFeedbackNote: latestNegativeRecallFeedback?.note,
+            unassessedPracticeEvidenceCount: unassessedCount
         )
     }
 }
@@ -4484,6 +4612,8 @@ struct DailyEntryDraft: Identifiable, Hashable {
     var yesterdayValueRating: YesterdayValueRating?
     var yesterdayJudgmentUpdate: YesterdayJudgmentUpdate?
     var yesterdayEvidence: String
+    // Unconfirmed suggestions, scoped to a case UUID or the legacy daily flow.
+    var principleReviewDrafts: [String: [PrincipleAsset]]
     var state: DailyLoopState
 
     init(
@@ -4501,6 +4631,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         yesterdayValueRating: YesterdayValueRating? = nil,
         yesterdayJudgmentUpdate: YesterdayJudgmentUpdate? = nil,
         yesterdayEvidence: String = "",
+        principleReviewDrafts: [String: [PrincipleAsset]] = [:],
         state: DailyLoopState = .verifyYesterday
     ) {
         self.id = id
@@ -4517,6 +4648,7 @@ struct DailyEntryDraft: Identifiable, Hashable {
         self.yesterdayValueRating = yesterdayValueRating
         self.yesterdayJudgmentUpdate = yesterdayJudgmentUpdate
         self.yesterdayEvidence = yesterdayEvidence
+        self.principleReviewDrafts = principleReviewDrafts
         self.state = state
     }
 }
@@ -5596,7 +5728,14 @@ struct MetricSnapshot: Identifiable, Hashable {
     }
 
     var canDisplayScores: Bool {
-        !hasInsufficientEvidence
+        !hasInsufficientEvidence && !isLegacyLocalHeuristic
+    }
+
+    /// Exact signature written by the retired local scoring routine. Rows
+    /// without this signature have unknown provenance and are not reclassified.
+    var isLegacyLocalHeuristic: Bool {
+        summary.range(of: #"^已基于 [0-9]+ 次完整复盘生成本地成长快照：[0-9]+ 条正向证据，[0-9]+ 条负向证据。$"#,
+            options: .regularExpression) != nil
     }
 
     init(
@@ -5665,6 +5804,16 @@ struct MetricSnapshot: Identifiable, Hashable {
 }
 
 extension MetricSnapshot {
+    func degradedForLegacyLocalHeuristic() -> MetricSnapshot {
+        var display = self
+        display.summary = "这份旧版汇总由次数和自评自动生成，暂不作为成长结论。原始记录仍可回看。"
+        display.status = .insufficientEvidence
+        display.positiveContributionRefs = []
+        display.negativeContributionRefs = []
+        display.nextTrainingFocus = nil
+        return display
+    }
+
     func degradedForMissingGrowthContributions() -> MetricSnapshot {
         MetricSnapshot(
             id: id,
@@ -5872,6 +6021,106 @@ extension MetricContribution {
     }
 }
 
+struct CalibrationAssessment: Codable, Hashable {
+    enum EvidenceStatus: String, Codable {
+        case observed, missing, conflicting
+        var title: String {
+            switch self {
+            case .observed: return "有结果记录"
+            case .missing: return "缺少结果证据"
+            case .conflicting: return "记录存在冲突"
+            }
+        }
+    }
+    enum CriteriaStatus: String, Codable {
+        case met, notMet = "not_met", notAssessable = "not_assessable"
+        var title: String {
+            switch self {
+            case .met: return "达到本次验收标准"
+            case .notMet: return "未达到本次验收标准"
+            case .notAssessable: return "验收暂不能判断"
+            }
+        }
+    }
+    enum JudgmentStatus: String, Codable {
+        case supported, weakened, unresolved
+        var title: String {
+            switch self {
+            case .supported: return "本次证据支持原判断"
+            case .weakened: return "本次证据削弱原判断"
+            case .unresolved: return "原判断仍未确定"
+            }
+        }
+    }
+
+    var evidenceStatus: EvidenceStatus
+    var criteriaStatus: CriteriaStatus
+    var judgmentStatus: JudgmentStatus
+    var evidenceQuotes: [String]
+
+    func isGrounded(in reportedEvidence: String, hasGrowthEvidence: Bool) -> Bool {
+        guard evidenceQuotes.count <= 3, Set(evidenceQuotes).count == evidenceQuotes.count else { return false }
+        if evidenceStatus == .missing {
+            return evidenceQuotes.isEmpty && criteriaStatus == .notAssessable &&
+                judgmentStatus == .unresolved && !hasGrowthEvidence
+        }
+        return !evidenceQuotes.isEmpty && evidenceQuotes.allSatisfy {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && reportedEvidence.contains($0)
+        }
+    }
+}
+
+
+/// Classification of reported behavior, separate from the action's outcome.
+/// Exact quotes establish provenance; semantic correctness still needs review.
+struct PrinciplePracticeAssessment: Codable, Hashable {
+    enum Status: String, Codable {
+        case practiced
+        case partiallyPracticed = "partially_practiced"
+        case notPracticed = "not_practiced"
+        case notAssessable = "not_assessable"
+    }
+    var principleId: UUID
+    var status: Status
+    var evidenceQuotes: [String]
+    var reason: String
+
+    func isGrounded(in reportedResult: String, expectedPrincipleID: UUID?) -> Bool {
+        guard principleId == expectedPrincipleID,
+              !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              evidenceQuotes.count <= 3, Set(evidenceQuotes).count == evidenceQuotes.count else { return false }
+        if status == .notAssessable { return evidenceQuotes.isEmpty }
+        return !evidenceQuotes.isEmpty && evidenceQuotes.allSatisfy {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && reportedResult.contains($0)
+        }
+    }
+}
+
+/// A source-labelled context snapshot; ratings never imply an observed result.
+struct HistoricalVerificationEvidence: Codable, Hashable {
+    var verificationId: String
+    var questId: String
+    var completionSelfReport: String
+    var valueSelfReport: String
+    var judgmentSelfReport: String
+    var reportedResult: String
+    var calibrationAssessment: CalibrationAssessment?
+    var modelFeedback: String
+    var principlePracticeAssessment: PrinciplePracticeAssessment? = nil
+
+    init(_ verification: Verification) {
+        verificationId = verification.id.uuidString
+        questId = verification.questId.uuidString
+        completionSelfReport = verification.completion.rawValue
+        valueSelfReport = verification.valueRating.rawValue
+        judgmentSelfReport = verification.judgmentUpdate.rawValue
+        reportedResult = verification.evidenceText
+        calibrationAssessment = verification.calibrationAssessment
+        modelFeedback = verification.calibrationNote
+        principlePracticeAssessment = verification.principlePracticeAssessment
+    }
+}
+
 struct Verification: Identifiable, Hashable {
     let id: UUID
     var questId: UUID
@@ -5881,6 +6130,8 @@ struct Verification: Identifiable, Hashable {
     var valueRating: YesterdayValueRating
     var judgmentUpdate: YesterdayJudgmentUpdate
     var evidenceText: String
+    var calibrationAssessment: CalibrationAssessment?
+    var principlePracticeAssessment: PrinciplePracticeAssessment?
     var calibrationNote: String
     var likelyIssue: String?
     var recommendation: String?
@@ -5897,6 +6148,8 @@ struct Verification: Identifiable, Hashable {
         judgmentUpdate: YesterdayJudgmentUpdate = .confirmed,
         evidenceText: String = "",
         calibrationNote: String,
+        calibrationAssessment: CalibrationAssessment? = nil,
+        principlePracticeAssessment: PrinciplePracticeAssessment? = nil,
         likelyIssue: String? = nil,
         recommendation: String? = nil,
         createdAt: Date = .now,
@@ -5910,6 +6163,8 @@ struct Verification: Identifiable, Hashable {
         self.valueRating = valueRating
         self.judgmentUpdate = judgmentUpdate
         self.evidenceText = evidenceText
+        self.calibrationAssessment = calibrationAssessment
+        self.principlePracticeAssessment = principlePracticeAssessment
         self.calibrationNote = calibrationNote
         self.likelyIssue = likelyIssue
         self.recommendation = recommendation
@@ -6066,38 +6321,6 @@ struct HistoryRecord: Identifiable, Hashable {
     }
 }
 
-private extension HistoryRecord {
-    var coachPatternText: String {
-        var parts: [String] = [draft.rawText]
-        parts.append(contentsOf: confirmedCards.map { "\($0.title) \($0.body)" })
-        let sessions = caseRecords.compactMap(\.lensSession) + (lensSession.map { [$0] } ?? [])
-        for lensSession in sessions {
-            parts.append(contentsOf: lensSession.questions.map { question in
-                [question.question, question.answer]
-                    .joined(separator: " ")
-            })
-        }
-        parts.append(contentsOf: quests.map { quest in
-            [
-                quest.title,
-                quest.whyItMatters,
-                quest.completionCriteria,
-                quest.calibrationTarget ?? ""
-            ]
-            .joined(separator: " ")
-        })
-        for verification in allVerifications {
-            parts.append(verification.calibrationNote)
-            if let likelyIssue = verification.likelyIssue {
-                parts.append(likelyIssue)
-            }
-        }
-        return parts
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-}
 
 enum HistoryEvidenceFilter: String, CaseIterable, Identifiable {
     case all

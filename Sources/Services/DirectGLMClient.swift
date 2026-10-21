@@ -1,8 +1,16 @@
 import Foundation
 
 struct GLMClientConfiguration: Hashable {
-    enum ProtocolKind: String, Hashable {
+    enum ProtocolKind: String, Hashable, CaseIterable {
         case openAICompatible
+        case responses
+
+        var displayTitle: String {
+            switch self {
+            case .openAICompatible: return "Chat Completions（GLM 等）"
+            case .responses: return "Responses（Codex 订阅接口等）"
+            }
+        }
     }
 
     // This is an idle timeout: a stream may continue beyond ten minutes while it keeps delivering content.
@@ -63,6 +71,8 @@ struct GLMClientConfiguration: Hashable {
         switch protocolKind {
         case .openAICompatible:
             return Self.endpoint(from: baseURL, pathSuffix: "chat/completions")
+        case .responses:
+            return Self.endpoint(from: Self.baseURL(from: baseURL, protocolKind: .responses), pathSuffix: "responses")
         }
     }
 
@@ -72,6 +82,9 @@ struct GLMClientConfiguration: Hashable {
 
     private static func baseURL(from url: URL, protocolKind: ProtocolKind) -> URL {
         switch protocolKind {
+        case .responses:
+            let absolute = url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return URL(string: absolute.hasSuffix("/responses") ? String(absolute.dropLast("/responses".count)) : absolute) ?? url
         case .openAICompatible:
             let suffixes = [
                 "/chat/completions",
@@ -122,7 +135,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             // Bypass both the recoverable-status loop and the response_format fallback.
             return try await MentorRequestExecutor().execute({ [self] in
                 try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
-            }, policy: policy, startedAt: request.mentorStartedAt).data
+            }, policy: policy, startedAt: request.mentorStartedAt, progress: request.mentorStreamProgress).data
         }
         var lastError: Error?
         for attempt in 0...configuration.maxRetryAttempts {
@@ -147,12 +160,16 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         do {
             return try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
         } catch LLMClientError.httpStatus(let status, let data)
-            where configuration.usesJSONResponseFormat && Self.shouldRetryWithoutJSONResponseFormat(status: status, data: data) {
+            where configuration.protocolKind == .openAICompatible && configuration.usesJSONResponseFormat && Self.shouldRetryWithoutJSONResponseFormat(status: status, data: data) {
             return try await send(request, usesJSONResponseFormat: false)
         }
     }
 
     private func send(_ request: LLMRequest, usesJSONResponseFormat: Bool) async throws -> Data {
+        if request.mentorStreamProgress != nil { return try await sendMentorStream(request) }
+        if configuration.protocolKind == .responses {
+            return try await sendResponses(request)
+        }
         var urlRequest = try makeURLRequest(
             request,
             usesJSONResponseFormat: usesJSONResponseFormat,
@@ -185,12 +202,13 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         }
     }
 
-    func stream(_ request: LLMRequest) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+    func stream(_ request: LLMRequest, isolation: isolated (any Actor)?) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         guard request.mentorExecutionPolicy == nil else {
             return AsyncThrowingStream { $0.finish(throwing: MentorRequestExecutionError.unsupportedStreaming) }
         }
         return AsyncThrowingStream { continuation in
             let task = Task {
+                _ = isolation
                 do {
                     try await streamAttemptingRetries(request, continuation: continuation)
                 } catch let error as LLMClientError {
@@ -236,11 +254,22 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 continuation.yield(.connected)
 
                 let lineIterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+                var responses = ResponsesStreamAccumulator()
                 while let line = try await nextLineWithIdleTimeout(from: lineIterator) {
                     try Task.checkCancellation()
                     if Self.isNonTerminalSSEDataLine(line) {
                         hasReceivedStreamEvent = true
                         continuation.yield(.receivedEvent)
+                    }
+                    if configuration.protocolKind == .responses {
+                        let token = try responses.consume(line: line)
+                        if let token { continuation.yield(.token(token)) }
+                        if responses.isCompleted {
+                            continuation.yield(.completed)
+                            continuation.finish()
+                            return
+                        }
+                        continue
                     }
                     guard let event = Self.streamEvent(fromSSELine: line) else { continue }
                     if case .completed = event {
@@ -249,6 +278,9 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                         return
                     }
                     continuation.yield(event)
+                }
+                if configuration.protocolKind == .responses {
+                    throw LLMClientError.incompleteResponse
                 }
                 continuation.yield(.completed)
                 continuation.finish()
@@ -286,24 +318,137 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         urlRequest.timeoutInterval = configuration.requestTimeout
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("Bearer \(trimmedAPIKey)", forHTTPHeaderField: "Authorization")
-        if stream {
+        urlRequest.setValue("MingSi/1.0", forHTTPHeaderField: "User-Agent")
+        if stream || configuration.protocolKind == .responses {
             urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         }
 
         do {
+            if configuration.protocolKind == .responses {
+                urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                    "model": configuration.model,
+                    "instructions": request.prompt.systemText,
+                    "input": [["role": "user", "content": GLMChatCompletionRequest.userContent(for: request)]],
+                    "store": false,
+                    "stream": true
+                ])
+                return urlRequest
+            }
             urlRequest.httpBody = try encoder.encode(
                 GLMChatCompletionRequest(
                     request,
                     model: configuration.model,
                     temperature: configuration.temperature,
                     stream: stream,
-                    usesJSONResponseFormat: usesJSONResponseFormat
+                    usesJSONResponseFormat: usesJSONResponseFormat,
+                    reasoningEffort: mentorReasoningEffort(for: request)
                 )
             )
         } catch {
             throw LLMClientError.encodingFailed(error)
         }
         return urlRequest
+    }
+
+    /// One audited request. Never restart a partially received answer or persist a
+    /// preview as a completed response. Final content still goes through the parser.
+    private func sendMentorStream(_ request: LLMRequest) async throws -> Data {
+        let urlRequest = try makeURLRequest(request, usesJSONResponseFormat: false, stream: true)
+        do {
+            let (bytes, response) = try await session.bytes(for: urlRequest)
+            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
+                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
+            }
+            var responses = ResponsesStreamAccumulator()
+            var chatText = ""
+            var chatStopped = false
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if configuration.protocolKind == .responses {
+                    if let token = try responses.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                    if responses.isCompleted { return try responses.normalizedResponse() }
+                    continue
+                }
+                guard line.hasPrefix("data:") else { continue }
+                let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !payload.isEmpty else { continue }
+                if payload == "[DONE]" {
+                    guard chatStopped, !chatText.isEmpty else { throw LLMClientError.incompleteResponse }
+                    return try JSONSerialization.data(withJSONObject: ["choices": [[
+                        "message": ["role": "assistant", "content": chatText], "finish_reason": "stop"]]])
+                }
+                guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+                      object["error"] == nil, let choices = object["choices"] as? [[String: Any]] else {
+                    throw LLMClientError.invalidResponse
+                }
+                guard choices.count <= 1 else { throw LLMClientError.invalidResponse }
+                guard let choice = choices.first else { continue } // usage-only event
+                guard !chatStopped else { throw LLMClientError.incompleteResponse }
+                if let delta = choice["delta"] as? [String: Any] {
+                    if delta["tool_calls"] != nil || delta["function_call"] != nil || delta["refusal"] is String {
+                        throw LLMClientError.providerResponseFailed
+                    }
+                    if let content = delta["content"] as? String {
+                        try request.mentorStreamProgress?.receive(content)
+                        chatText += content
+                    }
+                }
+                if let finish = choice["finish_reason"] as? String {
+                    guard finish == "stop" else { throw LLMClientError.incompleteResponse }
+                    chatStopped = true
+                }
+            }
+            throw LLMClientError.incompleteResponse
+        } catch let error as LLMClientError { throw error }
+        catch is CancellationError { throw CancellationError() }
+        catch { throw LLMClientError.transport(error) }
+    }
+
+    /// Responses providers may require SSE even for a logically complete request.
+    /// Keep this within the existing mentor executor's single request/deadline.
+    private func sendResponses(_ request: LLMRequest) async throws -> Data {
+        var urlRequest = try makeURLRequest(request, usesJSONResponseFormat: false, stream: true)
+        if let policy = request.mentorExecutionPolicy {
+            let components = policy.deadline.components
+            urlRequest.timeoutInterval = min(configuration.requestTimeout,
+                Double(components.seconds) + Double(components.attoseconds) / 1e18)
+        }
+        do {
+            let (bytes, response) = try await session.bytes(for: urlRequest)
+            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
+                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
+            }
+            let iterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+            var accumulator = ResponsesStreamAccumulator()
+            while let line = try await nextLineWithIdleTimeout(from: iterator) {
+                try Task.checkCancellation()
+                _ = try accumulator.consume(line: line)
+                if accumulator.isCompleted { return try accumulator.normalizedResponse() }
+            }
+            throw LLMClientError.incompleteResponse
+        } catch let error as LLMClientError {
+            throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw LLMClientError.transport(error)
+        }
+    }
+
+    private func mentorReasoningEffort(for request: LLMRequest) -> String? {
+        // GLM-5.3 always reasons and defaults to "max". Its documented "low"
+        // setting fits the mentor's 30-second foreground budget without sending
+        // the unsupported thinking.type=disabled. Limit this provider extension
+        // to the official endpoints and models whose contract is verified.
+        // https://docs.z.ai/guides/llm/glm-5.3
+        guard request.mentorExecutionPolicy != nil,
+              ["api.z.ai", "open.bigmodel.cn"].contains(configuration.baseURL.host?.lowercased() ?? ""),
+              ["glm-5.3", "glm-5.3-flash"].contains(configuration.model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else {
+            return nil
+        }
+        return "low"
     }
 
     private static func shouldRetryWithoutJSONResponseFormat(status: Int, data: Data) -> Bool {
@@ -344,7 +489,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
 
     private func nextLineWithIdleTimeout<I>(
         from iterator: AsyncIteratorBox<I>
-    ) async throws -> String? where I: AsyncIteratorProtocol, I.Element == String {
+    ) async throws -> String? where I: AsyncIteratorProtocol & SendableMetatype, I.Element == String {
         let idleTimeout = configuration.requestTimeout
         guard idleTimeout > 0 else {
             return try await iterator.next()
@@ -407,19 +552,100 @@ private final class AsyncIteratorBox<I: AsyncIteratorProtocol>: @unchecked Senda
     }
 }
 
+/// Only assistant output_text is product content. Reasoning, tool calls and
+/// partial output must never masquerade as a successfully completed response.
+struct ResponsesStreamAccumulator {
+    private(set) var isCompleted = false
+    private(set) var text = ""
+    private var responseID: String?
+    private var model: String?
+    private var usage: [String: Int] = [:]
+
+    mutating func consume(line: String) throws -> String? {
+        guard line.hasPrefix("data:") else { return nil }
+        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else { return nil }
+        guard payload != "[DONE]" else {
+            if !isCompleted { throw LLMClientError.incompleteResponse }
+            return nil
+        }
+        guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+              let type = object["type"] as? String else { throw LLMClientError.invalidResponse }
+        switch type {
+        case "response.failed", "response.incomplete", "error":
+            throw LLMClientError.providerResponseFailed
+        case "response.refusal.delta", "response.refusal.done":
+            throw LLMClientError.providerResponseFailed
+        case "response.output_text.delta":
+            guard let delta = object["delta"] as? String else { throw LLMClientError.invalidResponse }
+            text += delta
+            return delta.isEmpty ? nil : delta
+        case "response.completed":
+            guard let response = object["response"] as? [String: Any],
+                  response["status"] as? String == "completed",
+                  response["error"] == nil || response["error"] is NSNull,
+                  let output = response["output"] as? [[String: Any]] else {
+                throw LLMClientError.incompleteResponse
+            }
+            var finalText = ""
+            for item in output {
+                // Unknown output and tool requests cannot be silently dropped.
+                guard let kind = item["type"] as? String else { throw LLMClientError.invalidResponse }
+                if kind == "reasoning" { continue }
+                guard kind == "message", item["role"] as? String == "assistant",
+                      item["status"] as? String == "completed",
+                      let content = item["content"] as? [[String: Any]] else { throw LLMClientError.invalidResponse }
+                for part in content {
+                    guard part["type"] as? String == "output_text",
+                          let value = part["text"] as? String else { throw LLMClientError.providerResponseFailed }
+                    finalText += value
+                }
+            }
+            guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  text.isEmpty || text == finalText else { throw LLMClientError.incompleteResponse }
+            let remaining = text.isEmpty ? finalText : nil
+            text = finalText
+            responseID = response["id"] as? String
+            model = response["model"] as? String
+            if let values = response["usage"] as? [String: Any] {
+                for (source, target) in [("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"), ("total_tokens", "total_tokens")] {
+                    if let value = values[source] as? Int { usage[target] = value }
+                }
+            }
+            isCompleted = true
+            return remaining
+        default:
+            return nil
+        }
+    }
+
+    func normalizedResponse() throws -> Data {
+        guard isCompleted else { throw LLMClientError.incompleteResponse }
+        var result: [String: Any] = [
+            "choices": [["index": 0, "message": ["role": "assistant", "content": text], "finish_reason": "stop"]],
+            "usage": usage
+        ]
+        if let responseID { result["id"] = responseID }
+        if let model { result["model"] = model }
+        return try JSONSerialization.data(withJSONObject: result)
+    }
+}
+
 private struct GLMChatCompletionRequest: Encodable {
     let model: String
     let messages: [GLMChatMessage]
     let temperature: Double
     let stream: Bool
     let responseFormat: GLMResponseFormat?
+    let reasoningEffort: String?
 
     init(
         _ request: LLMRequest,
         model: String,
         temperature: Double,
         stream: Bool,
-        usesJSONResponseFormat: Bool
+        usesJSONResponseFormat: Bool,
+        reasoningEffort: String?
     ) {
         self.model = model
         self.messages = [
@@ -429,9 +655,10 @@ private struct GLMChatCompletionRequest: Encodable {
         self.temperature = temperature
         self.stream = stream
         self.responseFormat = usesJSONResponseFormat && !stream ? GLMResponseFormat(type: "json_object") : nil
+        self.reasoningEffort = reasoningEffort
     }
 
-    private static func userContent(for request: LLMRequest) -> String {
+    static func userContent(for request: LLMRequest) -> String {
         let payloadText = request.contextPayload?.renderedJSON() ?? "{}"
 
         return """
@@ -518,14 +745,27 @@ extension LLMClientError {
             return "API 地址无效。"
         case .invalidResponse:
             return "服务返回了无法识别的响应。"
+        case .incompleteResponse:
+            return "模型回复中断，尚未完整生成。原话会保留，请重新请求。"
+        case .providerResponseFailed:
+            return "模型未能完成这次回复。原话会保留，请稍后重试或检查模型权限与额度。"
         case .httpStatus(let status, let data):
-            let body = String(decoding: data, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let clipped = body.count > 220 ? "\(body.prefix(220))..." : body
-            if clipped.isEmpty {
-                return "HTTP \(status)。请检查 Base URL、模型名、Key 权限或额度。"
+            if status == 429,
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let details = object["error"] as? [String: Any],
+               let code = details["code"].map({ String(describing: $0) }), code == "1113" {
+                return "模型服务余额不足或没有对应资源包。请检查账户余额、套餐与接口是否匹配，处理后再试。"
             }
-            return "HTTP \(status)：\(clipped)"
+            switch status {
+            case 401, 403:
+                return "模型服务未授权（HTTP \(status)）。请检查 API Key、接口地址和模型权限。"
+            case 429:
+                return "模型服务暂时限制了请求（HTTP 429）。请检查账户限额或稍后再试。"
+            case 500...599:
+                return "模型服务暂时不可用（HTTP \(status)），请稍后再试。"
+            default:
+                return "模型服务拒绝了请求（HTTP \(status)）。请检查接口地址、模型名称和账户权限。"
+            }
         case .encodingFailed:
             return "请求编码失败。"
         case .transport(let error):

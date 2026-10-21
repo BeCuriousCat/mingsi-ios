@@ -1,0 +1,15 @@
+{
+  "id": "L01",
+  "version": "0.0.0",
+  "editorial_order": 1,
+  "title": "SCHEMA FIXTURE ONLY: not an editorial lesson",
+  "theme": "observation",
+  "applicable_contexts": ["Automated JSON Schema validation only."],
+  "claim": "Synthetic text used to check a required string field.",
+  "example": "This is a structural fixture, not a reviewed teaching example.",
+  "boundary": "Do not include this fixture in an application or release content pack.",
+  "source_type": "teaching_example",
+  "citations": [],
+  "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "review": { "status": "draft", "note": "No editorial review has taken place. The hash is intentionally not calculated." }
+}

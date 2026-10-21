@@ -2,6 +2,23 @@ import XCTest
 @testable import MingSi
 
 final class TodayAIResponseParserTests: XCTestCase {
+    func testQuestionTurnPreservesExplanationAndReadsLegacyEmptyReply() throws {
+        let data = Data(#"{"questions":[],"explanation":{"text":"  晚交是观察，故意是推测。  ","source_card_titles":["报告晚交两天"]}}"#.utf8)
+        let turn = try TodayAIResponseParser().parseQuestionTurn(from: data)
+        XCTAssertTrue(turn.questions.isEmpty)
+        XCTAssertEqual(turn.explanation?.text, "晚交是观察，故意是推测。")
+        XCTAssertEqual(turn.explanation?.sourceCardTitles, ["报告晚交两天"])
+        XCTAssertNil(try TodayAIResponseParser().parseQuestionTurn(from: Data(#"{"questions":[]}"#.utf8)).explanation)
+    }
+
+    func testQuestionTurnRejectsMalformedOrUnsourcedExplanation() {
+        for explanation in [#"{"text":" ","source_card_titles":["报告"]}"#,
+            #"{"text":"某种解释","source_card_titles":[]}"#, #"{"text":"某种解释"}"#, #""silently discarded text""#] {
+            XCTAssertThrowsError(try TodayAIResponseParser().parseQuestionTurn(
+                from: Data(("{\"questions\":[],\"explanation\":" + explanation + "}").utf8)))
+        }
+    }
+
 
     private var parser: TodayAIResponseParser!
 
@@ -13,6 +30,33 @@ final class TodayAIResponseParserTests: XCTestCase {
     override func tearDown() {
         parser = nil
         super.tearDown()
+    }
+
+    func testParseSingleNudgeReview_requiresExactFiveFieldSchema() throws {
+        let data = Data("{\"diagnosis\":\"d\",\"cognitive_shift\":null,\"thinking_action\":\"a\",\"unresolved_uncertainty\":null,\"transition_to_verification\":false}".utf8)
+        let review = try parser.parseSingleNudgeReview(from: data)
+        XCTAssertEqual(review.diagnosis, "d")
+        XCTAssertNil(review.cognitiveShift)
+        XCTAssertFalse(review.transitionToVerification)
+    }
+
+    func testParseSingleNudgeReview_rejectsMissingOrExtraFields() {
+        let missing = Data("{\"diagnosis\":\"d\",\"transition_to_verification\":false}".utf8)
+        XCTAssertThrowsError(try parser.parseSingleNudgeReview(from: missing))
+        let extra = Data("{\"diagnosis\":\"d\",\"cognitive_shift\":null,\"thinking_action\":null,\"unresolved_uncertainty\":null,\"transition_to_verification\":false,\"extra\":1}".utf8)
+        XCTAssertThrowsError(try parser.parseSingleNudgeReview(from: extra))
+    }
+
+    func testParseSingleNudge_rejectsGenericOrMultiLineQuestion() {
+        let generic = Data("{\"question\":\"你怎么看？\"}".utf8)
+        let multiLine = Data("{\"question\":\"先确认什么？\\n再确认谁？\"}".utf8)
+        XCTAssertThrowsError(try parser.parseSingleNudge(from: generic))
+        XCTAssertThrowsError(try parser.parseSingleNudge(from: multiLine))
+    }
+
+    func testParseSingleNudge_acceptsConciseQuestionInUserLanguage() throws {
+        let data = Data("{\"question\":\"客户这次真正担心的哪一个波动范围还没有被说清？\"}".utf8)
+        XCTAssertEqual(try parser.parseSingleNudge(from: data), "客户这次真正担心的哪一个波动范围还没有被说清？")
     }
 
     // MARK: - parseCards
@@ -271,7 +315,7 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(questions[0].whyItMatters, "Forces prioritization.")
     }
 
-    func testParseQuestions_missingWhyThisMatters_usesFallback() throws {
+    func testParseQuestions_missingWhyThisMatters_doesNotInventAnActionRationale() throws {
         let json = """
         {
           "questions": [
@@ -287,7 +331,10 @@ final class TodayAIResponseParserTests: XCTestCase {
         let questions = try parser.parseQuestions(from: data)
 
         XCTAssertEqual(questions.count, 1)
-        XCTAssertEqual(questions[0].whyItMatters, "帮助把今天的判断转成可验证行动。")
+        XCTAssertEqual(questions[0].whyItMatters, "")
+        XCTAssertNil(questions[0].whyNow)
+        XCTAssertNil(questions[0].expectedUpdate)
+        XCTAssertNil(questions[0].proceedWhen)
     }
 
     func testParseQuestions_decodesEvidenceGapTypeWhenPresent() throws {
@@ -453,17 +500,13 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(question.proceedWhen, "当你能列出一个可观察事实和一个待验证解释时再推进。")
     }
 
-    func testParseQuestions_emptyQuestionArray_throwsEmptyResult() {
+    func testParseQuestions_emptyQuestionArray_isValidCompletionSignal() throws {
         let json = """
         { "questions": [] }
         """
         let data = Data(json.utf8)
 
-        XCTAssertThrowsError(try parser.parseQuestions(from: data)) { error in
-            if let parsingError = error as? TodayAIParsingError {
-                XCTAssertEqual(parsingError, .emptyResult)
-            }
-        }
+        XCTAssertEqual(try parser.parseQuestions(from: data), [])
     }
 
     // MARK: - parseQuests
@@ -512,7 +555,85 @@ final class TodayAIResponseParserTests: XCTestCase {
         XCTAssertEqual(quests[2].type, .observation)
     }
 
-    func testParseQuests_missingMainQuest_throwsEmptyResult() {
+    func testParseQuests_currentContractRejectsAdditionalActions() {
+        let json = """
+        {
+          "main_quest": {
+            "type": "main",
+            "title": "核对负责人",
+            "why_it_matters": "确认判断是否成立。",
+            "completion_criteria": "负责人明确确认或拒绝当前验收标准。"
+          },
+          "side_quests": [
+            {
+              "type": "side",
+              "title": "补写摘要",
+              "completion_criteria": "摘要已发出。"
+            }
+          ],
+          "observation_quest": null
+        }
+        """
+
+        XCTAssertThrowsError(
+            try parser.parseQuests(
+                from: Data(json.utf8),
+                enforceSingleValidationAction: true
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? TodayAIParsingError,
+                .qualityGateFailed(["明日验证当前轮只允许一个主验证行动，不得返回 side_quests 或 observation_quest。"])
+            )
+        }
+    }
+
+    func testParseQuests_currentContractRejectsNonMainRootAction() {
+        let json = """
+        {
+          "main_quest": {
+            "type": "side",
+            "title": "核对负责人",
+            "completion_criteria": "负责人明确确认或拒绝当前验收标准。"
+          },
+          "side_quests": [],
+          "observation_quest": null
+        }
+        """
+
+        XCTAssertThrowsError(
+            try parser.parseQuests(
+                from: Data(json.utf8),
+                enforceSingleValidationAction: true
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? TodayAIParsingError,
+                .qualityGateFailed(["明日验证当前轮的主行动必须使用 main 类型。"])
+            )
+        }
+    }
+
+    func testParseQuests_currentContractAcceptsExplicitNoAction() throws {
+        let data = Data(#"{"main_quest":null,"side_quests":[],"observation_quest":null}"#.utf8)
+        XCTAssertTrue(try parser.parseQuests(from: data, enforceSingleValidationAction: true).isEmpty)
+    }
+
+    func testParseQuests_currentNoActionRejectsMissingMalformedOrConflictingAction() {
+        for json in [
+            #"{}"#,
+            #"{"main_quest":null}"#,
+            #"{"main_quest":null,"side_quests":null,"observation_quest":null}"#,
+            #"{"main_quest":null,"side_quests":[]}"#,
+            #"{"main_quest":{},"side_quests":[],"observation_quest":null}"#,
+            #"{"main_quest":null,"side_quests":[{"title":"隐藏任务"}],"observation_quest":null}"#,
+            #"{"main_quest":null,"side_quests":[],"observation_quest":{"title":"隐藏观察"}}"#
+        ] {
+            XCTAssertThrowsError(try parser.parseQuests(from: Data(json.utf8), enforceSingleValidationAction: true))
+        }
+    }
+
+    func testParseQuests_legacyNullMainQuestStillThrowsEmptyResult() {
         let json = """
         {
           "main_quest": null,

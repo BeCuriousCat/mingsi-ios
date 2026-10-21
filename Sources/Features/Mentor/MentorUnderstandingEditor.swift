@@ -5,7 +5,7 @@ import SwiftUI
 struct MentorUnderstandingEditor: View {
     @ObservedObject var store: MentorFeatureStore
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var isEditing: Bool
+    @State private var isEditing = false
     @State private var isClosing = false
     @State private var closeFailed = false
     @State private var requestedConfirmation = false
@@ -24,6 +24,14 @@ struct MentorUnderstandingEditor: View {
                         .accessibilityAddTraits(.isHeader)
                     Text("可以只写一句。返回会保留草稿；确认后，才会成为“我的理解”。")
                         .foregroundStyle(DS.mutedInk)
+
+                    if store.state.understanding?.isAIDraft == true,
+                       store.state.understanding?.state == .draft {
+                        Label("AI 草稿 · 未确认", systemImage: "sparkles")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(DS.accent)
+                            .accessibilityIdentifier("mentor.understanding.ai-draft")
+                    }
 
                     if store.state.understanding?.state == .confirmed {
                         Text(store.state.understanding?.text ?? "")
@@ -52,11 +60,6 @@ struct MentorUnderstandingEditor: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .disabled(locked)
                         .accessibilityIdentifier("mentor.understanding.back")
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("收起键盘") { isEditing = false }
-                        .frame(minHeight: 44)
                 }
             }
             .tint(DS.accent)
@@ -89,21 +92,23 @@ struct MentorUnderstandingEditor: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("理解正文").font(.headline)
-            TextEditor(text: Binding(
-                get: { store.state.understandingInputText },
-                set: { store.updateUnderstandingText($0) }
-            ))
+            PushToTalkInput(
+                text: Binding(
+                    get: { store.state.understandingInputText },
+                    set: { store.updateUnderstandingText($0) }
+                ),
+                placeholder: "理解正文",
+                accessibilityIdentifier: "mentor.understanding.input",
+                focusBinding: Binding(get: { isEditing }, set: { isEditing = $0 }),
+                usesTextEditor: true
+            )
             .font(.body)
-            .frame(minHeight: 200)
+            .frame(minHeight: 200, alignment: .top)
             .padding(8)
-            .scrollContentBackground(.hidden)
             .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
             .overlay(RoundedRectangle(cornerRadius: DS.cornerRadius).stroke(DS.hairline))
-            .focused($isEditing)
             .disabled(locked)
-            .accessibilityLabel("理解正文")
             .accessibilityHint("输入会自动保存为草稿，确认后保存为我的理解。")
-            .accessibilityIdentifier("mentor.understanding.input")
 
             if store.state.understandingError != nil || closeFailed {
                 Label("暂时没有保存成功，文字仍留在这里。可以重试，或放弃未保存修改。", systemImage: "exclamationmark.circle")
@@ -203,7 +208,7 @@ struct MentorUnderstandingSection: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(note.text.isEmpty ? "还没写完的草稿" : note.text)
                         .textSelection(.enabled)
-                    Text(note.state == .confirmed ? "已确认 · 第 \(note.revision) 版" : "未确认草稿")
+                    Text(note.state == .confirmed ? "已确认 · 第 \(note.revision) 版" : (note.isAIDraft ? "AI 草稿 · 未确认" : "未确认草稿"))
                         .font(.subheadline).foregroundStyle(DS.mutedInk)
                     if let references = sourceReferencesByUnderstanding[note.id], !references.isEmpty {
                         Button {
@@ -265,6 +270,13 @@ struct MentorUnderstandingSection: View {
             let references = await store.understandingSourceReferences()
             guard !Task.isCancelled else { return }
             sourceReferencesByUnderstanding = references
+        }
+        .onChange(of: store.state.generatedUnderstandingID) { _, id in
+            guard let id else { return }
+            store.selectUnderstandingDraft(id: id)
+            guard store.state.understanding?.id == id else { return }
+            store.consumeGeneratedUnderstandingEditor()
+            showsEditor = true
         }
         .alert("删除这组理解？", isPresented: $showsDeleteConfirmation) {
             Button("保留理解", role: .cancel) { groupToDelete = nil }

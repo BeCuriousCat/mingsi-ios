@@ -20,7 +20,7 @@ protocol SpeechTranscribing: AnyObject {
     func cancel()
 }
 
-/// Push-to-talk Mandarin transcription. Audio is held only in the audio engine;
+/// Tap-to-toggle Mandarin transcription. Audio is held only in the audio engine;
 /// this service never persists the source recording.
 @MainActor
 final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTranscribing {
@@ -54,6 +54,20 @@ final class SpeechTranscriptionService: NSObject, ObservableObject, SpeechTransc
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    /// UI tests exercise the production service/controller without requiring
+    /// microphone hardware or network recognition. Never enabled in Release.
+    static func inputService() -> SpeechTranscriptionService {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--speech-ui-fixture") {
+            return SpeechTranscriptionService(
+                backend: UISpeechRecognitionBackend(), finalizationTimeout: .seconds(30),
+                authorizeSpeech: { .authorized }, authorizeMicrophone: { true }
+            )
+        }
+#endif
+        return SpeechTranscriptionService()
+    }
 
     func start() async {
         guard !Task.isCancelled else { return }
@@ -180,6 +194,31 @@ protocol SpeechRecognitionBackend: AnyObject {
     func endAudio()
     func cancel()
 }
+
+#if DEBUG
+/// Attempt 1 waits for cancellation, 2 completes, 3 is interrupted, and later
+/// attempts complete. Tests drive every transition through the same UI button.
+@MainActor
+private final class UISpeechRecognitionBackend: SpeechRecognitionBackend {
+    let isAvailable = true
+    private var attempt = 0
+    private var receive: (@MainActor (SpeechRecognitionEvent) -> Void)?
+
+    func start(_ receive: @escaping @MainActor (SpeechRecognitionEvent) -> Void) throws {
+        attempt += 1
+        self.receive = receive
+        receive(.transcript("语音测试第 \(attempt) 次。", isFinal: false))
+    }
+
+    func endAudio() {
+        guard attempt != 1 else { return }
+        if attempt == 3 { receive?(.failure) }
+        else { receive?(.transcript("语音测试第 \(attempt) 次。", isFinal: true)) }
+    }
+
+    func cancel() { receive = nil }
+}
+#endif
 
 @MainActor
 private final class AppleSpeechRecognitionBackend: SpeechRecognitionBackend {

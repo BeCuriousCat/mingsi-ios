@@ -13,6 +13,7 @@ UI_RESULT_BUNDLE_PATH="${TMPDIR:-/tmp}/mingsi-alpha-ui.xcresult"
 UI_ONLY_TESTING="MingSiUITests"
 LIVE_DERIVED_DATA_PATH="${TMPDIR:-/tmp}/mingsi-alpha-live-glm-dd"
 LIVE_OUTPUT_XCTESTRUN=""
+LIVE_MENTOR_SEMANTIC=0
 SUMMARY_JSON=""
 SKIP_XCODE_SELECT=0
 SKIP_UI=0
@@ -34,6 +35,7 @@ Options:
   --ui-only-testing VALUE         XCTest selector for UI automation. Default: MingSiUITests.
   --live-derived-data-path PATH   DerivedData path for live GLM acceptance.
   --live-output-xctestrun PATH    Output .xctestrun path for live GLM environment injection.
+  --live-mentor-semantic          Run the nine live mentor semantic scenarios in the live GLM step.
   --summary-json PATH             Write a machine-readable acceptance summary JSON.
   --skip-xcode-select             Skip checking for xcodebuild during preflight.
   --skip-ui                       Skip UI automation, but still require live GLM readiness.
@@ -42,7 +44,7 @@ Options:
 
 Accepted BYOK key env vars, in precedence order:
   MINGSI_LIVE_GLM_API_KEY, MINGSI_GLM_API_KEY, GLM_API_KEY
-If those are absent, the runner also checks the app Keychain item:
+If those are absent, the runner also checks the fixed simulator's Keychain item:
   service com.codex.mingsi.glm, account glm_api_key
 USAGE
   mingsi_fixed_simulator_usage
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
     --live-output-xctestrun)
       LIVE_OUTPUT_XCTESTRUN="${2:-}"
       shift 2
+      ;;
+    --live-mentor-semantic)
+      LIVE_MENTOR_SEMANTIC=1
+      shift
       ;;
     --summary-json)
       SUMMARY_JSON="${2:-}"
@@ -122,7 +128,7 @@ keychain_has_key() {
       return 1
       ;;
     auto|"")
-      security find-generic-password -s com.codex.mingsi.glm -a glm_api_key >/dev/null 2>&1
+      python3 "$ROOT_DIR/scripts/check_simulator_glm_key.py" "$MINGSI_FIXED_SIMULATOR_UDID"
       ;;
     *)
       printf 'Invalid MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE: %s\n' "$MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE" >&2
@@ -180,7 +186,8 @@ write_summary() {
   "ui_derived_data_path": "$(json_escape "$UI_DERIVED_DATA_PATH")",
   "ui_result_bundle_path": "$(json_escape "$UI_RESULT_BUNDLE_PATH")",
   "live_derived_data_path": "$(json_escape "$LIVE_DERIVED_DATA_PATH")",
-  "live_output_xctestrun": "$(json_escape "$LIVE_OUTPUT_XCTESTRUN")"
+  "live_output_xctestrun": "$(json_escape "$LIVE_OUTPUT_XCTESTRUN")",
+  "live_mentor_semantic": $([[ "$LIVE_MENTOR_SEMANTIC" == "1" ]] && printf true || printf false)
 }
 JSON
 }
@@ -213,7 +220,11 @@ print_plan() {
     printf '2. scripts/run_ui_automation.sh --destination %q --derived-data-path %q --result-bundle-path %q --only-testing %q\n' \
       "$DESTINATION" "$UI_DERIVED_DATA_PATH" "$UI_RESULT_BUNDLE_PATH" "$UI_ONLY_TESTING"
   fi
-  printf '3. scripts/run_live_glm_acceptance.sh --destination %q --derived-data-path %q --output-xctestrun %q\n' \
+  printf '3. scripts/run_live_glm_acceptance.sh'
+  if [[ "$LIVE_MENTOR_SEMANTIC" == "1" ]]; then
+    printf ' --mentor-semantic'
+  fi
+  printf ' --destination %q --derived-data-path %q --output-xctestrun %q\n' \
     "$DESTINATION" "$LIVE_DERIVED_DATA_PATH" "$LIVE_OUTPUT_XCTESTRUN"
   printf '\n'
   print_key_readiness
@@ -281,10 +292,26 @@ else
   printf 'ui_automation: accepted\n'
 fi
 
-"$LIVE_GLM_RUNNER" \
+if "$LIVE_GLM_RUNNER" \
+  $([[ "$LIVE_MENTOR_SEMANTIC" == "1" ]] && printf '%s ' '--mentor-semantic') \
   --destination "$DESTINATION" \
   --derived-data-path "$LIVE_DERIVED_DATA_PATH" \
-  --output-xctestrun "$LIVE_OUTPUT_XCTESTRUN"
-printf 'live_glm: accepted\n'
-printf 'alpha_acceptance: accepted\n'
-write_summary "accepted" 0 "ready" "$ui_status" "accepted"
+  --output-xctestrun "$LIVE_OUTPUT_XCTESTRUN"; then
+  live_exit_code=0
+else
+  live_exit_code=$?
+  printf 'live_glm: not_accepted\n'
+  printf 'alpha_acceptance: failed_live_glm\n'
+  write_summary "failed_live_glm" "$live_exit_code" "ready" "$ui_status" "not_accepted"
+  exit "$live_exit_code"
+fi
+if [[ "$LIVE_MENTOR_SEMANTIC" == "1" ]]; then
+  printf 'live_glm: verified_execution\n'
+  printf 'semantic_review: required; automated checks do not decide helpfulness\n'
+  printf 'alpha_acceptance: semantic_review_required\n'
+  write_summary "semantic_review_required" 0 "ready" "$ui_status" "verified_execution"
+else
+  printf 'live_glm: accepted\n'
+  printf 'alpha_acceptance: accepted\n'
+  write_summary "accepted" 0 "ready" "$ui_status" "accepted"
+fi

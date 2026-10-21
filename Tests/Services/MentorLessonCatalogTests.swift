@@ -2,6 +2,21 @@ import XCTest
 @testable import MingSi
 
 final class MentorLessonCatalogTests: XCTestCase {
+    func testProductionBundleContainsUserAuthorizedAIReviewedLessons() throws {
+        let catalog = try MentorLessonCatalog.loadBundled()
+        XCTAssertEqual(catalog.pack.version, "1.1")
+        XCTAssertEqual(catalog.pack.lessons.count, 24)
+        XCTAssertEqual(Set(catalog.pack.lessons.map(\.theme)).count, 6)
+        for lesson in catalog.pack.lessons {
+            XCTAssertEqual(lesson.review.status, .approved)
+            XCTAssertEqual(lesson.review.reviewedBy, "Codex (AI editor; user-authorized personal exploration)")
+            XCTAssertNotNil(lesson.review.reviewedAt)
+            XCTAssertEqual(lesson.contentHash, MentorLessonCatalog.contentHash(for: lesson))
+            XCTAssertEqual(lesson.version, ["L08", "L14", "L16"].contains(lesson.id) ? "1.1" : "1.0")
+            XCTAssertEqual(lesson.sourceType, .teachingExample)
+        }
+    }
+
     #if DEBUG
     func testAppBundleContainsCompleteEditorialDraftButReleaseLoaderRejectsIt() throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "mentor-lessons-m1.draft", withExtension: "json"))

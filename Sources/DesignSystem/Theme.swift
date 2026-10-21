@@ -17,6 +17,7 @@ enum DS {
     static let hairline = dynamicColor(light: (0.000, 0.000, 0.000, 0.070), dark: (1.000, 0.960, 0.860, 0.120))
 
     static let accent = dynamicColor(light: (0.180, 0.340, 0.290), dark: (0.540, 0.720, 0.630))
+    static let onAccent = dynamicColor(light: (0.992, 0.988, 0.972), dark: (0.080, 0.080, 0.075))
     static let accentInk = dynamicColor(light: (0.090, 0.220, 0.190), dark: (0.700, 0.860, 0.780))
     static let caution = dynamicColor(light: (0.720, 0.360, 0.180), dark: (0.940, 0.620, 0.360))
     static let success = dynamicColor(light: (0.240, 0.450, 0.310), dark: (0.520, 0.760, 0.570))
@@ -51,12 +52,21 @@ enum DS {
 
     // MARK: - Tab Bar
 
+    @MainActor
     static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
-        // Let the current iOS tab-bar material own its background. Supplying an
-        // opaque UIKit appearance as well as a SwiftUI toolbar background makes
-        // iOS 26 render two stacked surfaces above the page content.
-        appearance.configureWithDefaultBackground()
+        // Keep page content from showing through the floating tab bar on iOS 26.
+        // The tab bar remains visually light, but its surface must be opaque.
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = dynamicUIColor(
+            light: (0.958, 0.948, 0.922, 1.000),
+            dark: (0.080, 0.076, 0.066, 1.000)
+        )
+        appearance.backgroundEffect = nil
+        appearance.shadowColor = dynamicUIColor(
+            light: (0.000, 0.000, 0.000, 0.090),
+            dark: (1.000, 0.960, 0.860, 0.120)
+        )
 
         let normalAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: 10, weight: .medium),
@@ -105,6 +115,81 @@ enum DS {
                 blue: CGFloat(value.2),
                 alpha: CGFloat(value.3)
             )
+        }
+    }
+}
+
+/// Applies the tab-bar surface after SwiftUI has installed its UITabBarController.
+/// iOS 26 can replace the appearance object during view mounting, so the global
+/// appearance proxy alone is not sufficient to prevent content bleed-through.
+struct TabBarSurfaceBridge: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        private weak var configuredTabBar: UITabBar?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .clear
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applySurface()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            applySurface()
+        }
+
+        private func applySurface() {
+            guard let root = view.window?.rootViewController,
+                  let tabBar = findTabBar(in: root.view) else { return }
+            guard configuredTabBar !== tabBar else { return }
+            configuredTabBar = tabBar
+
+            // Keep the floating iOS 26 geometry while supplying an opaque
+            // surface; forcing `isTranslucent = false` adds an oversized safe
+            // area above the bar.
+            tabBar.isTranslucent = true
+            tabBar.backgroundColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.080, green: 0.076, blue: 0.066, alpha: 1)
+                    : UIColor(red: 0.958, green: 0.948, blue: 0.922, alpha: 1)
+            }
+            tabBar.barTintColor = tabBar.backgroundColor
+            tabBar.standardAppearance = opaqueTabBarAppearance()
+            tabBar.scrollEdgeAppearance = opaqueTabBarAppearance()
+        }
+
+        private func findTabBar(in view: UIView) -> UITabBar? {
+            if let tabBar = view as? UITabBar { return tabBar }
+            for child in view.subviews {
+                if let tabBar = findTabBar(in: child) { return tabBar }
+            }
+            return nil
+        }
+
+        private func opaqueTabBarAppearance() -> UITabBarAppearance {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = tabBarColor()
+            appearance.backgroundEffect = nil
+            appearance.shadowColor = UIColor.black.withAlphaComponent(0.09)
+            return appearance
+        }
+
+        private func tabBarColor() -> UIColor {
+            UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.080, green: 0.076, blue: 0.066, alpha: 1)
+                    : UIColor(red: 0.958, green: 0.948, blue: 0.922, alpha: 1)
+            }
         }
     }
 }

@@ -2,6 +2,57 @@ import XCTest
 @testable import MingSi
 
 final class MentorRequestExecutorTests: XCTestCase {
+    func testStreamingContentExtendsIdleBudgetBeyondOriginalTotalDeadline() async throws {
+        let progress = MentorStreamProgress()
+        let policy = MentorRequestPolicy(deadline: .milliseconds(150), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+        let result = try await MentorRequestExecutor().execute({
+            for _ in 0..<6 {
+                try await Task.sleep(for: .milliseconds(45))
+                try progress.receive(" ")
+            }
+            return Data("done".utf8)
+        }, policy: policy, progress: progress)
+        XCTAssertGreaterThan(result.elapsed, policy.deadline)
+        XCTAssertEqual(result.data, Data("done".utf8))
+    }
+
+    func testStalledStreamStillExpiresAndRejectsLateCompletion() async {
+        let policy = MentorRequestPolicy(deadline: .milliseconds(80), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+        let progress = MentorStreamProgress()
+        do {
+            _ = try await MentorRequestExecutor().execute({
+                try progress.receive("{\"body\":\"部分内容")
+                try await Task.sleep(for: .seconds(2))
+                return Data()
+            }, policy: policy, progress: progress)
+            XCTFail("An idle stream must stop")
+        } catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
+    }
+
+    func testPreviewDecodesOnlyTopLevelBodyAndWaitsForSplitEscapes() throws {
+        let json = #"{"nested":{"body":"私密嵌套"},"body":"正文\n引号\"与\uD83D\uDE00","source_refs":["private-id"]}"#
+        XCTAssertEqual(MentorStreamProgress.preview(in: json, field: "body"), "正文\n引号\"与😀")
+        XCTAssertEqual(MentorStreamProgress.preview(in: #"{"body":"甲\uD83D"#, field: "body"), "甲")
+        XCTAssertEqual(MentorStreamProgress.preview(in: #"{"body":"甲\"#, field: "body"), "甲")
+        XCTAssertEqual(MentorStreamProgress.preview(in: #"{"reasoning":"internal","text":"理解草稿"}"#, field: "text"), "理解草稿")
+        let progress = MentorStreamProgress()
+        XCTAssertThrowsError(try progress.receive(String(repeating: "x", count: 128_001)))
+    }
+
+    @MainActor
+    func testOperationKeepsCallerIsolationAcrossSuspension() async throws {
+        let draft = NSMutableString(string: "before")
+        let result = try await MentorRequestExecutor().execute({
+            MainActor.preconditionIsolated()
+            await Task.yield()
+            MainActor.preconditionIsolated()
+            draft.append(" after")
+            return Data((draft as String).utf8)
+        })
+        XCTAssertEqual(result.data, Data("before after".utf8))
+        XCTAssertEqual(draft as String, "before after")
+    }
+
     func testSuccessfulRequestDoesNotRetryAndEmitsWaitingState() async throws {
         let executor = MentorRequestExecutor(), states = Locked<[MentorRequestExecutionState]>([])
         let calls = Locked(0)
@@ -94,9 +145,41 @@ final class MentorRequestExecutorTests: XCTestCase {
         XCTAssertEqual(states.value, [.started, .timedOut])
     }
 
+    func testResponsesBudgetAcceptsCompletionAfterHistoricalThirtySecondLimit() async throws {
+        let calls = Locked(0)
+        let result = try await MentorRequestExecutor().execute({
+            calls.withLock { $0 += 1 }
+            return Data("bounded response".utf8)
+        }, policy: .responses, startedAt: ContinuousClock().now.advanced(by: .seconds(-35)))
+        XCTAssertEqual(result.data, Data("bounded response".utf8))
+        XCTAssertGreaterThanOrEqual(result.elapsed, .seconds(35))
+        XCTAssertEqual(calls.value, 1)
+    }
+
+    func testResponsesBudgetStillExpiresBeforeStartingExpiredTransport() async {
+        let calls = Locked(0)
+        do {
+            _ = try await MentorRequestExecutor().execute({ calls.withLock { $0 += 1 }; return Data() },
+                policy: .responses, startedAt: ContinuousClock().now.advanced(by: .seconds(-121)))
+            XCTFail("Responses requests must retain a finite total budget")
+        } catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
+        XCTAssertEqual(calls.value, 0)
+    }
+
+    func testProtocolSelectionKeepsOneAttemptAndEarlyWaitingNotice() {
+        XCTAssertEqual(MentorRequestPolicy.forProtocol(.openAICompatible), .m1)
+        let policy = MentorRequestPolicy.forProtocol(.responses)
+        XCTAssertEqual(policy.deadline, .seconds(120))
+        XCTAssertEqual(policy.timeoutInterval, 120)
+        XCTAssertEqual(policy.waitingNoticeAfter, .seconds(10))
+        XCTAssertEqual(policy.maxHTTPAttempts, 1)
+        XCTAssertFalse(policy.allowsFormatFallback)
+    }
+
     func testInvalidPolicyCannotDisableDeadlineOrEnableRetries() async {
         let calls = Locked(0)
         for policy in [
+            MentorRequestPolicy(deadline: .seconds(121), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false),
             MentorRequestPolicy(deadline: .zero, waitingNoticeAfter: .zero, maxHTTPAttempts: 1, allowsFormatFallback: false),
             MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 2, allowsFormatFallback: false),
             MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: true)

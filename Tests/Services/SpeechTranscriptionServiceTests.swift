@@ -116,6 +116,22 @@ extension SpeechTranscriptionServiceTests {
         backend.handlers[0](.failure)
         XCTAssertEqual(service.state, .interrupted(text: "收尾的部分结果"))
     }
+
+    func testFinalResultCanStartANewRecordingAttempt() async {
+        let backend = TestSpeechBackend()
+        let service = SpeechTranscriptionService(backend: backend, authorizeSpeech: { .authorized }, authorizeMicrophone: { true })
+
+        await service.start()
+        backend.handlers[0](.transcript("第一条", isFinal: true))
+        XCTAssertEqual(service.state, .final(text: "第一条"))
+
+        await service.start()
+        XCTAssertEqual(service.state, .recording(text: ""))
+        XCTAssertEqual(backend.handlers.count, 2)
+        backend.handlers[1](.transcript("第二条", isFinal: false))
+        XCTAssertEqual(service.state, .recording(text: "第二条"))
+        service.cancel()
+    }
 }
 
 @MainActor

@@ -1,8 +1,8 @@
 # 明思 App Icon 决策与 QA
 
-状态：重新设计中；当前生产资产已回退到旧图标  
-决策日期：2026-07-17  
-被否决方向：`Counterproof / 反证面`
+状态：重新设计中；v4 因使用文字而失效，生产资产已撤回非文字占位图标
+最新纠正：2026-09-05
+历史被否决方向：`Counterproof / 反证面`
 
 ## 1. 否决记录
 
@@ -43,7 +43,7 @@ Tinted 外观使用灰度单色外形，并以透明负空间保留“判断面�
 
 ## 4. 当前生产资产
 
-`Sources/Assets.xcassets/AppIcon.appiconset/AppIcon.png` 已恢复为旧指南针占位图标。新候选只放在 `work/`，在用户确认标志方向前不得再次接入生产 Asset Catalog。
+`Sources/Assets.xcassets/AppIcon.appiconset/` 已撤回到不含文字的旧占位资产。该占位图标不代表新品牌方向；在新的无文字候选通过独立盲审前，不再把生成候选接入生产 Asset Catalog。
 
 ## 5. 被否决稿验证矩阵
 
@@ -522,3 +522,73 @@ A 路线内部比较过分离、共用中轴和开口三种结构：分离结构
 流式事件明确暴露了根因：本地请求提交的是模型别名 `gpt-image` 和 `image_generation` 工具，但上游创建的实际响应模型为 `gpt-5.4-mini-2026-03-17`，响应中的 `tools` 为空数组，`tool_usage.image_gen` 的输入、输出和总 token 均为 0。上游没有执行图片工具，而是把任务交给 Codex 文本代理；该代理最终输出了一段 SVG 代码文本。因此同步模式收到的“completed 但无图片”不是超时，也不是本地 Base64/URL 解析失败，而是 Gateway 当前路由没有把请求送入图片生成工具。
 
 同步和 stream 是同一 `/responses` 端点的两种独立请求方式：前者一次返回完整 JSON，后者从请求开始时返回 SSE。已经结束的同步响应不能事后转换成 stream；同时请求两种模式会创建两个独立上游任务，不能作为同一图片任务的双通道读取。该诊断请求按 7/10 计数，当前剩余最多三次；在 Gateway 的模型与工具路由修复前，不再提交图片请求。
+
+## 13. 第七轮文生图候选 v1 独立盲审
+
+本轮仅记录已存在的文生图候选，不发起新的生成请求，也不修改生产 App Icon。候选资料：
+
+- 候选图：`outputs/mingsi-icon-text-to-image-v1.png`
+- 生成提示词：`work/mingsi-icon-text-to-image-prompt-v1.txt`
+- 实际尺寸检查板：`outputs/mingsi-icon-text-to-image-v1-size-board.png`
+
+独立盲审结论：`FAIL`。在没有提示词和产品说明的前提下，主体容易被读成石头或种子；画面没有形成可确认的翻面或拨开事件，中心关系更依赖材质和明暗渲染；黑色占比偏高，整体识别依赖特定材质表现；`dark` 与 `tinted` 外观尚未验证。因此候选不得描摹、矢量化或接入生产 Asset Catalog，生产图标继续使用旧指南针占位资产。
+
+下一轮策略：保留柔和、轻盈、低黑量的消费软件气质，但改用更明确的物理事件和可理解结构，让事件关系在 20px 仍成立。排除石头、种子、豆荚、护符、雕塑等物件类别误读，不再依赖材质或光照解释概念。下一次请求尚未授权，仅准备提示词。
+
+## 14. 第八轮准备：现有 raster 全量独立审查与 v3 收敛
+
+对现有 raster 候选进行独立盲审后的结论是：没有任何候选达到 `PASS`。最接近但仍为 `FAIL` 的是 `clarify-line`、`untangle-v1` 和 `slogan-only-v9`；它们分别保留了部分“澄清”或“从纠缠到清楚”的可读性，但都没有同时满足独特性、单一可验证事件、小尺寸稳定性和明思的判断主权。第七轮 `outputs/mingsi-icon-text-to-image-v1.png` 同样为 `FAIL`：主体仍容易被读作黑色种子、豆荚或石头，未形成可确认的翻面动作。
+
+已准备但不执行的 v2 提示词只部分纠正了这些问题。它将主体改为匿名双层表面和中央窄缝，但仍容易被读成花苞、嘴唇、窗帘、门户或抽象雕塑；而且中心窄缝在 20px 容易消失，因此不提交该提示词。
+
+新的待验证假设收敛为 `work/mingsi-icon-text-to-image-prompt-v3.txt`：一条连续、宽而柔和的带状物只进行一次受控半翻转，明确露出同一物体的另一面，并以开放、无箭头的短端结束。与匿名表面相比，它把“同一想法看到另一面”的含义绑定到一个可检查的单一物理事件：连续外轮廓、一次翻面、可见正反面关系和开放端，都可在不依赖文案、材质或戏剧性光照的情况下独立验证。该方案仍只是尚未生成的假设，不表示已通过审查。
+
+本轮未修改任何生产 AppIcon 或其他生产资产。下一次付费请求必须先得到用户新的明确授权；生成后仍须由独立 subagent 进行盲审，并检查小尺寸、灰度、平台遮罩，以及 Default、Dark、Tinted 是否保持同一识别锚点。
+
+## 15. v3 失败归档与 v4 历史集成记录
+
+第八轮 v3 仍为 `FAIL`：连续带状物的假设没有获得已验证、可生产的 raster，也没有推翻上一节列出的独立盲审失败结论；它保留为探索记录，不能接入生产资源。
+
+v4 曾使用三张 raster 外观完成技术集成，并在当时的盲审范围内得到 `PASS`（记录：`docs/subtasks/icon-v4-blind-review.md`）。但该审查遗漏了用户更高优先级的硬约束：图标不得使用文字。其识别锚点正是“思”字，因此该 `PASS` 自 2026-09-05 起失效；下述内容只保留为一次已撤回的技术集成记录，不再代表当前生产决策。
+
+### 平台与来源快照
+
+- 访问日期：2026-09-04。Apple HIG App icons、`Creating your app icon using Icon Composer`、`Configuring your app icon using an asset catalog` 三个 URL 均返回 HTTP 200，`Last-Modified: 2026-09-03`。
+- 已安装工具：Xcode 26.5。目标仅 iOS，最低部署版本 iOS 17.0；选定 `Assets.xcassets` 的 AppIcon Asset Catalog 路径，而非 Icon Composer。现有 `Contents.json` 的 `luminosity` dark/tinted 外观文件名有效，未修改。
+- v4 不使用 SVG；生产集成只由批准的 raster 导出。历史 SVG 文件未删除或修改。
+- 批准源（1254x1254 RGBA，输入 alpha 均为全不透明）：
+
+| 角色 | 批准源 | SHA-256 | 生产输出 |
+| --- | --- | --- | --- |
+| Default | `outputs/mingsi-icon-text-to-image-v4-default.png` | `7ae582db20d5fb17b18a73d9d3437c9e3532a3393c2dbbb46b645be4291522e6` | `Sources/Assets.xcassets/AppIcon.appiconset/AppIcon.png` |
+| Dark | `outputs/mingsi-icon-text-to-image-v4-dark.png` | `436ece7ae48e7ca804ff14ce6f9fea746bb6273394220bb757c50250786ca74c` | `Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-Dark.png` |
+| Tinted | `outputs/mingsi-icon-text-to-image-v4-tinted.png` | `f028beeca7045fa287bbc0e96b7efb00b82b6f49b4bc5bb2871cfebdd114ca71` | `Sources/Assets.xcassets/AppIcon.appiconset/AppIcon-Tinted.png` |
+
+每个生产输出均使用 Lanczos 从批准源缩放到恰好 1024x1024，并强制为 RGB PNG、无 alpha；没有手工重绘、颜色替换或几何调整。最终生产 SHA-256：Default `e6151d4592491cadc666dba586e326df5f1349a06e02c41d0c90b6022152cfb7`；Dark `a9f298c0ff8940edca556bf4ac640455bbd0412bbe600454fba918d6340092ff`；Tinted `69a2b18a1e467f36412002f18ead594e8571f3e0aa3122adb01ff711f568285d`。
+
+### QA 与集成验证
+
+`work/render_app_icon_qa.py` 已改为：当 tinted 源完全不透明时，以四角背景亮度为基准计算归一化亮度差，生成确定性的单色 glyph alpha；原有透明源仍直接使用 alpha。这样 `TINTED` 与 `ONE HUE` 面板不再把不透明 duotone 错误视为整块 alpha。重新生成证据：`outputs/mingsi-icon-text-to-image-v4-qa.png`。
+
+| Gate | 结果 | 证据 / 限制 |
+| --- | --- | --- |
+| Brand fidelity、default/dark/tinted continuity、灰度与 16--120px | PASS | 严格独立盲审 `docs/subtasks/icon-v4-blind-review.md`；该审查保留 16--20px bevel concern |
+| Default / Dark / Tinted production asset integrity | PASS | 三个 1024x1024 RGB、无 alpha PNG；文件名与 Asset Catalog appearance 一致 |
+| Tinted / one-hue QA 预览 | PASS | 已对生成 QA 板中两个 glyph 区域作像素级非背景断言，均非空 |
+| Toolchain build / icon asset diagnostics | PASS | 2026-09-04：指定 iPhone 17 Simulator UDID 的 Debug build 成功；构建日志没有 app-icon asset warning/error |
+| Compiled asset catalog | PASS | `assetutil --info` 从产物 `Assets.car` 列出 `AppIcon.png`、`AppIcon-Dark.png`、`AppIcon-Tinted.png`，均为 opaque 1024x1024 phone renditions |
+| Simulator install and app runtime | PASS | 已仅在固定 iPhone 17 Simulator 安装并启动 `com.codex.mingsi`；运行中界面截图为 `outputs/mingsi-icon-v4-simulator.png` |
+| Runtime launcher display | PASS | 仅使用固定 iPhone 17 Simulator：真实主屏幕截图 `outputs/mingsi-icon-v4-simulator-home.png` 目视及像素确认显示名为“明思”的新 v4 思字图标，而非旧指南针；未使用物理设备 |
+| Home-screen collision、搜索/设置/通知/App Store 预览 | NOT TESTED | 本次 QA 板没有足够的邻近图标或完整系统表面证据 |
+| Legal / 商标检索 | NOT TESTED | 历史早期筛查不构成法律意见 |
+
+## 16. v4 约束纠正与无文字重启
+
+2026-09-05 用户指出：“文生图”描述的是生成方式，不代表允许把文字画进图标。此前把“思”字当作可接受识别锚点，是对需求的错误解释。新的硬门槛为：
+
+- 最终图标必须由文生图 raster 路线产生，不使用 SVG；
+- 画面不得出现汉字、字母、数字、标点、缩写、字标或伪文字；
+- 文字约束优先于名称直连的识别便利，任何以“思”“明”或 `M/S` 为主体的方向直接失败；
+- 生成候选必须先通过无文字检查、类目误读、小尺寸、灰度和独立品牌盲审，才允许接入生产。
+
+第一轮无文字重启生成了 `outputs/mingsi-icon-nontext-concepts-v5.png` 和 `outputs/mingsi-icon-nontext-concepts-v6.png` 两张四方向概念板。独立盲审结论为 8 格全部 `FAIL`：v5 主要误读为花苞、种子、镜片、贝壳或疗愈物件；v6 主要误读为通用重叠图形、公式、字母/拱门和鹅卵石。它们均不进入高清母图或生产资产。

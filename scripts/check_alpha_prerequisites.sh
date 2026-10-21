@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/fixed_simulator_guard.sh"
 UI_RUNNER="$ROOT_DIR/scripts/run_ui_automation.sh"
 LIVE_GLM_RUNNER="$ROOT_DIR/scripts/run_live_glm_acceptance.sh"
 PROJECT_PATH="$ROOT_DIR/MingSi.xcodeproj"
@@ -22,7 +23,7 @@ Exit codes:
   2  Local tooling or runner files are missing.
   3  Local runners are ready, but no BYOK GLM key is visible.
 
-Key detection checks accepted environment variables first, then the app Keychain
+Key detection checks accepted environment variables first, then the fixed simulator's Keychain
 item used by KeychainAPIKeyStore: service com.codex.mingsi.glm, account
 glm_api_key. Set MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE=present|missing for tests only.
 USAGE
@@ -93,7 +94,7 @@ keychain_has_key() {
       return 1
       ;;
     auto|"")
-      security find-generic-password -s com.codex.mingsi.glm -a glm_api_key >/dev/null 2>&1
+      python3 "$ROOT_DIR/scripts/check_simulator_glm_key.py" "$MINGSI_FIXED_SIMULATOR_UDID"
       ;;
     *)
       printf 'Invalid MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE: %s\n' "$MINGSI_ALPHA_KEYCHAIN_TEST_OVERRIDE" >&2

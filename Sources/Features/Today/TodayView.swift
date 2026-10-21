@@ -9,6 +9,7 @@ enum TodayAutomationID {
     static let supplementCaptureAction = "today.supplement-capture-action"
     static let returnToReviewForJudgmentAction = "today.return-to-review-for-judgment-action"
     static let retryCurrentStepAction = "today.retry-current-step-action"
+    static let retryMessageAction = "today.retry-message-action"
     static let centralModelKeySettingsAction = "today.central-model-key.settings-action"
     static let skipPrincipleAction = "today.skip-principle-action"
     static let resetAction = "today.reset-action"
@@ -72,6 +73,30 @@ enum TodayAutomationID {
     static let customLensMethodField = "today.custom-lens.method-field"
     static let customLensQuestionField = "today.custom-lens.question-field"
     static let customLensSaveAction = "today.custom-lens.save-action"
+    static let capturesOpenAction = "today.captures.open-action"
+    static let capturesSheet = "today.captures.sheet"
+    static let capturesInput = "today.captures.input"
+    static let capturesSaveAction = "today.captures.save-action"
+    static let capturesDigestAction = "today.captures.digest-action"
+    static let dailyLifeGuidanceCard = "today.life-guidance.daily-card"
+    static let reviewLifeGuidanceCard = "today.life-guidance.review-card"
+    static let lifeGuidanceDetails = "today.life-guidance.details"
+    static let singleNudgeSection = "today.single-nudge.section"
+    static let singleNudgeInput = "today.single-nudge.input"
+    static let singleNudgeStartAction = "today.single-nudge.start-action"
+    static let singleNudgeQuestion = "today.single-nudge.question"
+    static let singleNudgeAnswer = "today.single-nudge.answer"
+    static let singleNudgeReviewAction = "today.single-nudge.review-action"
+    static let singleNudgeRetryReviewAction = "today.single-nudge.retry-review-action"
+    static let singleNudgeHelpfulAction = "today.single-nudge.helpful-action"
+    static let singleNudgeNotHelpfulAction = "today.single-nudge.not-helpful-action"
+    static let singleNudgeAlternateAngleAction = "today.single-nudge.alternate-angle-action"
+    static let singleNudgeDeeperAction = "today.single-nudge.deeper-action"
+    static let singleNudgeFinishAction = "today.single-nudge.finish-action"
+    static let singleNudgeAnotherAction = "today.single-nudge.another-action"
+    static let singleNudgeOpenAction = "today.single-nudge.open-action"
+    static let singleNudgeSurface = "today.single-nudge.surface"
+    static let singleNudgeTransitionAction = "today.single-nudge.transition-action"
 
     static func state(_ state: DailyLoopState) -> String {
         let stateID: String
@@ -84,6 +109,7 @@ enum TodayAutomationID {
         case .selectLens: stateID = "select_lens"
         case .answerQuestions: stateID = "answer_questions"
         case .reviewQuests: stateID = "review_quests"
+        case .reviewWithoutAction: stateID = "review_without_action"
         case .extractPrinciple: stateID = "extract_principle"
         case .sessionComplete: stateID = "session_complete"
         }
@@ -117,7 +143,7 @@ private enum TodayVisibleStage: Int, CaseIterable, Identifiable {
         case .examineJudgment:
             return [.selectLens, .answerQuestions]
         case .defineValidation:
-            return [.reviewQuests, .extractPrinciple, .sessionComplete]
+            return [.reviewQuests, .reviewWithoutAction, .extractPrinciple, .sessionComplete]
         }
     }
 
@@ -272,6 +298,7 @@ private struct KeepScreenAwakeWhileTextEditing: ViewModifier {
     }
 }
 
+
 private struct SideQuestPhotoMemoryThumbnail: View {
     let memory: SideQuestPhotoMemory
     let markUnavailable: () -> Void
@@ -317,11 +344,17 @@ private struct SideQuestPhotoMemoryThumbnail: View {
 
 struct TodayView: View {
     @EnvironmentObject private var store: AppStore
+    /// The modern Mentor coordinator is passed by the compatibility host when
+    /// Today is presented from the Mentor home. Keeping it explicit avoids a
+    /// second, stale coordinator lookup through AppStore in test and preview
+    /// hosts.
+    var mentorFeature: MentorFeatureStore?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var caseTransitionNamespace
     @State private var isCaptureFocused = false
     @State private var isCustomLensSheetPresented = false
+    @State private var inspectedLens: LensCatalogItem?
     @State private var customLensTitle = ""
     @State private var customLensMethodLine = ""
     @State private var customLensQuestion = ""
@@ -339,12 +372,20 @@ struct TodayView: View {
     @State private var isPhotoMemoryLibraryPickerPresented = false
     @State private var isPhotoMemoryCameraPickerPresented = false
     @State private var photoMemoryPermissionMessage = ""
+    @State private var isCaptureSheetPresented = false
+    @State private var isSingleNudgeSheetPresented = false
+    @State private var isMentorConversationPresented = false
+
+    init(mentorFeature: MentorFeatureStore? = nil) {
+        self.mentorFeature = mentorFeature
+    }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.sectionSpacing) {
+                        singleNudgeEntryRow
                         header
                             .id(TodayScrollAnchor.top)
                         if isVNextOverview {
@@ -379,6 +420,8 @@ struct TodayView: View {
                                 answerQuestionsSection
                             case .reviewQuests:
                                 reviewQuestsSection
+                            case .reviewWithoutAction:
+                                reviewWithoutActionSection
                             case .extractPrinciple:
                                 extractPrincipleSection
                             case .sessionComplete:
@@ -390,6 +433,10 @@ struct TodayView: View {
                                     insertion: .move(edge: .trailing).combined(with: .opacity),
                                     removal: .opacity
                                 ))
+                            if usesScrollableReviewActions {
+                                actionRow
+                                    .padding(.horizontal, -DS.pagePadding)
+                            }
                         }
                     }
                     .padding(.horizontal, DS.pagePadding)
@@ -409,18 +456,49 @@ struct TodayView: View {
                 )
                 .pageBackground()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if !isVNextOverview {
+                    if !isVNextOverview && !usesScrollableReviewActions {
                         actionRow
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("today.fixed-action-bar")
                     }
                 }
             }
         }
         .topSafeAreaScrim()
+        .sheet(item: $inspectedLens) { item in
+            LensGuideSheet(item: item) {
+                selectLensItem(item)
+                inspectedLens = nil
+            }
+            .dynamicTypeSize(dynamicTypeSize)
+        }
         .sheet(isPresented: $isCustomLensSheetPresented) {
             customLensSheet
         }
+        .sheet(isPresented: $isCaptureSheetPresented) {
+            QuickCaptureSheet()
+        }
+        .sheet(isPresented: $isSingleNudgeSheetPresented) {
+            SingleNudgeSheet(isPresented: $isSingleNudgeSheetPresented)
+        }
+        .sheet(isPresented: $isMentorConversationPresented) {
+            if let feature = activeMentorFeature {
+                MentorConversationView(feature: feature)
+                    .environmentObject(store)
+                    .dynamicTypeSize(dynamicTypeSize)
+            }
+        }
         .onChange(of: store.activeGuidance?.hintId) { _, _ in
             isActiveGuidanceExpanded = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mingsiOpenTodayCapture)) { _ in
+            isCaptureSheetPresented = true
+        }
+        .task {
+            await store.loadSingleNudge()
+        }
+        .task(id: store.todayDraft.state) {
+            await store.recommendLifeGuidanceForTodayReview()
         }
         .sheet(isPresented: $isTrainingTermsPresented) {
             TrainingTermsSheet()
@@ -469,6 +547,78 @@ struct TodayView: View {
 
     // MARK: - Header
 
+    /// Compact, always-discoverable entry. It never expands inline, so Today's
+    /// active training card and central CTA keep their position.
+    private var singleNudgeEntryRow: some View {
+        Button {
+            if let feature = activeMentorFeature {
+                // Today is a compatibility surface, but its quick entry must
+                // use the same multi-turn Mentor contract as the main home.
+                feature.start(entry: "discuss")
+                isMentorConversationPresented = true
+            } else {
+                // Keep the old flow available only when the Mentor feature is
+                // unavailable (for example, an older/read-only store).
+                isSingleNudgeSheetPresented = true
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: store.singleNudgeSession == nil ? "sparkle" : "sparkle.leadinghalf.filled")
+                    .foregroundStyle(DS.accent)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("明思一下")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text(singleNudgeEntrySubtitle)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                if store.isSingleNudgeGenerating {
+                    ProgressView()
+                        .accessibilityLabel("明思一下生成中")
+                }
+                Image(systemName: "arrow.up.right.square")
+                    .foregroundStyle(DS.mutedInk)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(TodayAutomationID.singleNudgeOpenAction)
+        .accessibilityLabel(singleNudgeEntryAccessibilityLabel)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var singleNudgeEntrySubtitle: String {
+        if activeMentorFeature != nil {
+            return "一件卡住的事，先说清一个关键角度"
+        }
+        guard let session = store.singleNudgeSession else {
+            return "一件卡住的事，一个问题，先想一步"
+        }
+        switch session.lifecycle {
+        case .completed:
+            return "这次明思已收好"
+        case .receiptPresented, .feedbackRecorded:
+            return "有一份点拨等待查看"
+        default:
+            return "继续未完成的一次明思"
+        }
+    }
+
+    private var singleNudgeEntryAccessibilityLabel: String {
+        if activeMentorFeature != nil { return "明思一下，开始一段多轮交流" }
+        return store.singleNudgeSession == nil ? "明思一下，开始一次单问单答" : "继续明思一下"
+    }
+
+    private var activeMentorFeature: MentorFeatureStore? {
+        mentorFeature ?? store.mentorFeatureStore
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(todayHeaderDateText(store.todayDraft.date))
@@ -510,11 +660,13 @@ struct TodayView: View {
                         Button {
                             store.retryCurrentAIStep()
                         } label: {
-                            Label("重试当前步骤", systemImage: "arrow.clockwise")
+                            Label(store.todayAIRetryActionTitle, systemImage: "arrow.clockwise")
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
                         .font(.footnote.weight(.semibold))
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .accessibilityIdentifier(TodayAutomationID.retryMessageAction)
                     }
                 }
                 .padding(.top, 2)
@@ -612,6 +764,11 @@ struct TodayView: View {
 
     private var todayOverviewSection: some View {
         VStack(alignment: .leading, spacing: 24) {
+            if let settlement = store.latestGrowthSettlement {
+                growthSettlementView(settlement)
+            }
+            captureSummarySection
+            LifeGuidanceSection(guidance: store.lifeGuidanceStore)
             if store.hasPendingCaseConfirmation {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("AI 已整理出事项，确认后再逐件推进。", systemImage: "checklist")
@@ -678,18 +835,17 @@ struct TodayView: View {
                 }
             }
 
-            if let settlement = store.latestGrowthSettlement {
-                growthSettlementView(settlement)
-            }
-
             VStack(alignment: .leading, spacing: 12) {
                 todaySectionLabel(store.trainingCases.isEmpty ? "记录今天" : "补充记录")
-                CaptureTextView(
+                PushToTalkInput(
                     text: Binding(
                         get: { store.todayDraft.rawText },
                         set: { store.updateTodayCapture($0) }
                     ),
-                    isFocused: $isCaptureFocused
+                    placeholder: "补充今天的记录",
+                    accessibilityIdentifier: TodayAutomationID.captureRawTextField,
+                    focusBinding: $isCaptureFocused,
+                    usesTextEditor: true
                 )
                 .frame(height: overviewCaptureHeight)
                 .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -749,8 +905,11 @@ struct TodayView: View {
                 }
 
                 HStack(spacing: 10) {
-                    TextField("手动新增事项", text: $newCaseTitle)
-                        .textFieldStyle(.roundedBorder)
+                    PushToTalkInput(
+                        text: $newCaseTitle,
+                        placeholder: "手动新增事项",
+                        accessibilityIdentifier: "today.training-case.new-title"
+                    )
                     Button {
                         let title = newCaseTitle
                         newCaseTitle = ""
@@ -786,6 +945,43 @@ struct TodayView: View {
 
             sideQuestSection
         }
+    }
+
+
+    private var captureSummarySection: some View {
+        Button {
+            isCaptureSheetPresented = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: store.todayCaptureDigest == nil ? "bolt" : "bolt.fill")
+                    .foregroundStyle(DS.accent)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("今日闪念")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                    Text(captureSummaryStatus)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right.square")
+                    .foregroundStyle(DS.mutedInk)
+                    .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("打开今日闪念")
+        .accessibilityIdentifier(TodayAutomationID.capturesOpenAction)
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var captureSummaryStatus: String {
+        let count = store.todayCaptureFragments.count
+        guard count > 0 else { return "还没有记录" }
+        return "\(count) 条 · \(store.todayCaptureFragments.contains { $0.status == .pending } ? "待整理" : "已整理")"
     }
 
     @ViewBuilder
@@ -1015,8 +1211,13 @@ struct TodayView: View {
                     }
                 }
                 Section("补充说明（可选）") {
-                    TextEditor(text: $sideQuestCorrectionNote)
-                        .frame(minHeight: 100)
+                    PushToTalkInput(
+                        text: $sideQuestCorrectionNote,
+                        placeholder: "补充说明（可选）",
+                        accessibilityIdentifier: "today.side-quest-correction.input",
+                        usesTextEditor: true
+                    )
+                    .frame(minHeight: 100)
                 }
             }
             .navigationTitle("调整奇遇").navigationBarTitleDisplayMode(.inline)
@@ -1113,9 +1314,14 @@ struct TodayView: View {
                 }
 
                 Section {
-                    TextEditor(text: $sideQuestReflection)
-                        .frame(minHeight: 112)
-                        .accessibilityLabel("这次奇遇的观察")
+                    PushToTalkInput(
+                        text: $sideQuestReflection,
+                        placeholder: "写一句感觉、细节或意外都可以",
+                        accessibilityIdentifier: "today.side-quest-reflection.input",
+                        usesTextEditor: true
+                    )
+                    .frame(minHeight: 112)
+                    .accessibilityLabel("这次奇遇的观察")
                 } header: {
                     Text("若它留下了什么（可选）")
                 } footer: {
@@ -1358,7 +1564,7 @@ struct TodayView: View {
     private func growthSettlementView(_ settlement: GrowthSettlement) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                todaySectionLabel("本次成长证据")
+                todaySectionLabel("本次结果回顾")
                 Spacer()
                 Button {
                     store.dismissLatestGrowthSettlement()
@@ -1367,17 +1573,30 @@ struct TodayView: View {
                         .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("关闭成长结算")
+                .accessibilityLabel("关闭结果回顾")
+                .accessibilityIdentifier("today.result-review.dismiss")
             }
-            BriefRow(title: "原判断", body: settlement.originalJudgment, accent: DS.graphite)
-            BriefRow(title: "实际结果", body: settlement.actualResult, accent: DS.accent)
-            BriefRow(title: "判断更新", body: settlement.judgmentUpdate.title, accent: DS.success)
-            ForEach(settlement.evidenceItems) { item in
-                Label(item.title, systemImage: "checkmark.seal")
-                    .font(.subheadline)
-                    .foregroundStyle(DS.ink)
-                    .fixedSize(horizontal: false, vertical: true)
+            ResultCalibrationSummary(
+                assessment: settlement.calibrationAssessment,
+                note: settlement.calibrationNote,
+                recommendation: settlement.recommendation
+            )
+            DisclosureGroup("查看原判断、结果与自评") {
+                VStack(alignment: .leading, spacing: 10) {
+                    BriefRow(title: "原判断", body: settlement.originalJudgment, accent: DS.graphite)
+                    BriefRow(title: "你记录的结果", body: settlement.actualResult, accent: DS.accent)
+                    BriefRow(title: "你的判断自评", body: settlement.judgmentUpdate.title, accent: DS.graphite)
+                    ForEach(settlement.evidenceItems) { item in
+                        Label(item.title, systemImage: "link")
+                            .font(.subheadline)
+                            .foregroundStyle(DS.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.top, 8)
             }
+            .font(.subheadline)
+            .accessibilityIdentifier("today.result-review.details")
         }
         .padding(.vertical, 12)
         .overlay(alignment: .bottom) { Divider() }
@@ -1392,11 +1611,18 @@ struct TodayView: View {
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 12) {
-                        Button("暂不显示") { Task { await store.snoozeActiveGuidance() } }
-                        Button("我已掌握") { Task { await store.markActiveGuidanceMastered() } }
+                    let actionsLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                        : AnyLayout(HStackLayout(spacing: 12))
+                    actionsLayout {
+                        Button { Task { await store.snoozeActiveGuidance() } } label: {
+                            Text("暂不显示").frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                        }
+                        Button { Task { await store.markActiveGuidanceMastered() } } label: {
+                            Text("我已掌握").frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                        }
                     }
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                 }
                 .padding(.top, 8)
             } label: {
@@ -1406,7 +1632,12 @@ struct TodayView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityIdentifier(TodayAutomationID.activeGuidanceToggle)
-            .padding(.vertical, 8)
+            .task(id: store.activeGuidanceOfferID) {
+                if let offerID = store.activeGuidanceOfferID {
+                    await store.recordActiveGuidancePresentation(offerID: offerID)
+                }
+            }
+            .padding(.vertical, 12)
             .overlay(alignment: .bottom) { Divider() }
         }
     }
@@ -1533,7 +1764,7 @@ struct TodayView: View {
     // Design: Warm, reflective - not a form, a moment of honesty
     private var verifyYesterdaySection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("校准昨日验证", subtitle: "用一个真实结果校准昨天的判断。")
+            stepLabel("回顾实际结果", subtitle: "先记录发生了什么，再看判断是否需要更新。")
 
             if let quest = store.mainQuest ?? store.quests.first {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1542,14 +1773,40 @@ struct TodayView: View {
                         .foregroundStyle(.secondary)
                     Text(quest.title)
                         .font(.body.weight(.medium))
+                    if let judgment = quest.calibrationTarget, !judgment.isEmpty {
+                        Text("原判断：\(judgment)")
+                            .font(.subheadline)
+                    }
+                    Text("原验收标准：\(quest.completionCriteria)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
                 .questSurface(isMain: true)
             }
 
             VStack(alignment: .leading, spacing: 8) {
+                Text("实际发生了什么？")
+                    .accessibilityIdentifier("today.verification.result-label")
+                    .font(.subheadline.weight(.medium))
+                PushToTalkInput(
+                    text: Binding(
+                        get: { store.todayDraft.yesterdayEvidence },
+                        set: { store.updateYesterdayEvidence($0) }
+                    ),
+                    placeholder: "写下观察到的结果；没有观察、出现反例或记录冲突也可以。",
+                    accessibilityIdentifier: "today.yesterday-evidence.input"
+                )
+                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text("完成了吗？")
                     .font(.subheadline.weight(.medium))
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 280 : 140), alignment: .leading)], alignment: .leading, spacing: 10) {
                     ForEach(YesterdayCompletion.allCases) { completion in
                         choiceChip(
                             title: completion.title,
@@ -1561,9 +1818,9 @@ struct TodayView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("实际价值？")
+                Text("你觉得这次行动有价值吗？")
                     .font(.subheadline.weight(.medium))
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 280 : 140), alignment: .leading)], alignment: .leading, spacing: 10) {
                     ForEach(YesterdayValueRating.allCases) { rating in
                         choiceChip(
                             title: rating.title,
@@ -1575,9 +1832,9 @@ struct TodayView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("昨天判断怎么更新？")
+                Text("你的判断自评")
                     .font(.subheadline.weight(.medium))
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 280 : 140), alignment: .leading)], alignment: .leading, spacing: 10) {
                     ForEach(YesterdayJudgmentUpdate.allCases) { update in
                         choiceChip(
                             title: update.title,
@@ -1587,28 +1844,8 @@ struct TodayView: View {
                     }
                 }
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("什么事实让你这样判断？")
-                    .font(.subheadline.weight(.medium))
-                TextField(
-                    "例如：对方复述了验收标准，但仍有一处返工。",
-                    text: Binding(
-                        get: { store.todayDraft.yesterdayEvidence },
-                        set: { store.updateYesterdayEvidence($0) }
-                    ),
-                    axis: .vertical
-                )
-                .lineLimit(2...4)
-                .textFieldStyle(.plain)
-                .padding(12)
-                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
-            }
         }
+        .disabled(store.isSavingTodayCompletion)
     }
 
     // MARK: - Capture
@@ -1617,15 +1854,20 @@ struct TodayView: View {
     // Design: Generous text area, inviting, feels like opening a notebook
     private var captureSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepLabel("今天发生了什么？", subtitle: "先收集原始材料，后面再由明思做教练观察。")
+            stepLabel("今天发生了什么？", subtitle: "从一个你想聊的片段开始，不用先写完整。")
 
             CaptureMaterialGuide()
 
-            CaptureTextView(text: Binding(
-                get: { store.todayDraft.rawText },
-                set: { store.updateTodayCapture($0) }
-            ), isFocused: $isCaptureFocused)
-            .accessibilityIdentifier(TodayAutomationID.captureRawTextField)
+            PushToTalkInput(
+                text: Binding(
+                    get: { store.todayDraft.rawText },
+                    set: { store.updateTodayCapture($0) }
+                ),
+                placeholder: "今天发生了什么？",
+                accessibilityIdentifier: TodayAutomationID.captureRawTextField,
+                focusBinding: $isCaptureFocused,
+                usesTextEditor: true
+            )
             .frame(minHeight: 220)
             .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
             .overlay(
@@ -1667,28 +1909,28 @@ struct TodayView: View {
             DisclosureGroup {
                 VStack(alignment: .leading, spacing: 10) {
                     BriefRow(
-                        title: "本页只写今天内容",
-                        body: "把发生了什么、你怎么做、你怎么想先讲清楚；明思会在今日复盘里观察你漏掉了什么。",
+                        title: "按需参考",
+                        body: "下面只是可选提示；写你现在知道和想讨论的部分，不确定或不想补充的可以留空。",
                         accent: DS.accent
                     )
                     reviewScaffoldView
                 }
                 .padding(.top, 8)
             } label: {
-                Label("查看训练提示", systemImage: "list.bullet.clipboard")
+                Label("查看输入参考（可选）", systemImage: "list.bullet.clipboard")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
             }
             .accessibilityIdentifier(TodayAutomationID.captureGuidanceToggle)
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("训练深度")
+                Text("思考方式")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                modeCard(mode: .quick, icon: "bolt", description: "最短路径，只收敛最关键的动作。")
-                modeCard(mode: .standard, icon: "book", description: "默认完整流程，平衡速度和深度。")
-                modeCard(mode: .deep, icon: "brain.head.profile", description: "追问更深，适合重要事件和周复盘。")
+                modeCard(mode: .quick, icon: "bolt", description: "简短回应，聚焦当前最有用的一点。")
+                modeCard(mode: .standard, icon: "book", description: "结合当前材料，说明判断依据与限制。")
+                modeCard(mode: .deep, icon: "brain.head.profile", description: "更仔细检查假设和其他解释，不增加提问数量。")
             }
             .padding(.top, 2)
 
@@ -1699,11 +1941,11 @@ struct TodayView: View {
     private var reviewScaffoldView: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("基础能力训练")
+                Text("从一个角度开始")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(DS.mutedInk)
                     .textCase(.uppercase)
-                Text("不是让 AI 替你总结，而是训练你把复杂事情说清、想清、安排清。")
+                Text("只选对当前困惑有用的一项，不必逐项填写。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1720,11 +1962,11 @@ struct TodayView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ink)
 
-            BriefRow(title: "发生了什么", body: "先把背景、触发点、关键人物或对象讲清楚。", accent: DS.accent)
-            BriefRow(title: "我怎么做", body: "写出你的动作、选择、沟通或没有做的事。", accent: DS.brick)
-            BriefRow(title: "我怎么想", body: "说明当时基于哪些事实、假设、目标或取舍做判断。", accent: DS.caution)
-            BriefRow(title: "问题类型", body: "先判断这是对象理解、目标不清、证据不足、协作断点、执行约束，还是反馈缺失。", accent: DS.graphite)
-            BriefRow(title: "复盘问题", body: "最后写一个想追问自己的问题，让后续分析知道该从哪里切入。", accent: DS.success)
+            BriefRow(title: "发生了什么", body: "可以从一个记得的片段说起，不必补齐所有背景。", accent: DS.accent)
+            BriefRow(title: "我怎么做", body: "如果相关，可以说说当时的动作或选择。", accent: DS.brick)
+            BriefRow(title: "我怎么想", body: "可以说出在意的目标、取舍或仍不确定的解释。", accent: DS.caution)
+            BriefRow(title: "问题类型", body: "无需先分类；可以直接告诉明思，你想理解、比较还是获得建议。", accent: DS.graphite)
+            BriefRow(title: "复盘问题", body: "也可以只说现在想获得什么帮助，不必自己准备问题。", accent: DS.success)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("训练要点")
@@ -1865,8 +2107,7 @@ struct TodayView: View {
 
             ForEach(store.trainingCases.filter { $0.status != .merged }) { trainingCase in
                 VStack(alignment: .leading, spacing: 10) {
-                    TextField(
-                        "事项名称",
+                    PushToTalkInput(
                         text: Binding(
                             get: {
                                 store.trainingCases.first(where: { $0.id == trainingCase.id })?.title
@@ -1875,10 +2116,11 @@ struct TodayView: View {
                             set: { value in
                                 Task { await store.updateTrainingCaseTitle(trainingCase.id, title: value) }
                             }
-                        )
+                        ),
+                        placeholder: "事项名称",
+                        accessibilityIdentifier: "today.training-case.\(trainingCase.id.uuidString).title"
                     )
                     .font(.headline)
-                    .textFieldStyle(.plain)
 
                     ForEach(store.thinkingCards.filter { $0.trainingCaseId == trainingCase.id }) { card in
                         ThinkingCardRow(
@@ -1934,8 +2176,11 @@ struct TodayView: View {
             }
 
             HStack(spacing: 10) {
-                TextField("新增一个拆分事项", text: $newCaseTitle)
-                    .textFieldStyle(.roundedBorder)
+                PushToTalkInput(
+                    text: $newCaseTitle,
+                    placeholder: "新增一个拆分事项",
+                    accessibilityIdentifier: "today.training-case.split-title"
+                )
                 Button {
                     let title = newCaseTitle
                     newCaseTitle = ""
@@ -1959,9 +2204,9 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             stepLabel("训练模式", subtitle: "今天需要多深，就选择多深。")
 
-            modeCard(mode: .quick, icon: "bolt", description: "最短路径，只收敛最关键的动作。")
-            modeCard(mode: .standard, icon: "book", description: "默认完整流程，平衡速度和深度。")
-            modeCard(mode: .deep, icon: "brain.head.profile", description: "追问更深，适合重要事件和周复盘。")
+            modeCard(mode: .quick, icon: "bolt", description: "简短回应，聚焦当前最有用的一点。")
+            modeCard(mode: .standard, icon: "book", description: "结合当前材料，说明判断依据与限制。")
+            modeCard(mode: .deep, icon: "brain.head.profile", description: "更仔细检查假设和其他解释，不增加提问数量。")
         }
     }
 
@@ -1977,14 +2222,13 @@ struct TodayView: View {
                 for: confirmedCards,
                 mode: store.todayDraft.sessionMode
             )
-        let builtInItems = ThinkingLens.allCases
-            .sorted { $0.catalogItem.methodIndex < $1.catalogItem.methodIndex }
-            .map(\.catalogItem)
 
         return VStack(alignment: .leading, spacing: 14) {
-            stepLabel("教练先看一眼", subtitle: "明思先看你哪里没讲清，再推荐一个练法。")
+            stepLabel("选择一个视角（可跳过）", subtitle: "透镜只是看问题的角度；也可以直接根据已确认材料继续。")
 
-            todayLensCoreCard(confirmedCount: confirmedCards.count)
+            if store.presentsLocalCoachPreview {
+                todayLensCoreCard(confirmedCount: confirmedCards.count)
+            }
 
             if let diagnosis = store.coachDiagnosis {
                 coachDiagnosisCard(diagnosis, turnState: store.coachTurnState)
@@ -1994,13 +2238,63 @@ struct TodayView: View {
                 trainingPrescriptionCard(
                     prescription,
                     item: recommendedItem,
-                    teachingPlan: store.coachTurnState.map {
-                        CoachTeachingPolicy().makePlan(turn: $0, prescription: prescription)
+                    teachingPlan: store.coachTurnState.flatMap { turn -> CoachTeachingPlan? in
+                        guard store.coachDiagnosis?.policyVersion.hasPrefix("coach-decision.llm") != true else { return nil }
+                        return CoachTeachingPolicy().makePlan(turn: turn, prescription: prescription)
                     }
                 )
             }
 
-            HStack(spacing: 10) {
+            Button {
+                store.continueTodayWithoutLens()
+            } label: {
+                Label("只按今天材料继续", systemImage: "arrow.right.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(DS.accent)
+            .disabled(!store.canContinueTodayWithoutLens)
+            .accessibilityIdentifier("today.select-lens.continue-without-lens")
+
+
+            if !store.customLensItems.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("我的透镜")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                        .textCase(.uppercase)
+                    ForEach(store.customLensItems, id: \.id) { item in
+                        customLensCard(item)
+                    }
+                }
+            }
+
+            ForEach(LensGroup.allCases) { group in
+                VStack(alignment: .leading, spacing: DS.cardSpacing) {
+                    Text(group.title)
+                        .font(.headline)
+                        .foregroundStyle(DS.ink)
+                        .accessibilityAddTraits(.isHeader)
+                        .padding(.top, DS.cardSpacing)
+                    VStack(spacing: 0) {
+                        ForEach(Array(group.lenses.enumerated()), id: \.element.id) { index, lens in
+                            if index > 0 { Divider().padding(.horizontal, DS.cardInnerPadding) }
+                            lensMethodTile(lens.catalogItem, isRecommended: lens.id == prescription?.recommendedLensId)
+                        }
+                    }
+                    .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: DS.cornerRadius))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: DS.cornerRadius).stroke(DS.hairline, lineWidth: 1)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transaction { $0.animation = nil }
+                }
+            }
+
+            DisclosureGroup("创建自己的透镜") {
+            VStack(spacing: DS.cardSpacing) {
                 lensActionCard(
                     icon: "wand.and.stars",
                     title: "生成替代透镜",
@@ -2023,23 +2317,10 @@ struct TodayView: View {
                 .accessibilityIdentifier(TodayAutomationID.lensCustomAction)
             }
 
-            if !store.customLensItems.isEmpty {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("我的透镜")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DS.mutedInk)
-                        .textCase(.uppercase)
-                    ForEach(store.customLensItems, id: \.id) { item in
-                        customLensCard(item)
-                    }
-                }
+                .padding(.top, DS.cardSpacing)
             }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 10)], spacing: 10) {
-                ForEach(builtInItems, id: \.id) { item in
-                    lensMethodTile(item, isRecommended: item.id == prescription?.recommendedLensId)
-                }
-            }
+            .font(.subheadline)
+            .padding(.vertical, DS.cardSpacing)
         }
     }
 
@@ -2049,13 +2330,55 @@ struct TodayView: View {
     // Design: Each question is a card with answer field, inviting not interrogating
     private var answerQuestionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("教练追问", subtitle: "先补一处没讲清的地方。")
+            stepLabel(
+                store.coachAnswerTrainingFeedback?.hasStopped == true ? "今天先到这里" : (store.coachExplanation != nil ? "换个角度理解" : (store.questions.isEmpty ? "这轮没有追加问题" : "教练追问")),
+                subtitle: store.coachAnswerTrainingFeedback?.hasStopped == true
+                    ? "保留已经说的内容，也允许暂时没有答案。"
+                    : (store.questions.isEmpty
+                        ? "可以保留已有记录，再决定是否需要下一步行动。"
+                        : (store.isVNextModelLed ? "按已有信息回答，不确定的地方也可以照实写。" : "先补一处没讲清的地方。"))
+            )
+
+            if store.hasUnansweredRepairQuestion {
+                Label("有一条可选追问；也可以先保存已有回答。", systemImage: "arrow.turn.down.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(DS.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("today.answer.repair-follow-up-hint")
+            }
+
+            if let explanation = store.coachExplanation {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("明思的讲解 · AI 生成", systemImage: "text.book.closed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(explanation.text)
+                        .font(.body)
+                        .foregroundStyle(DS.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("today.answer.explanation")
+                    Text("基于：" + explanation.sourceCardTitles.joined(separator: "、"))
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DS.cardInnerPadding)
+                .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
+            } else if store.questions.isEmpty {
+                Text("没有追加问题不代表原因已经确定。可以先保存当前理解，保留仍未知的部分。")
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("today.answer.no-questions")
+            }
 
             ForEach(Array(store.questions.enumerated()), id: \.element.id) { index, question in
                 QuestionCardView(
                     question: question,
                     answer: bindingForQuestion(questionID: question.id, fallbackIndex: index),
-                    isPrimaryAnswerField: index == 0
+                    isPrimaryAnswerField: index == 0,
+                    isModelLed: store.isVNextModelLed
                 )
             }
 
@@ -2067,13 +2390,14 @@ struct TodayView: View {
                 )
             }
 
-            if store.canContinueAnswerQuestionsWithCoachGapOverride {
+            if store.canChooseAnswerValidation {
                 Button {
                     store.continueAnswerQuestionsWithCoachGapOverride()
                 } label: {
-                    Label("带着缺口继续", systemImage: "arrow.right.circle")
+                    Label("另行设计一个验证行动", systemImage: "arrow.right.circle")
                         .font(.footnote.weight(.semibold))
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .buttonStyle(.bordered)
                 .tint(DS.accent)
@@ -2102,39 +2426,41 @@ struct TodayView: View {
                 )
             }
 
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 12) {
-                    BriefRow(
-                        title: "本页只复盘今天",
-                        body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
-                        accent: DS.brick
-                    )
-                    observationTrainingFrame(
-                        CoachObservationPolicy().observe(cards: store.thinkingCards)
-                    )
-
-                    if let feedback = store.coachAnswerTrainingFeedback {
-                        answerFeedbackDetailView(feedback)
-                        teachingRouteView(feedback.teachingPlan)
-                    } else if let teachingPlan = store.coachTurnState.map({
-                        CoachTeachingPolicy().makePlan(
-                            turn: $0,
-                            prescription: store.trainingPrescription
+            if !store.isVNextModelLed, store.coachAnswerTrainingFeedback?.hasStopped != true {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 12) {
+                        BriefRow(
+                            title: "本页只复盘今天",
+                            body: "这里只修补今天材料里的讲述、证据和判断缺口；明天的验证行动会在明日验证里设计。",
+                            accent: DS.brick
                         )
-                    }) {
-                        teachingRouteView(teachingPlan)
+                        observationTrainingFrame(
+                            CoachObservationPolicy().observe(cards: store.thinkingCards)
+                        )
+
+                        if let feedback = store.coachAnswerTrainingFeedback {
+                            answerFeedbackDetailView(feedback)
+                            teachingRouteView(feedback.teachingPlan)
+                        } else if let teachingPlan = store.coachTurnState.map({
+                            CoachTeachingPolicy().makePlan(
+                                turn: $0,
+                                prescription: store.trainingPrescription
+                            )
+                        }) {
+                            teachingRouteView(teachingPlan)
+                        }
                     }
+                    .padding(.top, 8)
+                } label: {
+                    Label(
+                        "看明思为什么这样问",
+                        systemImage: "list.bullet.clipboard"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
                 }
-                .padding(.top, 8)
-            } label: {
-                Label(
-                    "看明思为什么这样问",
-                    systemImage: "list.bullet.clipboard"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(DS.mutedInk)
+                .accessibilityIdentifier(TodayAutomationID.answerDiagnosisToggle)
             }
-            .accessibilityIdentifier(TodayAutomationID.answerDiagnosisToggle)
         }
     }
 
@@ -2248,49 +2574,52 @@ struct TodayView: View {
                 body: feedback.coachCritiqueLine,
                 accent: DS.success
             )
-            BriefRow(
-                title: "需要补充",
-                body: feedback.missingLine,
-                accent: feedback.canProceedToValidation ? DS.success : DS.brick
-            )
-            BriefRow(
-                title: "建议补充",
-                body: "\(feedback.proceedLine)\n\(feedback.nextRepairQuestion)",
-                accent: feedback.canProceedToValidation ? DS.success : DS.brick
-            )
-            BriefRow(
-                title: "想想以前类似情况",
-                body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
-                accent: DS.graphite
-            )
-            answerTrainingToolsDisclosure(feedback, answerMaterialObservation: answerMaterialObservation)
-            if includesTeachingRoute {
-                teachingRouteView(feedback.teachingPlan)
+            if feedback.nextRepairQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                BriefRow(
+                    title: feedback.hasStopped ? "今天先到这里" : "下一步",
+                    body: feedback.proceedLine,
+                    accent: DS.success
+                )
+            } else {
+                BriefRow(
+                    title: "建议补充",
+                    body: feedback.nextRepairQuestion,
+                    accent: DS.brick
+                )
+            }
+            if !feedback.hasStopped && feedback.hasOptionalGuidance {
+                answerTrainingToolsDisclosure(feedback, answerMaterialObservation: answerMaterialObservation)
+                if includesTeachingRoute {
+                    teachingRouteView(feedback.teachingPlan)
+                }
             }
         }
+        .accessibilityIdentifier("today.answer.review-feedback")
     }
 
     private func coachReferenceSuggestionView(_ suggestion: CoachReferenceSuggestion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             BriefRow(title: "教练建议", body: suggestion.guidance, accent: DS.accent)
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(suggestion.workedExample)
-                        .font(.subheadline)
-                        .foregroundStyle(DS.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(suggestion.caveat)
-                        .font(.caption)
-                        .foregroundStyle(DS.mutedInk)
-                        .fixedSize(horizontal: false, vertical: true)
+            if !suggestion.workedExample.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(suggestion.workedExample)
+                            .font(.subheadline)
+                            .foregroundStyle(DS.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(suggestion.caveat)
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Label("查看对照写法", systemImage: "checklist")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.accent)
                 }
-                .padding(.top, 6)
-            } label: {
-                Label("查看对照写法", systemImage: "checklist")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DS.accent)
+                .tint(DS.accent)
             }
-            .tint(DS.accent)
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier(TodayAutomationID.coachReferenceSuggestion)
@@ -2320,11 +2649,13 @@ struct TodayView: View {
 
             if isAnswerTrainingToolsExpanded {
                 VStack(alignment: .leading, spacing: 9) {
-                    BriefRow(
-                        title: "你刚补上",
-                        body: feedback.repairedLine,
-                        accent: feedback.canProceedToValidation ? DS.success : DS.caution
-                    )
+                    if !feedback.repairedLine.isEmpty {
+                        BriefRow(
+                            title: "你刚补上",
+                            body: feedback.repairedLine,
+                            accent: feedback.canProceedToValidation ? DS.success : DS.caution
+                        )
+                    }
                     if let answerMaterialObservation {
                         BriefRow(
                             title: "本句观察",
@@ -2332,31 +2663,48 @@ struct TodayView: View {
                             accent: DS.accent
                         )
                     }
-                    BriefRow(
-                        title: "还缺什么",
-                        body: feedback.abilityGapLine,
-                        accent: DS.accent
-                    )
-                    BriefRow(
-                        title: "别人能不能复述",
-                        body: feedback.trainingOutputLine,
-                        accent: DS.success
-                    )
-                    BriefRow(
-                        title: "怎么算讲清楚",
-                        body: feedback.selfCheckLine,
-                        accent: DS.accent
-                    )
-                    BriefRow(
-                        title: "这次练什么",
-                        body: feedback.trainingTargetLine,
-                        accent: DS.caution
-                    )
-                    BriefRow(
-                        title: "把判断说完整",
-                        body: feedback.judgmentSentencePrompt,
-                        accent: DS.success
-                    )
+                    if !feedback.abilityGapLine.isEmpty {
+                        BriefRow(
+                            title: "还缺什么",
+                            body: feedback.abilityGapLine,
+                            accent: DS.accent
+                        )
+                    }
+                    if !feedback.trainingOutputLine.isEmpty {
+                        BriefRow(
+                            title: "别人能不能复述",
+                            body: feedback.trainingOutputLine,
+                            accent: DS.success
+                        )
+                    }
+                    if !feedback.selfCheckLine.isEmpty {
+                        BriefRow(
+                            title: "怎么算讲清楚",
+                            body: feedback.selfCheckLine,
+                            accent: DS.accent
+                        )
+                    }
+                    if !feedback.trainingTargetLine.isEmpty {
+                        BriefRow(
+                            title: "这次练什么",
+                            body: feedback.trainingTargetLine,
+                            accent: DS.caution
+                        )
+                    }
+                    if !feedback.judgmentSentencePrompt.isEmpty {
+                        BriefRow(
+                            title: "把判断说完整",
+                            body: feedback.judgmentSentencePrompt,
+                            accent: DS.success
+                        )
+                    }
+                    if !feedback.experienceReplayPrompt.isEmpty {
+                        BriefRow(
+                            title: "想想以前类似情况",
+                            body: "\(feedback.experienceReplayDecisionLine)\n\(feedback.experienceReplayPrompt)",
+                            accent: DS.graphite
+                        )
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -2376,13 +2724,35 @@ struct TodayView: View {
 
     // MARK: - Review Quests
 
+    private var reviewWithoutActionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            stepLabel("这次先不安排行动", subtitle: "可以保存这段回顾，以后有新材料时再继续。")
+            Text("本轮没有生成验证行动。尚不清楚的部分可以保留，不需要为了完成复盘再安排任务。")
+                .font(.body)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("today.no-action.explanation")
+            Text("以前保存的行动仍可在历史或待验证中查看。")
+                .font(.footnote)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("回到复盘，查看或补充材料") {
+                store.navigateTodayLoop(to: .answerQuestions)
+            }
+            .buttonStyle(.bordered)
+            .tint(DS.accent)
+            .accessibilityIdentifier("today.no-action.return-to-review")
+        }
+        .disabled(store.isSavingTodayCompletion)
+    }
+
     // Purpose: Review tomorrow's action plan
     // Design: Quest cards feel actionable, main quest is visually prominent
     private var reviewQuestsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("设计明日验证", subtitle: "把今天的判断变成明天能做、能检查的一步。")
+            stepLabel("设计验证行动", subtitle: "选一个愿意做的小行动，看看结果能说明什么。")
 
-            Text("先完成「明天做什么」，再用「完成证据」回答「校准问题」，据此更新今天的判断。")
+            Text("先看行动和观察结果，再决定是否保存。")
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2418,7 +2788,9 @@ struct TodayView: View {
                     onFeedback: recordReferencedPrincipleFeedback
                 )
             }
+
         }
+        .disabled(store.isSavingTodayCompletion)
     }
 
     private var reviewQuestJudgmentAnchor: some View {
@@ -2434,7 +2806,7 @@ struct TodayView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if target != nil {
-                Text("明天只用结果判断它是否成立。")
+                Text("没有机会尝试或证据不足时，可以暂不能判断。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
             }
@@ -2480,7 +2852,7 @@ struct TodayView: View {
     // Design: Feels like saving a permanent insight, not just another card
     private var extractPrincipleSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("原则候选", subtitle: "只沉淀可复用的行为规则。")
+            stepLabel("原则候选", subtitle: "这只是建议，保存后才进入你的原则库。")
 
             if let principle = store.principles.first {
                 PrincipleCardView(
@@ -2509,7 +2881,9 @@ struct TodayView: View {
     // Design: Clean summary, feels like closing a notebook
     private var sessionCompleteSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            stepLabel("今日完成", subtitle: "今天的输入已经转成明天可验证的动作。")
+            stepLabel("今日完成", subtitle: store.quests.isEmpty
+                ? "回顾已保存，这次没有安排行动。"
+                : "今天的输入已经转成可验证的动作。")
 
             if let mainQuest = store.quests.first(where: { $0.type == .main }) {
                 completionCard(icon: "flag.checkered", title: "明日验证行动", body: mainQuest.title)
@@ -2519,7 +2893,9 @@ struct TodayView: View {
                 completionCard(icon: "lightbulb", title: "今日沉淀", body: principle.title)
             }
 
-            completionCard(icon: "chart.line.uptrend.xyaxis", title: "成长快照", body: store.growthSnapshot.summary)
+            if !store.quests.isEmpty {
+                completionCard(icon: "chart.line.uptrend.xyaxis", title: "成长快照", body: store.growthSnapshot.summary)
+            }
 
             if store.hasEnoughEvidenceForProjectSuggestions && !store.isGeneratingProjectSuggestions {
                 Button {
@@ -2611,6 +2987,37 @@ struct TodayView: View {
             .disabled(store.isTodayPrimaryActionDisabled)
             .accessibilityIdentifier(TodayAutomationID.primaryAction)
 
+            if store.todayDraft.state == .answerQuestions && !store.answerReviewPrimaryActionSaves {
+                Button {
+                    Task { await store.saveAnswerReviewAndReturn() }
+                } label: {
+                    Text("先保存，返回今日")
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+                .disabled(!store.canSaveAnswerReview)
+                .accessibilityIdentifier("today.answer.save-return")
+            }
+
+            if store.todayDraft.state == .reviewQuests, !store.isAIRunning {
+                Button {
+                    store.saveValidationAndReviewPrinciple()
+                } label: {
+                    Label("保存并整理原则候选", systemImage: "text.badge.plus")
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+                .disabled(store.isTodayPrimaryActionDisabled)
+                .accessibilityIdentifier("today.review-quests.optional-principle-action")
+            }
+
             if store.isAIRunning {
                 Text(store.aiActivityStatus)
                     .font(.caption)
@@ -2621,9 +3028,11 @@ struct TodayView: View {
                 Button {
                     store.cancelCurrentAIRequest()
                 } label: {
-                    Label("取消本次生成", systemImage: "xmark")
+                    Label(store.todayDraft.state == .verifyYesterday ? "取消结果回顾"
+                          : store.todayDraft.state == .answerQuestions ? "取消本次复盘" : "取消本次生成", systemImage: "xmark")
                         .font(.footnote.weight(.semibold))
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
                 .tint(DS.caution)
@@ -2704,6 +3113,7 @@ struct TodayView: View {
                 .foregroundStyle(DS.mutedInk)
                 .accessibilityLabel("更多操作")
                 .accessibilityIdentifier(TodayAutomationID.moreActions)
+                .disabled(store.isSavingTodayCompletion)
                 }
             }
         }
@@ -2711,6 +3121,7 @@ struct TodayView: View {
         .padding(.top, 10)
         .padding(.bottom, 8)
         .background(DS.background)
+        .disabled(store.isSavingTodayCompletion && store.todayDraft.state != .verifyYesterday)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Color.primary.opacity(0.06))
@@ -2719,12 +3130,15 @@ struct TodayView: View {
     }
 
     private var primaryActionTitle: String {
+        if store.isSavingTodayCompletion {
+            return store.isAIRunning ? "正在回顾结果…" : "正在保存…"
+        }
         if store.isAIRunning {
             return store.aiActivityMessage.isEmpty ? "明思训练中" : store.aiActivityMessage
         }
 
         switch store.todayDraft.state {
-        case .verifyYesterday: return "保存校准结果"
+        case .verifyYesterday: return "保存结果回顾"
         case .capture:
             guard store.todayDraft.hasSelectedSessionMode else { return "选择复盘方式" }
             switch store.todayDraft.sessionMode {
@@ -2737,14 +3151,24 @@ struct TodayView: View {
         case .selectMode: return "确认模式"
         case .selectLens: return "进入今日复盘"
         case .answerQuestions:
+            if store.coachAnswerTrainingFeedback?.hasStopped == true {
+                return "先到这里，返回今日"
+            }
+            if store.answerReviewPrimaryActionSaves {
+                return "先保存，返回今日"
+            }
+            if store.hasUnansweredRepairQuestion {
+                return "回答这条追问"
+            }
             if store.isVNextModelLed,
                store.hasAnsweredReflectionQuestion,
                store.coachAnswerTrainingFeedback == nil {
                 return "提交回答复盘"
             }
             return store.canContinueAnswerQuestionsWithCoachGapOverride ? "先修补追问" : "设计明日验证"
-        case .reviewQuests: return "保存明日验证"
-        case .extractPrinciple: return "保存原则"
+        case .reviewQuests: return "保存验证，今天先到这里"
+        case .reviewWithoutAction: return "保存回顾，今天先到这里"
+        case .extractPrinciple: return "保存为我的原则"
         case .sessionComplete: return "开始新一天"
         }
     }
@@ -2762,7 +3186,9 @@ struct TodayView: View {
         switch store.todayDraft.state {
         case .reviewCards:
             return store.canNavigateTodayLoop(to: .capture)
-        case .selectLens, .answerQuestions, .reviewQuests, .extractPrinciple, .sessionComplete:
+        case .sessionComplete:
+            return store.canNavigateTodayLoop(to: .extractPrinciple)
+        case .selectLens, .answerQuestions, .reviewQuests, .reviewWithoutAction, .extractPrinciple:
             return true
         case .verifyYesterday, .capture, .organizing, .selectMode:
             return previousState != nil
@@ -2771,7 +3197,7 @@ struct TodayView: View {
 
     private var canSupplementCapture: Bool {
         switch store.todayDraft.state {
-        case .reviewCards, .selectMode, .selectLens, .answerQuestions, .reviewQuests, .extractPrinciple:
+        case .reviewCards, .selectMode, .selectLens, .answerQuestions, .reviewQuests, .reviewWithoutAction, .extractPrinciple:
             return store.canNavigateTodayLoop(to: .capture)
         case .verifyYesterday, .capture, .organizing, .sessionComplete:
             return false
@@ -2812,7 +3238,12 @@ struct TodayView: View {
         store.todayDraft.state != stage.entryState && store.canNavigateTodayLoop(to: stage.entryState)
     }
 
+    private var usesScrollableReviewActions: Bool {
+        [.selectLens, .reviewQuests, .reviewWithoutAction].contains(store.todayDraft.state) && dynamicTypeSize.isAccessibilitySize
+    }
+
     private var todayScrollBottomReserve: CGFloat {
+        if usesScrollableReviewActions { return 24 }
         if store.todayDraft.state == .answerQuestions {
             return DS.primaryScrollBottomReserve
         }
@@ -2857,12 +3288,14 @@ struct TodayView: View {
         Button(action: action) {
             Text(title)
                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? .white : DS.ink)
+                .foregroundStyle(isSelected ? DS.onAccent : DS.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .frame(minHeight: DS.minimumTapTarget)
                 .background(isSelected ? DS.accent : Color(.systemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func modeCard(mode: SessionMode, icon: String, description: String) -> some View {
@@ -2949,9 +3382,9 @@ struct TodayView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("教练建议 · \(String(format: "%.0f%%", prescription.confidence * 100))")
-                    .font(.caption.monospacedDigit().weight(.bold))
-                    .foregroundStyle(lensTint(for: item))
+                Text("可选视角")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DS.accentInk)
                 Spacer()
                 Image(systemName: isLensItemSelected(item) ? "checkmark.circle.fill" : "sparkles")
                     .foregroundStyle(isLensItemSelected(item) ? lensTint(for: item) : DS.mutedInk.opacity(0.62))
@@ -2961,22 +3394,28 @@ struct TodayView: View {
                 .font(.title3.weight(.bold))
                 .foregroundStyle(DS.ink)
 
-            Text(prescription.recommendationReason)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
+            // A model recommendation normally repeats the diagnosis reason.
+            // Present that reason once while retaining distinct explanations.
+            if prescription.recommendationReason.trimmingCharacters(in: .whitespacesAndNewlines)
+                != store.coachDiagnosis?.reason.trimmingCharacters(in: .whitespacesAndNewlines) {
+                Text(prescription.recommendationReason)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Text(item.methodLine)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(lensTint(for: item))
+                .foregroundStyle(DS.accentInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("主练：\(prescription.primaryTrainingDimension.displayTitle)")
+            Text("思考方向：\(prescription.primaryTrainingDimension.displayTitle)")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(DS.ink)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(lensTint(for: item).opacity(0.10), in: Capsule())
+                .fixedSize(horizontal: false, vertical: true)
+                .background(lensTint(for: item).opacity(0.10), in: RoundedRectangle(cornerRadius: DS.smallRadius))
 
             if let teachingPlan {
                 Button {
@@ -2988,7 +3427,9 @@ struct TodayView: View {
                         isTrainingPrescriptionTeachingExpanded ? "收起怎么练" : "查看怎么练",
                         systemImage: isTrainingPrescriptionTeachingExpanded ? "chevron.up.circle" : "map"
                     )
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 6)
+                        .frame(minHeight: DS.minimumTapTarget)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -3026,7 +3467,7 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("改选记录")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(lensTint(for: item))
+                        .foregroundStyle(DS.accentInk)
                         .textCase(.uppercase)
 
                     Text(overrideAuditText)
@@ -3045,18 +3486,23 @@ struct TodayView: View {
                 )
             }
 
-            HStack(spacing: 10) {
+            (dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))) {
                 Button(action: { store.acceptTrainingPrescription() }) {
                     Label("接受推荐", systemImage: "checkmark.circle.fill")
-                        .font(.caption.weight(.bold))
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 6)
+                        .frame(minHeight: DS.minimumTapTarget)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionAcceptAction)
+                .foregroundStyle(DS.onAccent)
 
                 Button(action: { store.skipTrainingPrescription() }) {
                     Label("跳过", systemImage: "forward.end")
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 6)
+                        .frame(minHeight: DS.minimumTapTarget)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -3067,11 +3513,6 @@ struct TodayView: View {
         .padding(DS.cardInnerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(lensTint(for: item))
-                .frame(width: 5)
-        }
         .clipShape(RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
@@ -3144,9 +3585,10 @@ struct TodayView: View {
         _ diagnosis: CoachDiagnosis,
         turnState: CoachTurnState?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
+        let isModelDecision = diagnosis.policyVersion.hasPrefix("coach-decision.llm")
+        return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline) {
-                Text("教练判断")
+                Text("当前材料的暂定理解")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(DS.brick)
                 Spacer()
@@ -3154,60 +3596,66 @@ struct TodayView: View {
                     .foregroundStyle(DS.brick)
             }
 
-            Text("当前阶段：\(diagnosis.phase.displayTitle)")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(DS.ink)
+            if !isModelDecision {
+                Text("当前阶段：\(diagnosis.phase.displayTitle)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(DS.ink)
 
-            Text("建议：\(diagnosis.recommendedMove.displayRecommendation)")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(DS.ink)
-                .fixedSize(horizontal: false, vertical: true)
+                Text("建议：\(diagnosis.recommendedMove.displayRecommendation)")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let turnState, !turnState.openEvidenceGaps.isEmpty {
                 Text("缺口：\(turnState.openEvidenceGaps.map(\.displayTitle).joined(separator: "、"))")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.brick)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("today.coach-decision.material-gap")
             }
 
             Text(diagnosis.reason)
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("today.coach-decision.reason")
 
-            if let turnState {
+            if let turnState, !isModelDecision {
                 Text("轮次：\(turnState.turnSummary)")
                     .font(.caption2)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 8) {
-                Button(action: { store.acceptCoachDiagnosis() }) {
-                    Label("接受", systemImage: "checkmark.circle")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisAcceptAction)
+            if !isModelDecision {
+                HStack(spacing: 8) {
+                    Button(action: { store.acceptCoachDiagnosis() }) {
+                        Label("接受", systemImage: "checkmark.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(TodayAutomationID.coachDiagnosisAcceptAction)
 
-                Button(action: { store.slowDownCoachDiagnosis() }) {
-                    Label("放慢", systemImage: "pause.circle")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisSlowDownAction)
+                    Button(action: { store.slowDownCoachDiagnosis() }) {
+                        Label("放慢", systemImage: "pause.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(TodayAutomationID.coachDiagnosisSlowDownAction)
 
-                Button(action: { store.overrideCoachDiagnosisToProgress() }) {
-                    Label("推进", systemImage: "arrow.right.circle")
-                        .font(.caption.weight(.semibold))
+                    Button(action: { store.overrideCoachDiagnosisToProgress() }) {
+                        Label("推进", systemImage: "arrow.right.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(TodayAutomationID.coachDiagnosisOverrideProgressAction)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .accessibilityIdentifier(TodayAutomationID.coachDiagnosisOverrideProgressAction)
+                .padding(.top, 2)
             }
-            .padding(.top, 2)
         }
         .padding(DS.cardInnerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3372,65 +3820,69 @@ struct TodayView: View {
     }
 
     private func lensMethodTile(_ item: LensCatalogItem, isRecommended: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(action: { selectLensItem(item) }) {
-                VStack(alignment: .leading, spacing: 9) {
-                    HStack {
-                        Text(String(format: "%02d", item.methodIndex))
-                            .font(.caption.monospacedDigit().weight(.bold))
-                            .foregroundStyle(lensTint(for: item))
-                        Spacer()
-                        if isRecommended {
-                            Text("推荐")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(DS.accentInk)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
+                Button(action: { selectLensItem(item) }) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: isLensItemSelected(item) ? "checkmark.circle.fill" : item.symbolName)
+                            .font(.system(size: 20, weight: .regular))
+                            .foregroundStyle(isLensItemSelected(item) ? DS.accent : DS.mutedInk)
+                            .frame(width: 24).frame(minHeight: 24)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(item.title)
+                                .font(.headline)
+                                .foregroundStyle(DS.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(item.subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(DS.mutedInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if isRecommended {
+                                Text("建议视角")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(DS.accentInk)
+                            }
                         }
-                    }
-
-                    Text(item.title)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(DS.ink)
-                        .lineLimit(1)
-
-                    Text(item.questionSeeds.first ?? item.methodLine)
-                        .font(.caption2)
-                        .foregroundStyle(DS.mutedInk)
-                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 0)
+                    }
+                    .padding(DS.cardInnerPadding)
+                    .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, minHeight: 126, alignment: .topLeading)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(TodayAutomationID.lensAction(item))
+                .accessibilityLabel(item.title)
+                .accessibilityValue(isLensItemSelected(item) ? "已选择。" + lensMethodTileAccessibilityValue(item) : lensMethodTileAccessibilityValue(item))
+                .accessibilityAddTraits(isLensItemSelected(item) ? .isSelected : [])
+
+                Button { inspectedLens = item } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 20, weight: .regular))
+                        .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accent)
+                .accessibilityLabel("了解" + item.title)
+                .accessibilityIdentifier("today.lens." + item.id + ".guide")
+                .padding(.trailing, 6)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(TodayAutomationID.lensAction(item))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(item.title)
-            .accessibilityValue(lensMethodTileAccessibilityValue(item))
-            .padding(12)
-            .background(isLensItemSelected(item) ? lensTint(for: item).opacity(0.07) : Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
-                    .stroke(isLensItemSelected(item) ? lensTint(for: item).opacity(0.34) : Color.primary.opacity(0.06), lineWidth: 1)
-            )
+            .fixedSize(horizontal: false, vertical: true)
+            .background(isLensItemSelected(item) ? DS.accent.opacity(0.06) : .clear)
 
             if let overrideAuditText = lensDecisionOverrideAuditText(for: item) {
                 Text(overrideAuditText)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(9)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(lensTint(for: item).opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(lensTint(for: item).opacity(0.18), lineWidth: 1)
-                    )
+                    .padding(DS.cardInnerPadding)
                     .accessibilityIdentifier(TodayAutomationID.trainingPrescriptionDecisionOverrideAudit)
-                    .accessibilityLabel("改选记录：\(overrideAuditText)")
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func lensMethodTileAccessibilityValue(_ item: LensCatalogItem) -> String {
@@ -3560,18 +4012,20 @@ struct TodayView: View {
                     .foregroundStyle(DS.mutedInk)
             }
 
-            TextField(placeholder, text: text, axis: .vertical)
+            PushToTalkInput(
+                text: text,
+                placeholder: placeholder,
+                accessibilityIdentifier: automationID,
+                usesTextEditor: minHeight > 60
+            )
                 .font(.subheadline)
                 .foregroundStyle(DS.ink)
-                .lineLimit(1...4)
-                .padding(12)
                 .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
                 .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
                         .stroke(DS.hairline, lineWidth: 1)
                 )
-                .accessibilityIdentifier(automationID)
         }
         .padding(DS.cardInnerPadding)
         .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
@@ -3727,6 +4181,60 @@ func sideQuestRationaleDisplayText(for run: SideQuestRun) -> String? {
 
 private enum TodayScrollAnchor {
     static let top = "today-top"
+}
+
+private struct LensGuideSheet: View {
+    let item: LensCatalogItem
+    let onSelect: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    guideSection("帮你练哪一步", text: item.purpose)
+                    guideSection("适合什么时候", text: item.applicability)
+                    guideSection("这次可以怎么想", text: item.questionSeeds.first ?? item.methodLine)
+                    guideSection("使用边界", text: item.disableConditions.joined(separator: "\n\n"))
+                    Text("一次只看一个角度。想清一处、保留未知或决定暂时不行动，都可以结束。")
+                        .font(.subheadline)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(action: onSelect) {
+                        Text("用这个视角")
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, DS.cardInnerPadding)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(DS.onAccent)
+                    .accessibilityIdentifier("today.lens.guide.select")
+                }
+                .padding(DS.pagePadding)
+            }
+            .background(DS.background)
+            .foregroundStyle(DS.ink)
+            .navigationTitle(item.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .tint(DS.accent)
+        .accessibilityIdentifier("today.lens.guide.sheet")
+    }
+
+    private func guideSection(_ title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+            Text(text).font(.body).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 private struct LensGlyph: View {
@@ -4488,6 +4996,7 @@ private struct QuestionCardView: View {
     let question: ReflectionQuestion
     @Binding var answer: String
     var isPrimaryAnswerField: Bool = false
+    var isModelLed: Bool = false
     @State private var showsCoachBasis = false
 
     var body: some View {
@@ -4496,7 +5005,7 @@ private struct QuestionCardView: View {
                 Image(systemName: "scope")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.accent)
-                Text("透镜追问")
+                Text(question.isRepairQuestion ? "继续追问" : (isModelLed ? "这一个问题" : "透镜追问"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(DS.accentInk)
 
@@ -4515,31 +5024,37 @@ private struct QuestionCardView: View {
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(compactRepairCue)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+            if isModelLed {
+                if let reason = trimmed(question.whyNow) ?? trimmed(question.whyItMatters) {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("today.question.reason")
+                }
+            } else {
+                Text(compactRepairCue)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            TextField(question.answerTrainingPrompt, text: $answer, axis: .vertical)
-                .textFieldStyle(.plain)
+            PushToTalkInput(text: $answer,
+                placeholder: isModelLed ? "写下你的回答" : question.answerTrainingPrompt,
+                accessibilityIdentifier: answerFieldAutomationID)
                 .font(.subheadline)
-                .lineLimit(3...6)
                 .frame(minHeight: 78, alignment: .topLeading)
-                .padding(12)
-                .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
-                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
-                )
-                .accessibilityIdentifier(answerFieldAutomationID)
 
             if hasCoachBasis {
                 DisclosureGroup(isExpanded: $showsCoachBasis) {
-                    coachBasisView
-                        .padding(.top, 8)
+                    if isModelLed {
+                        materialExplanationView.padding(.top, 8)
+                    } else {
+                        coachBasisView.padding(.top, 8)
+                    }
                 } label: {
-                    Label("教练依据", systemImage: "list.bullet.clipboard")
+                    Label(isModelLed ? "为什么问这个问题" : "教练依据", systemImage: "list.bullet.clipboard")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
                 }
@@ -4564,7 +5079,12 @@ private struct QuestionCardView: View {
     }
 
     private var hasCoachBasis: Bool {
-        hasTeachingCue ||
+        if isModelLed {
+            return (trimmed(question.whyItMatters) != nil && trimmed(question.whyItMatters) != trimmed(question.whyNow)) ||
+                trimmed(question.expectedUpdate) != nil || trimmed(question.proceedWhen) != nil ||
+                !question.sourceCardTitles.isEmpty || trimmed(question.calibrationTarget) != nil
+        }
+        return hasTeachingCue ||
             trimmed(question.whyItMatters) != nil ||
             !question.sourceCardTitles.isEmpty ||
             trimmed(question.calibrationTarget) != nil
@@ -4578,6 +5098,30 @@ private struct QuestionCardView: View {
             return "先写到可以推进：\(proceedWhen)"
         }
         return trimmed(question.whyItMatters) ?? question.answerTrainingPrompt
+    }
+
+    /// Display the supplied question rationale, never a diagnosis reconstructed
+    /// from a gap enum or a generic task inferred from its answer-use label.
+    private var materialExplanationView: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if let matters = trimmed(question.whyItMatters), matters != trimmed(question.whyNow) {
+                BriefRow(title: "为什么值得想", body: matters, accent: DS.accent)
+            }
+            if let update = trimmed(question.expectedUpdate) {
+                BriefRow(title: "回答能澄清什么", body: update, accent: DS.accent)
+                    .accessibilityIdentifier("today.question.expected-update")
+            }
+            if let sufficient = trimmed(question.proceedWhen) {
+                BriefRow(title: "回答到什么程度", body: sufficient, accent: DS.accent)
+                    .accessibilityIdentifier("today.question.sufficient-answer")
+            }
+            if let target = trimmed(question.calibrationTarget) {
+                BriefRow(title: "这次讨论的判断", body: target, accent: DS.mutedInk)
+            }
+            if !question.sourceCardTitles.isEmpty {
+                BriefRow(title: "依据的材料", body: question.sourceCardTitles.joined(separator: "、"), accent: DS.mutedInk)
+            }
+        }
     }
 
     private var coachBasisView: some View {
@@ -4688,7 +5232,7 @@ private struct QuestCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(quest.type == .main ? "明天的验证动作" : "辅助准备")
+                Text(quest.type == .main ? "准备怎么做" : "辅助准备")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(quest.type == .main ? DS.accent : .secondary)
                 Spacer()
@@ -4715,16 +5259,17 @@ private struct QuestCardView: View {
                     .foregroundStyle(DS.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
-                validationChecksView
-
                 VStack(alignment: .leading, spacing: 10) {
-                    BriefRow(title: "对应判断", body: executionFeedback.judgmentLine, accent: DS.accent)
                     BriefRow(title: "完成证据", body: executionFeedback.evidenceLine, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                     BriefRow(title: "校准问题", body: quest.reflectionQuestion, accent: DS.success)
                 }
 
                 DisclosureGroup(isExpanded: $showsDetails) {
                     VStack(alignment: .leading, spacing: 10) {
+                        Text("内容检查（仅检查是否填写）")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                        validationChecksView
                         BriefRow(title: "为什么重要", body: quest.whyItMatters, accent: quest.type == .main ? DS.accent : DS.mutedInk)
                         BriefRow(title: "阻力预案", body: executionFeedback.resistanceLine, accent: DS.caution)
                         BriefRow(title: "训练说明", body: executionFeedback.contractLine, accent: DS.success)
@@ -4854,7 +5399,7 @@ private struct PrincipleCardView: View {
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                 Spacer()
-                Button(isEditing ? "保存" : "编辑") {
+                Button(isEditing ? "完成编辑" : "编辑") {
                     if isEditing {
                         update(draftTitle, draftSummary, draftTrigger, draftActions, draftCriteria, draftExceptions)
                     }
@@ -4862,6 +5407,7 @@ private struct PrincipleCardView: View {
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("today.principle.edit-action")
             }
 
             if isEditing {
@@ -4881,7 +5427,21 @@ private struct PrincipleCardView: View {
                 Text("适用场景：\(principle.triggerContext)")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
+                ForEach(Array(principle.actions.enumerated()), id: \.offset) { index, action in
+                    Text("\(index + 1). \(action)")
+                        .font(.subheadline)
+                }
+                Text("成功标准：\(principle.successCriteria)")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                Text("例外条件：\(principle.exceptions.isEmpty ? "尚未说明，使用时保留判断。" : principle.exceptions)")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
             }
+        }
+        .onChange(of: [draftTitle, draftSummary, draftTrigger, draftActions, draftCriteria, draftExceptions]) { _, _ in
+            guard isEditing else { return }
+            update(draftTitle, draftSummary, draftTrigger, draftActions, draftCriteria, draftExceptions)
         }
         .principleSurface()
     }
@@ -4897,10 +5457,13 @@ private struct EditableField: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(DS.mutedInk)
-            TextField(title, text: $text, axis: axis)
-                .textFieldStyle(.plain)
+            PushToTalkInput(
+                text: $text,
+                placeholder: title,
+                accessibilityIdentifier: "today.editable-field.\(title)",
+                usesTextEditor: axis == .vertical
+            )
                 .font(.subheadline)
-                .padding(10)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
@@ -5128,17 +5691,15 @@ private struct ReferencedPrinciplesView: View {
                             .font(.caption)
                             .foregroundStyle(DS.mutedInk)
                             .lineLimit(2)
-                        TextField(
-                            "可选：为什么复现、调整或不复现？",
+                        PushToTalkInput(
                             text: Binding(
                                 get: { feedbackNotes[principle.id, default: ""] },
                                 set: { feedbackNotes[principle.id] = $0 }
-                            )
+                            ),
+                            placeholder: "可选：为什么复现、调整或不复现？",
+                            accessibilityIdentifier: TodayAutomationID.principleFeedbackNoteField
                         )
                         .font(.caption)
-                        .textFieldStyle(.roundedBorder)
-                        .submitLabel(.done)
-                        .accessibilityIdentifier(TodayAutomationID.principleFeedbackNoteField)
 
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 118), spacing: 8)],

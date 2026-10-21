@@ -92,14 +92,26 @@ struct MentorResponseValidationContext {
     let materialQuestionCount: Int
     let intent: Intent
     let availableActions: Set<MentorSuggestedAction>
+    /// The new user expression that anchors this turn, when one exists.
+    /// Explicit UI actions may intentionally omit this anchor.
+    let latestUserExpressionSource: MentorSourceReference?
+    /// The immediately preceding assistant question, when the request is a
+    /// continuation. This is a deterministic guard against asking the same
+    /// question again after the user has already seen it.
+    let previousAssistantQuestion: String?
 
     init(sentSources: Set<MentorSourceReference>, userExpressionSources: Set<MentorSourceReference>,
          supersededSources: Set<MentorSourceReference> = [], eligibleLessons: Set<MentorLessonReference> = [],
          materialQuestionCount: Int, intent: Intent = .discuss,
-         availableActions: Set<MentorSuggestedAction> = Set(MentorSuggestedAction.allCases)) throws {
+         availableActions: Set<MentorSuggestedAction> = Set(MentorSuggestedAction.allCases),
+         previousAssistantQuestion: String? = nil,
+         latestUserExpressionSource: MentorSourceReference? = nil) throws {
         guard (0...2).contains(materialQuestionCount), userExpressionSources.isSubset(of: sentSources),
               supersededSources.isSubset(of: sentSources), !userExpressionSources.contains(where: \.isLesson),
-              userExpressionSources.isDisjoint(with: supersededSources) else { throw MentorResponseError.invalidContext }
+              userExpressionSources.isDisjoint(with: supersededSources),
+              latestUserExpressionSource.map({ userExpressionSources.contains($0) }) ?? true else {
+            throw MentorResponseError.invalidContext
+        }
         self.sentSources = sentSources
         self.userExpressionSources = userExpressionSources
         self.supersededSources = supersededSources
@@ -107,6 +119,8 @@ struct MentorResponseValidationContext {
         self.materialQuestionCount = materialQuestionCount
         self.intent = intent
         self.availableActions = availableActions
+        self.previousAssistantQuestion = previousAssistantQuestion
+        self.latestUserExpressionSource = latestUserExpressionSource
     }
 }
 
@@ -124,13 +138,112 @@ enum MentorResponseError: Error, Equatable {
     case supersededSource(String)
     case ineligibleLesson
     case materialBudgetExhausted
+    case repeatedQuestion
     case intentMismatch
     case noUserExpression
     case nonUserDraftSource(String)
+    case qualityGateFailed(MentorResponseQualityIssue)
+}
+
+/// Cheap local checks for the mentor's core promise. The model still owns the
+/// nuanced judgment; this policy rejects visibly ungrounded responses even
+/// when they describe a material gap, and protects the zero-material review path.
+enum MentorResponseQualityIssue: String, Error, Equatable {
+    case missingSourceGrounding = "missing_source_grounding"
+    case genericResponse = "generic_response"
+    case hiddenQuestionInBody = "hidden_question_in_body"
+    case reviewOpeningNeedsQuestion = "review_opening_needs_question"
+    case reviewOpeningNeedsSpecificDoorway = "review_opening_needs_specific_doorway"
+}
+
+struct MentorResponseQualityPolicy {
+    static func validate(_ response: MentorTurnResponse,
+                         context: MentorResponseValidationContext,
+                         initialEntry: String,
+                         intent: String) throws {
+        let body = response.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isGeneric(body, action: response.action) else {
+            throw MentorResponseError.qualityGateFailed(.genericResponse)
+        }
+        guard !containsQuestionMarkOutsideQuotedText(body) else {
+            throw MentorResponseError.qualityGateFailed(.hiddenQuestionInBody)
+        }
+
+        let hasUserMaterial = !context.userExpressionSources.isEmpty
+        if hasUserMaterial, response.action != .close {
+            let requiredSources = context.latestUserExpressionSource.map { [$0] } ?? Array(context.userExpressionSources)
+            if response.sourceRefs.allSatisfy({ !requiredSources.contains($0) }) {
+                throw MentorResponseError.qualityGateFailed(.missingSourceGrounding)
+            }
+        }
+
+        // A blank review is a deliberate invitation to remember something.
+        // It must leave a reply doorway in the same turn; otherwise a valid
+        // JSON response can still strand the user on an empty screen.
+        if initialEntry == "review", intent == "review", !hasUserMaterial,
+           response.action != .close, response.question == nil {
+            throw MentorResponseError.qualityGateFailed(.reviewOpeningNeedsQuestion)
+        }
+        if initialEntry == "review", intent == "review", !hasUserMaterial,
+           let question = response.question, isGenericReviewQuestion(question) {
+            throw MentorResponseError.qualityGateFailed(.reviewOpeningNeedsSpecificDoorway)
+        }
+    }
+
+    private static func isGeneric(_ body: String, action: MentorAction) -> Bool {
+        guard action != .close else { return false }
+        let normalized = body
+            .lowercased()
+            .replacingOccurrences(of: "[\\s，。！？、,.!?：:；;“”\"'（）()]+", with: "", options: .regularExpression)
+        guard !normalized.isEmpty else { return true }
+        let genericOnly = [
+            "请说说你的感受",
+            "请说说今天发生了什么",
+            "你可以继续思考",
+            "希望这能帮助你",
+            "这是一个值得思考的问题",
+            "具体情况需要具体分析"
+        ]
+        return genericOnly.contains(normalized)
+    }
+
+    private static func containsQuestionMarkOutsideQuotedText(_ body: String) -> Bool {
+        var quoteDepth = 0
+        var insideASCIIQuotes = false
+        for character in body {
+            switch character {
+            case "“", "「", "『": quoteDepth += 1
+            case "”", "」", "』": quoteDepth = max(0, quoteDepth - 1)
+            case "\"": insideASCIIQuotes.toggle()
+            case "?", "？":
+                if quoteDepth == 0 && !insideASCIIQuotes { return true }
+            default: break
+            }
+        }
+        return false
+    }
+
+    private static func isGenericReviewQuestion(_ question: String) -> Bool {
+        let normalized = question
+            .lowercased()
+            .replacingOccurrences(of: "[\\s，。！？、,.!?：:；;“”\"'（）()]+", with: "", options: .regularExpression)
+        let genericOpenings = [
+            "请说说今天发生了什么",
+            "今天发生了什么",
+            "你今天想聊什么",
+            "你想聊什么",
+            "你想聊些什么",
+            "你有什么想法",
+            "请说说你的感受",
+            "你今天感觉怎么样"
+        ]
+        return genericOpenings.contains(normalized)
+    }
 }
 
 struct MentorResponseParser {
     func parseTurn(_ data: Data, context: MentorResponseValidationContext) throws -> MentorValidatedTurn {
+        let data = try Self.payloadData(data)
         let object = try Self.object(data, keys: ["schema_version", "action", "material_status", "body", "question", "question_purpose", "source_refs", "lesson_ref", "suggested_actions"])
         if let lesson = object["lesson_ref"], !(lesson is NSNull) {
             guard let fields = lesson as? [String: Any], Set(fields.keys) == ["id", "version"] else {
@@ -141,13 +254,21 @@ struct MentorResponseParser {
         guard response.schemaVersion == "1.0.0" else { throw MentorResponseError.unsupportedSchema }
         try Self.text(response.body, limit: 12000, field: "body")
         if let question = response.question { try Self.text(question, limit: 1000, field: "question") }
+        if let question = response.question,
+           let previous = context.previousAssistantQuestion,
+           Self.normalizedQuestion(question) == Self.normalizedQuestion(previous) {
+            throw MentorResponseError.repeatedQuestion
+        }
         guard (response.question == nil) == (response.questionPurpose == nil),
               response.action != .clarify || response.question != nil,
               response.materialStatus != .missing || response.question == nil || response.questionPurpose == .material else {
             throw MentorResponseError.invalidField("question_purpose")
         }
         try Self.sources(response.sourceRefs, context: context)
-        guard response.suggestedActions.count <= 5, Set(response.suggestedActions).count == response.suggestedActions.count else {
+        // Two is a deliberate interaction budget. More choices turn a short
+        // thinking step into another planning menu, even when the model's
+        // body is otherwise valid.
+        guard response.suggestedActions.count <= 2, Set(response.suggestedActions).count == response.suggestedActions.count else {
             throw MentorResponseError.invalidField("suggested_actions")
         }
         if let lesson = response.lessonRef {
@@ -158,7 +279,7 @@ struct MentorResponseParser {
         switch context.intent {
         case .discuss: break
         case .directTeaching:
-            guard response.action == .explain, !response.requiresMaterial else { throw MentorResponseError.intentMismatch }
+            guard response.action == .explain, response.question == nil else { throw MentorResponseError.intentMismatch }
         case .finish:
             guard response.action == .close, response.question == nil, response.lessonRef == nil else { throw MentorResponseError.intentMismatch }
         }
@@ -172,6 +293,7 @@ struct MentorResponseParser {
     }
 
     func parseUnderstanding(_ data: Data, context: MentorResponseValidationContext) throws -> MentorUnderstandingDraftResponse {
+        let data = try Self.payloadData(data)
         _ = try Self.object(data, keys: ["schema_version", "text", "source_refs"])
         let response = try JSONDecoder().decode(MentorUnderstandingDraftResponse.self, from: data)
         guard response.schemaVersion == "1.0.0" else { throw MentorResponseError.unsupportedSchema }
@@ -183,6 +305,21 @@ struct MentorResponseParser {
             throw MentorResponseError.nonUserDraftSource(ref.value)
         }
         return response
+    }
+
+    /// OpenAI-compatible transports return an envelope; injected local clients
+    /// may return the protocol JSON directly. Unwrap without repairing content.
+    private static func payloadData(_ data: Data) throws -> Data {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MentorResponseError.invalidField("object")
+        }
+        guard object["choices"] != nil else { return data }
+        let envelope = try JSONDecoder().decode(GLMChatCompletionResponse.self, from: data)
+        guard envelope.choices.count == 1, let content = envelope.choices.first?.message?.content,
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw MentorResponseError.invalidField("response_content")
+        }
+        return Data(content.utf8)
     }
 
     private static func object(_ data: Data, keys: Set<String>) throws -> [String: Any] {
@@ -197,6 +334,13 @@ struct MentorResponseParser {
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, value.unicodeScalars.count <= limit else {
             throw MentorResponseError.invalidField(field)
         }
+    }
+
+    private static func normalizedQuestion(_ value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "?？。.!！"))
     }
 
     private static func sources(_ sources: [MentorSourceReference], context: MentorResponseValidationContext) throws {

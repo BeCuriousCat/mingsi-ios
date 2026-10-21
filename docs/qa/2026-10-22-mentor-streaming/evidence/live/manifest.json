@@ -1,0 +1,26 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "9F93EE80-68DF-4922-8A73-B0590F5143D4",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "EF50A867-62BB-44DB-A4D0-45F552879237.json",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "mentor-streaming-persisted-timeline_0_2F1F3063-64C7-46B2-91F8-B7F049E6A1FE.json",
+        "timestamp" : 1792600859.603
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "9F93EE80-68DF-4922-8A73-B0590F5143D4",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "C99E0137-65D0-4463-935E-EC62BADE21F4.json",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "mentor-streaming-timing_0_8201EE72-2011-44A9-B3AC-BE40716EF9AD.json",
+        "timestamp" : 1792600859.597
+      }
+    ],
+    "testIdentifier" : "LiveGLMAcceptanceTests/testLiveAuditedMentorStreamingWhenExplicitlyEnabled()",
+    "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/LiveGLMAcceptanceTests/testLiveAuditedMentorStreamingWhenExplicitlyEnabled"
+  }
+]

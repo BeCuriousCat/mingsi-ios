@@ -107,6 +107,10 @@ enum GrowthAutomationID {
 
 enum ProjectsAutomationID {
     static let emptyStateTodayAction = "projects.empty-state.today-action"
+
+    static func statusFilter(_ status: ProjectStatus?) -> String {
+        "projects.status-filter.\(status?.rawValue ?? "all")"
+    }
 }
 
 enum HistoryAutomationID {
@@ -317,7 +321,7 @@ struct HistoryView: View {
             await store.loadHistoryRecords()
             if let link = store.historyDeepLink {
                 receiveHistoryDeepLink(link)
-            } else if let latest = records.first?.draft.date {
+            } else if highlightedDeepLink == nil, let latest = records.first?.draft.date {
                 selectedDate = latest
             }
             await loadRepairablePromptRunsForVisibleRecord()
@@ -532,7 +536,7 @@ struct HistoryView: View {
 
                     ForEach(caseRecord.verifications) { verification in
                         VStack(alignment: .leading, spacing: 3) {
-                            Label("验证证据", systemImage: "checkmark.seal")
+                            Label("结果记录", systemImage: "doc.text")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(DS.success)
                             Text(verification.evidenceText)
@@ -543,9 +547,14 @@ struct HistoryView: View {
 
                     ForEach(caseRecord.growthSettlements) { settlement in
                         VStack(alignment: .leading, spacing: 4) {
-                            Label("判断更新 · \(settlement.judgmentUpdate.title)", systemImage: "arrow.triangle.2.circlepath")
+                            Label("你的判断自评 · \(settlement.judgmentUpdate.title)", systemImage: "person.crop.circle")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(DS.accentInk)
+                            ResultCalibrationSummary(
+                                assessment: settlement.calibrationAssessment,
+                                note: settlement.calibrationNote,
+                                recommendation: settlement.recommendation
+                            )
                             Text("原判断：\(settlement.originalJudgment)")
                                 .font(.subheadline)
                                 .foregroundStyle(DS.ink)
@@ -614,11 +623,15 @@ struct HistoryView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(DS.mutedInk)
-                    TextField("搜索历史证据", text: $searchText)
-                        .font(.subheadline)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .foregroundStyle(DS.ink)
+                    PushToTalkInput(
+                        text: $searchText,
+                        placeholder: "搜索历史证据",
+                        accessibilityIdentifier: "history.search-input"
+                    )
+                    .font(.subheadline)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .foregroundStyle(DS.ink)
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
@@ -1238,10 +1251,10 @@ struct HistoryView: View {
                         Spacer()
                     }
                     HStack(spacing: 12) {
-                        Label(verification.completion.title, systemImage: verification.completion.title == "完成" ? "checkmark.circle" : "circle")
+                        Label("完成自评：\(verification.completion.title)", systemImage: verification.completion.title == "完成" ? "checkmark.circle" : "circle")
                             .font(.subheadline)
                             .foregroundStyle(DS.ink)
-                        Label(verification.valueRating.title, systemImage: "star")
+                        Label("价值自评：\(verification.valueRating.title)", systemImage: "star")
                             .font(.subheadline)
                             .foregroundStyle(DS.ink)
                         Spacer()
@@ -1257,10 +1270,14 @@ struct HistoryView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    Text(verification.calibrationNote)
-                        .font(.subheadline)
+                    Text("你的判断自评：\(verification.judgmentUpdate.title)")
+                        .font(.caption)
                         .foregroundStyle(DS.mutedInk)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ResultCalibrationSummary(
+                        assessment: verification.calibrationAssessment,
+                        note: verification.calibrationNote,
+                        recommendation: nil
+                    )
                     if let issue = verification.likelyIssue, !issue.isEmpty {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle")
@@ -1629,15 +1646,14 @@ struct ProjectsView: View {
             projectStatusFilteredItems(projectItems, projectsById: store.projectsById, status: $0)
         } ?? projectItems.filter { store.projectsById[$0.id]?.status != .archived }
         VStack(alignment: .leading, spacing: 12) {
+            projectStatusRail
+
             HStack(alignment: .firstTextBaseline) {
                 SectionLabel(projectItems.isEmpty ? "长期议题" : "当前议题")
                 Spacer()
                 Text(projectBoardCountText(filteredCount: filtered.count, totalCount: projectItems.count, filterStatus: statusFilter))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(DS.mutedInk)
-                if !projectItems.isEmpty {
-                    projectStatusFilterMenu
-                }
             }
 
             if projectItems.isEmpty {
@@ -1674,20 +1690,60 @@ struct ProjectsView: View {
         }
     }
 
-    private var projectStatusFilterMenu: some View {
-        Menu {
-            Button("当前项目") { statusFilter = nil }
-            ForEach(ProjectStatus.allCases) { status in
-                Button(status.chineseTitle) { statusFilter = status }
+    private var projectStatusRail: some View {
+        let statuses = ProjectStatus.allCases
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                projectStatusRailButton(
+                    title: "当前",
+                    status: nil,
+                    count: projectItems.filter { store.projectsById[$0.id]?.status != .archived }.count
+                )
+                ForEach(statuses) { status in
+                    projectStatusRailButton(
+                        title: status.chineseTitle,
+                        status: status,
+                        count: projectItems.filter { store.projectsById[$0.id]?.status == status }.count
+                    )
+                }
             }
-        } label: {
-            Image(systemName: statusFilter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                .font(.caption.weight(.bold))
-                .frame(width: DS.minimumTapTarget, height: DS.minimumTapTarget)
+            .padding(.vertical, 2)
         }
-        .buttonStyle(.bordered)
-        .tint(statusFilter == nil ? DS.accent : DS.caution)
-        .accessibilityLabel(statusFilter.map { "筛选项目：\($0.chineseTitle)" } ?? "筛选项目")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("项目状态筛选")
+    }
+
+    private func projectStatusRailButton(title: String, status: ProjectStatus?, count: Int) -> some View {
+        let isSelected = statusFilter == status
+        return Button {
+            statusFilter = status
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(status?.tint ?? DS.accent)
+                    .frame(width: 6, height: 6)
+                Text(title)
+                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                Text(String(count))
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(isSelected ? DS.accentInk : DS.mutedInk)
+            }
+            .foregroundStyle(isSelected ? DS.accentInk : DS.mutedInk)
+            .padding(.horizontal, 11)
+            .frame(minHeight: 34)
+            .background(
+                isSelected ? DS.accent.opacity(0.12) : DS.surface,
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(isSelected ? DS.accent.opacity(0.25) : DS.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(ProjectsAutomationID.statusFilter(status))
+        .accessibilityLabel("筛选项目：\(title)，\(count) 个")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -1809,11 +1865,30 @@ struct GrowthView: View {
                     growthSettlementEvidenceSection
                 }
 
+                if store.growthSnapshot.canDisplayScores,
+                   !store.growthSnapshot.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    GrowthSummaryPanel(snapshot: store.growthSnapshot)
+                }
+
+                GrowthReflectionTopicsPanel(
+                    summary: reflectionTopicSummary,
+                    onSelectSource: { source in
+                        store.navigateToHistoryDeepLink(
+                            HistoryDeepLink(
+                                dailyEntryId: source.dailyEntryId,
+                                sourceId: source.caseId?.uuidString ?? source.dailyEntryId.uuidString,
+                                sourceType: source.caseId == nil ? .dailyEntry : nil
+                            )
+                        )
+                    }
+                )
+
                 weeklyGuidanceSection
                 sideQuestExperienceSection
 
                 if !store.growthSnapshot.canDisplayScores {
-                    GrowthEvidenceProgressPanel(snapshot: store.growthSnapshot) {
+                    GrowthEvidenceProgressPanel(snapshot: store.growthSnapshot,
+                        completedRecordCount: store.historyRecords.filter { $0.draft.state == .sessionComplete }.count) {
                         store.selectedTab = .today
                     }
                 } else {
@@ -1909,6 +1984,10 @@ struct GrowthView: View {
             store.metricContributions + store.growthReportReviewContributions,
             metric: metric
         )
+    }
+
+    private var reflectionTopicSummary: ReflectionTopicSummary {
+        ReflectionTopicSummaryPolicy().summarize(records: store.historyRecords, excluding: store.todayDraft.id)
     }
 
     private var weeklyGuidanceSection: some View {
@@ -2029,47 +2108,183 @@ struct GrowthView: View {
     }
 
     private var growthSettlementEvidenceSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionLabel("最近新增证据")
-            ForEach(Array(store.growthSettlements.prefix(8))) { settlement in
-                Button {
-                    guard let caseId = settlement.caseId,
-                          let record = store.historyRecords.first(where: { history in
-                              history.caseRecords.contains { $0.trainingCase.id == caseId }
-                          })
-                    else { return }
-                    store.navigateToHistoryDeepLink(
-                        HistoryDeepLink(
-                            dailyEntryId: record.draft.id,
-                            sourceId: caseId.uuidString,
-                            sourceType: nil
-                        )
-                    )
-                } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(settlement.judgmentUpdate.title)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(DS.accent)
-                            Spacer()
-                            Text(settlement.createdAt.mingsiShortDate)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(DS.mutedInk)
-                        }
-                        Text(settlement.actualResult)
-                            .font(.subheadline)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(2)
-                        Text(settlement.evidenceItems.map(\.title).joined(separator: " / "))
-                            .font(.caption)
+        let visibleSettlements = store.growthSettlements.filter {
+            !$0.originalJudgment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !$0.actualResult.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return Group {
+            if !visibleSettlements.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        SectionLabel("判断变化")
+                        Spacer()
+                        Text("Before / After")
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(DS.mutedInk)
-                            .lineLimit(2)
                     }
-                    .padding(.vertical, 8)
+
+                    ForEach(Array(visibleSettlements.prefix(8))) { settlement in
+                        Button {
+                            guard let caseId = settlement.caseId,
+                                  let record = store.historyRecords.first(where: { history in
+                                      history.caseRecords.contains { $0.trainingCase.id == caseId }
+                                  })
+                            else { return }
+                            store.navigateToHistoryDeepLink(
+                                HistoryDeepLink(
+                                    dailyEntryId: record.draft.id,
+                                    sourceId: caseId.uuidString,
+                                    sourceType: nil
+                                )
+                            )
+                        } label: {
+                            GrowthBeforeAfterRow(
+                                settlement: settlement,
+                                identifierPrefix: "growth.before-after.\(settlement.id.uuidString)"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("growth.before-after.\(settlement.id.uuidString).row")
+                        Divider()
+                    }
                 }
-                .buttonStyle(.plain)
-                Divider()
+                .accessibilityIdentifier("growth.before-after.section")
             }
+        }
+    }
+}
+
+/// The model's assessment of reported evidence stays distinct from user ratings.
+struct ResultCalibrationSummary: View {
+    let assessment: CalibrationAssessment?
+    let note: String
+    let recommendation: String?
+    var showsJudgmentTitle = true
+    var showsEvidenceQuotes = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let assessment {
+                if showsJudgmentTitle {
+                    Text(assessment.judgmentStatus.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DS.ink)
+                }
+                Text("\(assessment.evidenceStatus.title) · \(assessment.criteriaStatus.title)")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(note)
+                    .font(.subheadline)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let recommendation, !recommendation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(recommendation)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if showsEvidenceQuotes, let assessment, !assessment.evidenceQuotes.isEmpty {
+                DisclosureGroup("引用的记录") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(assessment.evidenceQuotes, id: \.self) { quote in
+                            Text("“\(quote)”")
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+            }
+        }
+    }
+}
+
+private struct GrowthBeforeAfterRow: View {
+    let settlement: GrowthSettlement
+    let identifierPrefix: String
+
+    private var evidenceTitles: [String] {
+        settlement.evidenceItems
+            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(settlement.calibrationAssessment?.judgmentStatus.title ?? "你的判断自评：\(settlement.judgmentUpdate.title)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(DS.accent)
+                Spacer(minLength: 8)
+                Text(settlement.createdAt.mingsiShortDate)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            ResultCalibrationSummary(
+                assessment: settlement.calibrationAssessment,
+                note: settlement.calibrationNote,
+                recommendation: settlement.recommendation,
+                showsJudgmentTitle: false,
+                showsEvidenceQuotes: false
+            )
+            if settlement.calibrationAssessment != nil {
+                Text("你的判断自评：\(settlement.judgmentUpdate.title)")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+            }
+
+            comparisonBlock(
+                label: "判断当时",
+                text: settlement.originalJudgment,
+                color: DS.mutedInk,
+                identifier: "\(identifierPrefix).before"
+            )
+
+            Image(systemName: "arrow.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DS.hairline)
+                .accessibilityHidden(true)
+
+            comparisonBlock(
+                label: "结果后来",
+                text: settlement.actualResult,
+                color: DS.ink,
+                identifier: "\(identifierPrefix).after"
+            )
+
+            if !evidenceTitles.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("来源证据 \(settlement.evidenceItems.count) 条", systemImage: "link")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DS.mutedInk)
+                    Text(evidenceTitles.joined(separator: " / "))
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityHint("打开历史中的验证来源")
+    }
+
+    private func comparisonBlock(label: String, text: String, color: Color, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(DS.mutedInk)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(color)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(identifier)
         }
     }
 }
@@ -2195,20 +2410,15 @@ private struct ManualPrincipleFormSheet: View {
         NavigationStack {
             Form {
                 Section("必填") {
-                    TextField("标题", text: $title)
-                    TextField("摘要", text: $summary, axis: .vertical)
-                        .lineLimit(2...4)
+                    PushToTalkInput(text: $title, placeholder: "标题", accessibilityIdentifier: "principle.edit.title")
+                    PushToTalkInput(text: $summary, placeholder: "摘要", accessibilityIdentifier: "principle.edit.summary", usesTextEditor: true)
                 }
 
                 Section("适用方式") {
-                    TextField("触发场景", text: $triggerContext, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("行动步骤（每行一个）", text: $actionsText, axis: .vertical)
-                        .lineLimit(3...6)
-                    TextField("成功标准", text: $successCriteria, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("例外情况", text: $exceptions, axis: .vertical)
-                        .lineLimit(2...4)
+                    PushToTalkInput(text: $triggerContext, placeholder: "触发场景", accessibilityIdentifier: "principle.edit.trigger-context", usesTextEditor: true)
+                    PushToTalkInput(text: $actionsText, placeholder: "行动步骤（每行一个）", accessibilityIdentifier: "principle.edit.actions", usesTextEditor: true)
+                    PushToTalkInput(text: $successCriteria, placeholder: "成功标准", accessibilityIdentifier: "principle.edit.success-criteria", usesTextEditor: true)
+                    PushToTalkInput(text: $exceptions, placeholder: "例外情况", accessibilityIdentifier: "principle.edit.exceptions", usesTextEditor: true)
                 }
 
                 if let errorMessage {
@@ -2368,7 +2578,7 @@ private struct GrowthReportReviewPanel: View {
             }
 
             if !snapshot.canDisplayScores {
-                Text("证据还在积累中。完成至少 3 次完整复盘，并保留验证结果后，这里会展示报告依据。")
+                Text("暂未形成可审查的成长报告。复盘次数和自评不能替代实际结果依据。")
                     .font(.subheadline)
                     .foregroundStyle(DS.mutedInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2518,6 +2728,7 @@ struct SettingsView: View {
     @State private var apiKeyInput = ""
     @State private var baseURLInput = ""
     @State private var modelNameInput = ""
+    @State private var modelProtocol: GLMClientConfiguration.ProtocolKind = .openAICompatible
     @State private var clipboardMessage = ""
     @State private var expandedPromptAuditGroups: Set<PromptRunAuditGroupKind> = PromptRunAuditSummary.defaultExpandedGroups
     @State private var promptTemplateExpanded = false
@@ -2555,13 +2766,14 @@ struct SettingsView: View {
                     MentorLessonPreferencesView(feature: feature)
                 }
                 sideQuestSettingsLink
-                SettingRow(title: "GLM API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
+                SettingRow(title: "API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
                 SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.displayTitle)
                 SettingRow(title: "本地通知", value: store.reminderStatusMessage)
                 advancedToolsLink
             }
         }
         .onAppear {
+            modelProtocol = store.currentModelProtocol
             baseURLInput = store.currentBaseURL
             modelNameInput = store.currentModelName
             loadSideQuestLifeContextInputs()
@@ -2853,7 +3065,11 @@ struct SettingsView: View {
                     Text("动手创作").tag("动手创作")
                     Text("照顾身体").tag("照顾身体")
                 }
-                TextField("这一季想探索什么（可选）", text: $sideQuestSeasonIntent)
+                PushToTalkInput(
+                    text: $sideQuestSeasonIntent,
+                    placeholder: "这一季想探索什么（可选）",
+                    accessibilityIdentifier: "settings.side-quest-season.intent"
+                )
                 Button("开启 30 天探索季") {
                     Task { await store.startSideQuestSeason(title: sideQuestSeasonTheme, intent: sideQuestSeasonIntent) }
                 }
@@ -2998,7 +3214,11 @@ struct SettingsView: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    TextField("例如：不安排需要消费的活动", text: $newLifeContextConstraint)
+                    PushToTalkInput(
+                        text: $newLifeContextConstraint,
+                        placeholder: "例如：不安排需要消费的活动",
+                        accessibilityIdentifier: "settings.side-quest-life-context.new-constraint"
+                    )
                     Button {
                         let normalized = newLifeContextConstraint.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !normalized.isEmpty else { return }
@@ -3056,9 +3276,17 @@ struct SettingsView: View {
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(DS.ink)
-            TextField(labelPrompt, text: label)
-                .textInputAutocapitalization(.never)
-            TextField("所在楼层（可选）", text: floorLevel)
+            PushToTalkInput(
+                text: label,
+                placeholder: labelPrompt,
+                accessibilityIdentifier: "settings.side-quest-place.\(place.rawValue).label"
+            )
+            .textInputAutocapitalization(.never)
+            PushToTalkInput(
+                text: floorLevel,
+                placeholder: "所在楼层（可选）",
+                accessibilityIdentifier: SettingsAutomationID.sideQuestFloorField(place)
+            )
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier(SettingsAutomationID.sideQuestFloorField(place))
             Picker("是否方便走楼梯", selection: Binding(
@@ -3173,7 +3401,7 @@ struct SettingsView: View {
                 if !AppStore.shouldUseVisualQASettingsAssetPackManifestFixture() {
                     assetPackInstallManifestCard
                 }
-                SettingRow(title: "请求协议", value: "OpenAI-compatible / 自动 JSON 降级")
+                SettingRow(title: "请求协议", value: store.currentModelProtocol.displayTitle)
             }
             .padding(.horizontal, DS.pagePadding)
             .padding(.top, DS.primaryScrollTopPadding)
@@ -3906,6 +4134,39 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(DS.mutedInk)
 
+            Text("接口类型")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(DS.ink)
+            Menu {
+                ForEach(GLMClientConfiguration.ProtocolKind.allCases, id: \.self) { kind in
+                    Button(kind.displayTitle) {
+                        store.selectModelProtocol(kind)
+                        modelProtocol = store.currentModelProtocol
+                        baseURLInput = store.currentBaseURL
+                        modelNameInput = store.currentModelName
+                        apiKeyInput = ""
+                        clipboardMessage = ""
+                    }
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(modelProtocol.displayTitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .accessibilityHidden(true)
+                }
+                .font(.body)
+                .foregroundStyle(DS.accent)
+                .frame(minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("接口类型，\(modelProtocol.displayTitle)")
+            .accessibilityIdentifier("settings.model-protocol")
+            Text("两种接口的 Key、地址和模型分别保存。切换后使用该接口已保存的配置。")
+                .font(.caption)
+                .foregroundStyle(DS.mutedInk)
+
             // API Key
             VStack(alignment: .leading, spacing: 6) {
                 Text("API Key")
@@ -3913,7 +4174,7 @@ struct SettingsView: View {
                     .foregroundStyle(DS.ink)
                 HStack(spacing: 8) {
                     SettingsTextField(
-                        placeholder: "输入你的 GLM API Key",
+                        placeholder: "输入服务商提供的 API Key",
                         text: $apiKeyInput,
                         isSecure: true
                     )
@@ -3959,13 +4220,14 @@ struct SettingsView: View {
                 Text("Base URL")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DS.ink)
-                Text("App 会自动拼接 /chat/completions。")
+                Text(modelProtocol == .responses ? "App 会自动拼接 /responses。" : "App 会自动拼接 /chat/completions。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                 HStack(spacing: 8) {
                     SettingsTextField(
-                        placeholder: "https://open.bigmodel.cn/api/coding/paas/v4",
-                        text: $baseURLInput
+                        placeholder: modelProtocol == .responses ? "https://ylscode.com/codex" : "https://open.bigmodel.cn/api/coding/paas/v4",
+                        text: $baseURLInput,
+                        accessibilityIdentifier: "settings.model-base-url"
                     )
                     Button {
                         pasteEndpointConfiguration()
@@ -3982,12 +4244,13 @@ struct SettingsView: View {
                 Text("模型名")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DS.ink)
-                Text("不填则使用默认模型。")
+                Text(modelProtocol == .responses ? "填写订阅配置中的模型名。" : "不填则使用默认模型。")
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
                 SettingsTextField(
-                    placeholder: "例如 glm-4.5-flash",
-                    text: $modelNameInput
+                    placeholder: modelProtocol == .responses ? "例如 gpt-6.1-sol" : "例如 glm-4.5-flash",
+                    text: $modelNameInput,
+                    accessibilityIdentifier: "settings.model-name"
                 )
             }
 
@@ -4713,29 +4976,32 @@ struct FeatureContainer<Content: View>: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: DS.sectionSpacing) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                            .foregroundStyle(DS.ink)
-                        Text(subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(DS.mutedInk)
-                    }
-                    .padding(.horizontal, DS.pagePadding)
+        ZStack {
+            DS.background.ignoresSafeArea()
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DS.sectionSpacing) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(title)
+                                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                                .foregroundStyle(DS.ink)
+                            Text(subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(DS.mutedInk)
+                        }
+                        .padding(.horizontal, DS.pagePadding)
 
-                    VStack(spacing: DS.cardSpacing) {
-                        content
+                        VStack(spacing: DS.cardSpacing) {
+                            content
+                        }
+                        .padding(.horizontal, DS.pagePadding)
                     }
-                    .padding(.horizontal, DS.pagePadding)
+                    .padding(.top, DS.primaryScrollTopPadding)
+                    .padding(.bottom, DS.primaryScrollBottomReserve)
                 }
-                .padding(.top, DS.primaryScrollTopPadding)
-                .padding(.bottom, DS.primaryScrollBottomReserve)
+                .scrollIndicators(.hidden)
+                .background(DS.background.ignoresSafeArea())
             }
-            .scrollIndicators(.hidden)
-            .background(DS.background.ignoresSafeArea())
         }
         .topSafeAreaScrim()
     }
@@ -5387,6 +5653,12 @@ private struct PrincipleArchiveRow: View {
                     ProjectTinyChip(text: "实践 \(trainingSummary.practiceEvidenceCount)", systemImage: "checkmark.circle")
                     ProjectTinyChip(text: "负反馈 \(trainingSummary.negativeRecallFeedbackCount)", systemImage: "exclamationmark.triangle")
                 }
+                if let notice = trainingSummary.unassessedPracticeNotice {
+                    Text(notice)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .accessibilityIdentifier("growth.principle.\(principle.id.uuidString).unassessed-practice")
+                }
                 if let latestSummary = trainingSummary.latestPracticeEvidenceSummary,
                    !latestSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     if let role = trainingSummary.latestPracticeEvidenceRole {
@@ -5526,13 +5798,18 @@ private struct PrincipleArchiveRow: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(DS.mutedInk)
 
+                if isCompactDetailExpanded, let notice = trainingSummary.unassessedPracticeNotice {
+                    Text(notice)
+                        .font(.caption)
+                        .foregroundStyle(DS.mutedInk)
+                        .accessibilityIdentifier("growth.principle.\(principle.id.uuidString).unassessed-practice")
+                }
                 if isCompactDetailExpanded,
                    let latestSummary = trainingSummary.latestPracticeEvidenceSummary,
                    !latestSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("最近证据：\(latestSummary)")
                         .font(.caption)
                         .foregroundStyle(DS.mutedInk)
-                        .lineLimit(1)
                     if let evidenceId = trainingSummary.latestPracticeEvidenceId,
                        let onDisputeLatestPracticeEvidence {
                         Button(action: onDisputeLatestPracticeEvidence) {
@@ -6512,15 +6789,27 @@ private struct ProjectClosureSheet: View {
                 }
 
                 Section("实际结果") {
-                    TextField("项目最终产生了什么结果？", text: $outcome, axis: .vertical)
-                        .lineLimit(3...7)
+                    PushToTalkInput(
+                        text: $outcome,
+                        placeholder: "项目最终产生了什么结果？",
+                        accessibilityIdentifier: "project.close.outcome",
+                        usesTextEditor: true
+                    )
                 }
 
                 Section("可选补充") {
-                    TextField("未完成事项如何处理", text: $transferredItems, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("补充复盘", text: $reviewNote, axis: .vertical)
-                        .lineLimit(2...5)
+                    PushToTalkInput(
+                        text: $transferredItems,
+                        placeholder: "未完成事项如何处理",
+                        accessibilityIdentifier: "project.close.transferred-items",
+                        usesTextEditor: true
+                    )
+                    PushToTalkInput(
+                        text: $reviewNote,
+                        placeholder: "补充复盘",
+                        accessibilityIdentifier: "project.close.review-note",
+                        usesTextEditor: true
+                    )
                 }
             }
             .scrollContentBackground(.hidden)
@@ -6578,18 +6867,19 @@ private struct ProjectEditorSheet: View {
         NavigationStack {
             Form {
                 Section("基础信息") {
-                    TextField("名称", text: $name)
-                    TextField("目标", text: $goal, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("成功标准", text: $successCriteria, axis: .vertical)
-                        .lineLimit(2...4)
-                    TextField("当前阻塞", text: $currentBottleneck, axis: .vertical)
-                        .lineLimit(1...3)
+                    PushToTalkInput(text: $name, placeholder: "名称", accessibilityIdentifier: "project.edit.name")
+                    PushToTalkInput(text: $goal, placeholder: "目标", accessibilityIdentifier: "project.edit.goal", usesTextEditor: true)
+                    PushToTalkInput(text: $successCriteria, placeholder: "成功标准", accessibilityIdentifier: "project.edit.success-criteria", usesTextEditor: true)
+                    PushToTalkInput(text: $currentBottleneck, placeholder: "当前阻塞", accessibilityIdentifier: "project.edit.current-bottleneck", usesTextEditor: true)
                 }
 
                 Section {
-                    TextField("每行一个问题", text: $openQuestionsText, axis: .vertical)
-                        .lineLimit(3...6)
+                    PushToTalkInput(
+                        text: $openQuestionsText,
+                        placeholder: "每行一个问题",
+                        accessibilityIdentifier: "project.edit.open-questions",
+                        usesTextEditor: true
+                    )
                 } header: {
                     Text("开放问题")
                 } footer: {
@@ -7099,6 +7389,15 @@ private extension ProjectStatus {
         case .archived: return "已结束"
         }
     }
+
+    var tint: Color {
+        switch self {
+        case .active: return DS.accent
+        case .watching: return DS.note
+        case .paused: return DS.caution
+        case .archived: return DS.mutedInk
+        }
+    }
 }
 
 private extension ProjectSourceType {
@@ -7116,53 +7415,40 @@ private extension ProjectSourceType {
 
 private struct GrowthEvidenceProgressPanel: View {
     let snapshot: MetricSnapshot
+    let completedRecordCount: Int
     let onContinue: () -> Void
 
-    private var remainingCount: Int {
-        growthEvidenceRemainingLoopCount(snapshot.completeLoopCount)
-    }
-
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            GrowthLoopProgressIndicator(completedCount: snapshot.completeLoopCount)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.title3)
+                .foregroundStyle(DS.mutedInk)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
-                Text("证据正在积累")
+                Text("成长依据待确认")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DS.ink)
-                Text(remainingCount > 0 ? "再完成 \(remainingCount) 次完整复盘" : "已满足展示变化的最小证据")
+                Text(growthEvidenceProgressText(completeLoopCount: completedRecordCount))
                     .font(.caption)
                     .foregroundStyle(DS.mutedInk)
-                if remainingCount > 0 {
-                    Button(action: onContinue) {
-                        Label("继续完成复盘", systemImage: "arrow.right")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(DS.accent)
-                    .padding(.top, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("growth.record-progress")
+                Text(snapshot.summary)
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("growth.evidence-status")
+                Button(action: onContinue) {
+                    Label("回到今日", systemImage: "arrow.right")
+                        .font(.caption.weight(.semibold))
                 }
+                .buttonStyle(.bordered)
+                .tint(DS.accent)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("growth.record-progress.continue")
             }
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct GrowthLoopProgressIndicator: View {
-    let completedCount: Int
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(index < min(completedCount, 3) ? DS.accent : DS.hairline)
-                    .frame(width: 10, height: 10)
-            }
-        }
-        .frame(width: 46, height: 46)
-        .background(DS.note.opacity(0.10), in: Circle())
-        .accessibilityLabel("已完成 \(completedCount) 次完整复盘")
     }
 }
 
@@ -7171,11 +7457,15 @@ private struct GrowthSummaryPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(snapshot.period.uppercased())
-                .font(.caption.weight(.bold))
-                .foregroundStyle(DS.mutedInk)
+            HStack(alignment: .firstTextBaseline) {
+                SectionLabel("周期概览")
+                Spacer()
+                Text(snapshot.period.uppercased())
+                    .font(.caption.monospaced().weight(.semibold))
+                    .foregroundStyle(DS.mutedInk)
+            }
             Text(snapshot.summary)
-                .font(.system(size: 23, weight: .semibold, design: .serif))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -7185,6 +7475,84 @@ private struct GrowthSummaryPanel: View {
             RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous)
                 .stroke(DS.hairline, lineWidth: 1)
         )
+        .accessibilityIdentifier("growth.summary")
+    }
+}
+
+private struct GrowthReflectionTopicsPanel: View {
+    let summary: ReflectionTopicSummary
+    let onSelectSource: (ReflectionTopicSource) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel("复盘中讨论过")
+            if summary.topics.isEmpty {
+                Text("当前记录中还没有可按主题对照的已回答问题。你仍可以在历史中回看原文。")
+                    .font(.subheadline)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("按已回答问题的标签归类，方便对照当时的回答；不代表相同原因或能力短板。")
+                    .font(.caption)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(summary.topics) { topic in
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 20) {
+                            ForEach(topic.sources) { source in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(source.date.formatted(date: .abbreviated, time: .omitted))
+                                        .font(.caption)
+                                        .foregroundStyle(DS.mutedInk)
+                                    if !source.title.isEmpty {
+                                        Text(source.title)
+                                            .font(.subheadline.weight(.semibold))
+                                    }
+                                    Text("当时的问题")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(DS.mutedInk)
+                                    Text(source.question.question)
+                                        .font(.subheadline)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text("你的回答")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(DS.mutedInk)
+                                    Text(source.question.answer)
+                                        .font(.subheadline)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier("growth.reflection-topic.answer.\(source.question.id)")
+                                    Button {
+                                        onSelectSource(source)
+                                    } label: {
+                                        Label("查看这次复盘", systemImage: "arrow.up.right")
+                                            .font(.subheadline.weight(.semibold))
+                                            .frame(minHeight: 44)
+                                    }
+                                    .accessibilityIdentifier("growth.reflection-topic.source.\(source.question.id)")
+                                    .accessibilityLabel("查看\(source.date.mingsiShortDate)的复盘")
+                                }
+                                if source.id != topic.sources.last?.id { Divider() }
+                            }
+                        }
+                        .padding(.top, 12)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(topic.title).font(.subheadline.weight(.semibold))
+                            Text("\(topic.sources.count) 次复盘讨论过")
+                                .font(.caption)
+                                .foregroundStyle(DS.mutedInk)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44, alignment: .leading)
+                    }
+                    .tint(DS.accent)
+                }
+            }
+        }
+        .foregroundStyle(DS.ink)
+        .padding(18)
+        .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: DS.cornerRadius, style: .continuous).stroke(DS.hairline, lineWidth: 1))
     }
 }
 
@@ -8341,17 +8709,9 @@ func candidateConsequenceLine() -> String {
 
 // MARK: - Growth report drilldown helpers
 
-func growthEvidenceRemainingLoopCount(_ completeLoopCount: Int, threshold: Int = 3) -> Int {
-    max(0, threshold - completeLoopCount)
-}
-
-func growthEvidenceProgressText(completeLoopCount: Int, threshold: Int = 3) -> String {
+func growthEvidenceProgressText(completeLoopCount: Int) -> String {
     let completed = max(0, completeLoopCount)
-    let remaining = growthEvidenceRemainingLoopCount(completed, threshold: threshold)
-    if remaining == 0 {
-        return "已完成 \(completed) 次完整复盘，等待可追溯的验证证据进入报告。"
-    }
-    return "已完成 \(completed) / \(threshold) 次完整复盘；再完成 \(remaining) 次并保留验证结果，才会展示变化。"
+    return "当前记录中有 \(completed) 次完整复盘。"
 }
 
 func growthMetricDisplayTitle(_ metric: GrowthMetric) -> String {

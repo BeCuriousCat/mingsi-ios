@@ -37,19 +37,22 @@ struct MentorSourceExternalLink: Equatable, Identifiable {
     var id: String { url.absoluteString }
 }
 
-/// Resolves only evidence that belongs to the current session snapshot. It does
-/// not search unrelated history, infer a source from a string prefix, or call a
-/// model. A syntactically valid reference without a saved object is unavailable.
+/// Resolves current-session snapshots and explicitly linked legacy originals.
+/// It does not search unrelated history, infer ownership from a string prefix,
+/// or call a model. A valid reference without an authorized object is unavailable.
 struct MentorSourceResolver {
     func resolve(_ references: [MentorSourceReference], sessionID: UUID,
                  timeline: [MentorTimelineItem], understandings: [MentorUnderstanding],
-                 links: [MentorSourceLink]) -> [MentorSourceDetail] {
-        references.map { resolve($0, sessionID: sessionID, timeline: timeline, understandings: understandings, links: links) }
+                 links: [MentorSourceLink], legacyRounds: [LegacyNudgeRound] = [],
+                 legacyHistory: LegacyNudgeChain? = nil) -> [MentorSourceDetail] {
+        references.map { resolve($0, sessionID: sessionID, timeline: timeline, understandings: understandings, links: links,
+            legacyRounds: legacyRounds, legacyHistory: legacyHistory) }
     }
 
     private func resolve(_ reference: MentorSourceReference, sessionID: UUID,
                          timeline: [MentorTimelineItem], understandings: [MentorUnderstanding],
-                         links: [MentorSourceLink]) -> MentorSourceDetail {
+                         links: [MentorSourceLink], legacyRounds: [LegacyNudgeRound],
+                         legacyHistory: LegacyNudgeChain?) -> MentorSourceDetail {
         let parts = reference.value.split(separator: ":", maxSplits: 1).map(String.init)
         guard let kind = parts.first, let rawID = parts.dropFirst().first else {
             return unavailable(reference, kind: "未知来源", title: "无法识别的来源", reason: "来源标识无效。")
@@ -110,11 +113,39 @@ struct MentorSourceResolver {
                 sourceVersion: lesson.version, contentHash: lesson.contentHash, externalLinks: externalLinks, status: .available)
             return validated(detail, link: sourceLink)
 
-        case "capture", "legacy-nudge":
-            guard sourceLink != nil else {
+        case "capture":
+            guard let sourceLink, sourceLink.ownerKind == .item, sourceLink.contentHash != nil,
+                  let item = timeline.first(where: { $0.id == sourceLink.ownerID && $0.sessionID == sessionID && $0.kind == .user }),
+                  let snapshot = itemContent(item) else {
+                return unavailable(reference, kind: kind, title: title(for: kind), reason: "这条闪念的原文快照没有随本次交流保存。")
+            }
+            let detail = MentorSourceDetail(id: reference, kind: kind, title: title(for: kind),
+                content: snapshot.content, sourceVersion: nil, contentHash: Self.hash(snapshot.content),
+                externalLinks: [], status: .available)
+            return validated(detail, link: sourceLink)
+
+        case "legacy-nudge":
+            guard let roundID = UUID(uuidString: rawID) else {
+                return unavailable(reference, kind: kind, title: title(for: kind), reason: "旧点拨来源标识无效。")
+            }
+            let hasOwnedProjection = links.contains { link in
+                link.sessionID == sessionID && link.sourceKind == kind &&
+                UUID(uuidString: link.sourceID) == roundID && link.ownerKind == .item &&
+                link.availability == .available &&
+                timeline.contains { $0.id == link.ownerID && $0.sessionID == sessionID }
+            }
+            let isExplicitHistory = legacyHistory?.rootID == sessionID &&
+                legacyHistory?.rounds.contains(where: { $0.id == roundID }) == true
+            guard hasOwnedProjection || isExplicitHistory else {
                 return unavailable(reference, kind: kind, title: title(for: kind), reason: "本次交流没有保存这条原始来源的明确链接。")
             }
-            return unavailable(reference, kind: kind, title: title(for: kind), reason: "原始来源未保存在本次会话中。")
+            guard let round = legacyRounds.first(where: { $0.id == roundID }) else {
+                return unavailable(reference, kind: kind, title: title(for: kind), reason: "原始旧点拨已不可读取，本次交流仍保留对它的引用记录。")
+            }
+            let content = Self.legacyContent(round.session)
+            let detail = MentorSourceDetail(id: reference, kind: kind, title: title(for: kind), content: content,
+                sourceVersion: nil, contentHash: Self.hash(content), externalLinks: [], status: .available)
+            return validated(detail, link: sourceLink)
 
         default:
             return unavailable(reference, kind: kind, title: "未知来源", reason: "来源类型不受当前版本支持。")
@@ -195,8 +226,28 @@ struct MentorSourceResolver {
         return sections.joined(separator: "\n\n")
     }
 
-    private static func hash(_ content: String) -> String {
+    static func hash(_ content: String) -> String {
         let digest = SHA256.hash(data: Data(content.utf8))
         return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Keep original user words and old model output visibly separate. The same
+    /// deterministic rendering signs new projection links and displays sources.
+    static func legacyContent(_ session: SingleNudgeSession) -> String {
+        var sections = ["记录日期\n\(session.dayKey)"]
+        func append(_ title: String, _ value: String?) {
+            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            sections.append("\(title)\n\(value)")
+        }
+        append("当时的原话", session.input)
+        append("最初写下的想法", session.before)
+        append("当时的问题（AI）", session.question)
+        append("你的回答", session.after)
+        append("当时的分析（AI）", session.diagnosis)
+        append("模型记录的变化（AI）", session.cognitiveShift)
+        append("当时的行动建议（AI）", session.thinkingAction)
+        append("当时尚未确定（AI）", session.unresolvedUncertainty)
+        sections.append("旧版模型的分析不等于你已确认的“我的理解”。")
+        return sections.joined(separator: "\n\n")
     }
 }

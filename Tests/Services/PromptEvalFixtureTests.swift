@@ -14,6 +14,17 @@ final class PromptEvalFixtureTests: XCTestCase {
         super.tearDown()
     }
 
+    func testPromptCoachingQualityPolicy_allowsIntentionalEmptyQuestionSet() {
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            [],
+            selectedLens: .evidenceCheck,
+            primaryTrainingDimension: .evidenceDiscipline,
+            coachObservation: nil
+        )
+
+        XCTAssertTrue(issues.isEmpty)
+    }
+
     func testOrganizeCards_messyDailyInputProducesTypedSensitiveCards() throws {
         let data = fixtureData(
             """
@@ -257,6 +268,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         let questionsRun = runs.first { $0.promptId == PromptID.generateQuestions.rawValue }
         XCTAssertEqual(questionsRun?.evalSuiteVersion, provider.template(for: .generateQuestions, mode: .standard).evalSuiteVersion)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.concrete_lens_specific" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.current_turn_budget" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.evidence_gap_taxonomy" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.answer_use_not_pseudo_depth" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.lens_move_taxonomy" } ?? false)
@@ -267,9 +279,9 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_functional_coach_fields" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_blocks_appeasing_output" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_blocks_generic_uncalibratable_output" } ?? false)
-        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_honors_avoid_lens_moves" } ?? false)
-        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_adjusted_lens_move" } ?? false)
-        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_reinforced_lens_move" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_does_not_veto_from_avoid_label" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_does_not_force_adjust_label" } ?? false)
+        XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_does_not_force_reinforce_label" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_system_thinking_lens_move" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_selected_lens_move" } ?? false)
         XCTAssertTrue(questionsRun?.caseResults.contains { $0.caseId == "questions.quality_gate_requires_training_dimension_alignment" } ?? false)
@@ -340,7 +352,7 @@ final class PromptEvalFixtureTests: XCTestCase {
         }
     }
 
-    func testPromptCoachingQualityPolicy_flagsGenericQuestionsVagueTargetsAndAvoidedMoves() throws {
+    func testPromptCoachingQualityPolicy_flagsGenericQuestionsWithoutHistoricalMethodVeto() throws {
         let avoidedFeedback = [
             PromptContextPayload.LensFeedbackContext(
                 lensId: ThinkingLens.judgmentCalibration.rawValue,
@@ -377,10 +389,83 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertTrue(issues.contains { $0.reason == .missingAnswerUse })
         XCTAssertTrue(issues.contains { $0.reason == .missingSourceGrounding })
         XCTAssertTrue(issues.contains { $0.reason == .vagueCalibrationTarget })
-        XCTAssertTrue(issues.contains { $0.reason == .repeatedAvoidedLensMove })
+        XCTAssertFalse(issues.contains { $0.reason == .repeatedAvoidedLensMove })
     }
 
-    func testPromptCoachingQualityPolicy_flagsUnadjustedLensMoveAfterAdjustFeedback() throws {
+    func testPromptCoachingQualityPolicy_rejectsInventedSourceCardTitles() throws {
+        let allowedTitles: Set<String> = ["事实卡"]
+        let question = ReflectionQuestion(
+            question: "哪条可观察事实能支持或削弱当前原因判断？",
+            whyItMatters: "先把判断连回可以复核的材料。",
+            whyNow: "当前判断还没有对应的事实来源。",
+            expectedUpdate: "答案会改变当前原因判断的可信度。",
+            proceedWhen: "写出来自事实卡的一条可复核材料后再继续。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            sourceCardTitles: ["编造卡"],
+            calibrationTarget: "当前原因判断是否有可复核证据"
+        )
+        let quest = Quest(
+            type: .main,
+            title: "做一次最小对照",
+            whyItMatters: "用结果检验当前判断。",
+            completionCriteria: "记录一次可观察结果。",
+            expectedResistance: "可能直接按原方案推进。",
+            reflectionQuestion: "结果支持还是削弱当前判断？",
+            calibrationTarget: "当前判断是否成立",
+            sourceCardTitles: ["编造卡"]
+        )
+        let principle = PrincipleAsset(
+            title: "先核对事实",
+            summary: "在形成规则前先保留可复核材料。",
+            triggerContext: "需要判断原因时",
+            actions: ["写出事实", "检查来源"],
+            successCriteria: "他人可以找到对应记录。",
+            exceptions: "紧急安全事项优先处理。",
+            sourceCardTitles: ["编造卡"]
+        )
+
+        XCTAssertTrue(
+            PromptCoachingQualityPolicy.evaluateQuestions(
+                [question],
+                allowedSourceCardTitles: allowedTitles
+            ).contains { $0.reason == .invalidSourceGrounding }
+        )
+        XCTAssertTrue(
+            PromptCoachingQualityPolicy.evaluateQuests(
+                [quest],
+                allowedSourceCardTitles: allowedTitles
+            ).contains { $0.reason == .invalidSourceGrounding }
+        )
+        XCTAssertTrue(
+            PromptCoachingQualityPolicy.evaluatePrinciples(
+                [principle],
+                allowedSourceCardTitles: allowedTitles
+            ).contains { $0.reason == .invalidSourceGrounding }
+        )
+
+        let groundedQuestion = ReflectionQuestion(
+            question: question.question,
+            whyItMatters: question.whyItMatters,
+            whyNow: question.whyNow,
+            expectedUpdate: question.expectedUpdate,
+            proceedWhen: question.proceedWhen,
+            evidenceGapType: question.evidenceGapType,
+            answerUse: question.answerUse,
+            lensMove: question.lensMove,
+            sourceCardTitles: [" 事实卡 "],
+            calibrationTarget: question.calibrationTarget
+        )
+        XCTAssertFalse(
+            PromptCoachingQualityPolicy.evaluateQuestions(
+                [groundedQuestion],
+                allowedSourceCardTitles: allowedTitles
+            ).contains { $0.reason == .invalidSourceGrounding }
+        )
+    }
+
+    func testPromptCoachingQualityPolicy_doesNotMandateTargetFromAdjustLabel() throws {
         let adjustFeedback = [
             PromptContextPayload.LensFeedbackContext(
                 lensId: ThinkingLens.judgmentCalibration.rawValue,
@@ -412,10 +497,10 @@ final class PromptEvalFixtureTests: XCTestCase {
             lensFeedback: adjustFeedback
         )
 
-        XCTAssertTrue(issues.contains { $0.reason == .unadjustedLensMove })
+        XCTAssertFalse(issues.contains { $0.reason == .unadjustedLensMove })
     }
 
-    func testPromptCoachingQualityPolicy_flagsMissingReinforcedLensMove() throws {
+    func testPromptCoachingQualityPolicy_doesNotMandateMethodFromReinforceLabel() throws {
         let reinforceFeedback = [
             PromptContextPayload.LensFeedbackContext(
                 lensId: ThinkingLens.judgmentCalibration.rawValue,
@@ -447,7 +532,7 @@ final class PromptEvalFixtureTests: XCTestCase {
             lensFeedback: reinforceFeedback
         )
 
-        XCTAssertTrue(issues.contains { $0.reason == .missingReinforcedLensMove })
+        XCTAssertFalse(issues.contains { $0.reason == .missingReinforcedLensMove })
     }
 
     func testPromptCoachingQualityPolicy_flagsMissingSystemThinkingLensMove() throws {
@@ -512,6 +597,30 @@ final class PromptEvalFixtureTests: XCTestCase {
         )
 
         XCTAssertTrue(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
+    }
+
+    func testPromptCoachingQualityPolicy_canKeepEvidenceGroundedMoveWhenCoachPlanIsOnlyAHypothesis() throws {
+        let questions = [
+            ReflectionQuestion(
+                question: "明天应该优先做哪个动作来减少会议返工？",
+                whyItMatters: "它帮助选择下一步动作。",
+                evidenceGapType: EvidenceGapType.none,
+                answerUse: .chooseAction,
+                lensMove: .leverageTradeoff,
+                sourceCardTitles: ["会议返工来自验收口径不清"],
+                calibrationTarget: "优先做高杠杆动作能减少会议返工"
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            questions,
+            primaryTrainingDimension: .evidenceDiscipline,
+            baselineTrainingDimensions: [.counterexampleSeeking],
+            enforceCoachAlignment: false
+        )
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
+        XCTAssertFalse(issues.contains { $0.reason == .missingPrimaryTrainingDimensionFocus })
     }
 
     func testPromptCoachingQualityPolicy_flagsQuestionIgnoringNotReadyCoachTurn() throws {
@@ -635,7 +744,8 @@ final class PromptEvalFixtureTests: XCTestCase {
 
         let issues = PromptCoachingQualityPolicy.evaluateQuestions(
             questions,
-            relevantPrinciples: principles
+            relevantPrinciples: principles,
+            requirePrincipleReplay: true
         )
 
         XCTAssertTrue(issues.contains { $0.reason == .missingPrincipleReplay })
@@ -670,6 +780,40 @@ final class PromptEvalFixtureTests: XCTestCase {
 
         let issues = PromptCoachingQualityPolicy.evaluateQuestions(
             questions,
+            relevantPrinciples: principles,
+            requirePrincipleReplay: true
+        )
+
+        XCTAssertFalse(issues.contains { $0.reason == .missingPrincipleReplay })
+    }
+
+    func testPromptCoachingQualityPolicy_treatsRetrievedPrinciplesAsOptionalMemoryByDefault() throws {
+        let question = ReflectionQuestion(
+            question: "这次返工里还缺哪条可观察证据，能支撑当前原因判断？",
+            whyItMatters: "先把判断连接到可复核材料。",
+            whyNow: "当前记录仍缺一条可以区分解释的事实。",
+            expectedUpdate: "答案会更新当前原因判断的可信度。",
+            proceedWhen: "写出一条可复核事实后再继续。",
+            evidenceGapType: .missingObservation,
+            answerUse: .collectEvidence,
+            lensMove: .factInterpretationSplit,
+            sourceCardTitles: ["会议返工来自验收口径不清"],
+            calibrationTarget: "当前原因判断是否有可复核证据"
+        )
+        let principles = [
+            PromptContextPayload.PrincipleContext(
+                id: UUID().uuidString,
+                title: "会议结束前写清负责人和验收口径",
+                summary: "相似场景里先确认负责人和完成标准。",
+                triggerContext: "协作会议",
+                successCriteria: "他人能复述完成标准。",
+                exceptions: "低风险同步会可以简化。",
+                status: .active
+            )
+        ]
+
+        let issues = PromptCoachingQualityPolicy.evaluateQuestions(
+            [question],
             relevantPrinciples: principles
         )
 
@@ -919,6 +1063,14 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertFalse(issues.contains { $0.reason == .missingTrainingDimensionAlignment })
     }
 
+    func testObservationWithoutAnOutcomeSignalRemainsWeak() {
+        let quest = Quest(type: .main, title: "等自然重试时再观察",
+            whyItMatters: "保留判断。", completionCriteria: "观察一下自己的想法和感受，认真想清楚下一步。",
+            expectedResistance: "", reflectionQuestion: "能判断吗？",
+            calibrationTarget: "这位朋友在网络恢复后可能提交成功。", sourceCardTitles: ["提交结果"])
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuests([quest]).contains { $0.reason == .weakCompletionCriteria })
+    }
+
     func testPromptCoachingQualityPolicy_flagsBusyworkQuestWithoutCalibration() throws {
         let quests = [
             Quest(
@@ -993,6 +1145,29 @@ final class PromptEvalFixtureTests: XCTestCase {
         )
 
         XCTAssertTrue(issues.contains { $0.reason == .weakVerificationCalibrationNote })
+    }
+
+    func testVerificationAcceptsRealMissingEvidenceReviewWithoutReportLabels() {
+        // Exact assistant text from the failed 2026-10-17 Responses acceptance.
+        let result = VerifyQuestResult(
+            calibrationNote: "你标记了“已完成”“高价值”和“判断已确认”，但同时明确没有记录朋友是否完成、网络是否正常、卡点或其他反馈。验收要求在朋友自愿、网络正常且未修改设计时重试，并留下结果记录；现有材料无法核验这些条件或记录要求是否达成。完成标记不等于结果有价值，也不足以确认判断。本次没有新增可比较证据，目标判断仍待验证，不能据此区分网络与设计的影响。下一次可只关注一条条件明确的重试结果记录。",
+            likelyIssue: "none",
+            recommendation: "如朋友自愿再次重试，可留下一条最小记录：网络是否正常、设计是否未改、是否完成，以及未完成时的卡点；条件不满足则注明无法比较。",
+            calibrationAssessment: .init(evidenceStatus: .missing, criteriaStatus: .notAssessable,
+                judgmentStatus: .unresolved, evidenceQuotes: []))
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateVerification(result,
+            targetJudgment: "入口设计导致上次未完成").isEmpty)
+    }
+
+    func testVerificationAcceptsConciseResultWithoutRepeatingEvidenceHeadings() {
+        let result = VerifyQuestResult(
+            calibrationNote: "原判断是书面确认能减少返工。记录显示接手人在动手前复述了同一验收条件，这次没有口径不同造成的返工。可以小幅更新判断，但一次结果不能证明因果。",
+            likelyIssue: "none",
+            recommendation: "若再遇到类似交接，可记录是否仍因验收口径不同发生返工。",
+            calibrationAssessment: .init(evidenceStatus: .observed, criteriaStatus: .met,
+                judgmentStatus: .supported, evidenceQuotes: ["接手人在动手前复述了同一验收条件"]))
+        XCTAssertTrue(PromptCoachingQualityPolicy.evaluateVerification(result,
+            targetJudgment: "书面确认能减少返工").isEmpty)
     }
 
     func testPromptCoachingQualityPolicy_flagsVerificationWithoutCompletionCriteriaEvidence() throws {
@@ -1214,14 +1389,14 @@ final class PromptEvalFixtureTests: XCTestCase {
         XCTAssertEqual(gate.manualReviewCount, PromptID.allCases.count - 1)
         let candidate = try XCTUnwrap(gate.rollbackCandidates.first)
         XCTAssertEqual(candidate.promptId, PromptID.generateQuestions.rawValue)
-        XCTAssertEqual(candidate.currentVersion, "1.13.0")
-        XCTAssertEqual(candidate.rollbackTargetVersion, "1.12.0")
+        XCTAssertEqual(candidate.currentVersion, template.version)
+        XCTAssertEqual(candidate.rollbackTargetVersion, template.rollbackTargetVersion)
         XCTAssertEqual(candidate.lastPassingRunId, rollbackPassingRun.id)
         XCTAssertEqual(candidate.reason, .failedCases)
         XCTAssertTrue(gate.blockingIssues.contains {
             $0.promptId == PromptID.generateQuestions.rawValue &&
             $0.reason == .failedCases &&
-                $0.rollbackCandidate?.rollbackTargetVersion == "1.12.0"
+                $0.rollbackCandidate?.rollbackTargetVersion == template.rollbackTargetVersion
         })
     }
 
