@@ -1,0 +1,79 @@
+{
+  "run_id": 39847513720,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39847513720",
+  "head_sha": "787a5af6363dced86719d60b039ea2d2f2ddebe7",
+  "status": "completed",
+  "conclusion": "failure",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Run isolated permission UI in light and dark largest text",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Save test counts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach isolated permission UI counts and screenshots",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "release_compilation": "build_succeeded",
+  "release_package_marker": "failed_missing_MingSiSourceRevision",
+  "unit_execution": "not_started",
+  "native_ui_execution": "not_started",
+  "diagnosis": "Custom INFOPLIST_KEY_MingSiSourceRevision and State settings were omitted by Xcode generated Info. Explicit source Info.plist needed."
+}

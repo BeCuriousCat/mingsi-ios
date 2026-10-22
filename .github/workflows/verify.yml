@@ -78,6 +78,8 @@ jobs:
             -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test
+          test "$(plutil -extract MingSiSourceRevision raw -o - "$RUNNER_TEMP/mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app/Info.plist")" = "$GITHUB_SHA"
+          test "$(plutil -extract MingSiSourceState raw -o - "$RUNNER_TEMP/mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app/Info.plist")" = "clean"
       - name: Run isolated permission UI in light and dark largest text
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \

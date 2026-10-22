@@ -1,0 +1,16 @@
+{
+  "synthetic_probe": true,
+  "xcode_build_exit": 0,
+  "uses_actual_app_info_source": true,
+  "source_substitution_and_generated_keys": {
+    "MingSiSourceRevision": "passed",
+    "MingSiSourceState": "passed",
+    "CFBundleShortVersionString": "passed",
+    "CFBundleVersion": "passed",
+    "CFBundleIdentifier": "passed",
+    "NSCalendarsFullAccessUsageDescription": "passed"
+  },
+  "real_mingsi_build": "pending",
+  "real_phone_operation": "none",
+  "old_generated_custom_key_probe": "build_succeeded_but_both_source_keys_absent"
+}

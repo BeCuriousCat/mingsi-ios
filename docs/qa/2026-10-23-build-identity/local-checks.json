@@ -5,8 +5,8 @@
   "actual_phone_build_or_install": "not_performed",
   "project_and_regenerated_settings": "checked_debug_release",
   "swift_parse": "passed",
-  "new_swift_tests": "not_run_yet",
-  "new_ui_tests": "not_run_yet",
+  "new_swift_tests": "not_started_in_first_hosted_run",
+  "new_ui_tests": "not_started_in_first_hosted_run",
   "paid_model_requests": 0,
   "extracted_parser_execution": "passed_with_actual_swift_source",
   "signing_read_only_recheck": {
@@ -17,5 +17,8 @@
     "new_phone_build_attempted": false,
     "installed_phone_changed": false,
     "conclusion": "Current metadata does not resolve the previously verified No Accounts / missing profile blocker. UI login and valid signing remain required."
-  }
+  },
+  "first_hosted_run": 39847513720,
+  "first_hosted_conclusion": "failed_package_marker_after_release_compiled",
+  "real_xcode_minimal_probe": "old_missing_keys_reproduced_new_explicit_info_expands_and_merges"
 }
