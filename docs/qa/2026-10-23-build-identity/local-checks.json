@@ -8,5 +8,14 @@
   "new_swift_tests": "not_run_yet",
   "new_ui_tests": "not_run_yet",
   "paid_model_requests": 0,
-  "extracted_parser_execution": "passed_with_actual_swift_source"
+  "extracted_parser_execution": "passed_with_actual_swift_source",
+  "signing_read_only_recheck": {
+    "checked_at": "2026-10-23T04:19:16+08:00",
+    "source": "Xcode preferences container shapes and provisioning profile inventory",
+    "stored_account_entries": 0,
+    "provisioning_profile_count": 0,
+    "new_phone_build_attempted": false,
+    "installed_phone_changed": false,
+    "conclusion": "Current metadata does not resolve the previously verified No Accounts / missing profile blocker. UI login and valid signing remain required."
+  }
 }
