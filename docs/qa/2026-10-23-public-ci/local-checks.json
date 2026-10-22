@@ -1,0 +1,10 @@
+{
+  "python_tests": {
+    "passed": 38,
+    "failed": 0
+  },
+  "workflow_yaml": "parsed_with_ruby_yaml",
+  "runner_inventory_selector": "read_only_and_refuses_local_machine",
+  "hosted_result": "pending",
+  "real_device_or_user_trial": "not_performed"
+}

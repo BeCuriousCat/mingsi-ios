@@ -1,0 +1,93 @@
+name: Verify public source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Vendor/**'
+      - 'scripts/**'
+      - 'MingSi.xcodeproj/**'
+      - 'project.yml'
+      - '.github/workflows/verify.yml'
+  pull_request:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Vendor/**'
+      - 'scripts/**'
+      - 'MingSi.xcodeproj/**'
+      - 'project.yml'
+      - '.github/workflows/verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-verification:
+    name: Clean build and offline tests
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+    steps:
+      - name: Check out public source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Record source and toolchain
+        run: |
+          git rev-parse HEAD
+          git status --short
+          xcodebuild -version
+          xcrun swift --version
+          python3 --version
+      - name: Verify local scripts without model credentials
+        run: |
+          python3 -m unittest discover -s Tests/Scripts -p 'test_*.py' -v
+          for script in scripts/*.sh; do bash -n "$script"; done
+          git diff --check
+      - name: Build Release for Simulator
+        run: |
+          xcodebuild -project MingSi.xcodeproj -scheme MingSi \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/mingsi-release" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Select existing runner iPhone
+        run: |
+          # Hosted runners have different device IDs from the maintainer's Mac.
+          # Inspect existing devices; do not create, delete or reset a simulator.
+          python3 scripts/select_ci_simulator.py >> "$GITHUB_ENV"
+      - name: Run unit tests with no paid model requests
+        run: |
+          xcodebuild -project MingSi.xcodeproj -scheme MingSi \
+            -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/mingsi-tests" \
+            -resultBundlePath "$RUNNER_TEMP/mingsi-tests.xcresult" \
+            -parallel-testing-enabled NO -only-testing:MingSiTests \
+            -collect-test-diagnostics never \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+      - name: Save test counts
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/mingsi-tests.xcresult/Info.plist" ]]; then
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/mingsi-tests.xcresult" --format json \
+              > "$RUNNER_TEMP/mingsi-unit-summary.json"
+            cat "$RUNNER_TEMP/mingsi-unit-summary.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Attach compact test summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-summary
+          path: ${{ runner.temp }}/mingsi-unit-summary.json
+          if-no-files-found: ignore
+          retention-days: 14

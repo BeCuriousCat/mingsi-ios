@@ -76,6 +76,8 @@ SSE 改善等待反馈，但上游断连、长时间无内容和系统后台限�
 
 ## 验证与参与
 
+公开源码的[GitHub自动检查](https://github.com/BeCuriousCat/mingsi-ios/actions/workflows/verify.yml)验证干净检出、Release模拟器构建与无需模型密钥的单元测试；实际运行证据见[干净环境记录](docs/qa/2026-10-23-public-ci/README.md)。自动检查不代表真机或真实用户效果已验收。
+
 最近一次流式验收：1,504 项单元测试通过、23 项需主动开启的测试跳过；2 条 UI 测试通过；另完成一次授权 Responses 请求与落库验证。这不覆盖所有供应商、真机后台连接或长期使用效果。见 [验收记录](docs/qa/2026-10-22-mentor-streaming/README.md)。
 
 透镜另有 [GPT 目标评测](docs/qa/2026-10-22-lens-goals/README.md)：22 个合成场景、41 次分版本实际请求，保留语义失败、结构误拦与修复回放。最终相关本地回归 244 项通过；逐条 AI 审读用于检验单次帮助目标，不代表稳定成功率或长期能力提升。
