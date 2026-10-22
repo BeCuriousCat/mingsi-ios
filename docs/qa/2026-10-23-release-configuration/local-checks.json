@@ -5,9 +5,10 @@
   "resource_in_app_target": "one manifest in checked-in and regenerated project",
   "calendar_key": "Debug and Release in both projects",
   "swift_parse": "passed",
-  "actual_new_bundle_test": "not_run_yet",
+  "actual_new_bundle_test": "passed_on_hosted_candidate_40803a7",
   "signed_archive": "not_created",
   "true_permission_ui": "not_executed",
   "ordinary_user_installs": 0,
-  "paid_model_requests": 0
+  "paid_model_requests": 0,
+  "hosted_run_id": 39839344309
 }

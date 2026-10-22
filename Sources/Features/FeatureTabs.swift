@@ -2725,6 +2725,7 @@ private struct GrowthReportMetricEvidenceRow: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.openURL) private var openURL
     @State private var apiKeyInput = ""
     @State private var baseURLInput = ""
     @State private var modelNameInput = ""
@@ -2848,6 +2849,10 @@ struct SettingsView: View {
         .background(DS.background.ignoresSafeArea())
         .navigationTitle("生活奇遇")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { store.refreshSideQuestPermissionStatuses() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            store.refreshSideQuestPermissionStatuses()
+        }
     }
 
     private var sideQuestSettingsCard: some View {
@@ -3105,33 +3110,91 @@ struct SettingsView: View {
             Text("仅在你主动点击时请求；今日页面不会触发系统权限弹窗。")
                 .font(.footnote)
                 .foregroundStyle(DS.mutedInk)
-            permissionRow("位置", status: store.sideQuestLocationAuthorizationStatus) {
+            permissionRow("位置", kind: .location, status: store.sideQuestLocationAuthorizationStatus) {
                 store.requestSideQuestLocationPermission()
             }
-            permissionRow("日历", status: store.sideQuestCalendarAuthorizationStatus) {
+            Divider()
+            permissionRow("日历", kind: .calendar, status: store.sideQuestCalendarAuthorizationStatus) {
                 store.requestSideQuestCalendarPermission()
             }
-            permissionRow("健康", status: store.sideQuestHealthAuthorizationStatus) {
+            Divider()
+            permissionRow("健康", kind: .health, status: store.sideQuestHealthAuthorizationStatus) {
                 store.requestSideQuestHealthPermission()
             }
+            Text("健康读取范围由系统管理；完成授权选择也不表示每一项都已允许。")
+                .font(.footnote)
+                .foregroundStyle(DS.mutedInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .cardSurface()
     }
 
     private func permissionRow(
         _ title: String,
+        kind: SideQuestPermissionKind,
         status: SideQuestAuthorizationStatus,
         action: @escaping () -> Void
     ) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(status.displayTitle)
-                .font(.caption)
-                .foregroundStyle(DS.mutedInk)
-            Button("请求") { action() }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .layoutPriority(1)
+                Spacer(minLength: 8)
+                Text(status.displayTitle)
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.permission.\(kind.rawValue).status")
+            }
+            HStack(spacing: 12) {
+                Button {
+                    if [.authorized, .denied, .restricted].contains(status) { openPermissionSettings() }
+                    else { action() }
+                } label: {
+                    Text(permissionActionTitle(status))
+                        .frame(minHeight: 44)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 .buttonStyle(.bordered)
+                .disabled(status == .unavailable || store.sideQuestPermissionRequest != nil)
+                .accessibilityLabel("\(title)：\(permissionActionTitle(status))")
+                .accessibilityIdentifier("settings.permission.\(kind.rawValue).request")
+                if status == .readAccessUnknown {
+                    Button { openPermissionSettings() } label: {
+                        Text("查看设置").frame(minHeight: 44)
+                    }
+                    .disabled(store.sideQuestPermissionRequest != nil)
+                    .accessibilityIdentifier("settings.permission.\(kind.rawValue).settings")
+                }
+                if store.sideQuestPermissionRequest == kind {
+                    ProgressView()
+                        .accessibilityLabel("等待\(title)授权选择")
+                }
+            }
+            if let message = store.sideQuestPermissionMessages[kind] {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.permission.\(kind.rawValue).message")
+            }
         }
+    }
+
+    private func permissionActionTitle(_ status: SideQuestAuthorizationStatus) -> String {
+        switch status {
+        case .authorized, .denied, .restricted: return "查看设置"
+        case .writeOnly: return "请求读取"
+        case .readAccessUnknown: return "选择读取范围"
+        case .unavailable: return "暂不可用"
+        case .notDetermined: return "请求授权"
+        }
+    }
+
+    private func openPermissionSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
     }
 
     private var sideQuestLifeContextCard: some View {

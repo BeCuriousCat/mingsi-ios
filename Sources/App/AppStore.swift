@@ -339,6 +339,8 @@ final class AppStore: ObservableObject {
     private let promptAssetPackRepository: PromptAssetPackRepository?
     private let assetPackTrustPolicyRepository: AssetPackTrustPolicyRepository?
     let sideQuestContextProvider: SideQuestContextProviding
+    @Published private(set) var sideQuestPermissionRequest: SideQuestPermissionKind?
+    @Published private(set) var sideQuestPermissionMessages: [SideQuestPermissionKind: String] = [:]
     private let assetPackRegistrySubscriptionRepository: AssetPackRegistrySubscriptionRepository?
     private let dataExportRepository: DataExportRepository?
     private let historicalRetryCandidateRepository: HistoricalRetryCandidateRepository?
@@ -3543,11 +3545,35 @@ final class AppStore: ObservableObject {
     }
 
     func requestSideQuestCalendarPermission() {
-        sideQuestContextProvider.requestCalendarAuthorization()
+        requestSideQuestPermission(.calendar) { [sideQuestContextProvider] in
+            await sideQuestContextProvider.requestCalendarAuthorization()
+        }
     }
 
     func requestSideQuestHealthPermission() {
-        sideQuestContextProvider.requestHealthAuthorization()
+        requestSideQuestPermission(.health) { [sideQuestContextProvider] in
+            await sideQuestContextProvider.requestHealthAuthorization()
+        }
+    }
+
+    private func requestSideQuestPermission(_ kind: SideQuestPermissionKind,
+        operation: @escaping @MainActor () async -> SideQuestPermissionRequestResult) {
+        guard sideQuestPermissionRequest == nil else { return }
+        sideQuestPermissionRequest = kind
+        sideQuestPermissionMessages[kind] = nil
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await operation()
+            sideQuestPermissionMessages[kind] = result.message(for: kind)
+            sideQuestPermissionRequest = nil
+        }
+    }
+
+    func refreshSideQuestPermissionStatuses() {
+        // Re-read system status after returning from Settings. Do not retain a
+        // previous denial message after the person has changed their choice.
+        if sideQuestPermissionRequest == nil { sideQuestPermissionMessages.removeAll() }
+        objectWillChange.send()
     }
 
     var sideQuestLocationAuthorizationStatus: SideQuestAuthorizationStatus {

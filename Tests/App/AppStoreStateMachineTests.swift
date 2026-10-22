@@ -37,6 +37,54 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.sessionMode, .standard)
     }
 
+    func testHealthPermissionPromptCompletionKeepsReadAccessUnknownAndSerializesRequests() async throws {
+        let provider = StaticSideQuestContextProvider(calendar: .writeOnly, health: .readAccessUnknown)
+        let subject = AppStore(refreshesAIServiceFromKeychain: false, sideQuestContextProvider: provider)
+        subject.requestSideQuestHealthPermission()
+        subject.requestSideQuestCalendarPermission()
+        try await waitUntil(provider.healthRequestCount == 1 && subject.sideQuestPermissionRequest == nil,
+            timeout: 5, file: #filePath, line: #line,
+            failureMessage: "Expected the health authorization selection to finish") {
+                provider.healthRequestCount == 1 && subject.sideQuestPermissionRequest == nil
+            }
+        XCTAssertEqual(provider.calendarRequestCount, 0, "Do not open another permission flow while one is pending")
+        XCTAssertEqual(subject.sideQuestHealthAuthorizationStatus, .readAccessUnknown)
+        XCTAssertEqual(subject.sideQuestCalendarAuthorizationStatus, .writeOnly)
+        XCTAssertTrue(subject.sideQuestPermissionMessages[.health]?.contains("已完成授权选择") == true)
+        XCTAssertFalse(subject.sideQuestPermissionMessages[.health]?.contains("已允许") == true)
+    }
+
+    func testPermissionFailureAllowsLaterRequestAndForegroundRefreshRemovesStaleMessage() async throws {
+        let provider = StaticSideQuestContextProvider(calendar: .denied, health: .readAccessUnknown)
+        provider.healthRequestResult = .failed
+        provider.calendarRequestResult = .denied
+        let subject = AppStore(refreshesAIServiceFromKeychain: false, sideQuestContextProvider: provider)
+        subject.requestSideQuestHealthPermission()
+        try await waitUntil(provider.healthRequestCount == 1 && subject.sideQuestPermissionRequest == nil,
+            timeout: 5, file: #filePath, line: #line,
+            failureMessage: "Expected a visible health connection failure") {
+                provider.healthRequestCount == 1 && subject.sideQuestPermissionRequest == nil
+            }
+        XCTAssertTrue(subject.sideQuestPermissionMessages[.health]?.contains("未完成") == true)
+        subject.requestSideQuestHealthPermission()
+        try await waitUntil(provider.healthRequestCount == 2 && subject.sideQuestPermissionRequest == nil,
+            timeout: 5, file: #filePath, line: #line,
+            failureMessage: "The same permission action must remain retryable after failure") {
+                provider.healthRequestCount == 2 && subject.sideQuestPermissionRequest == nil
+            }
+        subject.requestSideQuestCalendarPermission()
+        try await waitUntil(provider.calendarRequestCount == 1 && subject.sideQuestPermissionRequest == nil,
+            timeout: 5, file: #filePath, line: #line,
+            failureMessage: "A failed request must not leave the next permission blocked") {
+                provider.calendarRequestCount == 1 && subject.sideQuestPermissionRequest == nil
+            }
+        XCTAssertTrue(subject.sideQuestPermissionMessages[.calendar]?.contains("未允许读取") == true)
+        provider.calendarAuthorizationStatus = .authorized
+        subject.refreshSideQuestPermissionStatuses()
+        XCTAssertEqual(subject.sideQuestCalendarAuthorizationStatus, .authorized)
+        XCTAssertTrue(subject.sideQuestPermissionMessages.isEmpty)
+    }
+
     func testForegroundCoachActivitySerializesTodayAndMentorOwners() {
         let activity = ForegroundCoachActivity()
 

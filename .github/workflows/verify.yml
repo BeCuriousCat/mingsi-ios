@@ -74,6 +74,17 @@ jobs:
             -parallel-testing-enabled NO -only-testing:MingSiTests \
             -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+      - name: Run isolated permission UI in light and dark largest text
+        run: |
+          xcodebuild -project MingSi.xcodeproj -scheme MingSi \
+            -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/mingsi-tests" \
+            -resultBundlePath "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" \
+            -parallel-testing-enabled NO \
+            -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInLight \
+            -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest \
+            -collect-test-diagnostics never \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
       - name: Save test counts
         if: always()
         run: |
@@ -83,11 +94,49 @@ jobs:
               > "$RUNNER_TEMP/mingsi-unit-summary.json"
             cat "$RUNNER_TEMP/mingsi-unit-summary.json" >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [[ -f "$RUNNER_TEMP/mingsi-permissions-ui.xcresult/Info.plist" ]]; then
+            mkdir -p "$RUNNER_TEMP/permission-ui-evidence"
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" --format json \
+              > "$RUNNER_TEMP/permission-ui-evidence/summary.json"
+            cat "$RUNNER_TEMP/permission-ui-evidence/summary.json" >> "$GITHUB_STEP_SUMMARY"
+            xcrun xcresulttool export attachments \
+              --path "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" \
+              --output-path "$RUNNER_TEMP/permission-ui-attachments"
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          task_temp = Path(os.environ["RUNNER_TEMP"])
+          exported = task_temp / "permission-ui-attachments"
+          evidence = task_temp / "permission-ui-evidence"
+          mapping = []
+          for test in json.loads((exported / "manifest.json").read_text()):
+              for attachment in test["attachments"]:
+                  filename = Path(attachment["exportedFileName"]).name
+                  if Path(filename).suffix.lower() != ".png":
+                      continue
+                  output_name = str(len(mapping)) + "-" + filename
+                  shutil.copy2(exported / filename, evidence / output_name)
+                  mapping.append({"file": output_name, "name": attachment["suggestedHumanReadableName"],
+                                  "test": test["testIdentifier"]})
+          (evidence / "screenshots.json").write_text(json.dumps(mapping, indent=2) + "\n")
+          PY
+          fi
       - name: Attach compact test summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-summary
           path: ${{ runner.temp }}/mingsi-unit-summary.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Attach isolated permission UI counts and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: permission-ui-evidence
+          path: ${{ runner.temp }}/permission-ui-evidence
           if-no-files-found: ignore
           retention-days: 14

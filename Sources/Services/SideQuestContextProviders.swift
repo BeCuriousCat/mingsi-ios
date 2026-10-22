@@ -10,11 +10,13 @@ import EventKit
 import HealthKit
 #endif
 
-enum SideQuestAuthorizationStatus: String, Hashable {
+enum SideQuestAuthorizationStatus: String, Hashable, Sendable {
     case notDetermined
     case restricted
     case denied
     case authorized
+    case writeOnly
+    case readAccessUnknown
     case unavailable
 
     var displayTitle: String {
@@ -23,7 +25,30 @@ enum SideQuestAuthorizationStatus: String, Hashable {
         case .restricted: return "受限"
         case .denied: return "已拒绝"
         case .authorized: return "已允许"
+        case .writeOnly: return "仅允许写入"
+        case .readAccessUnknown: return "读取范围由系统管理"
         case .unavailable: return "不可用"
+        }
+    }
+}
+
+enum SideQuestPermissionKind: String, Hashable, Sendable {
+    case location, calendar, health
+}
+
+enum SideQuestPermissionRequestResult: Sendable {
+    case completed, denied, failed, unavailable
+
+    func message(for kind: SideQuestPermissionKind) -> String {
+        switch (kind, self) {
+        case (.health, .completed): return "已完成授权选择。读取范围可在“健康”App或系统设置中查看。"
+        case (.calendar, .completed): return "已完成日历授权选择，当前读取权限见上方状态。"
+        case (.health, .denied): return "未完成健康授权选择，其他功能可以继续使用。"
+        case (.calendar, .denied): return "未允许读取日历，其他功能可以继续使用。"
+        case (.health, .failed): return "健康连接未完成，请稍后重试。其他功能可以继续使用。"
+        case (.calendar, .failed): return "日历授权未完成，请稍后重试。"
+        case (_, .unavailable): return "此设备暂时无法使用这项系统数据。"
+        default: return "系统权限选择已结束，请查看当前状态。"
         }
     }
 }
@@ -34,8 +59,8 @@ protocol SideQuestContextProviding: AnyObject {
     var healthAuthorizationStatus: SideQuestAuthorizationStatus { get }
     func snapshot(now: Date) async -> SideQuestContextSnapshot
     func requestLocationAuthorization()
-    func requestCalendarAuthorization()
-    func requestHealthAuthorization()
+    func requestCalendarAuthorization() async -> SideQuestPermissionRequestResult
+    func requestHealthAuthorization() async -> SideQuestPermissionRequestResult
 }
 
 enum SideQuestHealthMetric: String, CaseIterable {
@@ -173,26 +198,33 @@ final class SystemSideQuestContextProvider: NSObject, SideQuestContextProviding 
 
     var calendarAuthorizationStatus: SideQuestAuthorizationStatus {
         #if canImport(EventKit)
-        switch EKEventStore.authorizationStatus(for: .event) {
-        case .fullAccess, .authorized: return .authorized
-        case .writeOnly: return .authorized
-        case .denied: return .denied
-        case .restricted: return .restricted
-        case .notDetermined: return .notDetermined
-        @unknown default: return .unavailable
-        }
+        return Self.calendarReadAuthorizationStatus(EKEventStore.authorizationStatus(for: .event))
         #else
         return .unavailable
         #endif
     }
 
+    #if canImport(EventKit)
+    static func calendarReadAuthorizationStatus(_ status: EKAuthorizationStatus) -> SideQuestAuthorizationStatus {
+        switch status {
+        case .fullAccess, .authorized: return .authorized
+        case .writeOnly: return .writeOnly
+        case .denied: return .denied
+        case .restricted: return .restricted
+        case .notDetermined: return .notDetermined
+        @unknown default: return .unavailable
+        }
+    }
+    #endif
+
+    static func healthReadAuthorizationStatus(isAvailable: Bool) -> SideQuestAuthorizationStatus {
+        // Availability and successful prompting never reveal read permission.
+        isAvailable ? .readAccessUnknown : .unavailable
+    }
+
     var healthAuthorizationStatus: SideQuestAuthorizationStatus {
         #if canImport(HealthKit)
-        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
-        // HealthKit deliberately does not disclose read authorization. Treat
-        // available health data as an optional summary source until a query
-        // succeeds; no health samples are included in the snapshot.
-        return .authorized
+        return Self.healthReadAuthorizationStatus(isAvailable: HKHealthStore.isHealthDataAvailable())
         #else
         return .unavailable
         #endif
@@ -217,16 +249,24 @@ final class SystemSideQuestContextProvider: NSObject, SideQuestContextProviding 
         #endif
     }
 
-    func requestCalendarAuthorization() {
+    func requestCalendarAuthorization() async -> SideQuestPermissionRequestResult {
         #if canImport(EventKit)
-        eventStore.requestFullAccessToEvents { _, _ in }
+        do { return try await eventStore.requestFullAccessToEvents() ? .completed : .denied }
+        catch { return calendarAuthorizationStatus == .denied ? .denied : .failed }
+        #else
+        return .unavailable
         #endif
     }
 
-    func requestHealthAuthorization() {
+    func requestHealthAuthorization() async -> SideQuestPermissionRequestResult {
         #if canImport(HealthKit)
-        guard HKHealthStore.isHealthDataAvailable() else { return }
-        healthStore.requestAuthorization(toShare: [], read: Self.healthReadTypes()) { _, _ in }
+        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
+        do {
+            try await healthStore.requestAuthorization(toShare: [], read: Self.healthReadTypes())
+            return .completed
+        } catch { return .failed }
+        #else
+        return .unavailable
         #endif
     }
 }
@@ -294,6 +334,8 @@ final class StaticSideQuestContextProvider: SideQuestContextProviding {
     private(set) var calendarRequestCount = 0
     private(set) var healthRequestCount = 0
     private(set) var snapshotRequestCount = 0
+    var calendarRequestResult: SideQuestPermissionRequestResult = .completed
+    var healthRequestResult: SideQuestPermissionRequestResult = .completed
 
     init(
         snapshot: SideQuestContextSnapshot = .empty,
@@ -312,6 +354,12 @@ final class StaticSideQuestContextProvider: SideQuestContextProviding {
         return providedSnapshot
     }
     func requestLocationAuthorization() { locationRequestCount += 1 }
-    func requestCalendarAuthorization() { calendarRequestCount += 1 }
-    func requestHealthAuthorization() { healthRequestCount += 1 }
+    func requestCalendarAuthorization() async -> SideQuestPermissionRequestResult {
+        calendarRequestCount += 1
+        return calendarRequestResult
+    }
+    func requestHealthAuthorization() async -> SideQuestPermissionRequestResult {
+        healthRequestCount += 1
+        return healthRequestResult
+    }
 }

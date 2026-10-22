@@ -34,7 +34,7 @@ struct AppRootView: View {
 
     private var speechUITestDynamicTypeSize: DynamicTypeSize? {
         let arguments = ProcessInfo.processInfo.arguments
-        guard (arguments.contains("--growth-evidence-ui-fixture") || arguments.contains("--result-review-ui-fixture") || arguments.contains("--speech-ui-fixture") || arguments.contains("--life-guidance-ui-test") || arguments.contains("--mentor-startup-ui-test") || arguments.contains("--today-loop-ui-fixture") || arguments.contains("--principle-practice-ui-fixture")),
+        guard (arguments.contains("--permission-ui-fixture") || arguments.contains("--growth-evidence-ui-fixture") || arguments.contains("--result-review-ui-fixture") || arguments.contains("--speech-ui-fixture") || arguments.contains("--life-guidance-ui-test") || arguments.contains("--mentor-startup-ui-test") || arguments.contains("--today-loop-ui-fixture") || arguments.contains("--principle-practice-ui-fixture")),
               let index = arguments.firstIndex(of: "-UIPreferredContentSizeCategory"),
               arguments.indices.contains(index + 1) else { return nil }
         switch arguments[index + 1] {
@@ -46,7 +46,7 @@ struct AppRootView: View {
 
     private var speechUITestColorScheme: ColorScheme? {
         let arguments = ProcessInfo.processInfo.arguments
-        guard (arguments.contains("--growth-evidence-ui-fixture") || arguments.contains("--result-review-ui-fixture") || arguments.contains("--speech-ui-fixture") || arguments.contains("--life-guidance-ui-test") || arguments.contains("--mentor-startup-ui-test") || arguments.contains("--today-loop-ui-fixture") || arguments.contains("--principle-practice-ui-fixture")),
+        guard (arguments.contains("--permission-ui-fixture") || arguments.contains("--growth-evidence-ui-fixture") || arguments.contains("--result-review-ui-fixture") || arguments.contains("--speech-ui-fixture") || arguments.contains("--life-guidance-ui-test") || arguments.contains("--mentor-startup-ui-test") || arguments.contains("--today-loop-ui-fixture") || arguments.contains("--principle-practice-ui-fixture")),
               let index = arguments.firstIndex(of: "-AppleInterfaceStyle"),
               arguments.indices.contains(index + 1) else { return nil }
         return arguments[index + 1] == "Dark" ? .dark : .light

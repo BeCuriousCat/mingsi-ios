@@ -1,5 +1,6 @@
 import GRDB
 import XCTest
+import EventKit
 @testable import MingSi
 
 final class VNextTests: XCTestCase {
@@ -2378,11 +2379,19 @@ final class VNextTests: XCTestCase {
     func testStaticContextProviderPermissionRequestsAreExplicitAndCounted() async {
         let provider = StaticSideQuestContextProvider()
         provider.requestLocationAuthorization()
-        provider.requestCalendarAuthorization()
-        provider.requestHealthAuthorization()
+        _ = await provider.requestCalendarAuthorization()
+        _ = await provider.requestHealthAuthorization()
         XCTAssertEqual(provider.locationRequestCount, 1)
         XCTAssertEqual(provider.calendarRequestCount, 1)
         XCTAssertEqual(provider.healthRequestCount, 1)
+    }
+
+    func testSystemAvailabilityAndCalendarWriteOnlyDoNotClaimReadPermission() {
+        XCTAssertEqual(SystemSideQuestContextProvider.calendarReadAuthorizationStatus(.writeOnly), .writeOnly)
+        XCTAssertEqual(SystemSideQuestContextProvider.calendarReadAuthorizationStatus(.fullAccess), .authorized)
+        XCTAssertEqual(SystemSideQuestContextProvider.calendarReadAuthorizationStatus(.denied), .denied)
+        XCTAssertEqual(SystemSideQuestContextProvider.healthReadAuthorizationStatus(isAvailable: true), .readAccessUnknown)
+        XCTAssertEqual(SystemSideQuestContextProvider.healthReadAuthorizationStatus(isAvailable: false), .unavailable)
     }
 
     func testContextSnapshotCannotContainRawSystemFields() async {

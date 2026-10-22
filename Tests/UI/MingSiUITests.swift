@@ -6,6 +6,54 @@ final class MingSiUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testPermissionStatesAndFailureInLight() throws {
+        try verifyPermissionStatesAndFailure(largest: false)
+    }
+
+    func testPermissionStatesAndFailureInDarkLargest() throws {
+        try verifyPermissionStatesAndFailure(largest: true)
+    }
+
+    private func verifyPermissionStatesAndFailure(largest: Bool) throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--permission-ui-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            "-AppleInterfaceStyle", largest ? "Dark" : "Light", "-UIPreferredContentSizeCategory",
+            largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+        app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "settings"
+        app.launch()
+        defer { app.terminate() }
+        openSideQuestSettings(in: app)
+
+        let calendar = app.buttons["settings.permission.calendar.request"]
+        scrollToElement(calendar, in: app)
+        XCTAssertEqual(app.staticTexts["settings.permission.calendar.status"].label, "仅允许写入")
+        XCTAssertTrue(calendar.isEnabled)
+        XCTAssertGreaterThanOrEqual(calendar.frame.height, 44)
+        calendar.tap()
+        let calendarMessage = app.staticTexts["settings.permission.calendar.message"]
+        XCTAssertTrue(calendarMessage.waitForExistence(timeout: 8))
+        XCTAssertTrue(calendarMessage.label.contains("未允许读取日历"))
+
+        let health = app.buttons["settings.permission.health.request"]
+        scrollToElement(health, in: app)
+        XCTAssertEqual(app.staticTexts["settings.permission.health.status"].label, "读取范围由系统管理")
+        XCTAssertTrue(health.isEnabled)
+        XCTAssertGreaterThanOrEqual(health.frame.height, 44)
+        if largest { XCTAssertGreaterThanOrEqual(health.frame.height, 88, "Largest text must wrap and expand the action") }
+        health.tap()
+        let healthMessage = app.staticTexts["settings.permission.health.message"]
+        XCTAssertTrue(healthMessage.waitForExistence(timeout: 8))
+        XCTAssertTrue(healthMessage.label.contains("健康连接未完成"))
+        scrollToElement(healthMessage, in: app)
+        XCTAssertTrue(healthMessage.isHittable)
+        XCTAssertTrue(health.isEnabled, "A failed request must remain retryable")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "The isolated fixture must not request system permissions")
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = largest ? "permissions-dark-largest" : "permissions-light-normal"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testTodayReviewCardsSeedCanDriveRenderedLoopToCompletion() throws {
         let app = seededTodayApp(stage: "review_cards_confirmed")
         app.launch()

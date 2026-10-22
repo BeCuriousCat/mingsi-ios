@@ -1,0 +1,108 @@
+{
+  "run_id": 39839344309,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39839344309",
+  "head_sha": "40803a7199d08426adba510f4544314759cf44bb",
+  "status": "completed",
+  "conclusion": "success",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Save test counts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "unit_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 1527,
+        "skippedTests": 24,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi \u00b7 Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792698143.082,
+    "passedTests": 1527,
+    "result": "Passed",
+    "skippedTests": 24,
+    "startTime": 1792697561.022,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - MingSi",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "13% of duration",
+        "text": "4 longest test runs with outlier durations exceeding 1.24s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 1551
+  },
+  "release_manifest_copy": "MingSi.app/PrivacyInfo.xcprivacy copied from Sources/Resources/PrivacyInfo.xcprivacy",
+  "package_test": "MentorLessonCatalogTests/testAppBundleIncludesRequiredReasonManifestAndCalendarReadDescription passed"
+}

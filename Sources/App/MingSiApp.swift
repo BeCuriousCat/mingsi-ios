@@ -72,7 +72,13 @@ struct MingSiApp: App {
         DS.configureTabBarAppearance()
 #if DEBUG
         let storeInstance: AppStore
-        if ProcessInfo.processInfo.arguments.contains("--growth-evidence-ui-fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--permission-ui-fixture") {
+            let provider = StaticSideQuestContextProvider(location: .denied,
+                calendar: .writeOnly, health: .readAccessUnknown)
+            provider.healthRequestResult = .failed
+            provider.calendarRequestResult = .denied
+            storeInstance = AppStore(refreshesAIServiceFromKeychain: false, sideQuestContextProvider: provider)
+        } else if ProcessInfo.processInfo.arguments.contains("--growth-evidence-ui-fixture") {
             storeInstance = AppStore.growthEvidenceUIFixture()
         } else if ProcessInfo.processInfo.arguments.contains("--result-review-ui-fixture") {
             storeInstance = AppStore.resultReviewUIFixture()

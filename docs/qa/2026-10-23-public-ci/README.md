@@ -1,6 +1,6 @@
 # 公开源码的干净环境验证 · 2026-10-23
 
-关联G10开源可维护。**修复候选7f45bc7已在干净远端完成Release构建与1526项单元通过（24跳过、0失败）；仍缺其他真实构建者和手机安装验证。**
+关联G10开源可维护。**候选40803a7已在干净远端完成Release构建与1527项单元通过（24跳过、0失败）；仍缺其他真实构建者和手机安装验证。**
 
 新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已结束，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。Release构建通过，测试阶段在执行前因目标UUID大小写不匹配失败；整体失败，0项单元执行。
 
@@ -10,7 +10,7 @@
 
 实际读取[GitHub macOS26 runner image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-Readme.md)，其列出Xcode26.5路径`/Applications/Xcode_26.5.app`及iOS26.5 SDK。工作流固定该路径，未使用滚动的latest Xcode。镜像未来删除该版本时应明确失败并评估升级，不悄悄换编译器。
 
-checkout/upload-artifact通过认证gh解析到完整commit SHA后固定；contents只读，checkout不保留Git凭据，不读取仓库密钥，不上传App包、私人材料或原始录像。只保留紧凑单元测试摘要14天，原构建/测试日志由GitHub本身保存。
+checkout/upload-artifact通过认证gh解析到完整commit SHA后固定；contents只读，checkout不保留Git凭据，不读取仓库密钥，不上传App包、私人材料或原始录像。保留紧凑单元摘要14天；新增权限UI运行另保留隔离夹具PNG、截图名称映射与紧凑计数14天，不上传原始xcresult或诊断。原构建/测试日志由GitHub本身保存。
 
 ## 工作流范围
 
@@ -18,7 +18,7 @@ checkout/upload-artifact通过认证gh解析到完整commit SHA后固定；conte
 2. 运行Python脚本契约测试、Bash语法、diff检查。
 3. 从提交内Xcode工程与vendored GRDB构建Release模拟器App，禁用个人签名。
 4. 只读枚举runner已有iOS26+ iPhone，选择其UUID，不创建/删除/重置设备；本机固定模拟器规则不变，选择脚本拒绝在非GitHub macOS环境运行。
-5. 运行MingSiTests，临时ad-hoc模拟器签名，关闭测试并行；不选UI或opt-in付费模型测试。
+5. 运行MingSiTests，临时ad-hoc模拟器签名，关闭测试并行；另只选两条隔离权限UI测试（浅色常规、深色最大辅助字号），不选其余UI或opt-in付费模型测试。
 6. 保存真实通过/失败/跳过计数；失败也保留日志，不删除失败后伪称整体通过。
 
 main的相关源码/测试/脚本/工程变更及PR触发，纯文档变更不重复构建；可手动触发。每次最多45分钟，同一分支新提交取消旧运行。没有新增付费模型或手机权限。
@@ -46,3 +46,7 @@ CI工具本身不改变App产品运行行为，无需新功能发布条目；随
 ## 点拨保存修复后的完整成功运行
 
 [运行39837132850](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39837132850)对提交`7f45bc7c831cdb9f5fa7f621e725bf7715546f30`整体success：脚本39通过、Release通过、单元1550项中1526通过/24显式跳过/0失败。原始计数和终态见[修复候选记录](../2026-10-23-nudge-save-order/verification-run.json)。前两次失败仍保留，未通过跳过失败项获取绿色结果。该证据绑定7f45bc7，之后新的App包配置修改需要另外复验；真实构建者、真机和真人价值仍未因此通过。
+
+## App自身清单与日历说明的包内验证
+
+[运行39839344309](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39839344309)对提交`40803a7199d08426adba510f4544314759cf44bb`整体success：Release通过，1551项中1527通过/24跳过/0失败。日志含Release/Debug的App自身清单复制，包内读取用途和日历说明测试passed，见[配置证据](../2026-10-23-release-configuration/verification-run.json)。后续新增权限UI检查的工作流将另外登记结果，不把本次单元结果称为UI通过。

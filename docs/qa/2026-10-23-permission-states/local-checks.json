@@ -1,0 +1,14 @@
+{
+  "swift_parse": "passed",
+  "actual_sdk_async_api_typecheck": "passed_with_ios_26_5_simulator_sdk",
+  "workflow_yaml": "parsed",
+  "workflow_bash_steps": "syntax_passed",
+  "new_unit_cases": 3,
+  "new_unit_execution": "pending",
+  "isolated_native_ui_cases": 2,
+  "native_ui_execution": "pending",
+  "native_local_ui": "mac_locked",
+  "real_system_authorization": "not_requested",
+  "private_system_data_access": "none",
+  "paid_model_requests": 0
+}

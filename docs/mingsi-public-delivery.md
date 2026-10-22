@@ -29,7 +29,7 @@ App自身使用UserDefaults保存快捷请求/偏好，以及`ProcessInfo.system
 
 日历读取使用`requestFullAccessToEvents`，已准备将旧说明键换为`NSCalendarsFullAccessUsageDescription`，并在构建后读取真实App包验证。语法、plist与工程配置检查不等于授权弹窗已经实际操作，完整构建/测试及真机授权仍待验收。
 
-生活奇遇的HealthKit读取能力与签名entitlement尚未在真机验证；当前target未配置HealthKit entitlement。不能仅凭健康权限说明存在或单元夹具通过宣称健康集成可用。发布候选必须解决其支持边界并实际验证，不在签名条件未知时静默开启能力。
+生活奇遇的HealthKit读取能力与签名entitlement尚未在真机验证；当前target未配置HealthKit entitlement。不能仅凭健康权限说明存在或单元夹具通过宣称健康集成可用。权限未知/仅写入的表达及请求反馈已另做[修复与隔离验证准备](qa/2026-10-23-permission-states/README.md)，签名能力仍需解决并实际验证，不在签名条件未知时静默开启能力。
 
 在线输入会直接发给用户选定的模型服务，系统语音可能使用联网识别。商店隐私披露还需核对实际服务、保留政策和审核配置；本次required-reason清单不能替代商店隐私表或完整数据流核对。
 
