@@ -20,11 +20,13 @@ targets:
       - path: Sources
         excludes:
           - App/Info.plist
+          - App/MingSi.entitlements
     dependencies:
       - package: GRDB
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.codex.mingsi
+        CODE_SIGN_ENTITLEMENTS: Sources/App/MingSi.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: 明思
         MINGSI_SOURCE_REVISION: unknown
         MINGSI_SOURCE_STATE: unknown

@@ -122,7 +122,7 @@ G9前置条件已实际核对：手机当前已装代码版本未知；真机构
 
 G10准备：已增加干净检出的[公开CI](qa/2026-10-23-public-ci/README.md)，检查脚本、Release模拟器构建和无需模型密钥的单元测试；实际远端结果以该报告为准，不以workflow文件存在宣布通过。即使CI通过，其他真实构建者与普通用户安装仍需分别验收。
 
-G9继续准备：[分发路径与安装记录](mingsi-public-delivery.md)已明确Xcode/TestFlight/App Store的实际条件；补App自身required-reason清单与当前日历读取说明键，见[配置专项](qa/2026-10-23-release-configuration/README.md)。新包配置与真机验证分别登记；HealthKit签名能力仍缺，权限未知/仅写入状态和请求反馈已有[修复及远端原生UI验证准备](qa/2026-10-23-permission-states/README.md)。未把资料或夹具准备计为渠道发布、实际授权或三人安装通过。
+G9继续准备：[分发路径与安装记录](mingsi-public-delivery.md)已明确Xcode/TestFlight/App Store的实际条件；补App自身required-reason清单与当前日历读取说明键，见[配置专项](qa/2026-10-23-release-configuration/README.md)。新包配置与真机验证分别登记；HealthKit entitlement已有[候选配置与实际轻量构建证据](qa/2026-10-23-healthkit-capability/README.md)，完整候选与真机签名/读取仍缺；权限未知/仅写入状态和请求反馈已有[修复及远端原生UI验证准备](qa/2026-10-23-permission-states/README.md)。未把资料或夹具准备计为渠道发布、实际授权或三人安装通过。
 
 | 顺序 | 下一项具体工作 | 完成证据 |
 | --- | --- | --- |

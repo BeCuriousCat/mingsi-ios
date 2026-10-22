@@ -26,6 +26,6 @@
 
 [普通用户分发准备](../../mingsi-public-delivery.md)补齐Xcode/TestFlight/App Store路径、Apple实际条件、三人安装空记录和升级限制；这些准备不是实际下载渠道或安装成功证据。
 
-HealthKit entitlement尚未配置和真机验证。初次核对还发现健康可用时返回authorized、日历write-only也标已允许；现已另准备[权限状态修复与隔离验证](../2026-10-23-permission-states/README.md)。能力、状态与真实权限需分别验收，不能因清单或日历键修正而宣布系统集成完整可用。
+本专项候选尚未配置HealthKit entitlement；后续已准备[可选健康能力配置](../2026-10-23-healthkit-capability/README.md)，真机仍未验证。初次核对还发现健康可用时返回authorized、日历write-only也标已允许；现已另准备[权限状态修复与隔离验证](../2026-10-23-permission-states/README.md)。能力、状态与真实权限需分别验收，不能因清单或日历键修正而宣布系统集成完整可用。
 
 商店隐私信息、真实签名归档、审核在线体验、权限弹窗和三人安装均未通过。App清单只覆盖已核对的required-reason API，不代表App Store审核、整个数据流审计或G1/G9/G10完成。

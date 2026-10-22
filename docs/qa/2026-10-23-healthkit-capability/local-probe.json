@@ -1,0 +1,9 @@
+{
+  "synthetic_probe": true,
+  "build_result": "success",
+  "actual_arm64_macho_entitlement": "healthkit_true",
+  "healthkit_required_device_capability": false,
+  "ad_hoc_signature_entitlement": "empty_as_expected_for_simulator",
+  "real_device_signing_or_reading": "not_tested",
+  "swift_debug_dylib_main_executable_entitlement": "healthkit_true"
+}

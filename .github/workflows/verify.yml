@@ -80,6 +80,29 @@ jobs:
             MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test
           test "$(plutil -extract MingSiSourceRevision raw -o - "$RUNNER_TEMP/mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app/Info.plist")" = "$GITHUB_SHA"
           test "$(plutil -extract MingSiSourceState raw -o - "$RUNNER_TEMP/mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app/Info.plist")" = "clean"
+      - name: Check optional HealthKit entitlement embedded for Simulator
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import plistlib
+          import re
+          import subprocess
+          app = Path(os.environ["RUNNER_TEMP"]) / "mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app"
+          # Xcode embeds simulator entitlements in Mach-O, separately from the
+          # ad-hoc code signature. otool prints arm64 data as little-endian words.
+          dump = subprocess.check_output(["xcrun", "otool", "-arch", "arm64", "-X", "-s",
+                                          "__TEXT", "__entitlements", str(app / "MingSi")], text=True)
+          words = [word for line in dump.splitlines() if re.match(r"^[0-9a-fA-F]{16}\s", line)
+                   for word in line.split()[1:]]
+          assert words and all(re.fullmatch(r"(?:[0-9a-fA-F]{2}){1,4}", word) for word in words)
+          payload = b"".join(int(word, 16).to_bytes(len(word) // 2, "little") for word in words).rstrip(b"\0")
+          assert plistlib.loads(payload).get("com.apple.developer.healthkit") is True
+          info = plistlib.loads((app / "Info.plist").read_bytes())
+          required = info.get("UIRequiredDeviceCapabilities", [])
+          assert "healthkit" not in required, "HealthKit must remain optional"
+          print("Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed")
+          PY
       - name: Run isolated permission UI in light and dark largest text
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
