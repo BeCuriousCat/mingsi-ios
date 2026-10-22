@@ -1,0 +1,14 @@
+{
+  "validation_data": "synthetic_only",
+  "new_python_tests_passed": 16,
+  "all_python_tests_passed": 25,
+  "test_failures": 0,
+  "cli_example_reproduced": true,
+  "private_export_processed": false,
+  "paid_model_requests": 0,
+  "app_swift_runtime_changed": false,
+  "real_trial_started": false,
+  "goal_status": "not_assessed",
+  "gitleaks_findings": 0,
+  "diff_check": "passed"
+}

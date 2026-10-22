@@ -86,6 +86,8 @@ SSE 改善等待反馈，但上游断连、长时间无内容和系统后台限�
 
 欢迎通过 [Issues](https://github.com/BeCuriousCat/mingsi-ios/issues) 和 Pull Request 参与，开始前请阅读 [贡献指南](CONTRIBUTING.md)。[docs](docs/) 中的旧计划、历史验收和维护者本机路径不代表当前完整交付。
 
+维护者可按[试用观测汇总说明](docs/mingsi-trial-summary.md)离线整理自己的数据导出；公开示例为合成数据，工具不上传私人内容，也不替用户判断获益或长期效果。
+
 ## 开源许可
 
 明思代码采用 [MIT](LICENSE)，可使用、修改和再分发。人生指南来自 [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter)，按 **CC BY 4.0** 提供；再分发需保留署名、来源、许可和修改说明。GRDB 的 MIT 许可随依赖保留。详见 [第三方署名与许可](THIRD_PARTY_NOTICES.md)。

@@ -1,0 +1,427 @@
+{
+  "report_schema_version": 1,
+  "data_kind": "synthetic",
+  "goal_status": "not_assessed",
+  "window": {
+    "from_inclusive": "2026-10-01T00:00:00+00:00",
+    "until_exclusive": "2026-10-15T00:00:00+00:00",
+    "export_created_at": "2026-10-15T00:00:00+00:00",
+    "snapshot_before_window_end": false
+  },
+  "percentiles": "nearest_rank",
+  "observed_entry_attempts": 3,
+  "mixed_entry_content_schema_versions": false,
+  "candidate_build_prompt_provider_binding": "not_available_in_usage_events",
+  "duplicate_identical_rows_ignored": 0,
+  "events_without_entry_in_export": 0,
+  "in_window_events_from_attempts_started_outside_window": 0,
+  "by_initial_entry": {
+    "listen": {
+      "attempts": 1,
+      "initial_material_presence": {
+        "false": 1
+      },
+      "presentations": {},
+      "attempts_without_observed_content": 1,
+      "attempts_without_observed_exit": 1,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {
+        "missing": 1
+      },
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [
+        {
+          "content": "1.1",
+          "schema": "1.0.0",
+          "attempts": 1
+        }
+      ],
+      "concrete_benefit_cases": null
+    },
+    "recall": {
+      "attempts": 1,
+      "initial_material_presence": {
+        "false": 1
+      },
+      "presentations": {
+        "new": 1
+      },
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 1,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 1,
+          "p50_ms": 1400,
+          "p95_ms": 1400,
+          "maximum_ms": 1400
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {
+        "listen": 1
+      },
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {
+        "benefit_helped": 1
+      },
+      "feedback_observed_attempts": 1,
+      "entry_content_schema_versions": [
+        {
+          "content": "1.1",
+          "schema": "1.0.0",
+          "attempts": 1
+        }
+      ],
+      "concrete_benefit_cases": null
+    },
+    "discuss": {
+      "attempts": 1,
+      "initial_material_presence": {
+        "false": 1
+      },
+      "presentations": {},
+      "attempts_without_observed_content": 1,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {
+        "failed": 1
+      },
+      "request_latency_by_terminal_reason": {
+        "failed": {
+          "count": 1,
+          "p50_ms": 12000,
+          "p95_ms": 12000,
+          "maximum_ms": 12000
+        }
+      },
+      "request_events_without_timing": 0,
+      "exit_phase_events": {
+        "failed": 1
+      },
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {
+        "missing": 1
+      },
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [
+        {
+          "content": "1.1",
+          "schema": "1.0.0",
+          "attempts": 1
+        }
+      ],
+      "concrete_benefit_cases": null
+    },
+    "capture": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    },
+    "continue": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    },
+    "history": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    },
+    "legacy-nudge": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    },
+    "legacy-nudge-selection": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    },
+    "unknown": {
+      "attempts": 0,
+      "initial_material_presence": {},
+      "presentations": {},
+      "attempts_without_observed_content": 0,
+      "attempts_without_observed_exit": 0,
+      "latency_withheld_due_to_version_mixing": false,
+      "first_complete_content_latency_by_presentation": {
+        "new": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "revisit": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        },
+        "unknown": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null
+        }
+      },
+      "ambiguous_first_content_attempts": 0,
+      "request_terminal_events": {},
+      "request_latency_by_terminal_reason": {},
+      "request_events_without_timing": 0,
+      "exit_phase_events": {},
+      "switched_entry_events": {},
+      "understanding_confirmed_attempts": 0,
+      "latest_feedback_enum_by_attempt": {},
+      "feedback_observed_attempts": 0,
+      "entry_content_schema_versions": [],
+      "concrete_benefit_cases": null
+    }
+  },
+  "limits": [
+    "This is one observed export, not a complete ledger of real use.",
+    "Deleted sessions and failed event writes can remove observations; missing counts are unknown.",
+    "Material presence is not a measure of preparation effort or startup burden.",
+    "Feedback enums, reading and understanding confirmation do not establish concrete benefit.",
+    "First complete content latency is not first-token latency; revisit is separate from new content.",
+    "Request terminal events are not all actual HTTP attempts and do not prove G3 reliability.",
+    "Build, prompt and provider versions are not captured by these events; do not pool candidates.",
+    "Burden, voluntary return, independent reuse and human blind comparisons require separate evidence.",
+    "A real data-kind label is supplied by the operator, not verified by this tool."
+  ]
+}

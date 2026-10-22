@@ -57,6 +57,8 @@
 
 ## 汇总口径
 
+可用[离线观测汇总工具](mingsi-trial-summary.md)从自己的App导出生成计数，减少人工整理；它不判定具体获益、负担、独立复用或任何Goal达标，也不能保证覆盖删除/写入失败导致的日志缺失。真实试用未启动时不填造结果。
+
 1. 以 entry_started 的不同 attempt_id 为分母，分别列 listen、recall、discuss、capture；continue、history、旧点拨恢复单独列出。入口由首次 entry 固定，失败、未配模型、空白退出仍保留在相应分母中。
 2. switched_entry 单独汇总。同次尝试发生路径切换不另造初始尝试；开始另一会话或重新进入会有新 attempt_id。不能把切换后的路径覆写成原始入口。
 3. 首份内容只用 first_content=true 的呈现事件计时；按 presentation=new / revisit 分开。保存成功、请求成功均不能代替呈现，复看不能当新推荐。
