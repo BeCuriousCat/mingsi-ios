@@ -1431,6 +1431,47 @@ final class MentorNavigationUITests: XCTestCase {
 
 extension MentorNavigationUITests {
     @MainActor
+    func testHomeScreenQuickActionOpensCaptureFromSettingsWithoutLosingDraft() throws {
+        continueAfterFailure = false
+        let app = productionStartupApp()
+        app.launch()
+        let open = app.buttons["mentor.quick-capture.open-action"]
+        XCTAssertTrue(open.waitForExistence(timeout: 15))
+        scrollTo(open, in: app)
+        open.tap()
+        let input = app.textViews["today.captures.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("Keep the draft when opening from Home Screen.")
+        let original = try XCTUnwrap(input.value as? String)
+        app.buttons["today.captures.input.keyboard-dismiss"].tap()
+        app.buttons["today.captures.close-action"].tap()
+        app.buttons["保留草稿并关闭"].tap()
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["设置"].tap()
+        XCUIDevice.shared.press(.home)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let icon = springboard.icons["明思"].firstMatch
+        XCTAssertTrue(icon.waitForExistence(timeout: 5))
+        icon.press(forDuration: 1)
+        let action = springboard.buttons["com.codex.mingsi.open-today-capture"]
+        XCTAssertTrue(action.waitForExistence(timeout: 5))
+        action.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 10), "Actual Home Screen quick action must land in capture from another tab")
+        XCTAssertEqual(input.value as? String, original)
+        attachVoiceScreenshot(app, name: "home-screen-shortcut-restored-capture")
+        app.buttons["today.captures.input.keyboard-dismiss"].tap()
+        app.buttons["today.captures.close-action"].tap()
+        app.buttons["保留草稿并关闭"].tap()
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(open.waitForExistence(timeout: 15))
+        XCTAssertFalse(input.exists, "A consumed warm shortcut must not reopen capture on a normal relaunch")
+        app.terminate()
+    }
+
+    @MainActor
     func testMaterialSelectionFullTextAndCurrentRequestInLightAndLargestDark() throws {
         var normalTextHeight: CGFloat = 0
         for largest in [false, true] {

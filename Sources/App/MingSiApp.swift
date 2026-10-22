@@ -30,7 +30,9 @@ final class MingSiApplicationDelegate: NSObject, UIApplicationDelegate {
         if let shortcutItem = options.shortcutItem {
             _ = handle(shortcutItem)
         }
-        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        let configuration = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = MingSiSceneDelegate.self
+        return configuration
     }
 
     func application(
@@ -41,10 +43,22 @@ final class MingSiApplicationDelegate: NSObject, UIApplicationDelegate {
         completionHandler(handle(shortcutItem))
     }
 
-    private func handle(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+    func handle(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         guard shortcutItem.type == Self.openTodayCaptureShortcutType else { return false }
         CaptureShortcutBridge.requestOpen()
         return true
+    }
+}
+
+/// With scenes, Home Screen quick actions on an already running app are sent
+/// here, rather than UIApplicationDelegate.performActionFor.
+final class MingSiSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(MingSiApplicationDelegate().handle(shortcutItem))
     }
 }
 
@@ -136,6 +150,7 @@ struct MingSiApp: App {
                         } else {
                             _ = await store.prepareMentorFeature()
                         }
+                        await deliverPendingCaptureRequest()
                         return
                     }
                     if ProcessInfo.processInfo.arguments.contains("--life-guidance-ui-test") {
@@ -171,11 +186,15 @@ struct MingSiApp: App {
                     // the final Today surface. Consume it only after the
                     // feature assembly completes, so the notification reaches
                     // either MentorHomeView or the legacy TodayView.
-                    if CaptureShortcutBridge.consumePendingRequest() {
-                        await Task.yield()
-                        NotificationCenter.default.post(name: .mingsiOpenTodayCapture, object: nil)
-                    }
+                    await deliverPendingCaptureRequest()
                 }
+        }
+    }
+
+    private func deliverPendingCaptureRequest() async {
+        if CaptureShortcutBridge.consumePendingRequest() {
+            await Task.yield()
+            NotificationCenter.default.post(name: .mingsiOpenTodayCapture, object: nil)
         }
     }
 }

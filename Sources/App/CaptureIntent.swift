@@ -8,14 +8,14 @@ extension Notification.Name {
 enum CaptureShortcutBridge {
     static let pendingKey = "mingsi.pendingOpenTodayCapture"
 
-    static func requestOpen() {
-        UserDefaults.standard.set(true, forKey: pendingKey)
-        NotificationCenter.default.post(name: .mingsiOpenTodayCapture, object: nil)
+    static func requestOpen(defaults: UserDefaults = .standard, notificationCenter: NotificationCenter = .default) {
+        defaults.set(true, forKey: pendingKey)
+        notificationCenter.post(name: .mingsiOpenTodayCapture, object: nil)
     }
 
-    static func consumePendingRequest() -> Bool {
-        guard UserDefaults.standard.bool(forKey: pendingKey) else { return false }
-        UserDefaults.standard.removeObject(forKey: pendingKey)
+    static func consumePendingRequest(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.bool(forKey: pendingKey) else { return false }
+        defaults.removeObject(forKey: pendingKey)
         return true
     }
 }

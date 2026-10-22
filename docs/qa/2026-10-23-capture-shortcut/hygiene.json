@@ -1,0 +1,20 @@
+{
+  "scope": "source changes and synthetic shortcut evidence",
+  "paid_requests": 0,
+  "real_user_trial_records_added": 0,
+  "physical_device_installation_performed": false,
+  "full_unit": {
+    "passed": 1517,
+    "skipped": 24,
+    "failed": 0
+  },
+  "ui": {
+    "passed": 2,
+    "skipped": 0,
+    "failed": 0
+  },
+  "release_simulator": "passed_after_regenerable_cache_cleanup",
+  "native_final_cold_start": "not_run_mac_locked",
+  "gitleaks_findings": 0,
+  "diff_whitespace_check": "passed"
+}

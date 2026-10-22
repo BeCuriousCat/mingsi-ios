@@ -433,7 +433,15 @@ struct QuickCaptureSheet: View {
         } message: {
             Text("可保留本机草稿，下次继续；丢弃会删除文字和待确认的识别结果。")
         }
-        .onAppear { store.loadCaptureInputDraft(initialText: initialText) }
+        .onAppear {
+            store.loadCaptureInputDraft(initialText: initialText)
+            _ = CaptureShortcutBridge.consumePendingRequest()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mingsiOpenTodayCapture)) { _ in
+            // A repeated quick action while this editor is already mounted is
+            // fulfilled here; it must not reopen capture on the next launch.
+            _ = CaptureShortcutBridge.consumePendingRequest()
+        }
         .task {
             await store.refreshTodayCaptures()
         }

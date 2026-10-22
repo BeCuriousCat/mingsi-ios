@@ -80,14 +80,15 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertTrue(store.todayDraft.rawText.isEmpty)
     }
 
-    func testCaptureShortcutBridgeConsumesColdLaunchMarkerExactlyOnce() {
-        UserDefaults.standard.removeObject(forKey: CaptureShortcutBridge.pendingKey)
-        defer { UserDefaults.standard.removeObject(forKey: CaptureShortcutBridge.pendingKey) }
-
-        XCTAssertFalse(CaptureShortcutBridge.consumePendingRequest())
-        CaptureShortcutBridge.requestOpen()
-        XCTAssertTrue(CaptureShortcutBridge.consumePendingRequest())
-        XCTAssertFalse(CaptureShortcutBridge.consumePendingRequest())
+    func testCaptureShortcutBridgeConsumesColdLaunchMarkerExactlyOnce() throws {
+        let suite = "capture-shortcut-unit-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = NotificationCenter()
+        XCTAssertFalse(CaptureShortcutBridge.consumePendingRequest(defaults: defaults))
+        CaptureShortcutBridge.requestOpen(defaults: defaults, notificationCenter: center)
+        XCTAssertTrue(CaptureShortcutBridge.consumePendingRequest(defaults: defaults))
+        XCTAssertFalse(CaptureShortcutBridge.consumePendingRequest(defaults: defaults))
     }
 
     func testInvalidatingPreparedExportDeletesTheTemporarySnapshot() throws {
