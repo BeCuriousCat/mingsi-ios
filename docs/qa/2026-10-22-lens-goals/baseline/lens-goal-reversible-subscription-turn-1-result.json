@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "月付与年付虽然都能取消续费，其已付款承诺是否同样可撤回",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "明确月付与年付的退出成本差异，不必现在购买或预测使用多久。",
+        "id" : "66205B09-5CB2-492B-A456-B4D4F2A04EAD",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "区分已付且不可退的费用与可取消的未来扣款即可，使用时长可以仍未知。",
+        "question" : "如果首次付款后就决定停用，月付和年付各有多少费用无法收回，“能取消续费”改变的是哪部分承诺？",
+        "sourceCardTitles" : [
+          "合成场景·reversible-subscription"
+        ],
+        "whyItMatters" : "取消未来扣款与收回已付款不同，这影响退出时实际承担的成本。",
+        "whyNow" : "你想厘清承诺的区别，材料已说明可取消续费，但已付款不退。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "reversible-subscription-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "reversibleDecision",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 16.986977457999998,
+  "semantic_goals" : [
+    "区分可取消续费与无法收回已付费用",
+    "围绕月付年付的已知退出成本和未知使用时长",
+    "不把便宜等同可逆或强制先买来试"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

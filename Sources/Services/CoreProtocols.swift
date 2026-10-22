@@ -2017,6 +2017,19 @@ enum PromptCoachingQualityPolicy {
             return true
         }
 
+        // A concrete bottleneck comparison may describe a causal gap without
+        // using one of the legacy deficit words below (for example, "尚未说明").
+        // Admit the complete structural contract, while retaining independent
+        // source, target, functional-field and selected-move validation.
+        if question.lensMove == .leverageTradeoff,
+           question.evidenceGapType == .missingCausalLink,
+           question.answerUse == .chooseAction,
+           hasFunctionalCoachFields(question),
+           !question.sourceCardTitles.isEmpty,
+           !isVagueCalibrationTarget(question.calibrationTarget) {
+            return true
+        }
+
         let combined = [
             question.question,
             question.whyItMatters,
@@ -2257,7 +2270,6 @@ enum PromptCoachingQualityPolicy {
             "处境确实不容易",
             "承认这个情况很困难",
             "现在这样也合理",
-            "被理解",
             "validate your thinking",
             "you are already right",
             "feel more confident",
@@ -2294,7 +2306,10 @@ enum PromptCoachingQualityPolicy {
             "observable"
         ]
 
-        let hasAppeasingPattern = appeasingPatterns.contains { combined.contains($0) }
+        // "被理解为/成" describes an interpretation, not reassurance that
+        // someone feels understood. Keep the empathy check for other uses.
+        let hasUnderstandingReassurance = combined.range(of: "被理解(?!为|成)", options: .regularExpression) != nil
+        let hasAppeasingPattern = hasUnderstandingReassurance || appeasingPatterns.contains { combined.contains($0) }
         guard hasAppeasingPattern else { return false }
         if containsProceedDespiteGapPattern(combined) {
             return true
@@ -2829,7 +2844,7 @@ private struct PromptEvalCase: Sendable {
             let provider = LocalPromptProvider()
             for mode in SessionMode.allCases {
                 let template = provider.template(for: .generateQuestions, mode: mode)
-                try expect(template.version == "1.29.0", "Expected the current question prompt asset.")
+                try expect(template.version == "1.31.0", "Expected the current question prompt asset.")
                 try expect(template.userText.contains("Turn contract:"), "Expected an explicit one-turn contract.")
                 try expect(!template.userText.contains("standard 3") && !template.userText.contains("deep 4-5"), "The current prompt must not retain the old questionnaire quota.")
                 try expect(template.userText.contains("Return valid JSON only with exactly this shape"), "Expected a final output schema check.")
@@ -5075,8 +5090,8 @@ final class LocalPromptProvider: PromptProvider {
             rollbackTargetVersion = "1.0.0"
             outputSchemaVersion = 2
         case .generateQuestions:
-            promptVersion = "1.29.0"
-            rollbackTargetVersion = "1.28.0"
+            promptVersion = "1.31.0"
+            rollbackTargetVersion = "1.30.0"
             outputSchemaVersion = 7
         case .generateQuests:
             promptVersion = "1.12.0"
@@ -5157,6 +5172,16 @@ final class LocalPromptProvider: PromptProvider {
                 contextPolicyVersion: current.contextPolicyVersion, evalSuiteVersion: current.evalSuiteVersion,
                 rollbackTargetVersion: nil, systemText: current.systemText,
                 userText: guidanceDecisionV100UserText(), outputSchemaVersion: 1)
+        case (.generateQuestions, "1.30.0"):
+            return PromptTemplate(id: id, version: version, systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion, evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.29.0", systemText: current.systemText,
+                userText: generateQuestionsLensPurposeV130UserText(for: mode), outputSchemaVersion: 7)
+        case (.generateQuestions, "1.29.0"):
+            return PromptTemplate(id: id, version: version, systemPolicyVersion: current.systemPolicyVersion,
+                contextPolicyVersion: current.contextPolicyVersion, evalSuiteVersion: current.evalSuiteVersion,
+                rollbackTargetVersion: "1.28.0", systemText: current.systemText,
+                userText: generateQuestionsV129UserText(for: mode), outputSchemaVersion: 7)
         case (.generateQuestions, "1.28.0"):
             return PromptTemplate(id: id, version: version, systemPolicyVersion: current.systemPolicyVersion,
                 contextPolicyVersion: current.contextPolicyVersion, evalSuiteVersion: current.evalSuiteVersion,
@@ -7495,7 +7520,7 @@ final class LocalPromptProvider: PromptProvider {
         case .evaluateGuidanceEvidence:
             return guidanceEvidenceV110UserText()
         case .generateQuestions:
-            return generateQuestionsV129UserText(for: mode)
+            return generateQuestionsLensPurposeV131UserText(for: mode)
         case .generateQuests:
             return generateQuestsV1120UserText(for: mode)
         case .weeklyCalibration, .monthlyGrowth:
@@ -8460,6 +8485,32 @@ final class LocalPromptProvider: PromptProvider {
         """
     }
 
+    private static func generateQuestionsLensPurposeV131UserText(for mode: SessionMode) -> String {
+        generateQuestionsLensPurposeV130UserText(for: mode) + """
+
+
+        First-principles means-and-outcome distinction:
+        - For first_principles, a rule being mandatory and a rule being necessary or useful for the stated outcome are separate judgments. A credential, format, duration or count may be a proxy rather than the underlying capability. When the user asks whether such a requirement is necessary and supplies the actual outcome or duties, examine that means-to-outcome relationship as the central move; do not spend the only question merely asking whether the rule is official or adjustable.
+        - Ask for one criterion that connects a candidate requirement or alternative to the supplied outcome. Do not presuppose that a nontraditional option is adequate or that a traditional rule is useless. Whether the organization permits changing it can remain unknown. Reasoning about usefulness never authorizes violating a binding rule, confidentiality, safety or another person's rights; keep these limits intact without inventing a policy-investigation task.
+        """
+    }
+
+    /// Frozen 1.30 contract for rollback and recorded-run replay.
+    private static func generateQuestionsLensPurposeV130UserText(for mode: SessionMode) -> String {
+        generateQuestionsV129UserText(for: mode) + """
+
+
+        Distinct lens purpose before wording (builtin.v3):
+        - The selected method changes the object of reflection, not just lens_move or vocabulary. A valid label alone does not make a useful lens turn. The user's latest request and evidence boundaries still take precedence; never add a question merely to demonstrate a method.
+        - evidence_check separates an observed report from the claim it does or does not support. perspective_taking instead compares each party's explicitly reported aim, request or constraint. When both positions are available, make that known difference the central object even if a worry about motive remains. Do not turn a perspective question into choosing between an inferred negative motive and a sympathetic motive, or merely deciding whether the negative motive is proved. Unreported motives stay unknown, and understanding a position never requires accepting its conduct.
+        - leverage_analysis compares how available effort could affect the stated outcome through a reported bottleneck; a bottleneck does not prove that the proposed remedy will resolve it. opportunity_cost instead compares the value of the real alternative being displaced; the user owns those values, including rest and relationships.
+        - first_principles separates required outcomes and hard constraints from inherited rules. reversible_decision inspects what can actually be undone and the cost that remains; cancellation, refund and downstream consequences are different. control_boundary separates the user's decisions from influence and external outcomes; lack of control is not personal failure.
+        - system_thinking examines one reported feedback relationship, delay or downstream consequence as a hypothesis. judgment_calibration compares the recorded prediction and result at the supported scope, without reconstructing past confidence. opposing_view uses a supplied counterexample or a plausible alternative to narrow an overbroad claim; the alternative is not automatically true.
+        - In an interactive turn, ask for one meaningful contrast or judgment the user has not yet expressed. Do not turn known arithmetic, a list of supplied facts or an already completed action into a quiz. A comparison is one move, not a request to list facts, infer motives and design a plan together. If a concise explanation already meets the actual request, use explanation rather than inventing a question; explicit listening and stopping still need neither.
+        """
+    }
+
+    /// Frozen 1.29 contract for rollback and recorded-run replay.
     private static func generateQuestionsV129UserText(for mode: SessionMode) -> String {
         generateQuestionsV128UserText(for: mode)
             .replacingOccurrences(

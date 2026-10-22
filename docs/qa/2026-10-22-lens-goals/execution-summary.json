@@ -1,0 +1,53 @@
+{
+  "total_paid_requests": 41,
+  "unique_synthetic_scenarios": 22,
+  "retries": 0,
+  "rounds": [
+    {
+      "round": "baseline",
+      "prompt_version": "1.29.0",
+      "requests": 15,
+      "original_online_pipeline_passes": 12,
+      "median_completion_seconds": 12.238,
+      "max_completion_seconds": 24.596
+    },
+    {
+      "round": "v130",
+      "prompt_version": "1.30.0",
+      "requests": 17,
+      "original_online_pipeline_passes": 17,
+      "median_completion_seconds": 11.85,
+      "max_completion_seconds": 21.826
+    },
+    {
+      "round": "heldout",
+      "prompt_version": "1.30.0",
+      "requests": 5,
+      "original_online_pipeline_passes": 5,
+      "median_completion_seconds": 8.211,
+      "max_completion_seconds": 15.645
+    },
+    {
+      "round": "v131",
+      "prompt_version": "1.31.0",
+      "requests": 4,
+      "original_online_pipeline_passes": 3,
+      "median_completion_seconds": 14.179,
+      "max_completion_seconds": 34.363
+    }
+  ],
+  "final_prompt": "1.31.0",
+  "final_local_regression": {
+    "passed": 244,
+    "failed": 0
+  },
+  "python_tests": {
+    "passed": 9,
+    "failed": 0
+  },
+  "limits": [
+    "Different prompt versions evaluated in separate rounds; final 1.31.0 had four targeted network samples, not a fresh full 22-case run",
+    "AI semantic review, not independent human or longitudinal skill assessment",
+    "Service-layer synthetic tests, not live network UI or device acceptance"
+  ]
+}

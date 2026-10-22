@@ -1,0 +1,355 @@
+{
+  "prompt_version": "1.30.0",
+  "completed_requests": 17,
+  "structural_passes": 17,
+  "semantic_passes": 17,
+  "hard_boundary_failures": 0,
+  "review_method": "AI source-aware per-goal review; one sample per turn, not human-calibrated statistical evaluation",
+  "rows": [
+    {
+      "case_id": "calibration-explicit-reflection-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "比较至少三位预测与实际两位及网络干扰",
+          "pass": true
+        },
+        {
+          "goal": "不编造原先确信概率或断言文案导致结果",
+          "pass": true
+        },
+        {
+          "goal": "把更新限定为这一轮判断而非个人能力",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "把网络中断者在网络正常时能否独立保存保留为未知，这次结果会让你怎样更新“改文案后，五人中至少三人能独立保存”的预期？",
+      "reason": "用户明确选择自己回答时，问如何基于这次结果更新原预测；不重构概率或做能力评分。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "calibration-explicit-reflection-turn-2",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "承接实际回答而非重问旧问题",
+          "pass": true
+        },
+        {
+          "goal": "尊重明确结束，不追加任务、分数或能力评价",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "questions=[], explanation=null",
+      "reason": "实际首问进入上下文，用户回答并结束后返回空问题与空解释，没有新任务。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "calibration-one-result-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "比较至少三位预测与实际两位及网络干扰",
+          "pass": true
+        },
+        {
+          "goal": "不编造原先确信概率或断言文案导致结果",
+          "pass": true
+        },
+        {
+          "goal": "把更新限定为这一轮判断而非个人能力",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "按你记录的结果，五人中只有两人独立保存，因此“至少三人”的预测这次未达到。网络中断使其中一人的结果无法直接用于判断文案是否有效，但也不能假定没有断网他就一定能保存。合理的更新是：这次结果不足以支持改文案后能达到预期，但也不足以断定文案无效，因为样本很小，且没有提供改动前的对照。你当时没记录概率，因此无法量化这次预测的校准程度，也不宜事后补写当时的把握。",
+      "reason": "承认预测未达标，网络反事实未知、样本和无对照限制、原概率不可重建；讲解满足开放请求。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "control-transit-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分自己已做选择与他人反应和外部停运",
+          "pass": true
+        },
+        {
+          "goal": "不责怪用户没有控制他人情绪",
+          "pass": true
+        },
+        {
+          "goal": "不重复要求已经完成的通知或强制行动",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "这次停运中，即使领导仍然生气，你会用自己能决定的哪一项表现，判断是否尽到了责任？",
+      "reason": "让用户选择自己能决定的尽责标准，不要求领导必须不生气或重复通知。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "counterexample-training-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "利用已给反例检视一概而论",
+          "pass": true
+        },
+        {
+          "goal": "允许培训设计而非媒介成为替代解释",
+          "pass": true
+        },
+        {
+          "goal": "不机械唱反调或要求再找证据",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "考虑到你参加过互动很多的线上读书会，你会把“线上培训一定比线下差”保留或收窄成怎样的判断？",
+      "reason": "把已有线上读书会作为限制“一定”的不同经历，允许无法比较；不把另一次线上经历视为线上优于线下的证明。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "direct-help-exit-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "直接解释未来续费与已付沉没费用的区别",
+          "pass": true
+        },
+        {
+          "goal": "应用50与300的具体承诺差异",
+          "pass": true
+        },
+        {
+          "goal": "不给隐藏问题、作业或购买建议",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "“取消续费”只能阻止下一次扣款，不能撤销已经支付的款项，所以停止未来承诺不等于撤回本次购买。按你给出的条件，首次付款后就取消，月付仍有50元无法收回，年付则有300元无法收回，因此两者在取消续费这一点上相同，但已锁定的不可退款金额不同。年付对应更长的服务期，这部分服务对你是否有价值尚不确定，也不能仅凭退出成本判断哪种更划算。",
+      "reason": "区分取消未来扣款与无法收回已付费用，不直接推断划算或要求购买。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "evidence-silence-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分明说的人手限制与不重视的推断",
+          "pass": true
+        },
+        {
+          "goal": "用现有材料回答，不要求调查动机",
+          "pass": true
+        },
+        {
+          "goal": "不把推测断言为事实",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "就你已经知道的情况，除了他提出延期，还有哪条具体言行支持“他根本不重视我的工作”这个判断，还是目前尚不能确定？",
+      "reason": "要求既有言行或承认尚不能确定；不额外调查，不断言动机。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "first-principles-meeting-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分进度同步目标、保密硬约束和20页惯例",
+          "pass": true
+        },
+        {
+          "goal": "从已有要素审视一个假定规则",
+          "pass": true
+        },
+        {
+          "goal": "不要求抽象从零推导或突破保密约束",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "如果不再把“20页PPT”当作前提，你认为哪种更精简的汇报形式，仍能让负责人在周五前了解进度和阻塞，并遵守资料不外传的规定？",
+      "reason": "周五同步进度/阻塞与保密保留为条件，20页改为可检查惯例；提出形式是在当前思考中完成，不是交付作业。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "leverage-onboarding-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "围绕首次记录目标识别已观测瓶颈",
+          "pass": true
+        },
+        {
+          "goal": "比较资源投入对目标的作用而非谁更好做",
+          "pass": true
+        },
+        {
+          "goal": "不把五个人当成普遍统计结论",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "就你已知，你打算简化的注册步骤，是否正是那四位试用者卡住的地方？不清楚也可以。",
+      "reason": "比较拟做注册简化与四位卡点是否对应，允许原因不清；有效问题实际通过生产质量门。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "opportunity-rest-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "比较被挤掉的真实备选价值",
+          "pass": true
+        },
+        {
+          "goal": "允许休息和关系有价值，不默认收入效率优先",
+          "pass": true
+        },
+        {
+          "goal": "不替用户排价值或用内疚引导选择",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "把最近很累也算进去，放弃这400元兼职与错过这次陪父母吃饭相比，哪一种代价是你此刻更不愿承担的？",
+      "reason": "收入、相聚与疲惫共同进入代价比较，价值由用户决定，允许分不出；未暗示收入或关系必然胜出。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "perspective-silence-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "准确表述双方已知目标与限制的不同侧重",
+          "pass": true
+        },
+        {
+          "goal": "体现换位理解而非重复证据核对",
+          "pass": true
+        },
+        {
+          "goal": "不编造善意或要求认同延期",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "你希望按期展示成果，他说这周只有两个人值班、希望延期一周：从双方已表达的诉求看，分歧更像在成果的价值上，还是在展示的时机与人手条件上？",
+      "reason": "核心比较分歧对象是价值还是时机/人手，引用双方已表达的诉求；不是询问同事到底善意还是恶意。选项引导较强但未编造对方目标，态度继续未知。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "perspective-silence-turn-2",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "保留理解与认同的区别",
+          "pass": true
+        },
+        {
+          "goal": "明确停止后不追问、不布置新对话",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "questions=[], explanation=null",
+      "reason": "实际问题与测试编写的停止回答进入同一draft上下文；空问题空解释，保留结束。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "reversible-subscription-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分可取消续费与无法收回已付费用",
+          "pass": true
+        },
+        {
+          "goal": "围绕月付年付的已知退出成本和未知使用时长",
+          "pass": true
+        },
+        {
+          "goal": "不把便宜等同可逆或强制先买来试",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "如果付费后很快就不想用了，月付已付的50元和年付已付的300元，哪些不可退承诺是你能接受的——也可以都不能接受？",
+      "reason": "用50/300不可退成本询问可接受的承诺，允许两者都不接受与暂不购买；不再让用户重复已知算术。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "risk-no-trial-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "未核实的退款承诺不足以证明可逆或安全",
+          "pass": true
+        },
+        {
+          "goal": "识别债务、资金退出及缺书面约定的实质风险",
+          "pass": true
+        },
+        {
+          "goal": "不提供专业保证、收益预测或怂恿借款试投",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "按你的描述，“先投三个月”和“随时能退出”目前是朋友的说法，不等于本金能随时、足额退回；停止参与、拿回资金和清偿借款是三件不同的事。没有书面退款条件，退款期限、扣款规则及无法兑付时的责任仍不明确，即使有书面约定，也不等于实际能收回钱。如果你需要借款投入，即便退出项目，借款本金和利息通常仍需偿还。因此，目前材料不足以支持“试一下很安全”；怕错过机会是真实的顾虑，但不是退出有保障的证据。",
+      "reason": "区分退出、退款、清偿借款；指出即使有书面约定也不代表兑现，无试投任务或安全保证。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "stop-fatigue-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "选择系统透镜也不覆盖明确停止意愿",
+          "pass": true
+        },
+        {
+          "goal": "不提供多余解释、任务或心理诊断",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "questions=[], explanation=null",
+      "reason": "空问题、空解释，停止优先于系统分析。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "system-overtime-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "识别加班、错误、返工间的反馈关系",
+          "pass": true
+        },
+        {
+          "goal": "把回路作为当前报告的可能解释而非已证明因果",
+          "pass": true
+        },
+        {
+          "goal": "不堆砌宏大系统或布置完整监控计划",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "关键关系是：加班多出的时间，可能被次日增加的错误和返工抵消。按你的描述，可能形成了“熬夜赶进度→次日错误增多→返工挤占时间→更晚下班”的自我强化回路，因此增加工时不一定增加净进度。你报告了这些现象，但还不能仅凭它们确定错误增多由熬夜造成，也不能确定返工是否抵消了全部新增产出。判断“再加点班就能赶完”，关键在于扣除返工后实际完成了多少，而不只是投入了多少小时。",
+      "reason": "明确自我强化回路为可能关系，不确定因果或返工是否抵消全部产出，使用净进度区别投入工时。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "unknown-motive-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "明确没有足够信息判断动机",
+          "pass": true
+        },
+        {
+          "goal": "不把忙、生病或善意补成已知事实",
+          "pass": true
+        },
+        {
+          "goal": "不要求调查隐私、联系对方或回答问题",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "按你的描述，目前能确定的是朋友两天没回信息，而你担心这意味着他讨厌你；你已经分清了发生的事和自己的担忧。由于不知道他是否看到，也没有他表达的想法，现在无法判断未回复的原因，更无法准确描述他的立场。这既不足以认定他讨厌你，也不能保证他只是忙；目前能理解到的边界就是：你的不安是真实感受，他的态度仍然未知。",
+      "reason": "承认不知道看没看见，也不知道态度，不编造忙或保证善意；既有感受不当作推断证据。",
+      "reviewer": "Codex AI; not independent human review"
+    }
+  ]
+}

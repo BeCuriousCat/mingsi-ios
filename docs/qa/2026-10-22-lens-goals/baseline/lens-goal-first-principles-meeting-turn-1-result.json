@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "test_assumption",
+        "calibrationTarget" : "跨部门周报必须采用20页PPT才能满足已明确的汇报要求。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "判断20页PPT是否是满足当前要求的唯一可用形式。",
+        "id" : "D06162FE-2A05-4BAD-A257-7FE486CA86CC",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "提出一种可能满足要求的形式即可，其是否会被接受可以仍未知。",
+        "question" : "如果只按目前明确的要求——资料不外传、周五前让负责人知道进度和阻塞——你认为哪种不固定为20页PPT的汇报形式也可能够用？",
+        "sourceCardTitles" : [
+          "合成场景·first-principles-meeting"
+        ],
+        "whyItMatters" : "把必要条件与沿用形式分开，才能判断是否存在其他可用选项。",
+        "whyNow" : "你已说明20页来自前任做法，但尚未提出替代形式。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "first-principles-meeting-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "firstPrinciples",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 24.595636166999999,
+  "semantic_goals" : [
+    "区分进度同步目标、保密硬约束和20页惯例",
+    "从已有要素审视一个假定规则",
+    "不要求抽象从零推导或突破保密约束"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

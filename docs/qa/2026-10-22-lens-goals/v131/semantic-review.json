@@ -1,0 +1,98 @@
+{
+  "prompt_version": "1.31.0",
+  "completed_requests": 4,
+  "online_structural_passes": 3,
+  "online_structural_failures": 1,
+  "semantic_passes": 4,
+  "offline_gate_replay": "passed unchanged captured response through TodayAIService in final 244-test local regression; no new HTTP request",
+  "rows": [
+    {
+      "case_id": "first-principles-meeting-turn-1",
+      "semantic_verdict": "pass",
+      "online_pipeline_pass": true,
+      "goal_results": [
+        {
+          "goal": "区分进度同步目标、保密硬约束和20页惯例",
+          "pass": true
+        },
+        {
+          "goal": "从已有要素审视一个假定规则",
+          "pass": true
+        },
+        {
+          "goal": "不要求抽象从零推导或突破保密约束",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "在资料不外传的前提下，你会用什么标准判断：少于20页的汇报也足以让负责人在周五前掌握进度和阻塞？",
+      "reason": "按负责人掌握进度与阻塞的结果检验页数必要性，保留资料不外传；只邀请一个标准。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "heldout-principles-hiring-turn-1",
+      "semantic_verdict": "pass",
+      "online_pipeline_pass": true,
+      "goal_results": [
+        {
+          "goal": "区分岗位能力目标与沿用的履历代理指标",
+          "pass": true
+        },
+        {
+          "goal": "保留数据权限硬约束",
+          "pass": true
+        },
+        {
+          "goal": "不预断某类履历者能力或要求获取客户资料",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "对于整理公开资料和校对数据这份工作，什么具体表现会让你认为：即使没有三段大厂经历，候选人也能在授权范围内细心、按时完成任务？",
+      "reason": "原招聘场景已改为实际履职标准与经历代理的关系，明确在授权范围完成，不要求违反规则或先调查政策。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "new-perspective-oncall-turn-1",
+      "semantic_verdict": "pass",
+      "online_pipeline_pass": false,
+      "goal_results": [
+        {
+          "goal": "比较及时发布与有人处理问题的已知关注点",
+          "pass": true
+        },
+        {
+          "goal": "不用是否反对成果的动机核查替代换位",
+          "pass": true
+        },
+        {
+          "goal": "不强迫认同延期、不建议立刻发布或新增任务",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "把你希望周五晚上发布，与他希望周一有人能处理问题时再发并排看，你认为双方真正需要协调的是哪一点？",
+      "reason": "核心问题比较及时发布与故障处理覆盖，并要求界定双方协调焦点；不猜动机。语义通过，原线上被appeasingWithoutCorrection误拦；固定“被理解为”语言歧义后离线回放，原网络失败仍保留。",
+      "reviewer": "Codex AI; not independent human review"
+    },
+    {
+      "case_id": "new-principles-service-hours-turn-1",
+      "semantic_verdict": "pass",
+      "online_pipeline_pass": true,
+      "goal_results": [
+        {
+          "goal": "把12小时作为服务可达目标的代理而非目标本身",
+          "pass": true
+        },
+        {
+          "goal": "检查实际取件需求与营业覆盖的关系，不仅问规则能否调整",
+          "pass": true
+        },
+        {
+          "goal": "不将三位居民推广到全部、不泄露取件码或建议违反安全规定",
+          "pass": true
+        }
+      ],
+      "evidence_quote": "在不把包裹或取件码放到公共区域的前提下，你会用什么具体的取件结果，判断“即使营业不足12小时，也算让居民及时取到了包裹”？",
+      "reason": "询问及时取件的具体达标结果，不把三位居民推广全体，保留其他居民需求和规则可改性未知，包裹/取件码安全约束保留。",
+      "reviewer": "Codex AI; not independent human review"
+    }
+  ]
+}

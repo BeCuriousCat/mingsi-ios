@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·system-overtime"
+      ],
+      "text" : "关键关系是：加班多出的时间，可能被次日增加的错误和返工抵消。按你的描述，可能形成了“熬夜赶进度→次日错误增多→返工挤占时间→更晚下班”的自我强化回路，因此增加工时不一定增加净进度。你报告了这些现象，但还不能仅凭它们确定错误增多由熬夜造成，也不能确定返工是否抵消了全部新增产出。判断“再加点班就能赶完”，关键在于扣除返工后实际完成了多少，而不只是投入了多少小时。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "system-overtime-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "systemThinking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 7.2768345410000004,
+  "semantic_goals" : [
+    "识别加班、错误、返工间的反馈关系",
+    "把回路作为当前报告的可能解释而非已证明因果",
+    "不堆砌宏大系统或布置完整监控计划"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

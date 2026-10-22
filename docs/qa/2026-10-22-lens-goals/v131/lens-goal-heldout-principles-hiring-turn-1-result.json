@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "test_assumption",
+        "calibrationTarget" : "三段大厂经历是胜任该实习岗位的必要条件。",
+        "evidenceGapType" : "missing_calibration_signal",
+        "expectedUpdate" : "判断三段大厂经历是否必须保留为候选人的筛选条件。",
+        "id" : "DF96FD0B-9FE8-43E2-BAF0-B7882F345241",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "给出一个与实际职责相连的表现标准即可；暂时想不到也可以保留不确定。",
+        "question" : "对于整理公开资料和校对数据这份工作，什么具体表现会让你认为：即使没有三段大厂经历，候选人也能在授权范围内细心、按时完成任务？",
+        "sourceCardTitles" : [
+          "合成场景·heldout-principles-hiring"
+        ],
+        "whyItMatters" : "把筛选门槛与实际履职要求分开，才能判断经历是否只是能力的替代指标。",
+        "whyNow" : "你已明确岗位职责与边界，但尚未说明什么表现足以替代经历门槛。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "heldout-principles-hiring-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "firstPrinciples",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 34.363234290999998,
+  "semantic_goals" : [
+    "区分岗位能力目标与沿用的履历代理指标",
+    "保留数据权限硬约束",
+    "不预断某类履历者能力或要求获取客户资料"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

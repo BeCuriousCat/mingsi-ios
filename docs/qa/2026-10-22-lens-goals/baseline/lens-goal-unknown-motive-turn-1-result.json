@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·unknown-motive"
+      ],
+      "text" : "按你的描述，目前知道的是：朋友两天没有回复；他是否看到信息、为什么没回复，都还不清楚。“他讨厌我”是你担心的一种解释，不是已经得到证实的事实。没有他的原话或明确表达，现在既不能认定他讨厌你，也不能替他解释成“只是忙”。能理解到这里的是：等待让你担心这段关系，但他对你的态度仍然未知。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "unknown-motive-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 7.3394957920000001,
+  "semantic_goals" : [
+    "明确没有足够信息判断动机",
+    "不把忙、生病或善意补成已知事实",
+    "不要求调查隐私、联系对方或回答问题"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

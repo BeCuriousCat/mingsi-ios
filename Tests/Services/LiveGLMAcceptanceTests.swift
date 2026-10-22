@@ -2,6 +2,82 @@ import XCTest
 @testable import MingSi
 
 final class LiveGLMAcceptanceTests: XCTestCase {
+    func testLiveLensGoalsWhenExplicitlyEnabled() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let raw = env["MINGSI_LIVE_LENS_GOALS_JSON"] else {
+            throw XCTSkip("Explicit synthetic GPT lens-goal evaluation only")
+        }
+        struct Step: Decodable { let answer: String?; let mode: String; let goals: [String] }
+        struct Scenario: Decodable {
+            let id: String; let lens: String; let text: String; let steps: [Step]
+        }
+        let cases = try JSONDecoder().decode([Scenario].self, from: Data(raw.utf8))
+        guard !cases.isEmpty, cases.count <= 20,
+              cases.reduce(0, { $0 + $1.steps.count }) <= 24,
+              Set(cases.map(\.id)).count == cases.count,
+              cases.allSatisfy({ ThinkingLens(rawValue: $0.lens) != nil && !$0.steps.isEmpty && $0.steps.allSatisfy({ ["question", "explanation", "none"].contains($0.mode) }) }) else {
+            throw NSError(domain: "LensGoals", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid bounded scenario dataset"])
+        }
+        let harness = LiveGLMAcceptanceHarness(environment: env)
+        let key = try XCTUnwrap(try harness.resolvedAPIKey())
+        let config = try harness.mentorConfiguration()
+        for scenario in cases {
+            let card = ThinkingCard(type: .decision, title: "合成场景·" + scenario.id, body: scenario.text, isConfirmed: true)
+            let draft = DailyEntryDraft(rawText: scenario.text, selectedLens: ThinkingLens(rawValue: scenario.lens))
+            var answered: [ReflectionQuestion] = []
+            for (offset, step) in scenario.steps.enumerated() {
+                let id = scenario.id + "-turn-" + String(offset + 1)
+                if let answer = step.answer {
+                    guard !answered.isEmpty else { XCTFail("Missing actual prior question for " + id); break }
+                    answered[answered.count - 1].answer = answer
+                }
+                let client = LiveTodayCaptureClient(base: DirectGLMClient(apiKey: key, configuration: config))
+                var report: [String: Any] = ["case_id": id, "lens": scenario.lens,
+                    "expected_mode": step.mode, "semantic_goals": step.goals, "semantic_review_required": true]
+                let start = ContinuousClock.now
+                do {
+                    let turn = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                        .generateQuestionTurnWithTrace(for: TodayAIContext(draft: draft, confirmedCards: [card], questions: answered)).value
+                    var accepted: [String: Any] = ["questions": try JSONSerialization.jsonObject(with: JSONEncoder().encode(turn.questions))]
+                    if let explanation = turn.explanation {
+                        accepted["explanation"] = ["text": explanation.text, "source_card_titles": explanation.sourceCardTitles]
+                    }
+                    report["accepted_turn"] = accepted
+                    let mode = !turn.questions.isEmpty ? "question" : (turn.explanation == nil ? "none" : "explanation")
+                    report["actual_mode"] = mode
+                    report["structural_pass"] = mode == step.mode && turn.questions.count <= 1
+                    XCTAssertEqual(mode, step.mode, id)
+                    XCTAssertLessThanOrEqual(turn.questions.count, 1, id)
+                    for question in turn.questions { XCTAssertEqual(question.sourceCardTitles, [card.title], id) }
+                    if let explanation = turn.explanation { XCTAssertEqual(explanation.sourceCardTitles, [card.title], id) }
+                    answered.append(contentsOf: turn.questions)
+                } catch {
+                    report["structural_pass"] = false
+                    report["error"] = String(describing: error)
+                    XCTFail(id + ": " + String(describing: error))
+                }
+                let duration = start.duration(to: .now).components
+                report["seconds"] = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
+                report["model_alias"] = config.model
+                report["http_request_records"] = client.records.count
+                XCTAssertEqual(client.records.count, 1, "One request per synthetic turn; no retry")
+                for record in client.records {
+                    try attachMentorRequest(record.request, caseID: "lens-goal-" + id)
+                    report["prompt_version"] = record.request.prompt.version
+                    if let data = record.data {
+                        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+                        attachment.name = "lens-goal-" + id + "-response"; attachment.lifetime = .keepAlways; add(attachment)
+                    }
+                }
+                let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]), uniformTypeIdentifier: "public.json")
+                attachment.name = "lens-goal-" + id + "-result"; attachment.lifetime = .keepAlways; add(attachment)
+                // Infrastructure failure ends the paid batch. A completed response rejected
+                // by the production parser is retained and other distinct cases may continue.
+                if client.records.last?.data == nil { return }
+            }
+        }
+    }
+
     @MainActor
     func testLiveAuditedMentorStreamingWhenExplicitlyEnabled() async throws {
         let env = ProcessInfo.processInfo.environment

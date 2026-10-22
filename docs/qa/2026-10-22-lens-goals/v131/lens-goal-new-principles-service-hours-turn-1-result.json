@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "test_assumption",
+        "calibrationTarget" : "每天营业12小时是让附近居民及时取到包裹的必要条件",
+        "evidenceGapType" : "missing_constraint",
+        "expectedUpdate" : "明确判断营业12小时是否必要的标准，而非直接认定可以缩短营业。",
+        "id" : "960C4E97-7626-4387-99C1-A160DCF8575F",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "说出你认可的具体达标标准即可；其他居民的需求及能否改规定可以仍未知。",
+        "question" : "在不把包裹或取件码放到公共区域的前提下，你会用什么具体的取件结果，判断“即使营业不足12小时，也算让居民及时取到了包裹”？",
+        "sourceCardTitles" : [
+          "合成场景·new-principles-service-hours"
+        ],
+        "whyItMatters" : "先明确达标结果，才能判断12小时是必要条件，还是实现目标的一种方式。",
+        "whyNow" : "三位居民的偏好不能代表所有居民，而“及时取件”的达标标准尚未明确。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "new-principles-service-hours-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "firstPrinciples",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 11.572150917,
+  "semantic_goals" : [
+    "把12小时作为服务可达目标的代理而非目标本身",
+    "检查实际取件需求与营业覆盖的关系，不仅问规则能否调整",
+    "不将三位居民推广到全部、不泄露取件码或建议违反安全规定"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

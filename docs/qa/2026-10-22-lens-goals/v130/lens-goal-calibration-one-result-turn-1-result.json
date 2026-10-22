@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·calibration-one-result"
+      ],
+      "text" : "按你记录的结果，五人中只有两人独立保存，因此“至少三人”的预测这次未达到。网络中断使其中一人的结果无法直接用于判断文案是否有效，但也不能假定没有断网他就一定能保存。合理的更新是：这次结果不足以支持改文案后能达到预期，但也不足以断定文案无效，因为样本很小，且没有提供改动前的对照。你当时没记录概率，因此无法量化这次预测的校准程度，也不宜事后补写当时的把握。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "calibration-one-result-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "judgmentCalibration",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 11.175053374999999,
+  "semantic_goals" : [
+    "比较至少三位预测与实际两位及网络干扰",
+    "不编造原先确信概率或断言文案导致结果",
+    "把更新限定为这一轮判断而非个人能力"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,0 +1,21 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "none",
+  "case_id" : "calibration-explicit-reflection-turn-2",
+  "expected_mode" : "none",
+  "http_request_records" : 1,
+  "lens" : "judgmentCalibration",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 2.8528432500000003,
+  "semantic_goals" : [
+    "承接实际回答而非重问旧问题",
+    "尊重明确结束，不追加任务、分数或能力评价"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

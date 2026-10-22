@@ -1,0 +1,17 @@
+{
+  "case_id" : "leverage-onboarding-turn-1",
+  "error" : "qualityGateFailed([\"missingThinkingMaterialTarget\"])",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "leverageAnalysis",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 13.002456584000001,
+  "semantic_goals" : [
+    "围绕首次记录目标识别已观测瓶颈",
+    "比较资源投入对目标的作用而非谁更好做",
+    "不把五个人当成普遍统计结论"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : false
+}

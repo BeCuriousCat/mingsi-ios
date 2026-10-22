@@ -2,6 +2,83 @@ import XCTest
 @testable import MingSi
 
 final class TodayAIServiceContextTests: XCTestCase {
+    func testCapturedGPTPerspectiveInterpretationIsNotMistakenForFeelingUnderstood() async throws {
+        let response = #"""
+        {"questions":[{
+          "question":"把你希望周五晚上发布，与他希望周一有人能处理问题时再发并排看，你认为双方真正需要协调的是哪一点？",
+          "why_this_matters":"界定分歧，能避免把发布时间的争议直接当作对成果的否定。",
+          "why_now":"你已区分他说过的话与自己的理解，但尚未界定双方诉求的具体冲突。",
+          "expected_update":"更新对这次分歧焦点的判断：成果是否被认可，还是发布安排如何协调。",
+          "proceed_when":"按双方已表达的诉求指出一个分歧即可，未表达的动机可以保持未知。",
+          "evidence_gap_type":"none", "answer_use":"update_judgment", "lens_move":"alternative_explanation",
+          "source_card_titles":["合成场景·new-perspective-oncall"],
+          "calibration_target":"同事要求推迟发布是否应被理解为反对我的成果。", "expected_answer_type":"judgment"
+        }],"explanation":null}
+        """#
+        let card = ThinkingCard(type: .decision, title: "合成场景·new-perspective-oncall",
+            body: "我希望周五晚上直接发布功能，同事明确说自己周末不值班，希望周一有人能处理问题时再发。我把这理解成他反对我的成果，但我知道他没说过这句话。我想比较我们已说出来的侧重点，不要猜他的真实动机，问我一个问题就好。", isConfirmed: true)
+        let client = CapturingLLMClient(response: Data(response.utf8))
+        let questions = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+            .generateQuestions(for: TodayAIContext(draft: DailyEntryDraft(rawText: card.body, selectedLens: .perspectiveTaking), confirmedCards: [card]))
+        XCTAssertEqual(questions.count, 1)
+        XCTAssertEqual(questions[0].calibrationTarget, "同事要求推迟发布是否应被理解为反对我的成果。")
+        XCTAssertEqual(client.requests.count, 1)
+        // Genuine reassurance without correction is still blocked independently
+        // of a well-formed lens label and a concrete source.
+        for target in ["这次分歧里我感觉被理解", "这次分歧里我更有信心继续推进"] {
+            var question = questions[0]
+            question.question = "你觉得被理解了吗？"
+            question.whyItMatters = "让你感觉被理解。"
+            question.whyNow = "目前最重要的是你的感受。"
+            question.expectedUpdate = "继续按当前判断。"
+            question.proceedWhen = "感到有信心即可。"
+            question.calibrationTarget = target
+            XCTAssertTrue(PromptCoachingQualityPolicy.evaluateQuestions([question]).contains { $0.reason == .appeasingWithoutCorrection })
+        }
+    }
+
+    func testCapturedGPTBottleneckComparisonPassesWithoutChangingItsWordingAndStillRejectsInvalidContracts() async throws {
+        // Unchanged normalized response from the 2026-10-22 paid baseline.
+        let response = #"""
+        {"questions":[{
+          "question":"在“简化注册”和“调整编辑器配色”之间比较，你目前知道的注册卡点，是两小时内的简化能直接处理的吗？不确定也可以。",
+          "why_this_matters":"注册处流失更多，但优先价值还取决于这两小时能否触及实际卡点。",
+          "why_now":"你报告四位试用者卡在注册，但尚未说明可做的简化是否对应这些卡点。",
+          "expected_update":"判断这两小时是否更值得优先用于简化注册，而非调整配色。",
+          "proceed_when":"说明已知卡点与可做简化是否对应；若不知道卡点，明确未知即可。",
+          "evidence_gap_type":"missing_causal_link", "answer_use":"choose_action", "lens_move":"leverage_tradeoff",
+          "source_card_titles":["合成场景·leverage-onboarding"],
+          "calibration_target":"两小时内简化注册，比调整编辑器配色更可能帮助新用户完成首次记录。",
+          "expected_answer_type":"judgment"
+        }],"explanation":null}
+        """#
+        let original = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any])
+        let card = ThinkingCard(type: .decision, title: "合成场景·leverage-onboarding",
+            body: "下周要让新用户更容易完成首次记录。五位试用者中四位卡在注册，进到编辑器的那位顺利记录了。我只有两小时，可以简化注册，也可以调整编辑器配色。帮我比较哪个更值得先做，我愿意回答一个问题。", isConfirmed: true)
+        for variant in 0..<5 {
+            var object = original
+            var questions = try XCTUnwrap(object["questions"] as? [[String: Any]])
+            switch variant {
+            case 1: questions[0]["source_card_titles"] = ["其他事项"]
+            case 2: questions[0]["source_card_titles"] = [String]()
+            case 3: questions[0]["calibration_target"] = "这个情况"
+            case 4: questions[0]["expected_update"] = ""
+            default: break
+            }
+            object["questions"] = questions
+            let client = CapturingLLMClient(response: try JSONSerialization.data(withJSONObject: object))
+            do {
+                let result = try await TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client)
+                    .generateQuestions(for: TodayAIContext(draft: DailyEntryDraft(rawText: card.body, selectedLens: .leverageAnalysis), confirmedCards: [card]))
+                XCTAssertEqual(variant, 0, "Invalid contracts must still be rejected")
+                XCTAssertEqual(result.first?.question, questions[0]["question"] as? String)
+            } catch {
+                XCTAssertNotEqual(variant, 0, "Original real response must be admitted unchanged: \(error)")
+            }
+            XCTAssertEqual(client.requests.count, 1)
+        }
+    }
+
     func testDirectExplanationUsesOnlyConfirmedCurrentSources() async throws {
         for title in ["报告晚交两天", "另一件事", "未确认的猜测"] {
             let json: [String: Any] = ["questions": [], "explanation": ["text": "晚交是已知事实，故意不配合仍是推测，原因目前未知。", "source_card_titles": [title]]]

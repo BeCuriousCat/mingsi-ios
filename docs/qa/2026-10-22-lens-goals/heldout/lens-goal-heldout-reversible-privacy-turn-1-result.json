@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·heldout-reversible-privacy"
+      ],
+      "text" : "这个判断把“不花钱”当成了“没有代价”，又把“能注销账号”当成了“能撤回照片公开带来的影响”。按你的描述，工具会公开家庭照片；即使账号可以注销，也不能据此认定已公开的照片或副本会一并删除。条款未说明副本能否删除，意味着这部分可撤回性未知，而不是确定能删除或一定删不掉。因此，目前只能说试用没有金钱费用，不能说没有隐私代价，也不能把上传视为已确认可低成本撤回的尝试。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "heldout-reversible-privacy-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "reversibleDecision",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 7.9331287079999999,
+  "semantic_goals" : [
+    "识别隐私传播与副本删除的不确定退出成本",
+    "区分免费、注销与真正可撤回",
+    "不建议上传试验或保证删除有效"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,7 +1,31 @@
 import XCTest
+import CryptoKit
 @testable import MingSi
 
 final class LocalPromptProviderTests: XCTestCase {
+    func testLensPurposeUpgradeKeepsExactPriorPromptAvailableForReplay() throws {
+        let v130 = try XCTUnwrap(provider.template(for: .generateQuestions, mode: .standard, version: "1.30.0"))
+        XCTAssertEqual(SHA256.hash(data: Data(v130.userText.utf8)).map { String(format: "%02x", $0) }.joined(),
+            "8e670a44e0809ecdc43f86a642d6e6ce7cc5d7eec00aec20b14ced6897889811")
+        XCTAssertEqual(v130.rollbackTargetVersion, "1.29.0")
+        XCTAssertFalse(v130.userText.contains("First-principles means-and-outcome distinction"))
+        let recorded = try XCTUnwrap(provider.template(for: .generateQuestions, mode: .standard, version: "1.29.0"))
+        let hash = SHA256.hash(data: Data(recorded.userText.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(hash, "c9dde9fca44b54367b84847997f22a8e8429a3f503e5b35781dd1681b7c3d93e",
+            "The previous standard prompt must match the actual baseline request exactly")
+        for mode in SessionMode.allCases {
+            let current = provider.template(for: .generateQuestions, mode: mode)
+            let prior = try XCTUnwrap(provider.template(for: .generateQuestions, mode: mode, version: "1.29.0"))
+            XCTAssertEqual(prior.rollbackTargetVersion, "1.28.0")
+            XCTAssertEqual(prior.outputSchemaVersion, 7)
+            XCTAssertEqual(current.outputSchemaVersion, prior.outputSchemaVersion)
+            XCTAssertTrue(current.userText.hasPrefix(prior.userText))
+            XCTAssertFalse(prior.userText.contains("Distinct lens purpose before wording"))
+            XCTAssertTrue(current.userText.contains("make that known difference the central object"))
+            XCTAssertTrue(current.userText.contains("Do not turn known arithmetic"))
+            XCTAssertTrue(current.userText.contains("do not spend the only question merely asking whether the rule is official"))
+        }
+    }
     private let provider = LocalPromptProvider()
     func testCurrentMentorDoesNotConfuseFatigueOrQuotedWordingWithExtraQuestions() {
         for mode in SessionMode.allCases {
@@ -91,7 +115,7 @@ final class LocalPromptProviderTests: XCTestCase {
     func testDirectHelpSchemaKeepsPreviousQuestionOnlyAssetFrozen() throws {
         let current = provider.template(for: .generateQuestions, mode: .standard)
         let previous = try XCTUnwrap(provider.template(for: .generateQuestions, mode: .standard, version: "1.28.0"))
-        XCTAssertEqual(current.rollbackTargetVersion, previous.version)
+        XCTAssertEqual(current.rollbackTargetVersion, "1.30.0")
         XCTAssertEqual(previous.outputSchemaVersion, 6)
         XCTAssertEqual(current.outputSchemaVersion, 7)
         XCTAssertFalse(previous.userText.contains("Direct-help response contract"))
@@ -105,8 +129,8 @@ final class LocalPromptProviderTests: XCTestCase {
         for mode in SessionMode.allCases {
             let current = provider.template(for: .generateQuestions, mode: mode)
             let previous = try XCTUnwrap(provider.template(for: .generateQuestions, mode: mode, version: "1.27.0"))
-            XCTAssertEqual(current.version, "1.29.0")
-            XCTAssertEqual(current.rollbackTargetVersion, "1.28.0")
+            XCTAssertEqual(current.version, "1.31.0")
+            XCTAssertEqual(current.rollbackTargetVersion, "1.30.0")
             XCTAssertEqual(current.outputSchemaVersion, previous.outputSchemaVersion + 1)
             XCTAssertTrue(previous.userText.contains("grounded in an actual evidence gap or disconfirming signal"))
             XCTAssertFalse(current.userText.contains("grounded in an actual evidence gap or disconfirming signal"))
@@ -842,12 +866,12 @@ final class LocalPromptProviderTests: XCTestCase {
     }
 
     func testHistoricalEvidencePromptUpgradePreservesPriorAssets() throws {
-        for (id, previous, version) in [(PromptID.generateQuestions, "1.24.0", "1.29.0"),
+        for (id, previous, version) in [(PromptID.generateQuestions, "1.24.0", "1.31.0"),
             (.generateQuests, "1.9.0", "1.12.0"), (.weeklyCalibration, "1.0.0", "1.1.0"), (.monthlyGrowth, "1.0.0", "1.1.0")] {
             let current = provider.template(for: id, mode: .standard)
             let legacy = try XCTUnwrap(provider.template(for: id, mode: .standard, version: previous))
             XCTAssertEqual(current.version, version)
-            XCTAssertEqual(current.rollbackTargetVersion, id == .generateQuests ? "1.11.0" : (id == .generateQuestions ? "1.28.0" : previous))
+            XCTAssertEqual(current.rollbackTargetVersion, id == .generateQuests ? "1.11.0" : (id == .generateQuestions ? "1.30.0" : previous))
             XCTAssertTrue(current.userText.contains("Historical evidence boundary"))
             XCTAssertFalse(legacy.userText.contains("Historical evidence boundary"))
             XCTAssertNotEqual(current.userText, legacy.userText)
@@ -858,7 +882,7 @@ final class LocalPromptProviderTests: XCTestCase {
         for mode in SessionMode.allCases {
             let current = provider.template(for: .generateQuestions, mode: mode)
             let previous = try XCTUnwrap(provider.template(for: .generateQuestions, mode: mode, version: "1.25.0"))
-            XCTAssertEqual(current.rollbackTargetVersion, "1.28.0")
+            XCTAssertEqual(current.rollbackTargetVersion, "1.30.0")
             XCTAssertEqual(previous.rollbackTargetVersion, "1.24.0")
             XCTAssertEqual(current.outputSchemaVersion, previous.outputSchemaVersion + 1)
             XCTAssertTrue(previous.userText.contains("what answer is sufficient to move toward action"))
@@ -874,9 +898,9 @@ final class LocalPromptProviderTests: XCTestCase {
     func testGenerateQuestionsCurrentTemplate_declaresLocalRollbackTarget() {
         let current = provider.template(for: .generateQuestions, mode: .standard)
 
-        XCTAssertEqual(current.version, "1.29.0")
+        XCTAssertEqual(current.version, "1.31.0")
         XCTAssertEqual(current.outputSchemaVersion, 7)
-        XCTAssertEqual(current.rollbackTargetVersion, "1.28.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "1.30.0")
         XCTAssertTrue(current.userText.contains("Turn contract"))
         XCTAssertTrue(current.userText.contains("zero or one question"))
         XCTAssertTrue(current.userText.contains("Never return the original question and a repair question together"))

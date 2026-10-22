@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·calibration-one-result"
+      ],
+      "text" : "按你报告的结果，原先“至少三位独立保存”的预测没有兑现：实际是两位。网络中断使其中一人的结果不能直接归因于按钮文案，但也不能把这人补算为成功，因此文案是否足以支持原预期仍有不确定性。这次结果给了你下调原预期信心的理由，但五人的单次结果、加上缺少改版前的对照，不足以断定文案无效或让表现变差。你当时没有记录概率，所以可以更新现在的信心，却不能据此精确评估当时是否过度自信。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "calibration-one-result-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "judgmentCalibration",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 12.237840374999999,
+  "semantic_goals" : [
+    "比较至少三位预测与实际两位及网络干扰",
+    "不编造原先确信概率或断言文案导致结果",
+    "把更新限定为这一轮判断而非个人能力"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : false
+}

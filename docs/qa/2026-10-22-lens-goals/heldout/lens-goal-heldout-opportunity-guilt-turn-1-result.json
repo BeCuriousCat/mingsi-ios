@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·heldout-opportunity-guilt"
+      ],
+      "text" : "学一节课的收益是今晚推进学习，代价是放弃这一小时的睡眠机会；早点睡则放弃今晚的课程进度，换取更多休息。按你所述，你已连续三天只睡五小时，而明天没有考试或交付，因此推迟这节课目前没有明确的紧迫代价，睡眠不足却可能影响注意力和学习效率。休息不等于浪费时间：它的价值不体现在完成一节课上，但可能支持之后的状态；不过，多睡这一小时能带来多大改善仍不确定。这是在学习进度与休息之间取舍，不是在努力与懒惰之间取舍。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "heldout-opportunity-guilt-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "opportunityCost",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 8.2114115000000005,
+  "semantic_goals" : [
+    "休息是有实际价值的备选，不默认学习胜出",
+    "区分学习收益与失去休息的成本",
+    "不诊断睡眠疾病、不布置作业或隐藏问题"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "choose_action",
+        "calibrationTarget" : "在近期疲惫的情况下，放弃400元兼职与错过这次陪父母吃饭，哪项代价更难接受。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "明确这半天更倾向留给兼职还是陪父母，而不是由我替你排序。",
+        "id" : "261514CF-AA06-48FF-8535-B1C7A9553428",
+        "isRepairQuestion" : false,
+        "lensMove" : "leverage_tradeoff",
+        "proceedWhen" : "说出当前更不愿承担的代价即可；若仍分不出，也可如实保留。",
+        "question" : "把最近很累也算进去，放弃这400元兼职与错过这次陪父母吃饭相比，哪一种代价是你此刻更不愿承担的？",
+        "sourceCardTitles" : [
+          "合成场景·opportunity-rest"
+        ],
+        "whyItMatters" : "两件事都重要时，比较更不愿承担的损失，能帮助你明确这次取舍。",
+        "whyNow" : "你已明确时间冲突、两件事都在意，但尚未表达此刻更看重保留哪一项。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "opportunity-rest-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "opportunityCost",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 11.849693709,
+  "semantic_goals" : [
+    "比较被挤掉的真实备选价值",
+    "允许休息和关系有价值，不默认收入效率优先",
+    "不替用户排价值或用内疚引导选择"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

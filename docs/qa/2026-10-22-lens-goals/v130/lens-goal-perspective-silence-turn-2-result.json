@@ -1,0 +1,21 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "none",
+  "case_id" : "perspective-silence-turn-2",
+  "expected_mode" : "none",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 2.3736036249999999,
+  "semantic_goals" : [
+    "保留理解与认同的区别",
+    "明确停止后不追问、不布置新对话"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

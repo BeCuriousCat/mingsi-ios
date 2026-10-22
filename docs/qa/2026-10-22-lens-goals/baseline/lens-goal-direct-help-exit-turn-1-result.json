@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·direct-help-exit"
+      ],
+      "text" : "“取消续费”只能阻止下一期扣款，不能撤回本期付款，所以两者在停止未来续费这一点上相同，但不代表整个决定一样可逆。按你给出的条件，首次付款后若不再需要，月付无法收回的是50元，年付则是300元，已经锁定的金额和付费周期不同。因此，月付的单次承诺更小；年付若使用满一年，总价更低，但这是价格优势，不是可逆性相同，也不代表你现在需要购买。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "direct-help-exit-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "reversibleDecision",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 8.7064469590000009,
+  "semantic_goals" : [
+    "直接解释未来续费与已付沉没费用的区别",
+    "应用50与300的具体承诺差异",
+    "不给隐藏问题、作业或购买建议"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

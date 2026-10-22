@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·heldout-perspective-harm"
+      ],
+      "text" : "理解立场，是准确知道对方声称要达到什么目标；认可羞辱，是判断他采用的手段合理或可以接受，这不是同一件事。按你的描述，他说要赶进度，而你不接受当众被骂“没用”：承认他的目标，并不要求你接受这种对待。赶进度这一说法本身，不能证明羞辱是必要或有效的，也不能据此确定他的全部动机。理解、认可和原谅是三个不同的判断，理解不构成原谅的义务。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "heldout-perspective-harm-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 9.3199215839999994,
+  "semantic_goals" : [
+    "准确描述已知赶进度目标而不替羞辱辩护",
+    "理解不等于认同、原谅或自责",
+    "不编造善意、不要求新谈话或问答"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

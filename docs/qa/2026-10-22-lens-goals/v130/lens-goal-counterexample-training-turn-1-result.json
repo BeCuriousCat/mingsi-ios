@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "线上培训一定比线下差",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "调整“线上培训一定比线下差”的确定程度或适用范围。",
+        "id" : "B2C5407F-8EC5-4D8D-ABB4-05DFEA2E8469",
+        "isRepairQuestion" : false,
+        "lensMove" : "alternative_explanation",
+        "proceedWhen" : "说出目前愿意保留的判断即可，也可以承认还无法比较线上与线下。",
+        "question" : "考虑到你参加过互动很多的线上读书会，你会把“线上培训一定比线下差”保留或收窄成怎样的判断？",
+        "sourceCardTitles" : [
+          "合成场景·counterexample-training"
+        ],
+        "whyItMatters" : "一次会议发言少，不足以确定线上形式普遍更差。",
+        "whyNow" : "你已提供一个可能限制“一定”这一结论的不同经历。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "counterexample-training-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "opposingView",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 15.380306624999999,
+  "semantic_goals" : [
+    "利用已给反例检视一概而论",
+    "允许培训设计而非媒介成为替代解释",
+    "不机械唱反调或要求再找证据"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

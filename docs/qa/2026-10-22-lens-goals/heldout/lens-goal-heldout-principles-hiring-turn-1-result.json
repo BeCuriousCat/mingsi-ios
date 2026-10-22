@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "“三段大厂经历”是招聘中必须保留、不能调整的硬性约束。",
+        "evidenceGapType" : "missing_constraint",
+        "expectedUpdate" : "判断应把“三段大厂经历”视为固定约束，还是可重新评估的筛选条件。",
+        "id" : "F2251AC0-6B96-4779-A32D-5CE6EC33CB97",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "说明已知的规定或沿用情况即可；若依据不明，保留未知也足够。",
+        "question" : "就你已知，“三段大厂经历”是有明确规定、不能调整的硬性要求，还是招聘时沿用、可以调整的筛选规则？目前不清楚也可以。",
+        "sourceCardTitles" : [
+          "合成场景·heldout-principles-hiring"
+        ],
+        "whyItMatters" : "岗位需要与筛选规则不是一回事，区分后才能判断门槛是否有调整空间。",
+        "whyNow" : "你已说明岗位要求，但这条经历门槛是否属于必须遵守的限制仍未明确。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "heldout-principles-hiring-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "firstPrinciples",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 15.644929665999999,
+  "semantic_goals" : [
+    "区分岗位能力目标与沿用的履历代理指标",
+    "保留数据权限硬约束",
+    "不预断某类履历者能力或要求获取客户资料"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

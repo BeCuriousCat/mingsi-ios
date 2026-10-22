@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "不能保证领导不生气，就说明我这次做得不够。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "重新判断领导是否生气，能否作为你这次是否尽责的标准。",
+        "id" : "F22DECDA-2BDE-4829-82F6-D2C7844CD55E",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "区分自己能决定的处理与不能保证的反应即可，领导实际是否生气可以仍未知。",
+        "question" : "这次停运中，“通知领导并提出线上方案”和“保证领导不生气”，在你能决定的程度上有什么不同？",
+        "sourceCardTitles" : [
+          "合成场景·control-transit"
+        ],
+        "whyItMatters" : "责任标准若依赖无法保证的反应，就难以判断自己是否已尽责。",
+        "whyNow" : "你把“不能保证领导不生气”与“自己做得不够”联系在了一起。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "control-transit-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "controlBoundary",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 13.193688,
+  "semantic_goals" : [
+    "区分自己已做选择与他人反应和外部停运",
+    "不责怪用户没有控制他人情绪",
+    "不重复要求已经完成的通知或强制行动"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

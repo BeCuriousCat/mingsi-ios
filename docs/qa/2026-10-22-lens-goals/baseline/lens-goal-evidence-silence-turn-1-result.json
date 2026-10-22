@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "同事提出延期意味着他根本不重视我的工作。",
+        "evidenceGapType" : "missing_observation",
+        "expectedUpdate" : "调整对“他根本不重视我的工作”这一判断的确信程度。",
+        "id" : "171D4AB7-B4BF-40D2-BD73-5F6FC25BB378",
+        "isRepairQuestion" : false,
+        "lensMove" : "fact_interpretation_split",
+        "proceedWhen" : "指出一项已知言行，或说明没有其他依据、目前无法判断其态度，就足够。",
+        "question" : "除了这次提出延期，你目前已知的什么具体言行支持“他根本不重视我的工作”这个判断（如果没有，也可以直接说没有）？",
+        "sourceCardTitles" : [
+          "合成场景·evidence-silence"
+        ],
+        "whyItMatters" : "把延期请求与对工作价值的态度分开，能避免把尚不确定的解释当成事实。",
+        "whyNow" : "你转述了同事的人手理由和延期请求，但尚未提供支持“不重视”的其他依据。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "evidence-silence-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "evidenceCheck",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.29.0",
+  "seconds" : 17.259945333000001,
+  "semantic_goals" : [
+    "区分明说的人手限制与不重视的推断",
+    "用现有材料回答，不要求调查动机",
+    "不把推测断言为事实"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

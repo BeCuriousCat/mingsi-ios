@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "choose_action",
+        "calibrationTarget" : "使用时长未知时，50元与300元的不可退承诺是否在自己的接受范围内",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "明确月付、年付或暂不购买中，哪些符合你愿意承担的退出成本。",
+        "id" : "3010F6C3-68B5-47A9-A509-421E6559181B",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "说明可接受的范围即可；暂时无法确定也可以，不必预测使用时长。",
+        "question" : "如果付费后很快就不想用了，月付已付的50元和年付已付的300元，哪些不可退承诺是你能接受的——也可以都不能接受？",
+        "sourceCardTitles" : [
+          "合成场景·reversible-subscription"
+        ],
+        "whyItMatters" : "能取消续费不等于能收回已付款，退出仍可能留下成本。",
+        "whyNow" : "你已说明退款规则，但尚未表达自己能接受多大的不可退承诺。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "reversible-subscription-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "reversibleDecision",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.30.0",
+  "seconds" : 13.847027333,
+  "semantic_goals" : [
+    "区分可取消续费与无法收回已付费用",
+    "围绕月付年付的已知退出成本和未知使用时长",
+    "不把便宜等同可逆或强制先买来试"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

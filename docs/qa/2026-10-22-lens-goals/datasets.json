@@ -1,0 +1,32 @@
+[
+  {
+    "file": "scenarios.json",
+    "sha256": "a00a6c773c82c212bc9233a131689c1381e3d2797752c3692444ab96decdde95",
+    "cases": 14,
+    "planned_turns": 16
+  },
+  {
+    "file": "scenarios-v2.json",
+    "sha256": "7565d98c4f05af5952c76cb208915419d419b1c8ede6b3c6cf26478b18235a92",
+    "cases": 15,
+    "planned_turns": 17
+  },
+  {
+    "file": "heldout.json",
+    "sha256": "c820cefc1bb2cbf8df37c492927b3787268b10c308c5e2837dbdc2bf351626e3",
+    "cases": 5,
+    "planned_turns": 5
+  },
+  {
+    "file": "principles-new.json",
+    "sha256": "3b9097e8c28e9021a69b2194595831a9cbda399b76bba943eef9253486c96b0f",
+    "cases": 2,
+    "planned_turns": 2
+  },
+  {
+    "file": "v131-targeted.json",
+    "sha256": "a7a5a1fc62ca84cbeb05ed7e9d91edb4c68d6919a0367c3b0d15ca8b7de19646",
+    "cases": 4,
+    "planned_turns": 4
+  }
+]
