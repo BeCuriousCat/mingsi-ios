@@ -2,6 +2,13 @@
 
 Status: PENDING
 
+Historical scope: this is the earlier coach-quality phone-day proposal and its
+uncompleted evidence. It does not define current MingSi acceptance. Use
+[current phone acceptance](mingsi-phone-acceptance.md) and the
+[long-term goal](mingsi-long-term-goal.md). The preparation script now points to
+the current checklist; a process launch is not proof of the installed revision,
+real coaching value, or a completed observation window.
+
 This file is the evidence record for the final coach-quality baseline stop condition: one real phone-day trial.
 
 ## Trial Scope

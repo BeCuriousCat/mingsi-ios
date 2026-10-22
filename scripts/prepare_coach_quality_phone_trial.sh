@@ -5,9 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHEME="MingSi"
 CONFIGURATION="Debug"
 DERIVED_DATA_PATH="$ROOT_DIR/build/coach-quality-phone-trial"
-PHONE_TRIAL_FILE="$ROOT_DIR/docs/coach-quality-phone-trial.md"
+PHONE_TRIAL_FILE="$ROOT_DIR/docs/mingsi-phone-acceptance.md"
 APP_BUNDLE_ID="com.codex.mingsi"
 DEVICE_ID=""
+SIGNING_TEAM=""
 SKIP_INSTALL=0
 SKIP_LAUNCH_CHECK=0
 LAUNCH_CHECK_ONLY=0
@@ -18,9 +19,8 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/prepare_coach_quality_phone_trial.sh [options]
 
-Build MingSi for a connected physical iPhone and install it for the coach-quality
-phone-day trial. The script also prints the evidence fields that must be filled
-in docs/coach-quality-phone-trial.md after the real use day.
+Build MingSi for a connected physical iPhone and install it for manual acceptance.
+Installation and process launch do not establish usability or user benefit.
 
 Options:
   --device-id VALUE          Physical iPhone/iPad identifier. Auto-detected when omitted.
@@ -29,9 +29,10 @@ Options:
   --derived-data-path PATH   Build output directory.
   --phone-trial-file PATH    Phone trial evidence file.
   --app-bundle-id VALUE      App bundle id to launch-check. Default: com.codex.mingsi.
-  --skip-install             Build only; do not install to the device.
-  --skip-launch-check        Do not launch-check the installed app.
-  --launch-check-only        Only verify the installed app can launch; do not build or install.
+  --team VALUE               Local Apple signing Team ID; never stored in the project.
+  --skip-install             Build only; never launch or validate an older installed app.
+  --skip-launch-check        Install without checking process launch; manual launch remains unverified.
+  --launch-check-only        Launch existing app only; installed code revision remains unknown.
   --allow-dirty              Allow a dirty worktree.
   --dry-run                  Print the planned commands without running them.
   -h, --help                 Show this help.
@@ -62,6 +63,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --app-bundle-id)
       APP_BUNDLE_ID="${2:-}"
+      shift 2
+      ;;
+    --team)
+      SIGNING_TEAM="${2:-}"
+      [[ "$SIGNING_TEAM" =~ ^[A-Z0-9]{10}$ ]] || { printf 'Signing Team ID must contain 10 uppercase letters or digits.\n' >&2; exit 2; }
       shift 2
       ;;
     --skip-install)
@@ -182,10 +188,12 @@ launch_check_app() {
   if ! xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$APP_BUNDLE_ID" --timeout 30; then
     cat >&2 <<'LAUNCH_HELP'
 
-The app installed, but iOS refused to launch it.
-On the iPhone, trust this developer profile before starting the trial:
-Settings -> General -> VPN & Device Management -> Developer App -> Trust.
-Then rerun this script, or use --skip-launch-check only after confirming the app launches manually.
+The process launch check failed. This can reflect a locked device, pairing,
+an unavailable installed app, signing, or profile trust; this message cannot
+identify which one. Keep the raw tool error and inspect that cause first.
+If iOS explicitly reports developer-profile trust, review the developer
+identity on the iPhone in Settings -> General -> VPN & Device Management.
+Do not mark launch or manual acceptance passed merely by skipping the check.
 LAUNCH_HELP
     return 1
   fi
@@ -236,11 +244,16 @@ DESTINATION="platform=iOS,id=$DEVICE_ID"
 COMMIT="$(git rev-parse --short HEAD)"
 TODAY="$(date '+%Y-%m-%d')"
 
+if [[ "$SKIP_INSTALL" == "1" && "$LAUNCH_CHECK_ONLY" == "0" ]]; then
+  SKIP_LAUNCH_CHECK=1
+fi
+
 if [[ "$DRY_RUN" == "1" ]]; then
   cat <<PLAN
 Coach quality phone-trial preparation plan:
 - scheme: $SCHEME
 - configuration: $CONFIGURATION
+- signing team override: ${SIGNING_TEAM:-not supplied}
 - destination: $DESTINATION
 - device: $DEVICE_NAME
 - commit: $COMMIT
@@ -257,27 +270,37 @@ if [[ "$LAUNCH_CHECK_ONLY" == "1" ]]; then
   launch_check_app
   cat <<EVIDENCE
 
-Phone trial app launch-check passed.
-
-If the installed app is the commit listed in:
+Existing app process launch-check passed.
+No build or install occurred. Installed source revision is unverified;
+do not associate this launch result with the current checkout's commit.
+Manual acceptance remains pending in:
 $PHONE_TRIAL_FILE
-
-you can start the real phone-day trial. Keep Status: PENDING until the next-day
-result and judgment update are filled.
 EVIDENCE
   exit 0
 fi
 
 printf 'Building %s for %s (%s)...\n' "$SCHEME" "$DEVICE_NAME" "$DEVICE_ID"
-xcodebuild build \
-  -scheme "$SCHEME" \
-  -configuration "$CONFIGURATION" \
-  -destination "$DESTINATION" \
-  -derivedDataPath "$DERIVED_DATA_PATH"
+BUILD_ARGUMENTS=(build -project "$ROOT_DIR/MingSi.xcodeproj" -scheme "$SCHEME"
+  -configuration "$CONFIGURATION" -destination "$DESTINATION"
+  -derivedDataPath "$DERIVED_DATA_PATH")
+if [[ -n "$SIGNING_TEAM" ]]; then
+  BUILD_ARGUMENTS+=("DEVELOPMENT_TEAM=$SIGNING_TEAM" "CODE_SIGN_STYLE=Automatic")
+fi
+if ! xcodebuild "${BUILD_ARGUMENTS[@]}"; then
+  cat >&2 <<'BUILD_HELP'
 
-APP_PATH="$(find "$DERIVED_DATA_PATH/Build/Products" -path "*-iphoneos/${SCHEME}.app" -type d -print -quit)"
-if [[ -z "$APP_PATH" ]]; then
-  printf 'Built app was not found under %s/Build/Products.\n' "$DERIVED_DATA_PATH" >&2
+Candidate build failed; no installation or launch check was performed.
+If Xcode reports No Accounts or No profiles, configure your own Apple account
+in Xcode -> Settings -> Accounts, then select your Team locally or pass --team.
+Do not uninstall the existing app or clear its data to fix a signing failure.
+This script does not enable provisioning updates or register devices automatically.
+BUILD_HELP
+  exit 1
+fi
+
+APP_PATH="$DERIVED_DATA_PATH/Build/Products/${CONFIGURATION}-iphoneos/${SCHEME}.app"
+if [[ ! -d "$APP_PATH" ]]; then
+  printf 'Candidate app for the requested configuration was not found. No older build will be substituted.\n' >&2
   exit 1
 fi
 
@@ -288,23 +311,37 @@ else
   printf 'Install skipped. Built app: %s\n' "$APP_PATH"
 fi
 
+if [[ "$SKIP_INSTALL" == "1" ]]; then
+  cat <<BUILD_ONLY
+
+Build completed; installation and launch were skipped.
+The existing app on the iPhone was not verified and may be an older revision.
+- Built source revision: $COMMIT
+- Worktree diagnostic override: $ALLOW_DIRTY
+- Candidate app: $APP_PATH
+Manual acceptance and real use remain pending in:
+$PHONE_TRIAL_FILE
+BUILD_ONLY
+  exit 0
+fi
+
 if [[ "$SKIP_LAUNCH_CHECK" == "0" ]]; then
   launch_check_app
 fi
 
 cat <<EVIDENCE
 
-Phone trial is ready to start.
-
-After one real use day, update:
+Candidate installation completed. This is not a manual acceptance pass.
+Record the phone checks before starting the natural-use observation window:
 $PHONE_TRIAL_FILE
 
 Evidence values to copy:
 - Trial date: $TODAY
 - Device: $DEVICE_NAME ($DEVICE_ID)
-- Starting app commit: $COMMIT
-- Ending app commit: $COMMIT
+- Installed candidate source revision: $COMMIT
+- Worktree diagnostic override: $ALLOW_DIRTY
+- Process launch checked: $([[ "$SKIP_LAUNCH_CHECK" == "0" ]] && printf 'yes' || printf 'no')
 
-Keep Status: PENDING until the next-day result and judgment update are filled.
-Change it to Status: PASSED only if the pass criteria are actually met.
+Dirty-worktree builds are diagnostic only; the revision alone cannot identify
+their contents. Keep all manual and real-use results unverified until observed.
 EVIDENCE

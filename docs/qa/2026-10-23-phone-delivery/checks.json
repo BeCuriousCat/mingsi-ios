@@ -1,0 +1,26 @@
+{
+  "real_builds": {
+    "without_provisioning_update": "failed_missing_profile",
+    "with_provisioning_update": "failed_no_xcode_accounts_and_missing_profile"
+  },
+  "device_install_performed": false,
+  "device_app_launch_performed": false,
+  "private_device_content_read": false,
+  "script_baseline": {
+    "cases": 3,
+    "failures": 3
+  },
+  "script_contract": {
+    "passed": 9,
+    "failed": 0
+  },
+  "all_python_tests": {
+    "passed": 34,
+    "failed": 0
+  },
+  "app_runtime_changed": false,
+  "goal_completed": false,
+  "gitleaks_findings": 0,
+  "bash_syntax": "passed",
+  "diff_check": "passed"
+}

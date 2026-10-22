@@ -1,0 +1,7 @@
+{
+  "source_revision": "6919b46",
+  "cases": 3,
+  "failures": 3,
+  "errors": 0,
+  "limits": "isolated command stubs, not actual device installation"
+}

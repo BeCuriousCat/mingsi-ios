@@ -4,6 +4,28 @@
 
 先登记候选代码版本、签名构建、iOS版本、设备型号和实际日期。不要卸载App、删除数据库、重置Keychain或覆盖API配置。可使用无隐私的短句；若任何保存失败，先复制文字，再记录实际现象。
 
+## 当前安装阻碍与准备步骤
+
+2026-10-23 已实际尝试当前源码真机构建：本地签名预检报缺少`com.codex.mingsi`开发描述文件；允许Xcode使用现有账户补齐签名后，明确报`No Accounts: Add a new account in Accounts settings`，仍无描述文件。没有产出当前签名候选包，没有安装、卸载或清空手机App。仅凭已安装版本号`0.1.0(1)`不能确认其代码版本。
+
+请在自己的Mac解锁后打开Xcode → Settings → Accounts，登录自己的Apple账户；密码与二次验证由本人完成，不发到聊天中。在MingSi target的Signing & Capabilities选择自己的Team。不要把个人Team写入提交。账户类型、证书可用性与描述文件能力以Xcode实际结果为准，当前不推断已有商店或TestFlight分发权限。
+
+脚本默认不向Apple创建或更新签名配置。先只构建验证；把`YOURTEAMID`换成自己的10位Team ID：
+
+```bash
+bash scripts/prepare_coach_quality_phone_trial.sh --team YOURTEAMID --skip-install
+```
+
+这个命令成功只表示本机生成候选构建，不会启动或验证手机上的旧App。缺少账户/描述文件时按Xcode具体错误处理，不能通过卸载App解决。
+
+实际更新前先在旧App使用已有数据导出功能保留自己的记录，将私人导出留在可信目录。确认使用相同Bundle ID与兼容的签名团队、可保留本机数据与Keychain；签名变化或App要求卸载时停止，先解决数据与身份迁移，不用删除重装绕过。再运行同一脚本去掉`--skip-install`，记录实际安装与启动结果。该脚本不保证异常系统/签名状态下的数据保留。
+
+`--launch-check-only`仅启动已安装App，不构建、不安装，也不确认已装代码版本；`--skip-launch-check`安装后仍需实际打开验证。任何命令成功均不自动通过P01–P12，也不启动或填完14天真实试用。
+
+历史的[单日训练试用](coach-quality-phone-trial.md)仅保留早期记录；本期以本页与[长期Goal](mingsi-long-term-goal.md)为准，不要求每次强制找缺口、做作业或保存行动。
+
+## 手机实际操作
+
 以下由真实操作者填写结果与证据ID。截图只截合成短句，不收录私人列表或Key。使用正常App，不启用语音、模型、教材或数据库UI测试夹具。
 
 | 编号/指标 | 实际动作 | 预期行为 | 实际结果/日期/证据ID |

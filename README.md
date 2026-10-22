@@ -39,6 +39,8 @@ open MingSi.xcodeproj
 3. 在线交流需在 App **设置 → API 配置** 选择接口类型，填写 API Key、Base URL 和模型名，保存后测试连接。
 4. 语音输入需要麦克风与语音识别授权，模拟器与真机的识别环境可能不同。快捷指令可添加到主屏幕，或在支持的设备上绑定操作按钮。
 
+手机签名、保留旧数据与安装检查见[真机准备和验收](docs/mingsi-phone-acceptance.md)。维护脚本的“只构建”不会启动手机旧版本；已有App能启动也不能证明它就是当前源码构建。
+
 ```bash
 # 查看本机可用模拟器，选择 iOS 26+ 的设备。
 xcrun simctl list devices available
