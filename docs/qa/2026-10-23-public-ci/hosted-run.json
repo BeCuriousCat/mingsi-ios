@@ -1,0 +1,59 @@
+{
+  "run_id": 39831630202,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202",
+  "head_sha": "6dbdeefd3b37d59a65c197d31c86c59a806ccc81",
+  "status": "in_progress",
+  "conclusion": null,
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "in_progress",
+      "conclusion": null
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "pending",
+      "conclusion": null
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "pending",
+      "conclusion": null
+    },
+    {
+      "name": "Save test counts",
+      "status": "pending",
+      "conclusion": null
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "pending",
+      "conclusion": null
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "pending",
+      "conclusion": null
+    }
+  ]
+}

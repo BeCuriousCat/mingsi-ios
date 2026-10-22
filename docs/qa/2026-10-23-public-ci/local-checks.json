@@ -5,6 +5,8 @@
   },
   "workflow_yaml": "parsed_with_ruby_yaml",
   "runner_inventory_selector": "read_only_and_refuses_local_machine",
-  "hosted_result": "pending",
-  "real_device_or_user_trial": "not_performed"
+  "hosted_result": "in_progress_release_build",
+  "real_device_or_user_trial": "not_performed",
+  "gitleaks_findings": 0,
+  "hosted_run_id": 39831630202
 }

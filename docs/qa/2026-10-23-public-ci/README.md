@@ -1,6 +1,6 @@
 # 公开源码的干净环境验证 · 2026-10-23
 
-关联G10开源可维护。新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。实际远端运行结果尚待登记；工作流文件存在不等于构建已通过。
+关联G10开源可维护。新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已启动，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。实际结果尚待登记；工作流文件存在不等于构建已通过。
 
 ## 环境依据
 
@@ -26,3 +26,9 @@ main的相关源码/测试/脚本/工程变更及PR触发，纯文档变更不�
 38项Python测试通过、0失败；其中4项验证CI选择器只挑选既有可用iPhone、拒绝非法UUID和本机调用。Ruby YAML解析通过，`git diff --check`通过。见[本机检查](local-checks.json)。本轮没有重复占用本机磁盘做相同Xcode构建，干净检出与编译必须由远端真实结果证明。
 
 本轮为工程交付检查，不改变App产品运行行为，无需新功能发布条目。没有其他真实构建者、3人手机安装、真人获益或4周复用记录；即使远端全绿，G10仍需至少1位其他构建者走通，G1–G9各自门槛不因此通过。
+
+## 首次远端运行快照
+
+运行39831630202的干净检出、工具链记录及脚本检查已成功；Release模拟器构建仍在进行，单元测试尚未开始，整体尚无通过/失败结论。见[远端状态快照](hosted-run.json)，最新状态以GitHub实际运行页为准。观察进程为`gh run watch 39831630202 --interval 30 --exit-status`，本机日志`/tmp/mingsi-public-ci-watch-39831630202.log`，不因观察时间变长重启或补跑。
+
+本轮公开变更Gitleaks扫描无发现，YAML解析、38项Python脚本测试和diff检查通过。公开CI文件与脚本已推送；远端Xcode结果、另一真实构建者和手机安装仍未完成。
