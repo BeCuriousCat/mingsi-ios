@@ -20,7 +20,9 @@ def select_device(document):
             if device.get("isAvailable") is not True or "iPhone" not in device.get("deviceTypeIdentifier", ""):
                 continue
             try:
-                identity = str(UUID(device["udid"]))
+                # Xcode destination matching rejected the lowercase spelling
+                # although it advertised this same UUID in uppercase.
+                identity = str(UUID(device["udid"])).upper()
             except (ValueError, KeyError, TypeError, AttributeError):
                 continue
             candidates.append((version, identity))

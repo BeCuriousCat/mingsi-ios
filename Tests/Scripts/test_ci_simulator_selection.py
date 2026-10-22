@@ -12,7 +12,7 @@ SPEC = importlib.util.spec_from_file_location(
 selector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(selector)
 
-ID = "12345678-1234-4321-8765-123456789012"
+ID = "E839A11B-51B4-4AD3-ACF4-A53B95B7C957"
 
 
 def device(**extra):
@@ -27,7 +27,7 @@ class CISimulatorSelectionTests(unittest.TestCase):
             "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [device()],
             "com.apple.CoreSimulator.SimRuntime.tvOS-26-5": [device()],
         }}
-        self.assertEqual(selector.select_device(document), ID.lower())
+        self.assertEqual(selector.select_device(document), ID)
         document["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-26-5"][0]["isAvailable"] = False
         with self.assertRaises(ValueError):
             selector.select_device(document)
@@ -54,8 +54,14 @@ class CISimulatorSelectionTests(unittest.TestCase):
                 patch.object(selector.subprocess, "run", return_value=result) as run, \
                 contextlib.redirect_stdout(output):
             self.assertEqual(selector.main(), 0)
-        self.assertEqual(output.getvalue(), "MINGSI_CI_SIMULATOR_ID=" + ID.lower() + "\n")
+        self.assertEqual(output.getvalue(), "MINGSI_CI_SIMULATOR_ID=" + ID + "\n")
         self.assertEqual(run.call_args.args[0], ["xcrun", "simctl", "list", "devices", "available", "--json"])
+
+    def test_uuid_matches_xcode_uppercase_destination_even_for_lowercase_inventory(self):
+        candidate = device()
+        candidate["udid"] = ID.lower()
+        inventory = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-5": [candidate]}}
+        self.assertEqual(selector.select_device(inventory), ID)
 
 
 if __name__ == "__main__":

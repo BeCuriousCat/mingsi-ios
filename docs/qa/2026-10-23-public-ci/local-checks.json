@@ -1,12 +1,17 @@
 {
   "python_tests": {
-    "passed": 38,
+    "passed": 39,
     "failed": 0
   },
   "workflow_yaml": "parsed_with_ruby_yaml",
   "runner_inventory_selector": "read_only_and_refuses_local_machine",
-  "hosted_result": "in_progress_release_build",
+  "hosted_result": "first_run_failed_destination_before_tests",
   "real_device_or_user_trial": "not_performed",
   "gitleaks_findings": 0,
-  "hosted_run_id": 39831630202
+  "hosted_run_id": 39831630202,
+  "regression_before_fix": {
+    "passed": 2,
+    "failed": 3
+  },
+  "selector_fix": "canonical_uppercase_uuid"
 }

@@ -1,6 +1,6 @@
 # 公开源码的干净环境验证 · 2026-10-23
 
-关联G10开源可维护。新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已启动，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。实际结果尚待登记；工作流文件存在不等于构建已通过。
+关联G10开源可维护。新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已结束，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。Release构建通过，测试阶段在执行前因目标UUID大小写不匹配失败；整体失败，0项单元执行。
 
 ## 环境依据
 
@@ -23,12 +23,14 @@ main的相关源码/测试/脚本/工程变更及PR触发，纯文档变更不�
 
 ## 本机验证与当前边界
 
-38项Python测试通过、0失败；其中4项验证CI选择器只挑选既有可用iPhone、拒绝非法UUID和本机调用。Ruby YAML解析通过，`git diff --check`通过。见[本机检查](local-checks.json)。本轮没有重复占用本机磁盘做相同Xcode构建，干净检出与编译必须由远端真实结果证明。
+修复后39项Python测试通过、0失败；其中5项验证CI选择器只挑选既有可用iPhone、拒绝非法UUID和本机调用。Ruby YAML解析通过，`git diff --check`通过。见[本机检查](local-checks.json)。本轮没有重复占用本机磁盘做相同Xcode构建，干净检出与编译必须由远端真实结果证明。
 
 本轮为工程交付检查，不改变App产品运行行为，无需新功能发布条目。没有其他真实构建者、3人手机安装、真人获益或4周复用记录；即使远端全绿，G10仍需至少1位其他构建者走通，G1–G9各自门槛不因此通过。
 
-## 首次远端运行快照
+## 首次远端运行：失败保留
 
-运行39831630202的干净检出、工具链记录及脚本检查已成功；Release模拟器构建仍在进行，单元测试尚未开始，整体尚无通过/失败结论。见[远端状态快照](hosted-run.json)，最新状态以GitHub实际运行页为准。观察进程为`gh run watch 39831630202 --interval 30 --exit-status`，本机日志`/tmp/mingsi-public-ci-watch-39831630202.log`，不因观察时间变长重启或补跑。
+运行39831630202在干净检出、工具链、38项脚本测试、Release模拟器构建及设备枚举阶段通过。单元测试命令退出70，尚未运行任何测试。实际artifact的totalTestCount为0、result为unknown；上传成功不代表测试通过。终态及原始计数见[首次远端记录](hosted-run.json)。
 
-本轮公开变更Gitleaks扫描无发现，YAML解析、38项Python脚本测试和diff检查通过。公开CI文件与脚本已推送；远端Xcode结果、另一真实构建者和手机安装仍未完成。
+失败日志显示脚本输出`e839a11b-51b4-4ad3-acf4-a53b95b7c957`，而Xcode列出的可用目的地为`E839A11B-51B4-4AD3-ACF4-A53B95B7C957`。Python UUID默认转小写；修复为验证后输出规范大写，避免Xcode目的地匹配失败。使用该实际ID补回归：修改前2通过/3失败，修改后5通过；完整脚本39通过。只读与拒绝本机运行的边界保留。
+
+修复后的新提交需要新的远端运行；不覆盖首次失败，不把本机脚本通过当作远端Xcode通过。本轮只修改CI工具与证据，不改变App运行行为，无需产品发布条目。
