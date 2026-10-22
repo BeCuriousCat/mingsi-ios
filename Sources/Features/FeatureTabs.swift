@@ -2766,6 +2766,7 @@ struct SettingsView: View {
                 if let feature = store.mentorFeatureStore {
                     MentorLessonPreferencesView(feature: feature)
                 }
+                buildIdentityRow
                 sideQuestSettingsLink
                 SettingRow(title: "API Key", value: store.apiKeyConfigured ? "已配置" : "未配置")
                 SettingRow(title: "默认模式", value: store.todayDraft.sessionMode.displayTitle)
@@ -2779,6 +2780,21 @@ struct SettingsView: View {
             modelNameInput = store.currentModelName
             loadSideQuestLifeContextInputs()
         }
+    }
+
+    private var buildIdentityRow: some View {
+        let identity = AppBuildIdentity.current
+        return SettingRow(title: "应用版本", value: identity.summary)
+            .accessibilityElement(children: .combine)
+            .accessibilityValue(identity.copyDescription)
+            .accessibilityHint("长按可复制完整构建信息")
+            .accessibilityIdentifier("settings.build-identity")
+            .contextMenu {
+                Button("复制构建信息") { UIPasteboard.general.string = identity.copyDescription }
+            }
+            .accessibilityAction(named: Text("复制构建信息")) {
+                UIPasteboard.general.string = identity.copyDescription
+            }
     }
 
     private var sideQuestSettingsLink: some View {

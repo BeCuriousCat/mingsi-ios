@@ -51,6 +51,47 @@ struct PreparedDataExport: Identifiable, Equatable {
     var createdAt: Date
 }
 
+struct AppBuildIdentity: Equatable {
+    enum SourceState: String, Equatable, Sendable { case clean, dirty, unknown }
+    let version: String
+    let build: String
+    let revision: String?
+    let sourceState: SourceState
+
+    init(info: [String: Any]) {
+        func text(_ key: String) -> String? {
+            guard let value = info[key] as? String else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        version = text("CFBundleShortVersionString") ?? "未知"
+        build = text("CFBundleVersion") ?? "未知"
+        let candidate = text("MingSiSourceRevision")?.lowercased() ?? ""
+        revision = [40, 64].contains(candidate.count) &&
+            candidate.unicodeScalars.allSatisfy { "0123456789abcdef".unicodeScalars.contains($0) } ? candidate : nil
+        sourceState = revision == nil ? .unknown : SourceState(rawValue: text("MingSiSourceState") ?? "") ?? .unknown
+    }
+
+    static var current: AppBuildIdentity { AppBuildIdentity(info: Bundle.main.infoDictionary ?? [:]) }
+
+    var stateDescription: String {
+        switch sourceState {
+        case .clean: return "无本地修改"
+        case .dirty: return "含本地修改"
+        case .unknown: return "状态未标记"
+        }
+    }
+
+    var summary: String {
+        let source = revision.map { "\($0.prefix(12)) · \(stateDescription)" } ?? "来源未标记"
+        return "\(version) (\(build))\n\(source)"
+    }
+
+    var copyDescription: String {
+        "明思 \(version) (\(build))\n源码：\(revision ?? "未标记")\n工作副本：\(stateDescription)"
+    }
+}
+
 private struct HistoricalRetryCardPayload: Codable {
     var id: String
     var type: String

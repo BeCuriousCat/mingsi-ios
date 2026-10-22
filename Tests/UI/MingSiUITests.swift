@@ -22,6 +22,19 @@ final class MingSiUITests: XCTestCase {
         app.launchEnvironment["MINGSI_VISUAL_QA_TAB"] = "settings"
         app.launch()
         defer { app.terminate() }
+        let identity = app.descendants(matching: .any)["settings.build-identity"].firstMatch
+        scrollToElement(identity, in: app)
+        XCTAssertTrue((identity.value as? String)?.contains("源码：") == true)
+        let identityScreenshot = XCTAttachment(screenshot: app.screenshot())
+        identityScreenshot.name = largest ? "build-identity-dark-largest" : "build-identity-light-normal"
+        identityScreenshot.lifetime = .keepAlways
+        add(identityScreenshot)
+        if !largest {
+            identity.press(forDuration: 1)
+            let copy = app.buttons["复制构建信息"].firstMatch
+            XCTAssertTrue(copy.waitForExistence(timeout: 5))
+            copy.tap()
+        }
         openSideQuestSettings(in: app)
 
         let calendar = app.buttons["settings.permission.calendar.request"]

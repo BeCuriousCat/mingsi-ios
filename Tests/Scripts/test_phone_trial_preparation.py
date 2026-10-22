@@ -6,6 +6,7 @@ import unittest
 
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/prepare_coach_quality_phone_trial.sh"
+REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 class PhoneTrialPreparationTests(unittest.TestCase):
@@ -19,10 +20,13 @@ class PhoneTrialPreparationTests(unittest.TestCase):
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         PHONE_TEST_CALLS=str(self.calls))
         self.tool("git", '''#!/bin/bash
-if [[ "$1" == "status" ]]; then exit 0; fi
-if [[ "$1" == "rev-parse" ]]; then echo fixture123; exit 0; fi
+if [[ "$1" == "status" ]]; then
+  if [[ "${PHONE_TEST_DIRTY:-0}" == 1 ]]; then echo ' M source.swift'; fi
+  exit 0
+fi
+if [[ "$1" == "rev-parse" ]]; then echo __REVISION__; exit 0; fi
 exit 1
-''')
+'''.replace("__REVISION__", REVISION))
         self.tool("xcrun", '''#!/bin/bash
 echo "xcrun $*" >> "$PHONE_TEST_CALLS"
 if [[ "$1" == "xctrace" ]]; then
@@ -44,15 +48,34 @@ exit 1
 echo "xcodebuild $*" >> "$PHONE_TEST_CALLS"
 [[ "${PHONE_TEST_BUILD_FAIL:-0}" == 0 ]] || exit 1
 config=Debug
+source_revision=unknown
+source_state=unknown
+source_bundle=com.codex.mingsi
 while [[ $# -gt 0 ]]; do
  case "$1" in
  -derivedDataPath) derived="$2"; shift 2;;
  -configuration) config="$2"; shift 2;;
+ MINGSI_SOURCE_REVISION=*) source_revision="${1#*=}"; shift;;
+ MINGSI_SOURCE_STATE=*) source_state="${1#*=}"; shift;;
  *) shift;;
  esac
 done
 if [[ "${PHONE_TEST_WRONG_CONFIG:-0}" == 1 ]]; then config=Old; fi
 mkdir -p "$derived/Build/Products/$config-iphoneos/MingSi.app"
+if [[ "${PHONE_TEST_MISSING_MARKER:-0}" == 1 ]]; then
+  echo '<?xml version="1.0"?><plist version="1.0"><dict/></plist>' > "$derived/Build/Products/$config-iphoneos/MingSi.app/Info.plist"
+else
+  if [[ "${PHONE_TEST_WRONG_MARKER:-0}" == 1 ]]; then source_revision=ffffffffffffffffffffffffffffffffffffffff; fi
+  if [[ "${PHONE_TEST_WRONG_STATE:-0}" == 1 ]]; then source_state=unknown; fi
+  if [[ "${PHONE_TEST_WRONG_BUNDLE:-0}" == 1 ]]; then source_bundle=com.example.other-app; fi
+  cat > "$derived/Build/Products/$config-iphoneos/MingSi.app/Info.plist" <<PLIST
+<?xml version="1.0"?><plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>$source_bundle</string>
+<key>MingSiSourceRevision</key><string>$source_revision</string>
+<key>MingSiSourceState</key><string>$source_state</string>
+</dict></plist>
+PLIST
+fi
 ''')
 
     def tool(self, name, source):
@@ -137,10 +160,39 @@ mkdir -p "$derived/Build/Products/$config-iphoneos/MingSi.app"
         output, calls = self.invoke()
         self.assertIn("device install app", calls)
         self.assertIn("device process launch", calls)
-        self.assertIn("Installed candidate source revision: fixture123", output)
+        self.assertIn("Installed candidate source revision: " + REVISION, output)
         self.assertIn("Process launch checked: yes", output)
         self.assertIn("not a manual acceptance pass", output)
         self.assertNotIn("Status: PASSED", output)
+
+    def test_source_marker_is_injected_and_missing_or_old_candidate_is_never_installed(self):
+        output, calls = self.invoke("--skip-install")
+        self.assertIn("MINGSI_SOURCE_REVISION=" + REVISION, calls)
+        self.assertIn("MINGSI_SOURCE_STATE=clean", calls)
+        for flag in ("PHONE_TEST_WRONG_MARKER", "PHONE_TEST_MISSING_MARKER", "PHONE_TEST_WRONG_STATE"):
+            self.env[flag] = "1"
+            self.calls.unlink()
+            output, calls = self.invoke(expected=1)
+            self.assertIn("source marker is missing or mismatched", output)
+            self.assertNotIn("device install app", calls)
+            self.assertNotIn("device process launch", calls)
+            self.env[flag] = "0"
+
+    def test_dirty_override_records_actual_local_changes_in_built_marker(self):
+        self.env["PHONE_TEST_DIRTY"] = "1"
+        output, calls = self.invoke(expected=1)
+        self.assertIn("Worktree is dirty", output)
+        self.assertNotIn("xcodebuild", calls)
+        output, calls = self.invoke("--skip-install", "--allow-dirty")
+        self.assertIn("MINGSI_SOURCE_STATE=dirty", calls)
+        self.assertIn("Built source state: dirty", output)
+
+    def test_candidate_bundle_identifier_must_match_the_launch_target(self):
+        self.env["PHONE_TEST_WRONG_BUNDLE"] = "1"
+        output, calls = self.invoke(expected=1)
+        self.assertIn("bundle identifier does not match the launch target", output)
+        self.assertNotIn("device install app", calls)
+        self.assertNotIn("device process launch", calls)
 
 
 if __name__ == "__main__":

@@ -778,6 +778,10 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "明思";
+				MINGSI_SOURCE_REVISION = unknown;
+				MINGSI_SOURCE_STATE = unknown;
+				INFOPLIST_KEY_MingSiSourceRevision = "$(MINGSI_SOURCE_REVISION)";
+				INFOPLIST_KEY_MingSiSourceState = "$(MINGSI_SOURCE_STATE)";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "明思仅在你主动授权后读取日历，将忙闲状态用于可选生活奇遇；不会修改日历或上传事件原文。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "明思仅在你选择为生活奇遇留下一张照片时使用相机。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";
@@ -843,6 +847,10 @@
 				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) mentor-lessons-m1.draft.json life-guidance-m1.draft.json";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "明思";
+				MINGSI_SOURCE_REVISION = unknown;
+				MINGSI_SOURCE_STATE = unknown;
+				INFOPLIST_KEY_MingSiSourceRevision = "$(MINGSI_SOURCE_REVISION)";
+				INFOPLIST_KEY_MingSiSourceState = "$(MINGSI_SOURCE_STATE)";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "明思仅在你主动授权后读取日历，将忙闲状态用于可选生活奇遇；不会修改日历或上传事件原文。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "明思仅在你选择为生活奇遇留下一张照片时使用相机。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";

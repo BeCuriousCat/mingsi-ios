@@ -1,0 +1,12 @@
+{
+  "python_tests_passed": 42,
+  "python_tests_failed": 0,
+  "phone_script_tests_passed": 12,
+  "actual_phone_build_or_install": "not_performed",
+  "project_and_regenerated_settings": "checked_debug_release",
+  "swift_parse": "passed",
+  "new_swift_tests": "not_run_yet",
+  "new_ui_tests": "not_run_yet",
+  "paid_model_requests": 0,
+  "extracted_parser_execution": "passed_with_actual_swift_source"
+}

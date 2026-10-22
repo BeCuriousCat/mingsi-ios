@@ -45,6 +45,7 @@ jobs:
         run: |
           git rev-parse HEAD
           git status --short
+          test -z "$(git status --porcelain)"
           xcodebuild -version
           xcrun swift --version
           python3 --version
@@ -59,7 +60,9 @@ jobs:
             -configuration Release -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/mingsi-release" \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGNING_ALLOWED=NO MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean build
+          test "$(plutil -extract MingSiSourceRevision raw -o - "$RUNNER_TEMP/mingsi-release/Build/Products/Release-iphonesimulator/MingSi.app/Info.plist")" = "$GITHUB_SHA"
+          test "$(plutil -extract MingSiSourceState raw -o - "$RUNNER_TEMP/mingsi-release/Build/Products/Release-iphonesimulator/MingSi.app/Info.plist")" = "clean"
       - name: Select existing runner iPhone
         run: |
           # Hosted runners have different device IDs from the maintainer's Mac.
@@ -73,7 +76,8 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/mingsi-tests.xcresult" \
             -parallel-testing-enabled NO -only-testing:MingSiTests \
             -collect-test-diagnostics never \
-            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test
       - name: Run isolated permission UI in light and dark largest text
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
@@ -84,7 +88,8 @@ jobs:
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInLight \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest \
             -collect-test-diagnostics never \
-            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test
       - name: Save test counts
         if: always()
         run: |

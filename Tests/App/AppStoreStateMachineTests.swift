@@ -37,6 +37,30 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(store.todayDraft.sessionMode, .standard)
     }
 
+    func testBuildIdentityKeepsUnknownAndDirtySourcesDistinctFromCleanCandidate() {
+        let revision = String(repeating: "abcdef0123", count: 4)
+        var info: [String: Any] = ["CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "1",
+            "MingSiSourceRevision": revision, "MingSiSourceState": "clean"]
+        let clean = AppBuildIdentity(info: info)
+        XCTAssertEqual(clean.revision, revision)
+        XCTAssertEqual(clean.sourceState, .clean)
+        XCTAssertTrue(clean.copyDescription.contains(revision))
+        info["MingSiSourceState"] = "dirty"
+        let dirty = AppBuildIdentity(info: info)
+        XCTAssertEqual(dirty.sourceState, .dirty)
+        XCTAssertTrue(dirty.summary.contains("含本地修改"))
+        info.removeValue(forKey: "MingSiSourceState")
+        XCTAssertEqual(AppBuildIdentity(info: info).sourceState, .unknown)
+        for invalid in ["unknown", "$(MINGSI_SOURCE_REVISION)", "not-a-commit", String(repeating: "z", count: 40)] {
+            info["MingSiSourceRevision"] = invalid
+            info["MingSiSourceState"] = "clean"
+            let unmarked = AppBuildIdentity(info: info)
+            XCTAssertNil(unmarked.revision)
+            XCTAssertEqual(unmarked.sourceState, .unknown)
+            XCTAssertTrue(unmarked.summary.contains("来源未标记"))
+        }
+    }
+
     func testHealthPermissionPromptCompletionKeepsReadAccessUnknownAndSerializesRequests() async throws {
         let provider = StaticSideQuestContextProvider(calendar: .writeOnly, health: .readAccessUnknown)
         let subject = AppStore(refreshesAIServiceFromKeychain: false, sideQuestContextProvider: provider)

@@ -205,7 +205,10 @@ require_cmd xcrun
 
 cd "$ROOT_DIR"
 
-if [[ "$ALLOW_DIRTY" == "0" ]] && [[ -n "$(git status --porcelain)" ]]; then
+WORKTREE_STATUS="$(git status --porcelain)"
+SOURCE_STATE=clean
+if [[ -n "$WORKTREE_STATUS" ]]; then SOURCE_STATE=dirty; fi
+if [[ "$ALLOW_DIRTY" == "0" && "$SOURCE_STATE" == "dirty" ]]; then
   printf 'Worktree is dirty. Commit or stash changes before preparing phone-trial evidence.\n' >&2
   printf 'Use --allow-dirty only for a local diagnostic install.\n' >&2
   exit 1
@@ -241,7 +244,11 @@ if [[ -n "${DEVICE_LINE:-}" ]]; then
 fi
 
 DESTINATION="platform=iOS,id=$DEVICE_ID"
-COMMIT="$(git rev-parse --short HEAD)"
+COMMIT="$(git rev-parse HEAD)"
+if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ && ! "$COMMIT" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'Source revision is unavailable; candidate identity cannot be checked.\n' >&2
+  exit 1
+fi
 TODAY="$(date '+%Y-%m-%d')"
 
 if [[ "$SKIP_INSTALL" == "1" && "$LAUNCH_CHECK_ONLY" == "0" ]]; then
@@ -257,6 +264,7 @@ Coach quality phone-trial preparation plan:
 - destination: $DESTINATION
 - device: $DEVICE_NAME
 - commit: $COMMIT
+- source state: $SOURCE_STATE
 - derived data: $DERIVED_DATA_PATH
 - phone trial file: $PHONE_TRIAL_FILE
 - launch-check only: $LAUNCH_CHECK_ONLY
@@ -282,7 +290,8 @@ fi
 printf 'Building %s for %s (%s)...\n' "$SCHEME" "$DEVICE_NAME" "$DEVICE_ID"
 BUILD_ARGUMENTS=(build -project "$ROOT_DIR/MingSi.xcodeproj" -scheme "$SCHEME"
   -configuration "$CONFIGURATION" -destination "$DESTINATION"
-  -derivedDataPath "$DERIVED_DATA_PATH")
+  -derivedDataPath "$DERIVED_DATA_PATH"
+  "MINGSI_SOURCE_REVISION=$COMMIT" "MINGSI_SOURCE_STATE=$SOURCE_STATE")
 if [[ -n "$SIGNING_TEAM" ]]; then
   BUILD_ARGUMENTS+=("DEVELOPMENT_TEAM=$SIGNING_TEAM" "CODE_SIGN_STYLE=Automatic")
 fi
@@ -304,6 +313,18 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
+BUILT_REVISION="$(/usr/libexec/PlistBuddy -c 'Print :MingSiSourceRevision' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+BUILT_SOURCE_STATE="$(/usr/libexec/PlistBuddy -c 'Print :MingSiSourceState' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+if [[ "$BUILT_REVISION" != "$COMMIT" || "$BUILT_SOURCE_STATE" != "$SOURCE_STATE" ]]; then
+  printf 'Candidate source marker is missing or mismatched; no installation or launch check was performed.\n' >&2
+  exit 1
+fi
+BUILT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+if [[ "$BUILT_BUNDLE_ID" != "$APP_BUNDLE_ID" ]]; then
+  printf 'Candidate bundle identifier does not match the launch target; no installation or launch check was performed.\n' >&2
+  exit 1
+fi
+
 if [[ "$SKIP_INSTALL" == "0" ]]; then
   printf 'Installing %s to %s...\n' "$APP_PATH" "$DEVICE_NAME"
   xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
@@ -317,6 +338,7 @@ if [[ "$SKIP_INSTALL" == "1" ]]; then
 Build completed; installation and launch were skipped.
 The existing app on the iPhone was not verified and may be an older revision.
 - Built source revision: $COMMIT
+- Built source state: $SOURCE_STATE
 - Worktree diagnostic override: $ALLOW_DIRTY
 - Candidate app: $APP_PATH
 Manual acceptance and real use remain pending in:
@@ -339,6 +361,7 @@ Evidence values to copy:
 - Trial date: $TODAY
 - Device: $DEVICE_NAME ($DEVICE_ID)
 - Installed candidate source revision: $COMMIT
+- Installed candidate source state: $SOURCE_STATE
 - Worktree diagnostic override: $ALLOW_DIRTY
 - Process launch checked: $([[ "$SKIP_LAUNCH_CHECK" == "0" ]] && printf 'yes' || printf 'no')
 
