@@ -4,11 +4,12 @@
   "workflow_yaml": "parsed",
   "workflow_bash_steps": "syntax_passed",
   "new_unit_cases": 3,
-  "new_unit_execution": "pending",
+  "new_unit_execution": "passed_on_e218554",
   "isolated_native_ui_cases": 2,
-  "native_ui_execution": "pending",
+  "native_ui_execution": "2_passed_on_e218554",
   "native_local_ui": "mac_locked",
   "real_system_authorization": "not_requested",
   "private_system_data_access": "none",
-  "paid_model_requests": 0
+  "paid_model_requests": 0,
+  "hosted_run_id": 39843126107
 }

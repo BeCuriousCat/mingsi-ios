@@ -1,0 +1,153 @@
+{
+  "run_id": 39843126107,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39843126107",
+  "head_sha": "e218554cf9894f671db7f50db1c35fab3fcae1c5",
+  "status": "completed",
+  "conclusion": "success",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run isolated permission UI in light and dark largest text",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Save test counts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach isolated permission UI counts and screenshots",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "unit_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 1530,
+        "skippedTests": 24,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi \u00b7 Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792699622.826,
+    "passedTests": 1530,
+    "result": "Passed",
+    "skippedTests": 24,
+    "startTime": 1792699029.931,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - MingSi",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "23% of duration",
+        "text": "10 longest test runs with outlier durations exceeding 1.68s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 1554
+  },
+  "native_ui_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 2,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi \u00b7 Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792700101.937,
+    "passedTests": 2,
+    "result": "Passed",
+    "skippedTests": 0,
+    "startTime": 1792699647.832,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - MingSi",
+    "topInsights": [],
+    "totalTestCount": 2
+  },
+  "screenshot_review": "Both inspected. Normal controls/message readable. Largest text message readable; prior status/actions outside this final scroll viewport. Assertions passed. Additional snapshots will cover these controls in next candidate."
+}

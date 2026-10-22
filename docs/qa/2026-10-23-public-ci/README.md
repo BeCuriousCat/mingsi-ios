@@ -1,6 +1,6 @@
 # 公开源码的干净环境验证 · 2026-10-23
 
-关联G10开源可维护。**候选40803a7已在干净远端完成Release构建与1527项单元通过（24跳过、0失败）；仍缺其他真实构建者和手机安装验证。**
+关联G10开源可维护。**候选e218554已在干净远端完成Release构建、1530项单元通过（24跳过、0失败）和2条隔离权限UI通过；仍缺其他真实构建者和手机安装验证。**
 
 新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已结束，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。Release构建通过，测试阶段在执行前因目标UUID大小写不匹配失败；整体失败，0项单元执行。
 
@@ -50,3 +50,7 @@ CI工具本身不改变App产品运行行为，无需新功能发布条目；随
 ## App自身清单与日历说明的包内验证
 
 [运行39839344309](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39839344309)对提交`40803a7199d08426adba510f4544314759cf44bb`整体success：Release通过，1551项中1527通过/24跳过/0失败。日志含Release/Debug的App自身清单复制，包内读取用途和日历说明测试passed，见[配置证据](../2026-10-23-release-configuration/verification-run.json)。后续新增权限UI检查的工作流将另外登记结果，不把本次单元结果称为UI通过。
+
+## 权限状态与原生UI
+
+[运行39843126107](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39843126107)对e218554整体success：1530单元通过/24跳过/0失败，2条隔离权限UI通过，真实PNG已下载审读并保存于[专项记录](../2026-10-23-permission-states/README.md)。本次结果不包含后续构建标记和复制菜单改动，后续必须绑定新提交复验。

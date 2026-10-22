@@ -42,6 +42,10 @@ final class MingSiUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["settings.permission.calendar.status"].label, "仅允许写入")
         XCTAssertTrue(calendar.isEnabled)
         XCTAssertGreaterThanOrEqual(calendar.frame.height, 44)
+        let calendarScreenshot = XCTAttachment(screenshot: app.screenshot())
+        calendarScreenshot.name = largest ? "calendar-permission-dark-largest" : "calendar-permission-light-normal"
+        calendarScreenshot.lifetime = .keepAlways
+        add(calendarScreenshot)
         calendar.tap()
         let calendarMessage = app.staticTexts["settings.permission.calendar.message"]
         XCTAssertTrue(calendarMessage.waitForExistence(timeout: 8))
@@ -53,6 +57,10 @@ final class MingSiUITests: XCTestCase {
         XCTAssertTrue(health.isEnabled)
         XCTAssertGreaterThanOrEqual(health.frame.height, 44)
         if largest { XCTAssertGreaterThanOrEqual(health.frame.height, 88, "Largest text must wrap and expand the action") }
+        let healthScreenshot = XCTAttachment(screenshot: app.screenshot())
+        healthScreenshot.name = largest ? "health-permission-dark-largest" : "health-permission-light-normal"
+        healthScreenshot.lifetime = .keepAlways
+        add(healthScreenshot)
         health.tap()
         let healthMessage = app.staticTexts["settings.permission.health.message"]
         XCTAssertTrue(healthMessage.waitForExistence(timeout: 8))
