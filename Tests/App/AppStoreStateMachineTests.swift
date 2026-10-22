@@ -151,6 +151,63 @@ final class AppStoreStateMachineTests: XCTestCase {
         XCTAssertEqual(restored?.promptRunID, persistedStore.singleNudgeSession?.promptRunID)
     }
 
+    func testSingleNudgeQueuedDraftCannotOverwriteGeneratedQuestion() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let repository = BlockingFirstNudgeSaveRepository(database: database)
+        let client = SuspendingLLMClient(response: Data("{\"question\":\"哪一步最值得先确认？\"}".utf8))
+        let subject = AppStore(singleNudgeSessionRepository: repository,
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            refreshesAIServiceFromKeychain: false)
+        defer { repository.releaseFirstSave(); client.release() }
+
+        XCTAssertTrue(subject.startSingleNudge(input: "先确认谁负责验收。"))
+        let request = Task { await subject.generateSingleNudgeQuestion() }
+        try await waitUntil(repository.firstSaveIsBlocked, timeout: 5, file: #filePath, line: #line,
+            failureMessage: "The original draft save should reach the controlled barrier") {
+                repository.firstSaveIsBlocked
+            }
+        try await waitUntil(subject.isSingleNudgeGenerating, timeout: 5, file: #filePath, line: #line,
+            failureMessage: "The request should wait for persistence") { subject.isSingleNudgeGenerating }
+        XCTAssertEqual(client.completeCallCount, 0, "Queued snapshots must finish before model work")
+        repository.releaseFirstSave()
+        try await waitUntil(client.completeCallCount == 1, timeout: 5, file: #filePath, line: #line,
+            failureMessage: "Model work should start after the saved snapshots") { client.completeCallCount == 1 }
+        client.release()
+        await request.value
+
+        XCTAssertFalse(repository.overlappingSaves, "Draft and immediate writes share one ordered chain")
+        let session = try XCTUnwrap(subject.singleNudgeSession)
+        let restored = try await repository.session(for: session.dayKey)
+        XCTAssertEqual(restored?.id, session.id)
+        XCTAssertEqual(restored?.question, "哪一步最值得先确认？")
+        XCTAssertEqual(restored?.promptRunID, session.promptRunID)
+        XCTAssertEqual(restored?.lifecycle, .questionPresented)
+    }
+
+    func testSingleNudgeCancelledWhileSavingDoesNotStartModelWork() async throws {
+        let repository = BlockingFirstNudgeSaveRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let client = RecordingLLMClient(response: Data("{\"question\":\"不应请求的问题\"}".utf8))
+        let subject = AppStore(singleNudgeSessionRepository: repository,
+            todayAIService: TodayAIService(promptProvider: LocalPromptProvider(), llmClient: client),
+            refreshesAIServiceFromKeychain: false)
+        defer { repository.releaseFirstSave() }
+        XCTAssertTrue(subject.startSingleNudge(input: "保存期间取消。"))
+        let request = Task { await subject.generateSingleNudgeQuestion() }
+        try await waitUntil(repository.firstSaveIsBlocked && subject.isSingleNudgeGenerating,
+            timeout: 5, file: #filePath, line: #line,
+            failureMessage: "Generation should wait behind the draft write") {
+                repository.firstSaveIsBlocked && subject.isSingleNudgeGenerating
+            }
+        subject.cancelSingleNudgeRequest()
+        repository.releaseFirstSave()
+        await request.value
+
+        XCTAssertTrue(client.requests.isEmpty)
+        XCTAssertEqual(subject.singleNudgeSession?.input, "保存期间取消。")
+        XCTAssertEqual(subject.singleNudgeSession?.lifecycle, .draft)
+        XCTAssertNil(subject.singleNudgeSession?.question)
+    }
+
     func testSingleNudge_parentCompletedPersistedBeforeChildCreation() async throws {
         let queue = try DatabaseQueue()
         try AppDatabase.makeMigrator().migrate(queue)
@@ -14461,6 +14518,42 @@ private struct AppStoreImportedPromptPackRollbackFixtureProvider: PromptProvider
             outputSchemaVersion: baseTemplate.outputSchemaVersion
         )
     }
+}
+
+private final class BlockingFirstNudgeSaveRepository: SingleNudgeSessionRepository {
+    private let base: SQLiteSingleNudgeSessionRepository
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var firstSaveStarted = false
+    private var firstSaveReleased = false
+    private var activeSaves = 0
+    private(set) var firstSaveIsBlocked = false
+    private(set) var overlappingSaves = false
+
+    init(database: AppDatabase) { base = SQLiteSingleNudgeSessionRepository(database: database) }
+
+    func save(_ session: SingleNudgeSession) async throws {
+        activeSaves += 1
+        overlappingSaves = overlappingSaves || activeSaves > 1
+        defer { activeSaves -= 1 }
+        if !firstSaveStarted {
+            firstSaveStarted = true
+            if !firstSaveReleased {
+                firstSaveIsBlocked = true
+                await withCheckedContinuation { continuation = $0 }
+            }
+        }
+        try await base.save(session)
+    }
+
+    func releaseFirstSave() {
+        firstSaveReleased = true
+        firstSaveIsBlocked = false
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func session(for dayKey: String) async throws -> SingleNudgeSession? { try await base.session(for: dayKey) }
+    func latest() async throws -> SingleNudgeSession? { try await base.latest() }
 }
 
 private final class SaveThenFailOnceVerificationRepository: VerificationSettlementRepository {

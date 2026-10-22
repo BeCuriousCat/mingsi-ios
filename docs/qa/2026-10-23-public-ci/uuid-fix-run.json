@@ -2,8 +2,8 @@
   "run_id": 39834309426,
   "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39834309426",
   "head_sha": "4060b80b99fd4d558215af7275ef3b6c78660f91",
-  "status": "in_progress",
-  "conclusion": null,
+  "status": "completed",
+  "conclusion": "failure",
   "steps": [
     {
       "name": "Set up job",
@@ -27,33 +27,90 @@
     },
     {
       "name": "Build Release for Simulator",
-      "status": "in_progress",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "Select existing runner iPhone",
-      "status": "pending",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "Run unit tests with no paid model requests",
-      "status": "pending",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "failure"
     },
     {
       "name": "Save test counts",
-      "status": "pending",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "Attach compact test summary",
-      "status": "pending",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "success"
     },
     {
       "name": "Post Check out public source",
-      "status": "pending",
-      "conclusion": ""
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
     }
-  ]
+  ],
+  "unit_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 1,
+        "passedTests": 1523,
+        "skippedTests": 24,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi · Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 1,
+    "finishTime": 1792695508.892,
+    "passedTests": 1523,
+    "result": "Failed",
+    "skippedTests": 24,
+    "startTime": 1792695140.445,
+    "statistics": [],
+    "testFailures": [
+      {
+        "failureText": "XCTAssertEqual failed: (\"nil\") is not equal to (\"Optional(\"哪一步最值得先确认？\")\")",
+        "targetName": "MingSiTests",
+        "testIdentifier": 333,
+        "testIdentifierString": "AppStoreStateMachineTests/testSingleNudge_sessionIsPersistedBeforeQuestionRequest()",
+        "testIdentifierURL": "test://com.apple.xcode/MingSi/MingSiTests/AppStoreStateMachineTests/testSingleNudge_sessionIsPersistedBeforeQuestionRequest",
+        "testName": "testSingleNudge_sessionIsPersistedBeforeQuestionRequest()"
+      }
+    ],
+    "title": "Test - MingSi",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "21% of duration",
+        "text": "6 longest test runs with outlier durations exceeding 1.17s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 1548
+  },
+  "diagnosis": "Destination matched. Release succeeded. 1548 test cases: 1523 passed, 24 skipped, 1 failed (2 assertions). Queued nudge drafts and direct reply writes can commit out of order."
 }

@@ -25,7 +25,7 @@ main的相关源码/测试/脚本/工程变更及PR触发，纯文档变更不�
 
 修复后39项Python测试通过、0失败；其中5项验证CI选择器只挑选既有可用iPhone、拒绝非法UUID和本机调用。Ruby YAML解析通过，`git diff --check`通过。见[本机检查](local-checks.json)。本轮没有重复占用本机磁盘做相同Xcode构建，干净检出与编译必须由远端真实结果证明。
 
-本轮为工程交付检查，不改变App产品运行行为，无需新功能发布条目。没有其他真实构建者、3人手机安装、真人获益或4周复用记录；即使远端全绿，G10仍需至少1位其他构建者走通，G1–G9各自门槛不因此通过。
+CI工具本身不改变App产品运行行为，无需新功能发布条目；随后由真实远端测试发现的点拨写入竞态属于产品修复，另记发布说明和专项证据。没有其他真实构建者、3人手机安装、真人获益或4周复用记录；即使远端全绿，G10仍需至少1位其他构建者走通，G1–G9各自门槛不因此通过。
 
 ## 首次远端运行：失败保留
 
@@ -37,4 +37,6 @@ main的相关源码/测试/脚本/工程变更及PR触发，纯文档变更不�
 
 ## UUID修复后的远端复验
 
-提交`4060b80b99fd4d558215af7275ef3b6c78660f91`触发[运行39834309426](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39834309426)。登记时脚本39项通过，Release构建进行中，单元测试尚未开始；整体尚未通过。见[独立状态快照](uuid-fix-run.json)。首次失败继续保留于hosted-run.json。
+提交`4060b80b99fd4d558215af7275ef3b6c78660f91`触发[运行39834309426](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39834309426)。已结束：脚本39项与Release通过，设备UUID匹配成功；单元实际执行1548项，1523通过、24跳过、1项失败（2条断言）。整体失败，见[独立终态与原始摘要](uuid-fix-run.json)。首次失败继续保留于hosted-run.json。
+
+失败项为`AppStoreStateMachineTests/testSingleNudge_sessionIsPersistedBeforeQuestionRequest`，数据库读回的问题及PromptRun ID为nil，内存里已生成。代码检查发现排队的旧草稿与直接保存的生成结果可能交错写入；修复与复验见[写入顺序专项](../2026-10-23-nudge-save-order/README.md)。没有跳过该测试或修改原断言。

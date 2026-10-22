@@ -459,7 +459,7 @@ final class AppStore: ObservableObject {
     private var caseQuestsCache: [UUID: [Quest]] = [:]
     private var scheduledReminderIDs: Set<String> = []
     private var isLoadingSideQuestState = false
-    private var persistenceChain: Task<Void, Never>?
+    private var persistenceChain: Task<Bool, Never>?
     private var persistenceChainGeneration = 0
     private var pendingAIRepairPrompts: Set<PromptID> = [] {
         didSet {
@@ -10385,6 +10385,8 @@ final class AppStore: ObservableObject {
             return
         }
         defer { if singleNudgeRequestToken == token { isSingleNudgeGenerating = false } }
+        guard !Task.isCancelled, singleNudgeRequestToken == token,
+              singleNudgeSession?.id == session.id else { return }
         do {
             let generated = try await service.generateSingleNudge(
                 input: session.input,
@@ -10438,6 +10440,8 @@ final class AppStore: ObservableObject {
             return
         }
         defer { if singleNudgeRequestToken == token { isSingleNudgeGenerating = false } }
+        guard !Task.isCancelled, singleNudgeRequestToken == token,
+              singleNudgeSession?.id == session.id else { return }
         do {
             let generated = try await service.reviewSingleNudge(
                 input: session.input, question: question, answer: answer, before: session.before,
@@ -10570,6 +10574,8 @@ final class AppStore: ObservableObject {
             return
         }
         defer { if singleNudgeRequestToken == token { isSingleNudgeGenerating = false } }
+        guard !Task.isCancelled, singleNudgeRequestToken == token,
+              singleNudgeSession?.id == session.id else { return }
         do {
             let generated = try await service.generateSingleNudge(
                 input: session.input,
@@ -10652,13 +10658,12 @@ final class AppStore: ObservableObject {
     @discardableResult
     private func saveSingleNudgeNow() async -> Bool {
         guard let repository = singleNudgeSessionRepository, let session = singleNudgeSession else { return true }
-        do {
+        // Immediate saves must join the same chain as draft writes. Otherwise
+        // an older queued snapshot can land after the completed model reply.
+        let save = enqueuePersistence(errorMessage: "保存明思一下失败，回答已保留，请重试。") {
             try await repository.save(session)
-            return true
-        } catch {
-            todayLoopMessage = "保存明思一下失败，回答已保留，请重试。"
-            return false
         }
+        return await save.value
     }
 
     private func persistCards() {
@@ -10871,21 +10876,24 @@ final class AppStore: ObservableObject {
         }
     }
 
+    @discardableResult
     private func enqueuePersistence(
         errorMessage: String,
         operation: @escaping () async throws -> Void
-    ) {
+    ) -> Task<Bool, Never> {
         let previous = persistenceChain
         persistenceChainGeneration += 1
         let generation = persistenceChainGeneration
         let next = Task { [weak self] in
             if let previous {
-                await previous.value
+                _ = await previous.value
             }
 
+            var succeeded = true
             do {
                 try await operation()
             } catch {
+                succeeded = false
                 await MainActor.run {
                     self?.todayLoopMessage = errorMessage
                 }
@@ -10895,13 +10903,15 @@ final class AppStore: ObservableObject {
                 guard self?.persistenceChainGeneration == generation else { return }
                 self?.persistenceChain = nil
             }
+            return succeeded
         }
         persistenceChain = next
+        return next
     }
 
     private func waitForPendingPersistence() async {
         let chain = persistenceChain
-        await chain?.value
+        _ = await chain?.value
     }
 
     private func inputSummary(from input: String) -> String {
