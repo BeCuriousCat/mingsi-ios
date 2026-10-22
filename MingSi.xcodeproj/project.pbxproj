@@ -33,6 +33,7 @@
 		45483D13ACEAC6B79A1C7EB7 /* MentorHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6964047DB12FA6B2B186774 /* MentorHistoryView.swift */; };
 		45865065AEFF0EFD171685EA /* mentor-lessons-m1.draft.json in Resources */ = {isa = PBXBuildFile; fileRef = FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */; };
 		B6705CEFE01D4EA7A7E61011 /* mentor-lessons-m1.json in Resources */ = {isa = PBXBuildFile; fileRef = B6705CEFE01D4EA7A7E61012 /* mentor-lessons-m1.json */; };
+		DF0C92DBE445439B83B6B1A1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DF0C92DBE445439B83B6B1A2 /* PrivacyInfo.xcprivacy */; };
 		4856C8949AE37C06E0C19818 /* ProjectAIServiceContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */; };
 		49BA3C63BAE56D0B5C83D330 /* MingSiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750D8DFD1099C72DAD2B2C30 /* MingSiUITests.swift */; };
 		49EEEE6DEDEC5489BAE8FC99 /* SpeechTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43BB73B5DC0C00DDA7566ED9 /* SpeechTranscriptionService.swift */; };
@@ -216,6 +217,7 @@
 		FB352E2CC19588314AD98872 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FE362036EED96E1E52A64366 /* mentor-lessons-m1.draft.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mentor-lessons-m1.draft.json"; sourceTree = "<group>"; };
 		B6705CEFE01D4EA7A7E61012 /* mentor-lessons-m1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "mentor-lessons-m1.json"; sourceTree = "<group>"; };
+		DF0C92DBE445439B83B6B1A2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		FFB950525A17C702B66D37AA /* LiveGLMAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGLMAcceptanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -460,6 +462,7 @@
 		D38852B16A49A2E8A0FBC6FD /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				DF0C92DBE445439B83B6B1A2 /* PrivacyInfo.xcprivacy */,
 				B6B234AD1C2CE886B7D0F038 /* LifeGuidance */,
 				BAABD5F65A592FF1D075E2CB /* Mentor */,
 			);
@@ -612,6 +615,7 @@
 				4D822A171F7014C8A8BEE032 /* life-guidance-reference.json in Resources */,
 				45865065AEFF0EFD171685EA /* mentor-lessons-m1.draft.json in Resources */,
 				B6705CEFE01D4EA7A7E61011 /* mentor-lessons-m1.json in Resources */,
+				DF0C92DBE445439B83B6B1A1 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -774,7 +778,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "明思";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "明思仅使用日历忙闲状态生成可选生活奇遇。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "明思仅在你主动授权后读取日历，将忙闲状态用于可选生活奇遇；不会修改日历或上传事件原文。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "明思仅在你选择为生活奇遇留下一张照片时使用相机。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "明思不会写入健康数据。";
@@ -839,7 +843,7 @@
 				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) mentor-lessons-m1.draft.json life-guidance-m1.draft.json";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "明思";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "明思仅使用日历忙闲状态生成可选生活奇遇。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "明思仅在你主动授权后读取日历，将忙闲状态用于可选生活奇遇；不会修改日历或上传事件原文。";
 				INFOPLIST_KEY_NSCameraUsageDescription = "明思仅在你选择为生活奇遇留下一张照片时使用相机。";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "明思仅在你主动授权后，将近期步数、活动和睡眠归约为粗略状态，用于生成可选生活奇遇；不会上传健康样本或具体数值。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "明思不会写入健康数据。";

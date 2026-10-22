@@ -1,6 +1,8 @@
 # 公开源码的干净环境验证 · 2026-10-23
 
-关联G10开源可维护。新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已结束，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。Release构建通过，测试阶段在执行前因目标UUID大小写不匹配失败；整体失败，0项单元执行。
+关联G10开源可维护。**修复候选7f45bc7已在干净远端完成Release构建与1526项单元通过（24跳过、0失败）；仍缺其他真实构建者和手机安装验证。**
+
+新增[GitHub Actions工作流](../../../.github/workflows/verify.yml)：干净检出源码，不依赖维护者电脑的DerivedData、Keychain、私人配置或签名账户。首次远端运行[39831630202](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39831630202)已结束，候选提交`6dbdeefd3b37d59a65c197d31c86c59a806ccc81`。Release构建通过，测试阶段在执行前因目标UUID大小写不匹配失败；整体失败，0项单元执行。
 
 ## 环境依据
 
@@ -40,3 +42,7 @@ CI工具本身不改变App产品运行行为，无需新功能发布条目；随
 提交`4060b80b99fd4d558215af7275ef3b6c78660f91`触发[运行39834309426](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39834309426)。已结束：脚本39项与Release通过，设备UUID匹配成功；单元实际执行1548项，1523通过、24跳过、1项失败（2条断言）。整体失败，见[独立终态与原始摘要](uuid-fix-run.json)。首次失败继续保留于hosted-run.json。
 
 失败项为`AppStoreStateMachineTests/testSingleNudge_sessionIsPersistedBeforeQuestionRequest`，数据库读回的问题及PromptRun ID为nil，内存里已生成。代码检查发现排队的旧草稿与直接保存的生成结果可能交错写入；修复与复验见[写入顺序专项](../2026-10-23-nudge-save-order/README.md)。没有跳过该测试或修改原断言。
+
+## 点拨保存修复后的完整成功运行
+
+[运行39837132850](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39837132850)对提交`7f45bc7c831cdb9f5fa7f621e725bf7715546f30`整体success：脚本39通过、Release通过、单元1550项中1526通过/24显式跳过/0失败。原始计数和终态见[修复候选记录](../2026-10-23-nudge-save-order/verification-run.json)。前两次失败仍保留，未通过跳过失败项获取绿色结果。该证据绑定7f45bc7，之后新的App包配置修改需要另外复验；真实构建者、真机和真人价值仍未因此通过。

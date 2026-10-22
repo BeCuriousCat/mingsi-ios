@@ -1,0 +1,13 @@
+{
+  "privacy_plist": "valid",
+  "checked_in_project": "valid_plist",
+  "generated_project_tool": "XcodeGen 2.45.4",
+  "resource_in_app_target": "one manifest in checked-in and regenerated project",
+  "calendar_key": "Debug and Release in both projects",
+  "swift_parse": "passed",
+  "actual_new_bundle_test": "not_run_yet",
+  "signed_archive": "not_created",
+  "true_permission_ui": "not_executed",
+  "ordinary_user_installs": 0,
+  "paid_model_requests": 0
+}

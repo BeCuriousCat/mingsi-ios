@@ -2,6 +2,25 @@ import XCTest
 @testable import MingSi
 
 final class MentorLessonCatalogTests: XCTestCase {
+    func testAppBundleIncludesRequiredReasonManifestAndCalendarReadDescription() throws {
+        // Check the built host app, so an unbundled source plist cannot pass.
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
+        let manifest = try XCTUnwrap(PropertyListSerialization.propertyList(
+            from: Data(contentsOf: url), format: nil) as? [String: Any])
+        let entries = try XCTUnwrap(manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
+        let reasons = entries.reduce(into: [String: [String]]()) { result, entry in
+            if let category = entry["NSPrivacyAccessedAPIType"] as? String,
+               let values = entry["NSPrivacyAccessedAPITypeReasons"] as? [String] {
+                result[category] = values
+            }
+        }
+        XCTAssertTrue(reasons["NSPrivacyAccessedAPICategoryUserDefaults"]?.contains("CA92.1") == true)
+        XCTAssertTrue(reasons["NSPrivacyAccessedAPICategorySystemBootTime"]?.contains("35F9.1") == true)
+        let calendarDescription = try XCTUnwrap(
+            Bundle.main.object(forInfoDictionaryKey: "NSCalendarsFullAccessUsageDescription") as? String)
+        XCTAssertFalse(calendarDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     func testProductionBundleContainsUserAuthorizedAIReviewedLessons() throws {
         let catalog = try MentorLessonCatalog.loadBundled()
         XCTAssertEqual(catalog.pack.version, "1.1")
