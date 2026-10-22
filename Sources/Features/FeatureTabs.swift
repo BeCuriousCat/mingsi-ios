@@ -2726,6 +2726,7 @@ private struct GrowthReportMetricEvidenceRow: View {
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var settingsDynamicTypeSize
     @State private var apiKeyInput = ""
     @State private var baseURLInput = ""
     @State private var modelNameInput = ""
@@ -2784,7 +2785,21 @@ struct SettingsView: View {
 
     private var buildIdentityRow: some View {
         let identity = AppBuildIdentity.current
-        return SettingRow(title: "应用版本", value: identity.summary)
+        return Group {
+            if settingsDynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("应用版本").font(.subheadline.weight(.medium))
+                    Text(identity.summary)
+                        .font(.subheadline)
+                        .foregroundStyle(DS.mutedInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .summarySurface()
+            } else {
+                SettingRow(title: "应用版本", value: identity.summary)
+            }
+        }
             .accessibilityElement(children: .combine)
             .accessibilityValue(identity.copyDescription)
             .accessibilityHint("长按可复制完整构建信息")
@@ -3164,13 +3179,14 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("settings.permission.\(kind.rawValue).status")
             }
-            HStack(spacing: 12) {
+            permissionActionLayout {
                 Button {
                     if [.authorized, .denied, .restricted].contains(status) { openPermissionSettings() }
                     else { action() }
                 } label: {
                     Text(permissionActionTitle(status))
-                        .frame(minHeight: 44)
+                        .frame(maxWidth: settingsDynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                               minHeight: 44, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .buttonStyle(.bordered)
@@ -3179,7 +3195,9 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings.permission.\(kind.rawValue).request")
                 if status == .readAccessUnknown {
                     Button { openPermissionSettings() } label: {
-                        Text("查看设置").frame(minHeight: 44)
+                        Text("查看设置")
+                            .frame(maxWidth: settingsDynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                                   minHeight: 44, alignment: .leading)
                     }
                     .disabled(store.sideQuestPermissionRequest != nil)
                     .accessibilityIdentifier("settings.permission.\(kind.rawValue).settings")
@@ -3197,6 +3215,12 @@ struct SettingsView: View {
                     .accessibilityIdentifier("settings.permission.\(kind.rawValue).message")
             }
         }
+    }
+
+    private var permissionActionLayout: AnyLayout {
+        settingsDynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
     }
 
     private func permissionActionTitle(_ status: SideQuestAuthorizationStatus) -> String {

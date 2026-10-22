@@ -1,0 +1,42 @@
+[
+  {
+    "file": "screenshots/permissions-dark-largest.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  },
+  {
+    "file": "screenshots/health-permission-dark-largest.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "inspected; normal readable; largest version/title and health action columns need vertical layout refinement"
+  },
+  {
+    "file": "screenshots/calendar-permission-dark-largest.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  },
+  {
+    "file": "screenshots/build-identity-dark-largest.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "inspected; normal readable; largest version/title and health action columns need vertical layout refinement"
+  },
+  {
+    "file": "screenshots/permissions-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  },
+  {
+    "file": "screenshots/health-permission-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  },
+  {
+    "file": "screenshots/calendar-permission-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  },
+  {
+    "file": "screenshots/build-identity-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "inspected; text/actions readable in corresponding scroll position"
+  }
+]

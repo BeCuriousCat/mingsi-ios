@@ -56,7 +56,16 @@ final class MingSiUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["settings.permission.health.status"].label, "读取范围由系统管理")
         XCTAssertTrue(health.isEnabled)
         XCTAssertGreaterThanOrEqual(health.frame.height, 44)
-        if largest { XCTAssertGreaterThanOrEqual(health.frame.height, 88, "Largest text must wrap and expand the action") }
+        if largest {
+            let settings = app.buttons["settings.permission.health.settings"]
+            scrollToElement(settings, in: app)
+            XCTAssertTrue(health.isHittable)
+            XCTAssertTrue(settings.isHittable)
+            XCTAssertGreaterThanOrEqual(health.frame.height, 88, "Largest text must wrap and expand the action")
+            XCTAssertGreaterThan(health.frame.width, app.frame.width * 0.7)
+            XCTAssertGreaterThanOrEqual(settings.frame.minY, health.frame.maxY,
+                "Accessibility sizes should give each permission action its own row")
+        }
         let healthScreenshot = XCTAttachment(screenshot: app.screenshot())
         healthScreenshot.name = largest ? "health-permission-dark-largest" : "health-permission-light-normal"
         healthScreenshot.lifetime = .keepAlways

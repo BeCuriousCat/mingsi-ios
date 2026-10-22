@@ -1,6 +1,6 @@
 # 构建标记与候选包核对 · 2026-10-23
 
-关联G1/G9/G10。状态：**首轮完整远端编译成功，但实际包缺标记，整体失败；已用真实Xcode轻量构建复现并验证修正方向，修复候选仍需完整复验。**
+关联G1/G9/G10。状态：**修复候选0bd24dd已完成远端Release和Debug包内核对，1531单元通过/24跳过/0失败，2条原生UI通过，8张截图已审读。后续辅助字号布局及HealthKit改动另待复验；真机未测。**
 
 ## 问题和改动
 
@@ -35,3 +35,11 @@ CI将以实际checkout SHA构建并核对Release包内标记；现有两条原�
 为避免再用配置存在代替实际打包，创建只含空main的隔离App，在真实Xcode26.5中构建两次：旧方式构建成功但两个键均不存在；新方式读取同一份正式Info源，包内正确展开测试提交/dirty，并同时保留自动生成的Bundle ID、版本号、构建号及日历说明。见[轻量构建结果](infoplist-probe.json)。这是合成配置诊断，没有安装或运行App，不替代明思完整构建。
 
 CI的Release和Debug都保留实际包标记检查；不会删掉断言、允许缺字段或用当前工作目录冒充包内值。修复候选还要重新完成完整单元与两条UI，原失败继续保留。
+
+## 显式Info修复后的完整运行
+
+[运行39849567860](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39849567860)对`0bd24dd3155c9e94efffdb6c4d994b354d8126fc`整体success：Release/Debug实际包内标记均匹配该提交与clean；1555项单元中1531通过/24跳过/0失败；2条原生UI通过/0失败。终态与紧凑原始摘要见[运行记录](verification-run.json)。原来缺标记的失败未覆盖。
+
+8张真实截图已逐张由AI视觉审读，映射见[索引](screenshots.json)。[常规字号版本信息](screenshots/build-identity-light-normal.png)正确显示0.1.0(1)、源码短标记及无本地修改；常规字号测试实际长按、找到复制菜单并点击。辅助字号测试也核对版本值；没有用本机Git状态替代App内值。
+
+首次视觉检查同时发现两处可读性改进：[最大字号版本行](screenshots/build-identity-dark-largest.png)左右列挤压导致标题分行；[最大字号健康动作](screenshots/health-permission-dark-largest.png)的并排按钮过窄。它们仍可读、可点击，原测试通过；改为辅助字号下版本信息上下排列、两个健康动作各占一行。新增真实UI布局断言检查两个动作可点、主按钮宽度和垂直关系；与HealthKit能力配置一起进行第二轮确认，不把前一候选结果套给新布局。
