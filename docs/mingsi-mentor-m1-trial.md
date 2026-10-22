@@ -4,6 +4,8 @@
 - 状态：正式教材和技术路径已就绪；约 14 天真实试用尚未启动，以下实际记录全部留空
 - 依据：[PRD 9.2 / 9.3](mingsi-mentor-m1-prd.md)、[F18 / F19](mingsi-mentor-m1-feature-breakdown.md)、[观测边界](mingsi-mentor-m1-system-design.md#121-试用观测的实现边界)
 
+长期目标口径见[验收契约](mingsi-long-term-goal.md)。本表继续记录拥有者14天窗口，后续跨日、跨情境与至少4周复用使用[真实价值与后续复用记录](mingsi-value-follow-up.md)。两份模板均不表示真实试用已启动。
+
 ## 开始前
 
 正式包 `mingsi-mentor-m1 / 1.1` 已按用户授权完成 AI 编辑复核并进入 Release，24 篇均如实标记 AI 编写与编辑审核身份；这不等于人工审核或用户获益证明。固定模拟器上的技术验收已完成，真实模型语义质量、约 14 天使用、真机及整体 M1 价值验收尚未完成。本模板的存在不把模拟器夹具当成真实试用。

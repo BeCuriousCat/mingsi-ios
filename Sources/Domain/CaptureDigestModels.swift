@@ -1,5 +1,16 @@
 import Foundation
 
+/// Local editing state, never a confirmed fragment or a source sent to a model.
+struct CaptureInputDraft: Equatable {
+    var text = ""
+    var speechPreview = ""
+
+    var isEmpty: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        speechPreview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 /// A user-authored, immutable piece of material captured outside the daily review.
 struct CaptureFragment: Identifiable, Hashable, Codable {
     enum Source: String, Codable, CaseIterable { case app, appIntent = "app_intent" }

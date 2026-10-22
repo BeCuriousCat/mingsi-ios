@@ -189,7 +189,8 @@ struct QuickCaptureSheet: View {
     var onDiscuss: ((UUID) async -> Bool)? = nil
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
+    private let initialText: String
+    private var text: String { store.captureInputDraft.text }
     @State private var isSaving = false
     @State private var inputFocused = false
     @State private var isDiscussing = false
@@ -199,12 +200,12 @@ struct QuickCaptureSheet: View {
     @State private var confirmsDiscard = false
 
     private var hasUnsavedInput: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasPendingSpeech
+        !store.captureInputDraft.isEmpty || hasPendingSpeech
     }
 
     init(initialText: String = "", onDiscuss: ((UUID) async -> Bool)? = nil) {
         self.onDiscuss = onDiscuss
-        _text = State(initialValue: initialText)
+        self.initialText = initialText
     }
 
     var body: some View {
@@ -217,15 +218,26 @@ struct QuickCaptureSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     PushToTalkInput(
-                        text: $text,
+                        text: Binding(get: { text }, set: { value in
+                            var next = store.captureInputDraft
+                            next.text = value
+                            store.updateCaptureInputDraft(next)
+                        }),
                         placeholder: "此刻想到什么？",
                         accessibilityIdentifier: TodayAutomationID.capturesInput,
                         focusBinding: $inputFocused,
                         pendingSpeechBinding: $hasPendingSpeech,
+                        speechPreviewBinding: Binding(get: { store.captureInputDraft.speechPreview }, set: { value in
+                            guard store.captureInputDraft.speechPreview != value else { return }
+                            var next = store.captureInputDraft
+                            next.speechPreview = value
+                            store.updateCaptureInputDraft(next)
+                        }),
+                        onAcceptSpeech: { store.acceptCaptureSpeech($0) },
                         usesTextEditor: true,
                         autofocus: true
                     )
-                    .disabled(isSaving || isDiscussing)
+                    .disabled(isSaving || isDiscussing || !store.captureDraftCanEdit)
                     .frame(minHeight: 132, alignment: .top)
                     .padding(8)
                     .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -235,12 +247,25 @@ struct QuickCaptureSheet: View {
                     }
                     .accessibilityElement(children: .contain)
 
+                    if !store.captureDraftMessage.isEmpty {
+                        Text(store.captureDraftMessage)
+                            .font(.footnote)
+                            .foregroundStyle(store.captureDraftWriteFailed ? DS.caution : DS.mutedInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("today.captures.draft-status")
+                        if store.captureDraftWriteFailed {
+                            Button("重试草稿存储") {
+                                if store.captureDraftCanEdit { store.persistCaptureInputDraft() }
+                                else { store.loadCaptureInputDraft(initialText: initialText) }
+                            }
+                            .frame(minHeight: DS.minimumTapTarget)
+                        }
+                    }
+
                     Button {
-                        let pendingText = text
                         isSaving = true
                         Task {
-                            let didSave = await store.saveCaptureFragment(pendingText)
-                            if didSave, text == pendingText { text = "" }
+                            if store.saveCaptureInputDraft() { await store.refreshTodayCaptures() }
                             isSaving = false
                         }
                     } label: {
@@ -250,7 +275,7 @@ struct QuickCaptureSheet: View {
                     .buttonStyle(.borderedProminent)
                     .tint(DS.accent)
                     .foregroundStyle(DS.onAccent)
-                    .disabled(isSaving || isDiscussing || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || isDiscussing || !store.captureDraftCanEdit || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier(TodayAutomationID.capturesSaveAction)
 
                     if !store.captureDigestMessage.isEmpty {
@@ -305,7 +330,7 @@ struct QuickCaptureSheet: View {
                                             .frame(minHeight: DS.minimumTapTarget)
                                     }
                                     .buttonStyle(.bordered)
-                                    .disabled(isDiscussing || isSaving || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .disabled(isDiscussing || isSaving || hasUnsavedInput)
                                     .accessibilityIdentifier("mentor.capture.discuss.\(fragment.id.uuidString)")
                                     .accessibilityHint("把这条原文带入新的交流，保留原闪念")
                                     if discussionCaptureID == fragment.id {
@@ -398,11 +423,17 @@ struct QuickCaptureSheet: View {
         .tint(DS.accent)
         .interactiveDismissDisabled(hasUnsavedInput || isSaving || isDiscussing)
         .alert("丢弃未保存的闪念？", isPresented: $confirmsDiscard) {
-            Button("丢弃并关闭", role: .destructive) { dismiss() }
+            Button("丢弃并关闭", role: .destructive) {
+                if store.discardCaptureInputDraft() { dismiss() }
+            }
+            Button("保留草稿并关闭") {
+                if store.persistCaptureInputDraft() { dismiss() }
+            }
             Button("继续编辑", role: .cancel) {}
         } message: {
-            Text("输入文字和待确认的语音识别都不会保存。")
+            Text("可保留本机草稿，下次继续；丢弃会删除文字和待确认的识别结果。")
         }
+        .onAppear { store.loadCaptureInputDraft(initialText: initialText) }
         .task {
             await store.refreshTodayCaptures()
         }

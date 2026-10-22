@@ -53,6 +53,15 @@ struct SpeechInputDraft: Equatable {
 
     mutating func cancel() { self = SpeechInputDraft() }
 
+    mutating func restorePreview(_ value: String) {
+        guard !isActive else { return }
+        self = SpeechInputDraft()
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        preview = value
+        isReviewing = true
+        message = "请检查识别文字，再添加到输入框。"
+    }
+
     /// Move the control to its cancellable stopping state before the service
     /// publishes its final recognition callback.
     mutating func requestStop() {
@@ -139,6 +148,10 @@ final class SpeechInputController: ObservableObject {
         speech.cancel()
     }
 
+    func suspend() { releaseMicrophone() }
+
+    func restorePreview(_ value: String) { draft.restorePreview(value) }
+
     func accept(into text: inout String) {
         draft.accept(into: &text)
         if !draft.isReviewing { discard() }
@@ -152,12 +165,15 @@ struct PushToTalkInput: View {
     var accessibilityIdentifier: String?
     var focusBinding: Binding<Bool>?
     var pendingSpeechBinding: Binding<Bool>?
+    var speechPreviewBinding: Binding<String>?
+    var onAcceptSpeech: ((String) -> Void)?
     var usesTextEditor = false
     var autofocus = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var textFieldFocused: Bool
     @FocusState private var reviewFieldFocused: Bool
     @StateObject private var controller: SpeechInputController
+    @State private var isMounted = false
 
     private var draft: SpeechInputDraft { controller.draft }
 
@@ -167,6 +183,8 @@ struct PushToTalkInput: View {
         accessibilityIdentifier: String? = nil,
         focusBinding: Binding<Bool>? = nil,
         pendingSpeechBinding: Binding<Bool>? = nil,
+        speechPreviewBinding: Binding<String>? = nil,
+        onAcceptSpeech: ((String) -> Void)? = nil,
         usesTextEditor: Bool = false,
         autofocus: Bool = false,
         speech: SpeechTranscriptionService? = nil
@@ -176,6 +194,8 @@ struct PushToTalkInput: View {
         self.accessibilityIdentifier = accessibilityIdentifier
         self.focusBinding = focusBinding
         self.pendingSpeechBinding = pendingSpeechBinding
+        self.speechPreviewBinding = speechPreviewBinding
+        self.onAcceptSpeech = onAcceptSpeech
         self.usesTextEditor = usesTextEditor
         self.autofocus = autofocus
         _controller = StateObject(wrappedValue: SpeechInputController(speech: speech ?? SpeechTranscriptionService.inputService()))
@@ -195,14 +215,22 @@ struct PushToTalkInput: View {
                 .accessibilityElement(children: .combine)
             }
             if draft.isReviewing {
-                TextField("识别文字", text: $controller.draft.preview, axis: .vertical)
+                TextField("识别文字", text: Binding(get: { draft.preview }, set: { value in
+                    controller.draft.preview = value
+                    speechPreviewBinding?.wrappedValue = value
+                }), axis: .vertical)
                     .lineLimit(2...6)
                     .focused($reviewFieldFocused)
                     .accessibilityLabel("待确认的识别文字")
                     .accessibilityIdentifier(controlIdentifier("review"))
                 HStack(spacing: 8) {
                     Button {
-                        controller.accept(into: &text)
+                        if let onAcceptSpeech {
+                            onAcceptSpeech(draft.preview)
+                            controller.discard()
+                        } else {
+                            controller.accept(into: &text)
+                        }
                     } label: {
                         Label("添加到输入框", systemImage: "plus")
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -231,7 +259,17 @@ struct PushToTalkInput: View {
         .onChange(of: draft.hasPendingInput) { _, pending in
             pendingSpeechBinding?.wrappedValue = pending
         }
+        .onChange(of: draft.preview) { _, preview in
+            guard isMounted, speechPreviewBinding?.wrappedValue != preview else { return }
+            speechPreviewBinding?.wrappedValue = preview
+        }
+        .onChange(of: speechPreviewBinding?.wrappedValue) { _, preview in
+            guard let preview, !draft.isActive, draft.preview != preview else { return }
+            controller.restorePreview(preview)
+        }
         .onAppear {
+            isMounted = true
+            if let preview = speechPreviewBinding?.wrappedValue { controller.restorePreview(preview) }
             textFieldFocused = externalFocusValue
             pendingSpeechBinding?.wrappedValue = draft.hasPendingInput
         }
@@ -245,10 +283,17 @@ struct PushToTalkInput: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Permission dialogs can make the scene inactive; they must not
-            // discard the pending authorization. Backgrounding always cancels.
-            if phase == .background { controller.discard() }
+            // discard the pending authorization. Backgrounding stops recording
+            // and keeps recognized text available for explicit review.
+            if phase == .background {
+                controller.suspend()
+                speechPreviewBinding?.wrappedValue = draft.preview
+            }
         }
         .onDisappear {
+            isMounted = false
+            // A disappearing view releases the mic but must not erase the
+            // parent's persisted review text through a late onChange callback.
             controller.discard()
             pendingSpeechBinding?.wrappedValue = false
         }

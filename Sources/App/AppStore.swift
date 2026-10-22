@@ -355,6 +355,11 @@ final class AppStore: ObservableObject {
     private let coachPromptTurnRepository: CoachPromptTurnRepository?
     private let sideQuestRepository: SideQuestRepository?
     private let captureFragmentRepository: CaptureFragmentRepository?
+    @Published private(set) var captureInputDraft = CaptureInputDraft()
+    @Published private(set) var captureDraftMessage = ""
+    @Published private(set) var captureDraftWriteFailed = false
+    private var captureDraftLoaded = false
+    var captureDraftCanEdit: Bool { captureDraftLoaded }
     private let lifeGuidanceRepository: LifeGuidanceRepository?
     lazy var lifeGuidanceStore = LifeGuidanceStore(repository: lifeGuidanceRepository, chooseIndex: { count in
         #if DEBUG
@@ -1813,7 +1818,14 @@ final class AppStore: ObservableObject {
 
     static func speechInputUIFixture() -> AppStore {
         do {
-            let database = try AppDatabase(dbQueue: DatabaseQueue())
+            let database: AppDatabase
+            if ProcessInfo.processInfo.arguments.contains("--capture-draft-relaunch-fixture"),
+               let id = ProcessInfo.processInfo.environment["MINGSI_CAPTURE_DRAFT_TEST_ID"], UUID(uuidString: id) != nil {
+                database = try AppDatabase(url: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("capture-draft-ui-\(id).sqlite"))
+            } else {
+                database = try AppDatabase(dbQueue: DatabaseQueue())
+            }
             let store = AppStore(captureFragmentRepository: SQLiteCaptureFragmentRepository(database: database),
                                  lifeGuidanceRepository: SQLiteLifeGuidanceRepository(database: database),
                                  refreshesAIServiceFromKeychain: false)
@@ -9091,6 +9103,97 @@ final class AppStore: ObservableObject {
             todayCaptureDigest = try await captureFragmentRepository.currentDigest(forDayKey: dayKey)
         } catch {
             captureDigestMessage = "读取今日闪念失败，请稍后重试。"
+        }
+    }
+
+    func loadCaptureInputDraft(initialText: String = "") {
+        guard !captureDraftLoaded else { return }
+        guard let repository = captureFragmentRepository as? CaptureInputDraftRepository else {
+            captureDraftWriteFailed = true
+            captureDraftMessage = "草稿存储不可用，退出后可能丢失。请先保存闪念。"
+            return
+        }
+        do {
+            captureInputDraft = try repository.inputDraft()
+            captureDraftLoaded = true
+            captureDraftWriteFailed = false
+            captureDraftMessage = captureInputDraft.isEmpty ? "" : "已恢复上次的草稿；识别文字仍需确认。"
+            if captureInputDraft.isEmpty, !initialText.isEmpty {
+                updateCaptureInputDraft(CaptureInputDraft(text: initialText))
+            }
+        } catch {
+            // Do not allow an empty editor to overwrite an unreadable old draft.
+            captureDraftWriteFailed = true
+            captureDraftMessage = "读取草稿失败，请重试；原草稿尚未覆盖。"
+        }
+    }
+
+    func updateCaptureInputDraft(_ draft: CaptureInputDraft) {
+        guard captureDraftLoaded else { return }
+        if draft != captureInputDraft { captureDigestMessage = "" }
+        captureInputDraft = draft
+        persistCaptureInputDraft()
+    }
+
+    @discardableResult
+    func persistCaptureInputDraft() -> Bool {
+        guard captureDraftLoaded,
+              let repository = captureFragmentRepository as? CaptureInputDraftRepository else { return false }
+        do {
+            try repository.saveInputDraft(captureInputDraft)
+            captureDraftWriteFailed = false
+            captureDraftMessage = captureInputDraft.isEmpty ? "" : "草稿已保留在本机，重新打开可继续。"
+            return true
+        } catch {
+            captureDraftWriteFailed = true
+            captureDraftMessage = "草稿未能保留，内容仍在此页。请重试，或复制文字后再离开。"
+            return false
+        }
+    }
+
+    @discardableResult
+    func discardCaptureInputDraft() -> Bool {
+        guard captureDraftLoaded,
+              let repository = captureFragmentRepository as? CaptureInputDraftRepository else { return false }
+        do {
+            try repository.saveInputDraft(CaptureInputDraft())
+            captureInputDraft = CaptureInputDraft()
+            captureDraftWriteFailed = false
+            captureDraftMessage = ""
+            // Invalidate this editing session before the sheet disappears:
+            // late recognition callbacks must not recreate an explicitly
+            // discarded draft. Reopening loads a fresh session from storage.
+            captureDraftLoaded = false
+            return true
+        } catch {
+            captureDraftWriteFailed = true
+            captureDraftMessage = "未能丢弃草稿，内容仍保留。请重试。"
+            return false
+        }
+    }
+
+    func acceptCaptureSpeech(_ value: String) {
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        var next = captureInputDraft
+        next.text += (next.text.isEmpty || next.text.hasSuffix("\n") ? "" : "\n") + cleaned
+        next.speechPreview = ""
+        updateCaptureInputDraft(next)
+    }
+
+    func saveCaptureInputDraft() -> Bool {
+        guard persistCaptureInputDraft(),
+              let repository = captureFragmentRepository as? CaptureInputDraftRepository else { return false }
+        let snapshot = captureInputDraft
+        do {
+            try repository.commitInputDraft(snapshot)
+            captureInputDraft = CaptureInputDraft(speechPreview: snapshot.speechPreview)
+            captureDraftMessage = captureInputDraft.isEmpty ? "" : "待确认的识别文字仍保留在草稿中。"
+            captureDigestMessage = "已保存到今日闪念。"
+            return true
+        } catch {
+            captureDigestMessage = "保存闪念失败，内容仍在输入框中。"
+            return false
         }
     }
 

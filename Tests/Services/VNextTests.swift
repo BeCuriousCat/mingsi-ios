@@ -5104,3 +5104,71 @@ private final class AnswerReviewRetryClient: LLMClient {
         for continuation in pending { continuation.resume(with: result) }
     }
 }
+
+extension VNextTests {
+    func testCaptureInputDraftSurvivesDatabaseReopenAndDoesNotBecomeAFragment() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("draft.sqlite")
+        let expected = CaptureInputDraft(text: "手写正文\n🧭", speechPreview: "尚未确认的识别")
+        do {
+            let repository = SQLiteCaptureFragmentRepository(database: try AppDatabase(url: url))
+            try repository.saveInputDraft(expected)
+        }
+        let database = try AppDatabase(url: url)
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        XCTAssertEqual(try repository.inputDraft(), expected)
+        let fragments = try await repository.fragments(forDayKey: CaptureDayKey.value(for: .now), statuses: nil)
+        XCTAssertTrue(fragments.isEmpty)
+        let exported = try await SQLiteDataExportRepository(database: database).exportPackage()
+        XCTAssertEqual(exported.counts["capture_input_draft"], 1)
+        try repository.commitInputDraft(expected)
+        XCTAssertEqual(try repository.inputDraft(), CaptureInputDraft(speechPreview: expected.speechPreview))
+        let saved = try await repository.fragments(forDayKey: CaptureDayKey.value(for: .now), statuses: nil)
+        XCTAssertEqual(saved.map(\.rawText), [expected.text])
+        XCTAssertThrowsError(try repository.commitInputDraft(expected), "Stale save must not duplicate a fragment")
+        try repository.saveInputDraft(CaptureInputDraft())
+        XCTAssertTrue(try repository.inputDraft().isEmpty)
+        let cleared = SQLiteCaptureFragmentRepository(database: try AppDatabase(url: url))
+        XCTAssertTrue(try cleared.inputDraft().isEmpty)
+    }
+
+    func testCaptureDraftCommitRollsBackBothFragmentAndDraftWhenClearFails() async throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let expected = CaptureInputDraft(text: "事务失败也不能丢失")
+        try repository.saveInputDraft(expected)
+        try await database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_draft_clear BEFORE DELETE ON capture_input_draft BEGIN SELECT RAISE(ABORT, 'test'); END")
+        }
+        XCTAssertThrowsError(try repository.commitInputDraft(expected))
+        XCTAssertEqual(try repository.inputDraft(), expected)
+        let fragments = try await repository.fragments(forDayKey: CaptureDayKey.value(for: .now), statuses: nil)
+        XCTAssertTrue(fragments.isEmpty)
+        XCTAssertThrowsError(try repository.saveInputDraft(CaptureInputDraft()))
+        XCTAssertEqual(try repository.inputDraft(), expected)
+    }
+}
+
+extension VNextTests {
+    func testCaptureDraftMigrationAppendsAfterExistingSchemaWithoutChangingFragments() async throws {
+        let queue = try DatabaseQueue()
+        try AppDatabase.makeMigrator().migrate(queue)
+        try await queue.write { db in
+            // Reconstruct the previous shipped schema, retaining all later
+            // principle migrations. The new migration must be additive there.
+            try db.execute(sql: "DROP TABLE capture_input_draft")
+            try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'v72_capture_input_draft'")
+            try db.execute(sql: "INSERT INTO capture_fragments (id, raw_text, source, status, day_key, created_at, updated_at) VALUES (?, ?, 'app', 'pending', '2026-10-23', '2026-10-23T00:00:00Z', '2026-10-23T00:00:00Z')",
+                           arguments: [UUID().uuidString, "升级前的闪念"])
+        }
+        let upgraded = try AppDatabase(dbQueue: queue)
+        let repository = SQLiteCaptureFragmentRepository(database: upgraded)
+        XCTAssertTrue(try repository.inputDraft().isEmpty)
+        let saved = try await repository.fragments(forDayKey: "2026-10-23", statuses: nil)
+        XCTAssertEqual(saved.map(\.rawText), ["升级前的闪念"])
+        try repository.saveInputDraft(CaptureInputDraft(text: "升级后的草稿"))
+        XCTAssertEqual(try repository.inputDraft().text, "升级后的草稿")
+    }
+}

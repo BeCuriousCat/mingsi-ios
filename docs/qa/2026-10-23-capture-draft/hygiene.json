@@ -1,0 +1,22 @@
+{
+  "scope": "staged source, documents, JSON evidence, and synthetic UI screenshots",
+  "gitleaks_findings": 0,
+  "raw_recordings_committed": false,
+  "new_paid_model_requests": 0,
+  "design_mechanical_findings": 0,
+  "design_limit": "Mechanical findings do not establish SwiftUI usability or accessibility",
+  "release_simulator_build": "passed_after_regenerable_cache_cleanup",
+  "unit": {
+    "passed": 1517,
+    "skipped": 24,
+    "failed": 0
+  },
+  "ui_primary": {
+    "passed": 2,
+    "failed": 0
+  },
+  "ui_voice_edit": {
+    "passed": 1,
+    "failed": 0
+  }
+}

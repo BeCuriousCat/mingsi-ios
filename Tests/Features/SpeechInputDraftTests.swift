@@ -336,3 +336,32 @@ private final class ControllerSpeechBackend: SpeechRecognitionBackend {
     func endAudio() { ends += 1 }
     func cancel() { cancellations += 1 }
 }
+
+extension SpeechInputDraftTests {
+    func testRestoredSpeechRequiresReviewAndAppendsOnlyOnce() {
+        var draft = SpeechInputDraft()
+        draft.restorePreview("重启后保留的识别")
+        XCTAssertTrue(draft.isReviewing)
+        XCTAssertFalse(draft.isActive)
+        var body = "原手写正文"
+        draft.receive(.final(text: "旧录音的迟到回调"))
+        draft.accept(into: &body)
+        draft.accept(into: &body)
+        XCTAssertEqual(body, "原手写正文\n重启后保留的识别")
+    }
+
+    @MainActor
+    func testBackgroundSuspensionPreservesReviewAndRejectsLateResults() {
+        let controller = SpeechInputController(speech: SpeechTranscriptionService.inputService())
+        controller.draft.begin()
+        controller.draft.receive(.recording(text: "退后台前的部分识别"))
+        controller.suspend()
+        XCTAssertFalse(controller.draft.isActive)
+        XCTAssertTrue(controller.draft.isReviewing)
+        XCTAssertEqual(controller.draft.preview, "退后台前的部分识别")
+        controller.draft.receive(.final(text: "迟到"))
+        XCTAssertEqual(controller.draft.preview, "退后台前的部分识别")
+        controller.suspend()
+        XCTAssertEqual(controller.draft.preview, "退后台前的部分识别")
+    }
+}

@@ -14485,3 +14485,69 @@ private final class SuspendingVerificationSettlementRepository: VerificationSett
     }
     func release() { continuation?.resume(); continuation = nil }
 }
+
+extension AppStoreStateMachineTests {
+    @MainActor
+    func testCaptureStoreRetainsBodyAndRecognitionAcrossNewStoreAndAtomicAcceptance() throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let first = AppStore(captureFragmentRepository: repository, refreshesAIServiceFromKeychain: false)
+        first.loadCaptureInputDraft()
+        first.updateCaptureInputDraft(CaptureInputDraft(text: "手写", speechPreview: "校对后的识别"))
+        let second = AppStore(captureFragmentRepository: repository, refreshesAIServiceFromKeychain: false)
+        second.loadCaptureInputDraft()
+        XCTAssertEqual(second.captureInputDraft, first.captureInputDraft)
+        second.acceptCaptureSpeech(second.captureInputDraft.speechPreview)
+        XCTAssertEqual(try repository.inputDraft(), CaptureInputDraft(text: "手写\n校对后的识别"))
+        XCTAssertTrue(second.saveCaptureInputDraft())
+        XCTAssertTrue(try repository.inputDraft().isEmpty)
+        XCTAssertTrue(second.captureInputDraft.isEmpty)
+        second.updateCaptureInputDraft(CaptureInputDraft(text: "要丢弃"))
+        XCTAssertTrue(second.discardCaptureInputDraft())
+        second.updateCaptureInputDraft(CaptureInputDraft(speechPreview: "丢弃后的迟到识别"))
+        XCTAssertTrue(second.captureInputDraft.isEmpty)
+        XCTAssertTrue(try repository.inputDraft().isEmpty)
+    }
+
+    @MainActor
+    func testCaptureDraftStorageFailureKeepsInputAndDoesNotClaimPreserved() throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        let store = AppStore(captureFragmentRepository: repository, refreshesAIServiceFromKeychain: false)
+        store.loadCaptureInputDraft()
+        store.updateCaptureInputDraft(CaptureInputDraft(text: "旧草稿"))
+        try database.dbQueue.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_draft_write BEFORE INSERT ON capture_input_draft BEGIN SELECT RAISE(ABORT, 'test'); END")
+        }
+        store.updateCaptureInputDraft(CaptureInputDraft(text: "新输入不能清空"))
+        XCTAssertEqual(store.captureInputDraft.text, "新输入不能清空")
+        XCTAssertTrue(store.captureDraftWriteFailed)
+        XCTAssertTrue(store.captureDraftMessage.contains("未能保留"))
+        XCTAssertFalse(store.saveCaptureInputDraft())
+        XCTAssertEqual(try repository.inputDraft().text, "旧草稿")
+    }
+}
+
+extension AppStoreStateMachineTests {
+    @MainActor
+    func testUnreadableCaptureDraftCannotBeOverwrittenByAnEmptyEditor() throws {
+        let database = try AppDatabase(dbQueue: DatabaseQueue())
+        let repository = SQLiteCaptureFragmentRepository(database: database)
+        try repository.saveInputDraft(CaptureInputDraft(text: "不可覆盖的旧草稿"))
+        try database.dbQueue.write { db in
+            try db.execute(sql: "ALTER TABLE capture_input_draft RENAME TO temporarily_unavailable_draft")
+        }
+        let store = AppStore(captureFragmentRepository: repository, refreshesAIServiceFromKeychain: false)
+        store.loadCaptureInputDraft()
+        XCTAssertFalse(store.captureDraftCanEdit)
+        XCTAssertTrue(store.captureDraftWriteFailed)
+        XCTAssertFalse(store.persistCaptureInputDraft())
+        XCTAssertFalse(store.discardCaptureInputDraft())
+        try database.dbQueue.write { db in
+            try db.execute(sql: "ALTER TABLE temporarily_unavailable_draft RENAME TO capture_input_draft")
+        }
+        store.loadCaptureInputDraft()
+        XCTAssertTrue(store.captureDraftCanEdit)
+        XCTAssertEqual(store.captureInputDraft.text, "不可覆盖的旧草稿")
+    }
+}

@@ -2,6 +2,86 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testCaptureDraftRestoresBodyAndUnacceptedSpeechAfterProcessRelaunch() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "--capture-draft-relaunch-fixture",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-AppleInterfaceStyle", "Dark",
+            "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchEnvironment["MINGSI_CAPTURE_DRAFT_TEST_ID"] = UUID().uuidString
+        let open = app.buttons["mentor.quick-capture.open-action"]
+        let input = app.textViews["today.captures.input"]
+        func reopen() {
+            XCTAssertTrue(open.waitForExistence(timeout: 15))
+            scrollTo(open, in: app)
+            open.tap()
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+        }
+        app.launch()
+        reopen()
+        input.tap()
+        input.typeText("Keep this thought after restart.")
+        let original = try XCTUnwrap(input.value as? String)
+        app.buttons["today.captures.input.keyboard-dismiss"].tap()
+        XCTAssertTrue(app.staticTexts["草稿已保留在本机，重新打开可继续。"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        reopen()
+        XCTAssertEqual(input.value as? String, original)
+        let voice = app.buttons["today.captures.input.voice-toggle"]
+        voice.tap()
+        assertVoiceLabel("停止语音输入", voice)
+        // The first fixture recording intentionally never emits a final result.
+        // Going home exercises preservation of partial recognition on background.
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let review = app.textFields["today.captures.input.voice-review"]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        let recognized = try XCTUnwrap(review.value as? String)
+        XCTAssertFalse(recognized.isEmpty)
+        attachVoiceScreenshot(app, name: "draft-before-relaunch-unaccepted-speech")
+        app.terminate()
+        app.launch()
+        reopen()
+        XCTAssertEqual(input.value as? String, original)
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertEqual(review.value as? String, recognized)
+        attachVoiceScreenshot(app, name: "draft-restored-unaccepted-speech-dark-largest")
+        let accept = app.buttons["today.captures.input.voice-accept"]
+        scrollTo(accept, in: app)
+        accept.tap()
+        let combined = original + "\n" + recognized
+        XCTAssertEqual(input.value as? String, combined)
+        XCTAssertTrue(review.waitForNonExistence(timeout: 5))
+        app.buttons["today.captures.input.keyboard-dismiss"].tap()
+        app.buttons["today.captures.close-action"].tap()
+        XCTAssertTrue(app.buttons["保留草稿并关闭"].waitForExistence(timeout: 5))
+        app.buttons["保留草稿并关闭"].tap()
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        reopen()
+        XCTAssertEqual(input.value as? String, combined)
+        let save = app.buttons["today.captures.save-action"]
+        scrollTo(save, in: app)
+        save.tap()
+        XCTAssertTrue(app.staticTexts[combined].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        reopen()
+        XCTAssertNotEqual(input.value as? String, combined, "Saved body must not return as another unsaved draft")
+        XCTAssertFalse(review.exists)
+        input.tap()
+        input.typeText("Discard this draft.")
+        app.buttons["today.captures.input.keyboard-dismiss"].tap()
+        app.buttons["today.captures.close-action"].tap()
+        app.buttons["丢弃并关闭"].tap()
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        reopen()
+        XCTAssertFalse((input.value as? String)?.contains("Discard this draft.") == true)
+        app.terminate()
+    }
+
+    @MainActor
     func testQuickCaptureProtectsUnsavedTextAndAllowsExplicitDiscardInNormalAndLargestText() throws {
         var normalDescriptionHeight: CGFloat = 0
         for largest in [false, true] {
@@ -1741,7 +1821,12 @@ extension MentorNavigationUITests {
     @MainActor
     private func scrollTo(_ element: XCUIElement, in app: XCUIApplication, attempts: Int = 15, towardEarlierContent: Bool = false) {
         for _ in 0..<attempts {
-            if element.isHittable { break }
+            // A sliver above the tab bar can report hittable even though
+            // XCTest's center tap lands on the tab bar. Bring the entry's
+            // center into the content area before tapping at large text sizes.
+            let captureEntryVisible = element.identifier != "mentor.quick-capture.open-action" ||
+                (element.frame.midY < app.frame.maxY - 100 && element.frame.midY > app.frame.minY + 110)
+            if element.isHittable && captureEntryVisible { break }
             if towardEarlierContent {
                 app.swipeDown(velocity: .slow)
             } else {

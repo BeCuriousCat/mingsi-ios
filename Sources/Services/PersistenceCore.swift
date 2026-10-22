@@ -4782,6 +4782,7 @@ enum DataExportSectionName: String, CaseIterable {
     case sideQuestPhotoMemories = "side_quest_photo_memories"
     case sideQuestCorrectionEvents = "side_quest_correction_events"
     case captureFragments = "capture_fragments"
+    case captureInputDraft = "capture_input_draft"
     case dailyCaptureDigests = "daily_capture_digests"
     case lifeGuidanceExposures = "life_guidance_exposures"
     case lifeGuidanceFeedback = "life_guidance_feedback"

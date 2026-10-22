@@ -939,12 +939,61 @@ extension AppDatabase {
                 table.add(column: "reflection_state_json", .text)
             }
         }
+
+        migrator.registerMigration("v72_capture_input_draft") { db in
+            try db.create(table: "capture_input_draft") { table in
+                table.column("id", .integer).primaryKey().check { $0 == 1 }
+                table.column("text", .text).notNull()
+                table.column("speech_preview", .text).notNull()
+            }
+        }
+
     }
 }
 
-final class SQLiteCaptureFragmentRepository: CaptureFragmentRepository {
+final class SQLiteCaptureFragmentRepository: CaptureFragmentRepository, CaptureInputDraftRepository {
     private let database: AppDatabase
     init(database: AppDatabase) { self.database = database }
+
+    func inputDraft() throws -> CaptureInputDraft {
+        try database.dbQueue.read { try Self.inputDraft(in: $0) }
+    }
+
+    func saveInputDraft(_ draft: CaptureInputDraft) throws {
+        try database.dbQueue.write { try Self.saveInputDraft(draft, in: $0) }
+    }
+
+    func commitInputDraft(_ expected: CaptureInputDraft) throws {
+        try database.dbQueue.write { db in
+            guard try Self.inputDraft(in: db) == expected,
+                  !expected.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw PersistenceError.invalidStoredValue("capture_input_draft_changed")
+            }
+            try CaptureFragmentRow(CaptureFragment(
+                rawText: expected.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                dayKey: CaptureDayKey.value(for: .now)
+            )).insert(db)
+            // Unaccepted recognition remains an editable draft, never silently
+            // included in the fragment or lost when the body is saved.
+            try Self.saveInputDraft(CaptureInputDraft(speechPreview: expected.speechPreview), in: db)
+        }
+    }
+
+    private static func inputDraft(in db: Database) throws -> CaptureInputDraft {
+        guard let row = try Row.fetchOne(db, sql: "SELECT text, speech_preview FROM capture_input_draft WHERE id = 1") else {
+            return CaptureInputDraft()
+        }
+        return CaptureInputDraft(text: row["text"], speechPreview: row["speech_preview"])
+    }
+
+    private static func saveInputDraft(_ draft: CaptureInputDraft, in db: Database) throws {
+        if draft.isEmpty {
+            try db.execute(sql: "DELETE FROM capture_input_draft WHERE id = 1")
+        } else {
+            try db.execute(sql: "INSERT INTO capture_input_draft (id, text, speech_preview) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET text = excluded.text, speech_preview = excluded.speech_preview",
+                           arguments: [draft.text, draft.speechPreview])
+        }
+    }
 
     func save(_ fragment: CaptureFragment) async throws -> CaptureFragment {
         try await database.dbQueue.write { db in

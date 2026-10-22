@@ -1,5 +1,13 @@
 import Foundation
 
+/// Small synchronous writes serialize editor changes before reporting recovery
+/// as available. Fragment creation and clearing its draft share one transaction.
+protocol CaptureInputDraftRepository {
+    func inputDraft() throws -> CaptureInputDraft
+    func saveInputDraft(_ draft: CaptureInputDraft) throws
+    func commitInputDraft(_ expected: CaptureInputDraft) throws
+}
+
 protocol CaptureFragmentRepository {
     func save(_ fragment: CaptureFragment) async throws -> CaptureFragment
     func fragments(forDayKey dayKey: String, statuses: [CaptureFragment.Status]?) async throws -> [CaptureFragment]
