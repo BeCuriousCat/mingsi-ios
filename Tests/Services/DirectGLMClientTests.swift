@@ -4,6 +4,145 @@ import Synchronization
 
 final class DirectGLMClientTests: XCTestCase {
 
+    func testGenericChatEOFDoesNotTurnPartialTextIntoCompletedOrRetry() async throws {
+        GLMStubURLProtocol.responses = [.init(statusCode: 200,
+            body: "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")]
+        var tokens = ""
+        var completed = false
+        do {
+            for try await event in makeClient().stream(makeRequest()) {
+                if case .token(let value) = event { tokens += value }
+                if case .completed = event { completed = true }
+            }
+            XCTFail("EOF must report an interrupted response")
+        } catch { }
+        XCTAssertEqual(tokens, "partial")
+        XCTAssertFalse(completed)
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    func testGenericChatInBandErrorDoesNotBecomeSuccessfulCompletion() async throws {
+        GLMStubURLProtocol.responses = [.init(statusCode: 200,
+            body: "data: {\"error\":{\"code\":\"insufficient_quota\",\"message\":\"private provider diagnostic\"}}\n\ndata: [DONE]\n\n")]
+        var completed = false
+        do {
+            for try await event in makeClient().stream(makeRequest()) {
+                if case .completed = event { completed = true }
+            }
+            XCTFail("An HTTP-200 SSE error is still a failure")
+        } catch let error as LLMClientError {
+            XCTAssertFalse(error.userFacingMessage.contains("private provider diagnostic"))
+        }
+        XCTAssertFalse(completed)
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    func testTransportUserMessageNeverEchoesSystemDiagnosticOrURL() {
+        let error = NSError(domain: NSURLErrorDomain, code: URLError.unknown.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "private provider diagnostic https://example.test/?api_key=private"])
+        let message = LLMClientError.transport(error).userFacingMessage
+        XCTAssertFalse(message.contains("private"))
+        XCTAssertFalse(message.contains("example.test"))
+    }
+
+    func testResponsesFailureDiagnosticsOnlyRetainAllowlistedReasonAndEvent() throws {
+        let cases: [([String: Any], ProviderStreamFailure.Event, ProviderStreamFailure.Reason)] = [
+            (["type": "response.failed", "response": ["error": ["code": "server_error", "message": "PRIVATE_PROVIDER_BODY"]]], .responsesFailed, .unavailable),
+            (["type": "response.incomplete", "response": ["incomplete_details": ["reason": "max_output_tokens"]]], .responsesIncomplete, .outputLimit),
+            (["type": "response.incomplete", "response": ["incomplete_details": ["reason": "content_filter"]]], .responsesIncomplete, .contentFiltered),
+            (["type": "error", "code": "insufficient_quota", "message": "PRIVATE_PROVIDER_BODY", "param": "PRIVATE_PARAM"], .responsesError, .quota),
+            (["type": "error", "code": "rate_limit_exceeded"], .responsesError, .rateLimit),
+            (["type": "response.refusal.done", "refusal": "PRIVATE_REFUSAL"], .responsesRefusal, .refusal),
+            (["type": "error", "code": "PRIVATE_UNKNOWN_CODE", "message": "insufficient_quota PRIVATE_PROVIDER_BODY"], .responsesError, .unknown)
+        ]
+        for (object, expectedEvent, expectedReason) in cases {
+            var parser = ResponsesStreamAccumulator()
+            let data = try JSONSerialization.data(withJSONObject: object)
+            do {
+                _ = try parser.consume(line: "data: " + String(decoding: data, as: UTF8.self))
+                XCTFail("Failure event must terminate parsing")
+            } catch LLMClientError.providerStreamFailure(let failure) {
+                XCTAssertEqual(failure.event, expectedEvent)
+                XCTAssertEqual(failure.reason, expectedReason)
+                let error = LLMClientError.providerStreamFailure(failure)
+                for value in [error.userFacingMessage, error.safeDiagnosticCode, String(describing: error)] {
+                    XCTAssertFalse(value.contains("PRIVATE"))
+                }
+            }
+            XCTAssertFalse(parser.isCompleted)
+        }
+    }
+
+    func testSSEProviderFailureKeepsExistingPreviewAndMakesOneHTTPRequest() async throws {
+        let errors = [
+            "data: {\"type\":\"error\",\"code\":\"insufficient_quota\",\"message\":\"PRIVATE_PROVIDER_BODY\"}\n\n",
+            "data: {\"type\":\"response.incomplete\",\"response\":{\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n"
+        ]
+        for ending in errors {
+            GLMStubURLProtocol.requestBodies = []
+            let delta = try JSONSerialization.data(withJSONObject: [
+                "type": "response.output_text.delta", "delta": "{\"body\":\"partial"
+            ])
+            GLMStubURLProtocol.responses = [.init(statusCode: 200,
+                body: "data: " + String(decoding: delta, as: UTF8.self) + "\n\n" + ending),
+                .init(statusCode: 200, body: responsesSSE())]
+            let previews = Locked<[String]>([])
+            var request = makeRequest()
+            request.mentorExecutionPolicy = .responses
+            request.mentorStreamProgress = MentorStreamProgress { token in previews.withLock { $0.append(token) } }
+            do {
+                _ = try await makeClient(configuration: responsesConfiguration()).complete(request)
+                XCTFail("Incomplete output is not a successful response")
+            } catch let error as LLMClientError {
+                XCTAssertFalse(error.userFacingMessage.contains("PRIVATE"))
+                XCTAssertNotEqual(error.safeDiagnosticCode, "provider_response_failed")
+            }
+            XCTAssertEqual(previews.withLock { $0.joined() }, "partial")
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
+    func testChatNonStopFinishReasonsCannotBeOverriddenByDone() async throws {
+        for finish in ["length", "content_filter", "tool_calls"] {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 200,
+                body: "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"" + finish + "\"}]}\n\ndata: [DONE]\n\n")]
+            var completed = false
+            var text = ""
+            do {
+                for try await event in makeClient().stream(makeRequest()) {
+                    if case .completed = event { completed = true }
+                    if case .token(let token) = event { text += token }
+                }
+                XCTFail("Non-stop finish reason must fail")
+            } catch LLMClientError.providerStreamFailure { }
+            XCTAssertFalse(completed)
+            XCTAssertEqual(text, "partial")
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
+    func testKnownQuotaFailureDoesNotRetryNonMentorCompleteOrStream() async throws {
+        for streaming in [false, true] {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 429,
+                body: "{\"error\":{\"code\":\"insufficient_quota\",\"message\":\"PRIVATE_PROVIDER_BODY\"}}"),
+                .init(statusCode: 200, body: "unused")]
+            let client = makeClient(configuration: GLMClientConfiguration(
+                baseURL: URL(string: "https://glm.test/api/paas/v4")!, retryBaseDelay: 0))
+            do {
+                if streaming { for try await _ in client.stream(makeRequest()) { } }
+                else { _ = try await client.complete(makeRequest()) }
+                XCTFail("Known quota error must return without retry")
+            } catch let error as LLMClientError {
+                XCTAssertEqual(error.safeDiagnosticCode, "http_429.quota")
+                XCTAssertTrue(error.userFacingMessage.contains("额度"))
+                XCTAssertFalse(error.userFacingMessage.contains("PRIVATE"))
+            }
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
     func testInsufficientBalanceIsDistinguishedFromOtherHTTP429Failures() throws {
         for code: Any in ["1113", 1113] {
             let data = try JSONSerialization.data(withJSONObject: ["error": ["code": code, "message": "provider diagnostic"]])

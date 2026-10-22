@@ -627,6 +627,8 @@ final class TodayAIService {
                 return "incomplete_response"
             case .providerResponseFailed:
                 return "provider_response_failed"
+            case .providerStreamFailure(let failure):
+                return failure.diagnosticCode
             case .httpStatus(let status, _):
                 return "http_\(status)"
             case .encodingFailed:

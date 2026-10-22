@@ -5,27 +5,31 @@ import GRDB
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
     func testStreamingPreviewSurvivesFailureWithoutBecomingSavedAssistant() async throws {
-        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
-        let transport = HeldMentorTransport()
-        let store = MentorFeatureStore(repository: repo, transport: transport)
-        store.start(entry: "discuss")
-        try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
-        store.submit(text: "请解释这次结果，先不安排动作。")
-        try await waitUntil { transport.pending != nil }
-        let request = try XCTUnwrap(transport.request)
-        let progress = try XCTUnwrap(request.mentorStreamProgress)
-        try progress.receive(#"{"body":"正在逐步显示的解释"#)
-        try await waitUntil { store.state.streamingPreview == "正在逐步显示的解释" }
-        XCTAssertEqual(store.state.phase, .submitting)
-        let before = try await repo.items(sessionID: XCTUnwrap(store.state.session?.id))
-        XCTAssertFalse(before.contains { $0.kind == .assistant })
-        transport.pending?.resume(throwing: LLMClientError.incompleteResponse); transport.pending = nil
-        try await waitUntil { if case .failed = store.state.phase { return true }; return false }
-        XCTAssertEqual(store.state.streamingPreview, "正在逐步显示的解释")
-        let saved = try await repo.items(sessionID: XCTUnwrap(store.state.session?.id))
-        XCTAssertFalse(saved.contains { $0.kind == .assistant })
-        XCTAssertTrue(saved.contains { $0.kind == .user })
-        XCTAssertNotNil(store.state.retryableRequest)
+        for failure: LLMClientError in [.incompleteResponse,
+            .providerStreamFailure(ProviderStreamFailure(event: .responsesError, reason: .quota))] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let transport = HeldMentorTransport()
+            let store = MentorFeatureStore(repository: repo, transport: transport)
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+            store.submit(text: "请解释这次结果，先不安排动作。")
+            try await waitUntil { transport.pending != nil }
+            let request = try XCTUnwrap(transport.request)
+            let progress = try XCTUnwrap(request.mentorStreamProgress)
+            try progress.receive(#"{"body":"正在逐步显示的解释"#)
+            try await waitUntil { store.state.streamingPreview == "正在逐步显示的解释" }
+            XCTAssertEqual(store.state.phase, .submitting)
+            let before = try await repo.items(sessionID: XCTUnwrap(store.state.session?.id))
+            XCTAssertFalse(before.contains { $0.kind == .assistant })
+            transport.pending?.resume(throwing: failure); transport.pending = nil
+            try await waitUntil { if case .failed = store.state.phase { return true }; return false }
+            XCTAssertEqual(store.state.streamingPreview, "正在逐步显示的解释")
+            let saved = try await repo.items(sessionID: XCTUnwrap(store.state.session?.id))
+            XCTAssertFalse(saved.contains { $0.kind == .assistant })
+            XCTAssertTrue(saved.contains { $0.kind == .user })
+            XCTAssertNotNil(store.state.retryableRequest)
+            XCTAssertEqual(store.state.requestFailureMessage, failure.userFacingMessage)
+        }
     }
 
     func testCancelledStreamCannotUpdatePreviewOrPersistLateAnswer() async throws {

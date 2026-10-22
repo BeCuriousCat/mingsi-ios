@@ -142,7 +142,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             do {
                 return try await completeAttempt(request)
             } catch LLMClientError.httpStatus(let status, let data)
-                where Self.shouldRetryRecoverableStatus(status: status) && attempt < configuration.maxRetryAttempts {
+                where Self.shouldRetryHTTPStatus(status: status, data: data) && attempt < configuration.maxRetryAttempts {
                 lastError = LLMClientError.httpStatus(status, data)
                 try await sleepBeforeRetry(attempt: attempt)
             } catch LLMClientError.transport(let error)
@@ -244,7 +244,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 }
                 guard (200..<300).contains(httpResponse.statusCode) else {
                     let data = try await Self.collectStreamErrorBody(from: bytes)
-                    if Self.shouldRetryRecoverableStatus(status: httpResponse.statusCode),
+                    if Self.shouldRetryHTTPStatus(status: httpResponse.statusCode, data: data),
                        attempt < configuration.maxRetryAttempts {
                         try await sleepBeforeRetry(attempt: attempt)
                         continue
@@ -255,6 +255,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
 
                 let lineIterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
                 var responses = ResponsesStreamAccumulator()
+                var chat = ChatStreamAccumulator(requiresStopReason: false)
                 while let line = try await nextLineWithIdleTimeout(from: lineIterator) {
                     try Task.checkCancellation()
                     if Self.isNonTerminalSSEDataLine(line) {
@@ -271,20 +272,14 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                         }
                         continue
                     }
-                    guard let event = Self.streamEvent(fromSSELine: line) else { continue }
-                    if case .completed = event {
+                    if let token = try chat.consume(line: line) { continuation.yield(.token(token)) }
+                    if chat.isCompleted {
                         continuation.yield(.completed)
                         continuation.finish()
                         return
                     }
-                    continuation.yield(event)
                 }
-                if configuration.protocolKind == .responses {
-                    throw LLMClientError.incompleteResponse
-                }
-                continuation.yield(.completed)
-                continuation.finish()
-                return
+                throw LLMClientError.incompleteResponse
             } catch LLMClientError.transport(let error)
                 where !hasReceivedStreamEvent && Self.shouldRetryRecoverableTransport(error) && attempt < configuration.maxRetryAttempts {
                 try await sleepBeforeRetry(attempt: attempt)
@@ -361,8 +356,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
             }
             var responses = ResponsesStreamAccumulator()
-            var chatText = ""
-            var chatStopped = false
+            var chat = ChatStreamAccumulator(requiresStopReason: true)
             for try await line in bytes.lines {
                 try Task.checkCancellation()
                 if configuration.protocolKind == .responses {
@@ -370,33 +364,10 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                     if responses.isCompleted { return try responses.normalizedResponse() }
                     continue
                 }
-                guard line.hasPrefix("data:") else { continue }
-                let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !payload.isEmpty else { continue }
-                if payload == "[DONE]" {
-                    guard chatStopped, !chatText.isEmpty else { throw LLMClientError.incompleteResponse }
+                if let token = try chat.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                if chat.isCompleted {
                     return try JSONSerialization.data(withJSONObject: ["choices": [[
-                        "message": ["role": "assistant", "content": chatText], "finish_reason": "stop"]]])
-                }
-                guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
-                      object["error"] == nil, let choices = object["choices"] as? [[String: Any]] else {
-                    throw LLMClientError.invalidResponse
-                }
-                guard choices.count <= 1 else { throw LLMClientError.invalidResponse }
-                guard let choice = choices.first else { continue } // usage-only event
-                guard !chatStopped else { throw LLMClientError.incompleteResponse }
-                if let delta = choice["delta"] as? [String: Any] {
-                    if delta["tool_calls"] != nil || delta["function_call"] != nil || delta["refusal"] is String {
-                        throw LLMClientError.providerResponseFailed
-                    }
-                    if let content = delta["content"] as? String {
-                        try request.mentorStreamProgress?.receive(content)
-                        chatText += content
-                    }
-                }
-                if let finish = choice["finish_reason"] as? String {
-                    guard finish == "stop" else { throw LLMClientError.incompleteResponse }
-                    chatStopped = true
+                        "message": ["role": "assistant", "content": chat.text], "finish_reason": "stop"]]])
                 }
             }
             throw LLMClientError.incompleteResponse
@@ -510,16 +481,11 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         }
     }
 
-    private static func streamEvent(fromSSELine line: String) -> LLMStreamEvent? {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("data:") else { return nil }
-        let payload = trimmed.dropFirst("data:".count).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard payload != "[DONE]" else { return .completed }
-        guard let data = payload.data(using: .utf8),
-              let chunk = try? JSONDecoder().decode(GLMChatCompletionStreamChunk.self, from: data)
-        else { return nil }
-        let content = chunk.choices.compactMap(\.delta.content).joined()
-        return content.isEmpty ? nil : .token(content)
+    private static func shouldRetryHTTPStatus(status: Int, data: Data) -> Bool {
+        let details = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let reason = ProviderStreamFailure.classify(details?["error"] as? [String: Any] ?? [:])
+        guard ![.quota, .authentication, .contextLimit].contains(reason) else { return false }
+        return shouldRetryRecoverableStatus(status: status)
     }
 
     private static func isNonTerminalSSEDataLine(_ line: String) -> Bool {
@@ -552,6 +518,100 @@ private final class AsyncIteratorBox<I: AsyncIteratorProtocol>: @unchecked Senda
     }
 }
 
+/// Only typed, allowlisted metadata survives parsing. Provider messages, params,
+/// request IDs, unknown codes and refusal text are never retained in this error.
+struct ProviderStreamFailure: Equatable, Sendable {
+    enum Event: String, Sendable {
+        case responsesFailed = "responses_failed", responsesIncomplete = "responses_incomplete"
+        case responsesError = "responses_error", responsesRefusal = "responses_refusal"
+        case chatError = "chat_error", chatFinish = "chat_finish", chatUnsupported = "chat_unsupported"
+    }
+    enum Reason: String, Sendable {
+        case quota, rateLimit = "rate_limit", authentication, unavailable
+        case contextLimit = "context_limit", outputLimit = "output_limit"
+        case contentFiltered = "content_filtered", refusal, unsupportedOutput = "unsupported_output", unknown
+    }
+    let event: Event
+    let reason: Reason
+    var diagnosticCode: String { event.rawValue + "." + reason.rawValue }
+
+    static func classify(_ details: [String: Any]) -> Reason {
+        // Match protocol codes, never human-readable message text. Unknown or
+        // malformed values remain unknown, even when their text mentions quota.
+        for field in ["code", "type"] {
+            let value = details[field] as? String ?? (details[field] as? NSNumber)?.stringValue
+            switch value {
+            case "insufficient_quota", "billing_hard_limit_reached", "1113": return .quota
+            case "rate_limit_exceeded", "1302": return .rateLimit
+            case "invalid_api_key", "authentication_error", "permission_denied": return .authentication
+            case "server_error", "service_unavailable", "overloaded_error": return .unavailable
+            case "context_length_exceeded", "context_window_exceeded": return .contextLimit
+            default: continue
+            }
+        }
+        return .unknown
+    }
+}
+
+/// [DONE] is an explicit terminal signal. EOF, error payloads and non-stop
+/// finish reasons must not turn a partially rendered answer into success.
+struct ChatStreamAccumulator {
+    let requiresStopReason: Bool
+    private(set) var text = ""
+    private(set) var isCompleted = false
+    private var sawStop = false
+
+    init(requiresStopReason: Bool) { self.requiresStopReason = requiresStopReason }
+
+    mutating func consume(line: String) throws -> String? {
+        let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("data:") else { return nil }
+        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else { return nil }
+        if payload == "[DONE]" {
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !requiresStopReason || sawStop else { throw LLMClientError.incompleteResponse }
+            isCompleted = true
+            return nil
+        }
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] else {
+            throw LLMClientError.invalidResponse
+        }
+        if let error = object["error"], !(error is NSNull) {
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .chatError,
+                reason: ProviderStreamFailure.classify(error as? [String: Any] ?? [:])))
+        }
+        guard let choices = object["choices"] as? [[String: Any]], choices.count <= 1 else {
+            throw LLMClientError.invalidResponse
+        }
+        guard let choice = choices.first else { return nil } // usage-only event
+        guard !sawStop else { throw LLMClientError.incompleteResponse }
+        let delta = choice["delta"] as? [String: Any] ?? [:]
+        if delta["refusal"] is String {
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .chatUnsupported, reason: .refusal))
+        }
+        if ["tool_calls", "function_call"].contains(where: { delta[$0] != nil && !(delta[$0] is NSNull) }) {
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .chatUnsupported, reason: .unsupportedOutput))
+        }
+        if let finish = choice["finish_reason"] as? String {
+            if finish == "stop" { sawStop = true }
+            else {
+                let reason: ProviderStreamFailure.Reason
+                switch finish {
+                case "length": reason = .outputLimit
+                case "content_filter": reason = .contentFiltered
+                case "tool_calls", "function_call": reason = .unsupportedOutput
+                default: reason = .unknown
+                }
+                throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .chatFinish, reason: reason))
+            }
+        }
+        guard let content = delta["content"] as? String, !content.isEmpty else { return nil }
+        text += content
+        return content
+    }
+}
+
 /// Only assistant output_text is product content. Reasoning, tool calls and
 /// partial output must never masquerade as a successfully completed response.
 struct ResponsesStreamAccumulator {
@@ -572,10 +632,25 @@ struct ResponsesStreamAccumulator {
         guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
               let type = object["type"] as? String else { throw LLMClientError.invalidResponse }
         switch type {
-        case "response.failed", "response.incomplete", "error":
-            throw LLMClientError.providerResponseFailed
+        case "response.failed":
+            let response = object["response"] as? [String: Any]
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesFailed,
+                reason: ProviderStreamFailure.classify(response?["error"] as? [String: Any] ?? [:])))
+        case "response.incomplete":
+            let response = object["response"] as? [String: Any]
+            let details = response?["incomplete_details"] as? [String: Any]
+            let reason: ProviderStreamFailure.Reason
+            switch details?["reason"] as? String {
+            case "max_output_tokens": reason = .outputLimit
+            case "content_filter": reason = .contentFiltered
+            default: reason = .unknown
+            }
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesIncomplete, reason: reason))
+        case "error":
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesError,
+                reason: ProviderStreamFailure.classify(object["error"] as? [String: Any] ?? object)))
         case "response.refusal.delta", "response.refusal.done":
-            throw LLMClientError.providerResponseFailed
+            throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesRefusal, reason: .refusal))
         case "response.output_text.delta":
             guard let delta = object["delta"] as? String else { throw LLMClientError.invalidResponse }
             text += delta
@@ -596,6 +671,9 @@ struct ResponsesStreamAccumulator {
                       item["status"] as? String == "completed",
                       let content = item["content"] as? [[String: Any]] else { throw LLMClientError.invalidResponse }
                 for part in content {
+                    if part["type"] as? String == "refusal" {
+                        throw LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesRefusal, reason: .refusal))
+                    }
                     guard part["type"] as? String == "output_text",
                           let value = part["text"] as? String else { throw LLMClientError.providerResponseFailed }
                     finalText += value
@@ -679,18 +757,6 @@ private struct GLMChatCompletionRequest: Encodable {
     }
 }
 
-private struct GLMChatCompletionStreamChunk: Decodable, Hashable {
-    let choices: [Choice]
-
-    struct Choice: Decodable, Hashable {
-        let delta: Delta
-    }
-
-    struct Delta: Decodable, Hashable {
-        let content: String?
-    }
-}
-
 private struct GLMChatMessage: Encodable {
     let role: String
     let content: String
@@ -737,6 +803,27 @@ struct GLMChatCompletionResponse: Decodable, Hashable {
 }
 
 extension LLMClientError {
+    /// Suitable for bounded acceptance records. Never returns provider text,
+    /// unknown code strings, URLs, credentials or arbitrary NSError domains.
+    var safeDiagnosticCode: String {
+        switch self {
+        case .providerStreamFailure(let failure): return failure.diagnosticCode
+        case .httpStatus(let status, let data):
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let reason = ProviderStreamFailure.classify(object?["error"] as? [String: Any] ?? [:])
+            return "http_" + ((100...599).contains(status) ? String(status) : "unknown") + "." + reason.rawValue
+        case .incompleteResponse: return "incomplete_response"
+        case .providerResponseFailed: return "provider_response_failed"
+        case .missingAPIKey: return "missing_api_key"
+        case .invalidEndpoint: return "invalid_endpoint"
+        case .invalidResponse: return "invalid_response"
+        case .encodingFailed: return "encoding_failed"
+        case .transport(let error):
+            let value = error as NSError
+            return value.domain == NSURLErrorDomain ? "transport_url_" + String(value.code) : "transport_unknown"
+        }
+    }
+
     var userFacingMessage: String {
         switch self {
         case .missingAPIKey:
@@ -749,12 +836,43 @@ extension LLMClientError {
             return "模型回复中断，尚未完整生成。原话会保留，请重新请求。"
         case .providerResponseFailed:
             return "模型未能完成这次回复。原话会保留，请稍后重试或检查模型权限与额度。"
+        case .providerStreamFailure(let failure):
+            switch failure.reason {
+            case .quota:
+                return "模型服务额度或计费受限。请检查账户余额、套餐与接口是否匹配，处理后再试。"
+            case .rateLimit:
+                return "模型服务暂时限制了请求频率，请稍后手动重试。"
+            case .authentication:
+                return "模型服务未授权。请检查 API Key、接口地址和模型权限。"
+            case .unavailable:
+                return "模型服务暂时不可用，请稍后重试。"
+            case .contextLimit:
+                return "材料超出模型上下文限制。请减少本次选用的材料后再试。"
+            case .outputLimit:
+                return "这次回复达到输出上限，尚未完整生成。可以缩短材料或缩小本次问题后重新请求。"
+            case .contentFiltered:
+                return "模型服务中止了这次输出。可以调整表达或结束交流。"
+            case .refusal:
+                return "模型没有提供这次回复。可以调整表达或结束交流。"
+            case .unsupportedOutput:
+                return "模型返回了当前不支持的输出，未保存为完整回复。请使用支持直接文字回复的配置。"
+            case .unknown:
+                return failure.event == .responsesIncomplete
+                    ? "模型回复未完整生成。原话会保留，请检查已有预览后再决定是否重新请求。"
+                    : "模型服务未能完成这次回复，原因尚不明确。原话会保留，请稍后重试或检查服务配置。"
+            }
         case .httpStatus(let status, let data):
             if status == 429,
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let details = object["error"] as? [String: Any],
                let code = details["code"].map({ String(describing: $0) }), code == "1113" {
                 return "模型服务余额不足或没有对应资源包。请检查账户余额、套餐与接口是否匹配，处理后再试。"
+            }
+            if let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                let reason = ProviderStreamFailure.classify(object["error"] as? [String: Any] ?? [:])
+                if reason == .quota || reason == .contextLimit {
+                    return LLMClientError.providerStreamFailure(ProviderStreamFailure(event: .responsesError, reason: reason)).userFacingMessage
+                }
             }
             switch status {
             case 401, 403:
@@ -776,7 +894,10 @@ extension LLMClientError {
             if nsError.domain == NSURLErrorDomain, nsError.code == URLError.networkConnectionLost.rawValue {
                 return "网络连接中断。若刚刚锁屏或切换应用，请回到明思前台后重试。"
             }
-            return "网络请求失败：\(error.localizedDescription)"
+            if nsError.domain == NSURLErrorDomain, nsError.code == URLError.notConnectedToInternet.rawValue {
+                return "当前没有网络连接。原话会保留，请连接网络后重试。"
+            }
+            return "网络请求未完成。请检查网络与接口地址后重试。"
         }
     }
 }

@@ -1,0 +1,26 @@
+{
+  "baseline_tests": {
+    "passed": 0,
+    "failed": 3
+  },
+  "first_targeted": {
+    "passed": 191,
+    "failed": 1
+  },
+  "final_unit": {
+    "passed": 1524,
+    "skipped": 24,
+    "failed": 0
+  },
+  "python_tests": {
+    "passed": 25,
+    "failed": 0
+  },
+  "release_simulator_build": "passed",
+  "new_paid_requests": 0,
+  "real_network_ui": "not_verified",
+  "physical_device": "not_verified",
+  "historical_provider_failures": "remain_unknown",
+  "gitleaks_findings": 0,
+  "diff_check": "passed"
+}

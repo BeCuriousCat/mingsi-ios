@@ -53,8 +53,9 @@ final class LiveGLMAcceptanceTests: XCTestCase {
                     answered.append(contentsOf: turn.questions)
                 } catch {
                     report["structural_pass"] = false
-                    report["error"] = String(describing: error)
-                    XCTFail(id + ": " + String(describing: error))
+                    let diagnostic = (error as? LLMClientError)?.safeDiagnosticCode ?? "unclassified_error"
+                    report["error"] = diagnostic
+                    XCTFail(id + ": " + diagnostic)
                 }
                 let duration = start.duration(to: .now).components
                 report["seconds"] = Double(duration.seconds) + Double(duration.attoseconds) / 1e18
@@ -233,10 +234,11 @@ final class LiveGLMAcceptanceTests: XCTestCase {
                 try? attachMentorRequest(record.request, caseID: "\(caseID)-v\(record.request.prompt.version)-turn-\(index + 1)")
                 var metadata: [String: Any] = ["deadlineSeconds": record.request.mentorExecutionPolicy?.timeoutInterval ?? 0,
                     "elapsedSeconds": record.elapsedSeconds ?? 0, "hasResponse": record.data != nil,
-                    "hasTransportFailure": record.errorDomain != nil]
+                    "hasTransportFailure": record.providerDiagnostic?.hasPrefix("transport_") == true]
                 if let domain = record.errorDomain { metadata["errorDomain"] = domain }
                 if let code = record.errorCode { metadata["errorCode"] = code }
                 if let kind = record.failureKind { metadata["failureKind"] = kind }
+                if let diagnostic = record.providerDiagnostic { metadata["providerDiagnostic"] = diagnostic }
                 if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
                     let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
                     attachment.name = "\(caseID)-v\(record.request.prompt.version)-turn-\(index + 1)-metadata"
@@ -336,6 +338,7 @@ final class LiveGLMAcceptanceTests: XCTestCase {
                 if let domain = record.errorDomain { metadata["errorDomain"] = domain }
                 if let code = record.errorCode { metadata["errorCode"] = code }
                 if let kind = record.failureKind { metadata["failureKind"] = kind }
+                if let diagnostic = record.providerDiagnostic { metadata["providerDiagnostic"] = diagnostic }
                 if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
                     let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
                     attachment.name = "mentor-criteria-v213-turn-\(index + 1)-transport-metadata"
@@ -453,6 +456,7 @@ final class LiveGLMAcceptanceTests: XCTestCase {
                 "requestTimeoutSeconds": configuration.requestTimeout, "automaticRetries": configuration.maxRetryAttempts]
             if let domain = capture.errorDomain { metadata["errorDomain"] = domain }
             if let code = capture.errorCode { metadata["errorCode"] = code }
+            if let diagnostic = capture.providerDiagnostic { metadata["providerDiagnostic"] = diagnostic }
             if let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]) {
                 let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
                 attachment.name = "direct-help-v129-reversible-stream-metadata"
@@ -1827,11 +1831,8 @@ extension LiveGLMAcceptanceTests {
             return data
         } catch {
             // Report only error type/domain/code, never request headers or credentials.
-            if case LLMClientError.httpStatus(let status, let data) = error {
-                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let providerError = object?["error"] as? [String: Any]
-                let providerCode = providerError?["code"].map { String(describing: $0) } ?? "unknown"
-                print("Mentor live HTTP failure: \(caseID), status=\(status), provider_code=\(providerCode)")
+            if let error = error as? LLMClientError {
+                print("Mentor live provider failure: \(caseID), diagnostic=\(error.safeDiagnosticCode)")
             }
             let underlying: Error
             if case LLMClientError.transport(let transport) = error { underlying = transport }
@@ -2015,6 +2016,7 @@ private final class LiveTodayStreamingCaptureClient: LLMClient, StreamingLLMClie
         var completed = false
         var errorDomain: String?
         var errorCode: Int?
+        var providerDiagnostic: String?
     }
     private let state = Locked(Capture())
     private let base: DirectGLMClient
@@ -2048,7 +2050,11 @@ private final class LiveTodayStreamingCaptureClient: LLMClient, StreamingLLMClie
                     let metadata: NSError
                     if case LLMClientError.transport(let underlying) = error { metadata = underlying as NSError }
                     else { metadata = error as NSError }
-                    state.withLock { $0.errorDomain = metadata.domain; $0.errorCode = metadata.code }
+                    state.withLock {
+                        $0.errorDomain = metadata.domain == NSURLErrorDomain ? NSURLErrorDomain : "unclassified"
+                        $0.errorCode = metadata.code
+                        $0.providerDiagnostic = (error as? LLMClientError)?.safeDiagnosticCode ?? "unclassified_error"
+                    }
                     continuation.finish(throwing: error)
                 }
             }
@@ -2121,6 +2127,7 @@ private final class LiveMentorStoreCaptureTransport: MentorTransport, LLMClient 
         var failureKind: String?
         var errorDomain: String?
         var errorCode: Int?
+        var providerDiagnostic: String?
     }
     let base: DirectGLMClient
     private(set) var records: [Record] = []
@@ -2143,8 +2150,9 @@ private final class LiveMentorStoreCaptureTransport: MentorTransport, LLMClient 
             let safeError: NSError
             if case LLMClientError.transport(let underlying) = error { safeError = underlying as NSError }
             else { safeError = error as NSError }
-            records[index].errorDomain = safeError.domain
+            records[index].errorDomain = safeError.domain == NSURLErrorDomain ? NSURLErrorDomain : "unclassified"
             records[index].errorCode = safeError.code
+            records[index].providerDiagnostic = (error as? LLMClientError)?.safeDiagnosticCode ?? "unclassified_error"
             throw error
         }
     }

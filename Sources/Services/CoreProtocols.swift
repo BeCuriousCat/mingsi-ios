@@ -1350,6 +1350,7 @@ enum LLMClientError: Error {
     case invalidResponse
     case incompleteResponse
     case providerResponseFailed
+    case providerStreamFailure(ProviderStreamFailure)
     case httpStatus(Int, Data)
     case encodingFailed(Error)
     case transport(Error)

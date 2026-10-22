@@ -1,0 +1,65 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "9F93EE80-68DF-4922-8A73-B0590F5143D4",
+        "deviceName" : "iPhone 17",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 3,
+      "passedTests" : 0,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.5.2",
+  "expectedFailures" : 0,
+  "failedTests" : 3,
+  "finishTime" : 1792691825.44,
+  "passedTests" : 0,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1792691780.079,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "failed - EOF must report an interrupted response",
+      "targetName" : "MingSiTests",
+      "testIdentifier" : 1,
+      "testIdentifierString" : "DirectGLMClientTests/testGenericChatEOFDoesNotTurnPartialTextIntoCompletedOrRetry()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/DirectGLMClientTests/testGenericChatEOFDoesNotTurnPartialTextIntoCompletedOrRetry",
+      "testName" : "testGenericChatEOFDoesNotTurnPartialTextIntoCompletedOrRetry()"
+    },
+    {
+      "failureText" : "failed - An HTTP-200 SSE error is still a failure",
+      "targetName" : "MingSiTests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "DirectGLMClientTests/testGenericChatInBandErrorDoesNotBecomeSuccessfulCompletion()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/DirectGLMClientTests/testGenericChatInBandErrorDoesNotBecomeSuccessfulCompletion",
+      "testName" : "testGenericChatInBandErrorDoesNotBecomeSuccessfulCompletion()"
+    },
+    {
+      "failureText" : "XCTAssertFalse failed",
+      "targetName" : "MingSiTests",
+      "testIdentifier" : 3,
+      "testIdentifierString" : "DirectGLMClientTests/testTransportUserMessageNeverEchoesSystemDiagnosticOrURL()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/DirectGLMClientTests/testTransportUserMessageNeverEchoesSystemDiagnosticOrURL",
+      "testName" : "testTransportUserMessageNeverEchoesSystemDiagnosticOrURL()"
+    }
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 3
+}
