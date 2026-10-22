@@ -1,6 +1,8 @@
 # MingSi vNext Real-Use Trial
 
-Status: READY  
+> Historical plan: this page records the earlier vNext simulator trial. It is not the current trial readiness or acceptance contract. Use the [long-term goal](mingsi-long-term-goal.md), [phone acceptance](mingsi-phone-acceptance.md), and [14-day owner trial](mingsi-mentor-m1-trial.md) for current work. No real-use observations were recorded here.
+
+Status: historical preparation; trial not started
 Window: 3-7 consecutive days  
 Scope: normal use on the fixed iPhone 17 Simulator, UDID `9F93EE80-68DF-4922-8A73-B0590F5143D4`.
 
