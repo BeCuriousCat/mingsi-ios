@@ -2,6 +2,93 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testQuickCaptureProtectsUnsavedTextAndAllowsExplicitDiscardInNormalAndLargestText() throws {
+        var normalDescriptionHeight: CGFloat = 0
+        for largest in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                "-AppleInterfaceStyle", largest ? "Dark" : "Light", "-UIPreferredContentSizeCategory",
+                largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let open = app.buttons["mentor.quick-capture.open-action"]
+            XCTAssertTrue(open.waitForExistence(timeout: 15))
+            scrollTo(open, in: app)
+            open.tap()
+            let input = app.textViews["today.captures.input"]
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            input.tap()
+            input.typeText("Unsaved thought: compare the alternatives.")
+            let typed = try XCTUnwrap(input.value as? String)
+            let description = app.staticTexts["先把想法留下，稍后再决定是否整理。"]
+            if largest {
+                XCTAssertGreaterThan(description.frame.height, normalDescriptionHeight, "Capture sheet must inherit the selected accessibility text size")
+            } else { normalDescriptionHeight = description.frame.height }
+            app.buttons["today.captures.input.keyboard-dismiss"].tap()
+            attachVoiceScreenshot(app, name: "capture-unsaved-before-close-" + (largest ? "dark-largest" : "light"))
+            let close = app.navigationBars["今日闪念"].buttons.matching(NSPredicate(format: "label IN %@", ["完成", "关闭"])).firstMatch
+            close.tap()
+            let keep = app.buttons["继续编辑"]
+            guard keep.waitForExistence(timeout: 5) else {
+                attachVoiceScreenshot(app, name: "capture-unsaved-close-lost-draft")
+                XCTFail("Closing a typed capture must offer to keep editing before discarding it")
+                app.terminate()
+                return
+            }
+            XCTAssertTrue(app.buttons["丢弃并关闭"].exists)
+            attachVoiceScreenshot(app, name: "capture-unsaved-confirmation-" + (largest ? "dark-largest" : "light"))
+            keep.tap()
+            XCTAssertEqual(input.value as? String, typed)
+            close.tap()
+            app.buttons["丢弃并关闭"].tap()
+            XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+            scrollTo(open, in: app)
+            open.tap()
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            XCTAssertNotEqual(input.value as? String, typed)
+            app.buttons["today.captures.input.keyboard-dismiss"].tap()
+            // An empty input closes immediately without a redundant dialog.
+            close.tap()
+            XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+            XCTAssertFalse(keep.exists)
+            // Unaccepted speech is also unsaved input, even with an empty editor.
+            scrollTo(open, in: app)
+            open.tap()
+            XCTAssertTrue(input.waitForExistence(timeout: 5))
+            let voice = app.buttons["today.captures.input.voice-toggle"]
+            voice.tap()
+            assertVoiceLabel("停止语音输入", voice)
+            close.tap()
+            XCTAssertTrue(keep.waitForExistence(timeout: 5))
+            keep.tap()
+            assertVoiceLabel("停止语音输入", voice)
+            voice.tap()
+            assertVoiceLabel("取消语音识别", voice)
+            voice.tap()
+            assertVoiceLabel("开始语音输入", voice)
+            voice.tap()
+            assertVoiceLabel("停止语音输入", voice)
+            voice.tap()
+            let review = app.textFields["today.captures.input.voice-review"]
+            XCTAssertTrue(review.waitForExistence(timeout: 5))
+            let transcript = try XCTUnwrap(review.value as? String)
+            close.tap()
+            XCTAssertTrue(keep.waitForExistence(timeout: 5))
+            keep.tap()
+            XCTAssertEqual(review.value as? String, transcript)
+            app.buttons["today.captures.input.voice-accept"].tap()
+            XCTAssertEqual(input.value as? String, transcript)
+            let save = app.buttons["today.captures.save-action"]
+            scrollTo(save, in: app)
+            save.tap()
+            XCTAssertTrue(app.staticTexts[transcript].waitForExistence(timeout: 5))
+            close.tap()
+            XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+            XCTAssertFalse(keep.exists, "A fully saved capture should close without a discard warning")
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testPerspectiveGuideShowsKnownPositionsInNormalAndLargestText() throws {
         for largest in [false, true] {
             let app = productionStartupApp(extra: ["--today-lens-library-ui-fixture"])

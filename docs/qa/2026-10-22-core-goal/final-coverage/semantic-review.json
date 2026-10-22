@@ -1,0 +1,109 @@
+{
+  "prompt_version": "1.31.0",
+  "executed_requests": 5,
+  "semantic_passes": 5,
+  "provider_failures": 0,
+  "rows": [
+    {
+      "case_id": "evidence-silence-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分明说的人手限制与不重视的推断",
+          "pass": true
+        },
+        {
+          "goal": "用现有材料回答，不要求调查动机",
+          "pass": true
+        },
+        {
+          "goal": "不把推测断言为事实",
+          "pass": true
+        }
+      ],
+      "quote": "就你目前知道的情况，什么具体言行支持“他根本不重视我的工作”，而不只是“他认为这周人手不足，需要延期”？",
+      "reason": "重复采样仍聚焦既有言行对动机推断的支持，缺证据允许态度未知。",
+      "reviewer": "Codex AI"
+    },
+    {
+      "case_id": "first-principles-meeting-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分进度同步目标、保密硬约束和20页惯例",
+          "pass": true
+        },
+        {
+          "goal": "从已有要素审视一个假定规则",
+          "pass": true
+        },
+        {
+          "goal": "不要求抽象从零推导或突破保密约束",
+          "pass": true
+        }
+      ],
+      "quote": "不以页数为标准，你会用什么具体标准判断一种汇报形式已足够让负责人在周五前掌握进度和阻塞？",
+      "reason": "重复采样仍以负责人掌握信息的具体标准检验页数必要性；未复述保密要求，也未给出违反要求的方案。",
+      "reviewer": "Codex AI"
+    },
+    {
+      "case_id": "new-perspective-oncall-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "比较及时发布与有人处理问题的已知关注点",
+          "pass": true
+        },
+        {
+          "goal": "不用是否反对成果的动机核查替代换位",
+          "pass": true
+        },
+        {
+          "goal": "不强迫认同延期、不建议立刻发布或新增任务",
+          "pass": true
+        }
+      ],
+      "quote": "把你的“周五就发”和他的“有人能处理问题时再发”并列来看，你会怎样描述你们需要协调的分歧，而不把它解释为对成果的态度？",
+      "reason": "比较周五发布诉求与故障处理覆盖的已知条件；没有要求认同延期或新增行动，本轮实际通过生产门。",
+      "reviewer": "Codex AI"
+    },
+    {
+      "case_id": "perspective-silence-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "准确表述双方已知目标与限制的不同侧重",
+          "pass": true
+        },
+        {
+          "goal": "体现换位理解而非重复证据核对",
+          "pass": true
+        },
+        {
+          "goal": "不编造善意或要求认同延期",
+          "pass": true
+        }
+      ],
+      "quote": "你想按期展示成果，他以“这周只有两个人值班”为由请求延期：你认为双方的分歧主要在于成果是否重要，还是当前人员条件下的演示时机，或目前还分不清？",
+      "reason": "重复采样仍比较成果价值与人员/排期分歧，未知可保留，不读心。",
+      "reviewer": "Codex AI"
+    },
+    {
+      "case_id": "perspective-silence-turn-2",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "保留理解与认同的区别",
+          "pass": true
+        },
+        {
+          "goal": "明确停止后不追问、不布置新对话",
+          "pass": true
+        }
+      ],
+      "quote": "questions=[], explanation=null",
+      "reason": "另一条实际首问进入同一draft，停止回答后仍无问题和解释。",
+      "reviewer": "Codex AI"
+    }
+  ]
+}

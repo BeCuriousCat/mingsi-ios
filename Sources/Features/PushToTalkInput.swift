@@ -11,6 +11,11 @@ struct SpeechInputDraft: Equatable {
     var preview = ""
     private(set) var message: String?
 
+    /// Pending recognition is user input even before it is added to the editor.
+    var hasPendingInput: Bool {
+        isActive || !preview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     mutating func begin() {
         isActive = true
         isReviewing = false
@@ -146,6 +151,7 @@ struct PushToTalkInput: View {
     var placeholder: String = "说点什么…"
     var accessibilityIdentifier: String?
     var focusBinding: Binding<Bool>?
+    var pendingSpeechBinding: Binding<Bool>?
     var usesTextEditor = false
     var autofocus = false
     @Environment(\.scenePhase) private var scenePhase
@@ -160,6 +166,7 @@ struct PushToTalkInput: View {
         placeholder: String = "说点什么…",
         accessibilityIdentifier: String? = nil,
         focusBinding: Binding<Bool>? = nil,
+        pendingSpeechBinding: Binding<Bool>? = nil,
         usesTextEditor: Bool = false,
         autofocus: Bool = false,
         speech: SpeechTranscriptionService? = nil
@@ -168,6 +175,7 @@ struct PushToTalkInput: View {
         self.placeholder = placeholder
         self.accessibilityIdentifier = accessibilityIdentifier
         self.focusBinding = focusBinding
+        self.pendingSpeechBinding = pendingSpeechBinding
         self.usesTextEditor = usesTextEditor
         self.autofocus = autofocus
         _controller = StateObject(wrappedValue: SpeechInputController(speech: speech ?? SpeechTranscriptionService.inputService()))
@@ -220,7 +228,13 @@ struct PushToTalkInput: View {
             guard textFieldFocused != focused else { return }
             textFieldFocused = focused
         }
-        .onAppear { textFieldFocused = externalFocusValue }
+        .onChange(of: draft.hasPendingInput) { _, pending in
+            pendingSpeechBinding?.wrappedValue = pending
+        }
+        .onAppear {
+            textFieldFocused = externalFocusValue
+            pendingSpeechBinding?.wrappedValue = draft.hasPendingInput
+        }
         .task(id: autofocus) {
             guard autofocus else { return }
             // Focus after the native editor has mounted.
@@ -236,6 +250,7 @@ struct PushToTalkInput: View {
         }
         .onDisappear {
             controller.discard()
+            pendingSpeechBinding?.wrappedValue = false
         }
     }
 

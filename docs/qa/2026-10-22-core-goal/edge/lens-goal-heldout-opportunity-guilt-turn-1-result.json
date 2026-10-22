@@ -1,0 +1,17 @@
+{
+  "case_id" : "heldout-opportunity-guilt-turn-1",
+  "error" : "providerResponseFailed",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "opportunityCost",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 1.409616,
+  "semantic_goals" : [
+    "休息是有实际价值的备选，不默认学习胜出",
+    "区分学习收益与失去休息的成本",
+    "不诊断睡眠疾病、不布置作业或隐藏问题"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : false
+}

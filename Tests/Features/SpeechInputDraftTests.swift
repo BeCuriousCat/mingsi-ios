@@ -2,6 +2,30 @@ import XCTest
 @testable import MingSi
 
 final class SpeechInputDraftTests: XCTestCase {
+    func testExitProtectionTracksRecordingAndUnacceptedRecognitionUntilExplicitResolution() {
+        var draft = SpeechInputDraft()
+        XCTAssertFalse(draft.hasPendingInput)
+        draft.begin()
+        XCTAssertTrue(draft.hasPendingInput)
+        draft.receive(.recording(text: "尚未添加的闪念"))
+        draft.requestStop()
+        XCTAssertTrue(draft.hasPendingInput)
+        draft.receive(.interrupted(text: "尚未添加的闪念"))
+        XCTAssertTrue(draft.hasPendingInput, "An interrupted transcript must also protect the containing sheet")
+        var text = "手写片段"
+        draft.accept(into: &text)
+        XCTAssertEqual(text, "手写片段\n尚未添加的闪念")
+        XCTAssertFalse(draft.hasPendingInput)
+        draft.begin()
+        draft.receive(.final(text: "第二条"))
+        XCTAssertTrue(draft.hasPendingInput)
+        draft.cancel()
+        XCTAssertFalse(draft.hasPendingInput)
+        draft.begin()
+        draft.receive(.failed("microphone_permission_denied"))
+        XCTAssertFalse(draft.hasPendingInput, "An empty permission error must not trap the user in a sheet")
+    }
+
     func testCancelPreservesDraftAndRejectsLateResults() {
         var draft = SpeechInputDraft()
         var text = "原来的记录"

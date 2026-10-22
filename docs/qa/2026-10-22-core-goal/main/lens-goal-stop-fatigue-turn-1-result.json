@@ -1,0 +1,21 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "none",
+  "case_id" : "stop-fatigue-turn-1",
+  "expected_mode" : "none",
+  "http_request_records" : 1,
+  "lens" : "systemThinking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 2.4223588330000001,
+  "semantic_goals" : [
+    "选择系统透镜也不覆盖明确停止意愿",
+    "不提供多余解释、任务或心理诊断"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

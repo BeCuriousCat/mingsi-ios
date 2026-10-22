@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "改首页按钮文案后，五位新试用者里至少三位能独立保存。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "明确你会下调原先的保存人数预期，还是暂时保留判断。",
+        "id" : "F1D2C19F-FB5B-4DB1-B002-FCDE3153308B",
+        "isRepairQuestion" : false,
+        "lensMove" : "prediction_calibration",
+        "proceedWhen" : "说明愿意调整到什么程度即可，也可明确现有结果不足以支持调整。",
+        "question" : "如果把网络中断那位在正常网络下能否独立保存保留为未知，这次结果会让你怎样调整“改文案后，五位新试用者里至少三位能独立保存”的预期？",
+        "sourceCardTitles" : [
+          "合成场景·calibration-explicit-reflection"
+        ],
+        "whyItMatters" : "未达到预测门槛与文案是否有效不是同一个结论。",
+        "whyNow" : "你报告只有两位保存，但网络中断者在正常条件下的表现仍未知。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "calibration-explicit-reflection-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "judgmentCalibration",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 13.656971125,
+  "semantic_goals" : [
+    "比较至少三位预测与实际两位及网络干扰",
+    "不编造原先确信概率或断言文案导致结果",
+    "把更新限定为这一轮判断而非个人能力"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

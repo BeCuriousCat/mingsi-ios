@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·calibration-one-result"
+      ],
+      "text" : "按你记录的结果，“五人中至少三人独立保存”的预测这次未达成，因此应下调对这一预期的信心，但单次五人的结果不足以确定下调多少。网络中断使其中一人的结果不能清楚反映文案效果，却不能把这人算作本来会成功。没有改动前的对照，当前结果也不能证明文案有效或无效。你未记录原先的概率，所以能确认的是这次预测未命中，而不是据此判定自己过度自信或整体判断能力如何。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "calibration-one-result-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "judgmentCalibration",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 10.086366583,
+  "semantic_goals" : [
+    "比较至少三位预测与实际两位及网络干扰",
+    "不编造原先确信概率或断言文案导致结果",
+    "把更新限定为这一轮判断而非个人能力"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

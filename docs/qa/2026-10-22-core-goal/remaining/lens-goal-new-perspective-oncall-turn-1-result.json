@@ -1,0 +1,17 @@
+{
+  "case_id" : "new-perspective-oncall-turn-1",
+  "error" : "providerResponseFailed",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 1.377351709,
+  "semantic_goals" : [
+    "比较及时发布与有人处理问题的已知关注点",
+    "不用是否反对成果的动机核查替代换位",
+    "不强迫认同延期、不建议立刻发布或新增任务"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : false
+}

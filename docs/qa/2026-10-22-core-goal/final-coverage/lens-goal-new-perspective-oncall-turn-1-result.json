@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "这次分歧应如何理解为双方发布诉求与问题处理条件的差异，而非对成果的态度冲突",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "更新对这次分歧焦点的判断：双方在发布安排上需要协调什么。",
+        "id" : "6B8366E6-4406-466D-8E64-686B7BFFC1A2",
+        "isRepairQuestion" : false,
+        "lensMove" : "alternative_explanation",
+        "proceedWhen" : "能用双方已表达的诉求描述分歧即可，未说明的理由可以保持未知。",
+        "question" : "把你的“周五就发”和他的“有人能处理问题时再发”并列来看，你会怎样描述你们需要协调的分歧，而不把它解释为对成果的态度？",
+        "sourceCardTitles" : [
+          "合成场景·new-perspective-oncall"
+        ],
+        "whyItMatters" : "区分发布诉求与支持条件，能避免把时间安排的分歧扩大为对成果的否定。",
+        "whyNow" : "你已区分他说的话与自己的解读，但还未比较双方明说的侧重点。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "new-perspective-oncall-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 53.084437334,
+  "semantic_goals" : [
+    "比较及时发布与有人处理问题的已知关注点",
+    "不用是否反对成果的动机核查替代换位",
+    "不强迫认同延期、不建议立刻发布或新增任务"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

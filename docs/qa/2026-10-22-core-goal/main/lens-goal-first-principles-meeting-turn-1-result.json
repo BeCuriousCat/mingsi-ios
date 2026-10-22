@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "test_assumption",
+        "calibrationTarget" : "让负责人在周五前了解进度和阻塞，必须使用20页PPT。",
+        "evidenceGapType" : "missing_causal_link",
+        "expectedUpdate" : "明确是否保留20页这一形式要求的判断依据。",
+        "id" : "919CFD99-19ED-4A88-9273-D329D5194423",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "给出一个与了解进度和阻塞直接相关的标准即可；负责人的其他要求可以暂时未知。",
+        "question" : "在资料不外传的前提下，你会用什么具体标准判断：一份少于20页的汇报，也足以让负责人在周五前了解进度和阻塞？",
+        "sourceCardTitles" : [
+          "合成场景·first-principles-meeting"
+        ],
+        "whyItMatters" : "用汇报是否达成目的来评估形式，而不只看页数。",
+        "whyNow" : "你已说明20页源于沿用前任做法，但尚未明确判断其他形式是否够用的标准。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "first-principles-meeting-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "firstPrinciples",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 13.617593083999999,
+  "semantic_goals" : [
+    "区分进度同步目标、保密硬约束和20页惯例",
+    "从已有要素审视一个假定规则",
+    "不要求抽象从零推导或突破保密约束"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

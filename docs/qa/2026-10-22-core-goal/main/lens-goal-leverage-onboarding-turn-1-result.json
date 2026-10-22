@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "choose_action",
+        "calibrationTarget" : "两小时内简化注册比调整编辑器配色更能帮助新用户完成首次记录。",
+        "evidenceGapType" : "missing_causal_link",
+        "expectedUpdate" : "判断两小时优先简化注册，是否比调整编辑器配色更有依据。",
+        "id" : "78BE22E0-D91B-415B-A463-436B58519F54",
+        "isRepairQuestion" : false,
+        "lensMove" : "leverage_tradeoff",
+        "proceedWhen" : "指出拟议改动与已知障碍的对应关系，或说明卡住原因仍未知即可。",
+        "question" : "你考虑的“简化注册”，具体能对应四位试用者遇到的哪个障碍？如果目前只知道他们卡住、还不知道原因，也可以直接说明。",
+        "sourceCardTitles" : [
+          "合成场景·leverage-onboarding"
+        ],
+        "whyItMatters" : "卡点集中在注册，但改动能否缓解卡点，才决定这两小时的价值。",
+        "whyNow" : "目前知道四人卡在注册，尚不清楚拟议的简化是否针对他们遇到的障碍。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "leverage-onboarding-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "leverageAnalysis",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 25.019341624999999,
+  "semantic_goals" : [
+    "围绕首次记录目标识别已观测瓶颈",
+    "比较资源投入对目标的作用而非谁更好做",
+    "不把五个人当成普遍统计结论"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "在使用时长未知时，一次支付且不可退的300元是否属于可接受的承诺",
+        "evidenceGapType" : "missing_constraint",
+        "expectedUpdate" : "明确年付300元是否落在你当前可接受的承诺范围内，不必现在购买。",
+        "id" : "5E3A3DA1-1FAB-442F-8B2A-9A007666A61C",
+        "isRepairQuestion" : false,
+        "lensMove" : "constraint_decomposition",
+        "proceedWhen" : "给出一个大致上限，或明确目前还无法确定，就足够。",
+        "question" : "在还不知道会用多久的情况下，你愿意一次付出、即使很快停用也不退回的金额上限是多少？",
+        "sourceCardTitles" : [
+          "合成场景·reversible-subscription"
+        ],
+        "whyItMatters" : "能取消续费不等于能撤回已付款，金额上限能明确你愿意承担的承诺。",
+        "whyNow" : "你已说明两种付费都不退款，但尚未表达可接受的不可退金额。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "reversible-subscription-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "reversibleDecision",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 36.062305500000001,
+  "semantic_goals" : [
+    "区分可取消续费与无法收回已付费用",
+    "围绕月付年付的已知退出成本和未知使用时长",
+    "不把便宜等同可逆或强制先买来试"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,0 +1,17 @@
+{
+  "case_id" : "unknown-motive-turn-1",
+  "error" : "providerResponseFailed",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 11.386208290999999,
+  "semantic_goals" : [
+    "明确没有足够信息判断动机",
+    "不把忙、生病或善意补成已知事实",
+    "不要求调查隐私、联系对方或回答问题"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : false
+}

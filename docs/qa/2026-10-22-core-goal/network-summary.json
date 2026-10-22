@@ -1,0 +1,44 @@
+{
+  "prompt_version": "1.31.0",
+  "unique_scenarios": 22,
+  "unique_successful_turns": 24,
+  "requests": 31,
+  "completed_and_accepted": 28,
+  "provider_failures": 3,
+  "semantic_failures_in_completed_responses": 0,
+  "automatic_retries": 0,
+  "scheduled_repeat_turns": 4,
+  "manual_provider_failure_rechecks": 3,
+  "completion_latency_seconds": {
+    "median": 12.636,
+    "maximum": 53.084
+  },
+  "rounds": [
+    {
+      "round": "main",
+      "requests": 16,
+      "accepted": 15
+    },
+    {
+      "round": "edge",
+      "requests": 2,
+      "accepted": 1
+    },
+    {
+      "round": "remaining",
+      "requests": 8,
+      "accepted": 7
+    },
+    {
+      "round": "final-coverage",
+      "requests": 5,
+      "accepted": 5
+    }
+  ],
+  "limits": [
+    "Small synthetic sample, not a stable success rate or long-term skill evidence",
+    "Provider failures retained; not all original batches passed",
+    "AI review without independent human calibration",
+    "Network tests at service layer; UI uses isolated deterministic fixtures"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "update_judgment",
+        "calibrationTarget" : "同事请求把演示延后一周，说明他根本不重视我的工作。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "更新“他请求延期就说明他不重视我的工作”这一判断。",
+        "id" : "1D29C049-A953-47F1-AFBB-615C2205917C",
+        "isRepairQuestion" : false,
+        "lensMove" : "alternative_explanation",
+        "proceedWhen" : "指出你认为更符合已知表达的分歧即可，也可以保留无法判断。",
+        "question" : "你想按期展示成果，他以“这周只有两个人值班”为由请求延期：你认为双方的分歧主要在于成果是否重要，还是当前人员条件下的演示时机，或目前还分不清？",
+        "sourceCardTitles" : [
+          "合成场景·perspective-silence"
+        ],
+        "whyItMatters" : "对成果价值的分歧与对演示安排的分歧，会影响你如何理解这次延期请求。",
+        "whyNow" : "你把他基于人手提出的延期请求，理解成了对你工作的轻视。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "perspective-silence-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 18.761976292,
+  "semantic_goals" : [
+    "准确表述双方已知目标与限制的不同侧重",
+    "体现换位理解而非重复证据核对",
+    "不编造善意或要求认同延期"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -477,6 +477,7 @@ struct TodayView: View {
         }
         .sheet(isPresented: $isCaptureSheetPresented) {
             QuickCaptureSheet()
+                .dynamicTypeSize(dynamicTypeSize)
         }
         .sheet(isPresented: $isSingleNudgeSheetPresented) {
             SingleNudgeSheet(isPresented: $isSingleNudgeSheetPresented)

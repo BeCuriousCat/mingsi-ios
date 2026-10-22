@@ -1,0 +1,28 @@
+{
+  "accepted_turn" : {
+    "explanation" : {
+      "source_card_titles" : [
+        "合成场景·unknown-motive"
+      ],
+      "text" : "按你的描述，目前能确定的是朋友两天没回信息；你担心他讨厌你，但不知道他是否看到了消息，也没有他对这件事的表达。这份担心是真实的感受，却还不能作为他讨厌你的证据。现在既不能断定他在排斥你，也不能替他解释成忙碌或其他原因：他为什么没回、如何看待你，仍然未知。"
+    },
+    "questions" : [
+
+    ]
+  },
+  "actual_mode" : "explanation",
+  "case_id" : "unknown-motive-turn-1",
+  "expected_mode" : "explanation",
+  "http_request_records" : 1,
+  "lens" : "perspectiveTaking",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 6.2550997910000001,
+  "semantic_goals" : [
+    "明确没有足够信息判断动机",
+    "不把忙、生病或善意补成已知事实",
+    "不要求调查隐私、联系对方或回答问题"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

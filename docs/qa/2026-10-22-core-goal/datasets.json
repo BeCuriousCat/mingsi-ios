@@ -1,0 +1,26 @@
+[
+  {
+    "path": "edge-cases.json",
+    "sha256": "e54eac1b2aef943f531998da28307b9ed43e2a45da8eeefe4349d61c56a5ac2d",
+    "scenarios": 7,
+    "turns": 7
+  },
+  {
+    "path": "final-coverage-cases.json",
+    "sha256": "b0b34c4deaf6ebbe0c5475b7db52fcdb8e1df7e854c483927fc6e3ad53218185",
+    "scenarios": 4,
+    "turns": 5
+  },
+  {
+    "path": "remaining-cases.json",
+    "sha256": "2c687b7b8ae8bd135cd8b49abb9e398070757a82762ec176c2a47cd197ed55b0",
+    "scenarios": 8,
+    "turns": 8
+  },
+  {
+    "path": "repeat-cases.json",
+    "sha256": "1b36b69ee35da7e47a99db8df0b96a297ec90a734b5f00383c792c19d453846c",
+    "scenarios": 3,
+    "turns": 4
+  }
+]

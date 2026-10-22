@@ -157,6 +157,7 @@ struct AppRootView: View {
 
 private struct MentorPreparationView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showsCapture = false
 
     var body: some View {
@@ -188,7 +189,9 @@ private struct MentorPreparationView: View {
             .background(DS.background).foregroundStyle(DS.ink)
             .navigationTitle("明思").navigationBarTitleDisplayMode(.inline)
         }
-        .sheet(isPresented: $showsCapture) { QuickCaptureSheet().environmentObject(store) }
+        .sheet(isPresented: $showsCapture) {
+            QuickCaptureSheet().environmentObject(store).dynamicTypeSize(dynamicTypeSize)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .mingsiOpenTodayCapture)) { _ in
             showsCapture = true
         }

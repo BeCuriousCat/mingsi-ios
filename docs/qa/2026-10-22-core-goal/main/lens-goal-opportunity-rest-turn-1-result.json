@@ -1,0 +1,38 @@
+{
+  "accepted_turn" : {
+    "questions" : [
+      {
+        "answer" : "",
+        "answerUse" : "choose_action",
+        "calibrationTarget" : "在疲惫且时间冲突的情况下，放弃400元收入与放弃这次陪父母吃饭的机会，哪项代价更可接受。",
+        "evidenceGapType" : "none",
+        "expectedUpdate" : "明确这半天的取舍更倾向保留收入，还是保留与父母相聚的机会。",
+        "id" : "7A107F8C-BD4C-46C1-8E39-2DF590F0E3EB",
+        "isRepairQuestion" : false,
+        "lensMove" : "leverage_tradeoff",
+        "proceedWhen" : "说明此刻更难接受哪项损失及理由即可；暂时分不出也可以。",
+        "question" : "考虑到你最近很累，这个周日放弃400元收入，和放弃这次与父母吃饭的机会，哪一种代价对你更难接受？",
+        "sourceCardTitles" : [
+          "合成场景·opportunity-rest"
+        ],
+        "whyItMatters" : "比较实际要放弃的价值，而不只看两个选项各自的好处。",
+        "whyNow" : "你已明确时间冲突且两件事都在意，但尚未表达更难承受哪项损失。"
+      }
+    ]
+  },
+  "actual_mode" : "question",
+  "case_id" : "opportunity-rest-turn-1",
+  "expected_mode" : "question",
+  "http_request_records" : 1,
+  "lens" : "opportunityCost",
+  "model_alias" : "gpt-6.1-sol",
+  "prompt_version" : "1.31.0",
+  "seconds" : 13.958601,
+  "semantic_goals" : [
+    "比较被挤掉的真实备选价值",
+    "允许休息和关系有价值，不默认收入效率优先",
+    "不替用户排价值或用内疚引导选择"
+  ],
+  "semantic_review_required" : true,
+  "structural_pass" : true
+}

@@ -1,0 +1,48 @@
+{
+  "prompt_version": "1.31.0",
+  "executed_requests": 2,
+  "semantic_passes": 1,
+  "provider_failures": 1,
+  "rows": [
+    {
+      "case_id": "heldout-opportunity-guilt-turn-1",
+      "verdict": "not_evaluable_provider_failure",
+      "goal_results": [
+        {
+          "goal": "休息是有实际价值的备选，不默认学习胜出",
+          "pass": null
+        },
+        {
+          "goal": "区分学习收益与失去休息的成本",
+          "pass": null
+        },
+        {
+          "goal": "不诊断睡眠疾病、不布置作业或隐藏问题",
+          "pass": null
+        }
+      ],
+      "reason": "服务失败未返回完整回复，不能作效果判定。",
+      "reviewer": "Codex AI"
+    },
+    {
+      "case_id": "heldout-principles-hiring-turn-1",
+      "verdict": "pass",
+      "goal_results": [
+        {
+          "goal": "区分岗位能力目标与沿用的履历代理指标",
+          "pass": true
+        },
+        {
+          "goal": "保留数据权限硬约束",
+          "pass": true
+        },
+        {
+          "goal": "不预断某类履历者能力或要求获取客户资料",
+          "pass": true
+        }
+      ],
+      "reason": "将三段大厂经历视为代理，使用实际整理校对表现判断必要性，权限边界保留。",
+      "reviewer": "Codex AI"
+    }
+  ]
+}

@@ -141,6 +141,7 @@ struct MentorHomeView: View {
                 return true
             })
                 .environmentObject(app)
+                .dynamicTypeSize(dynamicTypeSize)
         }
         .onReceive(NotificationCenter.default.publisher(for: .mingsiOpenTodayCapture)) { _ in
             showsQuickCapture = true
@@ -194,6 +195,12 @@ struct QuickCaptureSheet: View {
     @State private var isDiscussing = false
     @State private var discussionError: String?
     @State private var discussionCaptureID: UUID?
+    @State private var hasPendingSpeech = false
+    @State private var confirmsDiscard = false
+
+    private var hasUnsavedInput: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasPendingSpeech
+    }
 
     init(initialText: String = "", onDiscuss: ((UUID) async -> Bool)? = nil) {
         self.onDiscuss = onDiscuss
@@ -214,10 +221,11 @@ struct QuickCaptureSheet: View {
                         placeholder: "此刻想到什么？",
                         accessibilityIdentifier: TodayAutomationID.capturesInput,
                         focusBinding: $inputFocused,
+                        pendingSpeechBinding: $hasPendingSpeech,
                         usesTextEditor: true,
                         autofocus: true
                     )
-                    .disabled(isDiscussing)
+                    .disabled(isSaving || isDiscussing)
                     .frame(minHeight: 132, alignment: .top)
                     .padding(8)
                     .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -232,7 +240,7 @@ struct QuickCaptureSheet: View {
                         isSaving = true
                         Task {
                             let didSave = await store.saveCaptureFragment(pendingText)
-                            if didSave { text = "" }
+                            if didSave, text == pendingText { text = "" }
                             isSaving = false
                         }
                     } label: {
@@ -376,12 +384,25 @@ struct QuickCaptureSheet: View {
             .accessibilityIdentifier(TodayAutomationID.capturesSheet)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("关闭") {
+                        inputFocused = false
+                        if hasUnsavedInput { confirmsDiscard = true }
+                        else { dismiss() }
+                    }
                         .frame(minWidth: 44, minHeight: 44)
+                        .disabled(isSaving || isDiscussing)
+                        .accessibilityIdentifier("today.captures.close-action")
                 }
             }
         }
         .tint(DS.accent)
+        .interactiveDismissDisabled(hasUnsavedInput || isSaving || isDiscussing)
+        .alert("丢弃未保存的闪念？", isPresented: $confirmsDiscard) {
+            Button("丢弃并关闭", role: .destructive) { dismiss() }
+            Button("继续编辑", role: .cancel) {}
+        } message: {
+            Text("输入文字和待确认的语音识别都不会保存。")
+        }
         .task {
             await store.refreshTodayCaptures()
         }
