@@ -1,0 +1,58 @@
+[
+  {
+    "file": "screenshots/0-7902B9D7-B155-4078-BD74-36C63F20D8A5.png",
+    "name": "permissions-dark-largest_0_70600E9C-438B-43B2-BA38-F2D9293DF8B6.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "abecc19f9a1bcf149fee631c123b88a3a5a5585e1d17ea6bc486f289381b7b93",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/1-7E1A53F5-88A5-4A17-9A6D-8119F0E0F30F.png",
+    "name": "health-permission-dark-largest_0_26FBCC52-24B2-4AF2-9D96-05D53EAB15FF.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "f652d68858f071ad3e097617dcb3f7439d91afbe25be893b1e7414c83305f575",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/2-A24F8AAF-CB82-4562-9C6A-EC8800E7D12F.png",
+    "name": "calendar-permission-dark-largest_0_1A963C5C-1CAD-4F89-B917-F65C8A87CF0A.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "b0b280839d471f2adc736e03403dcd62eb95a2cb78a6a505dc4325d4de014716",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/3-F7ED8729-DE0B-4384-A8C2-966AC50223E9.png",
+    "name": "build-identity-dark-largest_0_6BC30877-48A4-4272-A5E9-02C64FDE1C9A.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "9c07a31b7ba4628129422bed4fa10a618b71c07fd3f017ff08ed98cb09676f28",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/4-98993284-B705-4154-B242-7345C1D81F99.png",
+    "name": "permissions-light-normal_0_E724160F-2DE1-41D5-8573-49CD49C05B11.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "54438f48d4fe3c6591f4177a86c7ac22fd9cba149032ccfa3b7b3c2824612fea",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/5-16905BFA-F5DB-40D7-B417-4A5052585230.png",
+    "name": "health-permission-light-normal_0_14EE20E1-23B5-423E-8E05-1ACF03979EC5.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "39ca9d55e8f9a79366388418338204ad86e45b38cc704073b050b850eb744978",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/6-9CAF6413-2489-4B30-BE30-4302B46AAE20.png",
+    "name": "calendar-permission-light-normal_0_AEA1A285-EE94-4540-9743-0C32C3779021.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "f62159bc559b0d3a9c82c7014d59afbd3df8bf21bfe4d37f6811c3577c347a41",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  },
+  {
+    "file": "screenshots/7-75D09742-88C5-4AF6-961D-144F200F366E.png",
+    "name": "build-identity-light-normal_0_E034918E-F188-411F-B55F-323E5AE51562.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "0d4b44e1aab122128119bab5040ce4508d64242ff2aa568aef9965a699b00f14",
+    "review": "Controls and messages visible in captured scroll positions; dark largest health actions vertical and full width; version title/summary vertical, hash wraps. Scrolling remains necessary."
+  }
+]

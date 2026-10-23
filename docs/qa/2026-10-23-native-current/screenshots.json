@@ -1,0 +1,86 @@
+[
+  {
+    "file": "screenshots/add-to-home-menu.png",
+    "sha256": "f1ef26d0cea5ccce8a9d4d6c6d1c5e0c23d0304634a194cd3f1031f401dd60ef",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/before-process-close.png",
+    "sha256": "d07c5ebd9102f7238ecc0f2cfe91e45ceb446b4015d9429e7b9c5f9783f5df97",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/cold-shortcut.png",
+    "sha256": "b42d126d7141e12bdd73b564ec821a91e1f9e8c408ab8feeb7b61ce02fcd5dc4",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/draft-entered.png",
+    "sha256": "fc921d96adce1195a8a3ad6f17646b5637ff83f0dcba334c9e4d0cd413cdebd7",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/home-shortcut-cold-draft.png",
+    "sha256": "bdb1ce39e1a43c519e2f72737ccc2ec0c21f1b091e789a4413013e95d3b9ea23",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/home-shortcut-icon.png",
+    "sha256": "aa93493b1a562703893de9a88294e91cf633491fcfad7b8df9322da6ae35ed7c",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/home-shortcut-warm-from-settings.png",
+    "sha256": "ebf80355c4d70c104ec52fcfd16b828fa68a61ab25beb71c70c206021fe2c825",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/keep-draft-dialog.png",
+    "sha256": "0017d45f7033439ca8f3c2e233ff20649b2435f1a9167598c0acc03967423036",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/normal-relaunch-home.png",
+    "sha256": "596ce8ea3d10506ae1b93c2baa92a441dc1d8e50df300a750c28d62bc4a19d21",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/relaunch-draft-restored.png",
+    "sha256": "a8a0728b45b5142972b16c3f251596c516f848e7d05faeddc933aa538294407c",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/system-shortcut-certificate-success.png",
+    "sha256": "3eacd933005a677cf0d775d6df3a09e7cc5f0e8678a7de550fe7c5e232665321",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/system-shortcut-run-failed.png",
+    "sha256": "f2fb42711ce5d4ead11b04f58d6626fc6ffb755b7a945b7bef05c2f40585028d",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/system-shortcuts-cards.png",
+    "sha256": "8d962725d7cffd42c44c8b06e0b3877477dffb60da8db44d1be2b6ca1a9fbeb1",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  },
+  {
+    "file": "screenshots/warm-shortcut-draft.png",
+    "sha256": "e30b0f55c27d51b2133b81268630dee115057b4e9b9be37f0876cc0a9dd0e8bf",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input or system UI"
+  }
+]

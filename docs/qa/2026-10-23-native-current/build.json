@@ -1,0 +1,13 @@
+{
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "source_state": "clean",
+  "debug_build": "passed",
+  "codesign_verify": "passed",
+  "embedded_healthkit": true,
+  "healthkit_required_device": false,
+  "app_executable_sha256": "ad37936a0cb5881d39642f716247742c30a407bf9a7c3f9b8a693267dce337cc",
+  "installed_on": "fixed iPhone 17 iOS 26.5 simulator",
+  "phone_installed": false,
+  "installed_bundle_marker_and_hash": "matched",
+  "checked_at": "2026-10-23T20:41:40.484646+08:00"
+}

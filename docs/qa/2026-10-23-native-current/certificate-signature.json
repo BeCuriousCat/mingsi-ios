@@ -1,0 +1,15 @@
+{
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "source_state": "clean",
+  "code_recompiled": false,
+  "only_signature_replaced": true,
+  "personal_team_certificate": true,
+  "same_embedded_application_identifier_team": true,
+  "certificate_signature_team_verified": true,
+  "codesign_deep_strict": "passed",
+  "installed": true,
+  "private_key_exported": false,
+  "phone_modified": false,
+  "installed_bundle_hash": "matched",
+  "simulator_app_updated_without_uninstall": true
+}

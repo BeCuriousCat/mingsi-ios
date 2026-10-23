@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-23T20:41:40.485041+08:00",
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "xcode_gui_account_visible": true,
+  "personal_team_visible": true,
+  "personal_team_provisioned_devices_display": 0,
+  "usable_profile_files_found": 0,
+  "default_build_only": "failed_missing_profile",
+  "explicit_provisioning_build_only": "failed_no_accounts_and_missing_profile",
+  "explicit_provisioning_errors": [
+    "No Accounts: Add a new account in Accounts settings. (in target 'MingSi' from project 'MingSi')",
+    "No profiles for 'com.codex.mingsi' were found: Xcode couldn't find any iOS App Development provisioning profiles matching 'com.codex.mingsi'. (in target 'MingSi' from project 'MingSi')"
+  ],
+  "device_registration_flag_used": false,
+  "organization_team_selected": false,
+  "device_install_or_launch_performed": false,
+  "phone_data_or_keychain_changed": false,
+  "xcode_account_credentials_changed": false,
+  "scope": "GUI visibility does not establish command line signing access; private account identity and team ID omitted"
+}

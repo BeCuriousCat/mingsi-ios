@@ -1,0 +1,19 @@
+{
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "device": "fixed iPhone 17 iOS 26.5 simulator",
+  "production_app_without_fixture_arguments": true,
+  "synthetic_input": "Native capture check",
+  "home_long_press_cold": "passed",
+  "home_long_press_warm_from_settings": "passed_preserved_draft",
+  "normal_relaunch_after_switcher_process_close": "passed_home_without_editor",
+  "draft_reopen_after_process_close": "passed_exact_synthetic_text",
+  "system_app_shortcut_ad_hoc_signature": "failed_provider_not_found_and_missing_team_id",
+  "system_app_shortcut_existing_personal_certificate": "passed_open_editor_with_draft",
+  "home_screen_icon_added_via_system_shortcuts": true,
+  "home_screen_icon_cold": "passed_editor_with_draft",
+  "phone_installed": false,
+  "model_requests": 0,
+  "system_microphone_or_health_permissions_requested": false,
+  "real_user_value_or_independent_reuse": "not established",
+  "home_screen_icon_warm_from_settings": "passed_editor_with_exact_draft"
+}

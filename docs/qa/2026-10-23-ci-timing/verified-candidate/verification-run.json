@@ -1,0 +1,165 @@
+{
+  "run_id": 39953037902,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39953037902",
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "status": "completed",
+  "conclusion": "success",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check optional HealthKit entitlement embedded for Simulator",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run isolated permission UI in light and dark largest text",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Save test counts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach isolated permission UI counts and screenshots",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "unit_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 1531,
+        "skippedTests": 24,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi \u00b7 Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792759388.978,
+    "passedTests": 1531,
+    "result": "Passed",
+    "skippedTests": 24,
+    "startTime": 1792758783.948,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - MingSi",
+    "topInsights": [
+      {
+        "category": "Longest Test Runs",
+        "impact": "26% of duration",
+        "text": "6 longest test runs with outlier durations exceeding 2.30s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 1555
+  },
+  "native_ui_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 2,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi \u00b7 Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792759965.354,
+    "passedTests": 2,
+    "result": "Passed",
+    "skippedTests": 0,
+    "startTime": 1792759405.383,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - MingSi",
+    "topInsights": [],
+    "totalTestCount": 2
+  },
+  "release_and_debug_source_markers": "matched clean checkout",
+  "embedded_simulator_healthkit": "true; actual executable check passed",
+  "healthkit_required_device_capability": false,
+  "screenshots_inspected": 8,
+  "reviewer": "Codex AI",
+  "real_health_authorization_or_data_read": "not tested",
+  "phone_installed": false,
+  "real_user_value": "not established"
+}

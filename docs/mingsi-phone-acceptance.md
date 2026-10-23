@@ -10,7 +10,7 @@
 
 2026-10-23 已实际尝试当前源码真机构建：本地签名预检报缺少`com.codex.mingsi`开发描述文件；允许Xcode使用现有账户补齐签名后，明确报`No Accounts: Add a new account in Accounts settings`，仍无描述文件。没有产出当前签名候选包，没有安装、卸载或清空手机App。仅凭已安装版本号`0.1.0(1)`不能确认其代码版本。
 
-请在自己的Mac解锁后打开Xcode → Settings → Accounts，登录自己的Apple账户；密码与二次验证由本人完成，不发到聊天中。在MingSi target的Signing & Capabilities选择自己的Team。不要把个人Team写入提交。账户类型、证书可用性与描述文件能力以Xcode实际结果为准，当前不推断已有商店或TestFlight分发权限。
+晚间复查时Mac已解锁，Xcode → Settings → Apple Accounts可看到既有账户与个人团队，但当前候选只构建仍报`No Accounts`和缺描述文件，见[脱敏复查](qa/2026-10-23-phone-delivery/account-recheck.json)。请本人在该页面确认账户会话可用；如系统要求重新登录，由本人完成密码与二次验证，不发到聊天中。在MingSi target的Signing & Capabilities选择自己的Team。不要把个人Team写入提交。界面可见账户不等于构建工具可以签名；账户类型、证书可用性与描述文件能力以实际结果为准，当前不推断已有商店或TestFlight分发权限。
 
 脚本默认不向Apple创建或更新签名配置。先只构建验证；把`YOURTEAMID`换成自己的10位Team ID：
 
