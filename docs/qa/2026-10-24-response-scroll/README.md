@@ -49,6 +49,10 @@
 
 后续修复为执行器增加可注入的 `now/sleepUntil`，默认仍为同一ContinuousClock；Direct客户端默认仍使用该真实时钟。两种协议的URLSession取消测试先观察实际URLProtocol启动，再推进测试时钟越过生产策略的截止点，确认超时和单一真实URLSession任务的stopLoading回调，不依赖100毫秒与CI启动速度赛跑。系统回调观察最多10秒，不改变产品期限。测试结束释放未完成的时钟等待者。Swift语法和执行器/受控时钟的Swift 6局部类型检查通过，完整iOS编译与运行仍待新CI。本批属于内部时序测试支撑，用户可见功能和发布说明不另增加条目。
 
+第四轮[CI 40019516199](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40019516199)检出 `dd587075`，与候选 `a5989c3` 代码树一致。Release和42脚本通过，但测试目标在Swift 6编译时拒绝非隔离辅助方法中的Task捕获非Sendable客户端和请求，单元和UI均未执行；结果包中的0测试/unknown不能解释为通过。HealthKit检查也未执行。原失败、空测试摘要及源码绑定保存在 [ci-fourth](ci-fourth/result.json)。
+
+后续仅为两条取消测试及其共用方法增加MainActor隔离，不把生产客户端标为unchecked Sendable，也不改变生产等待策略。本机跨模块XCTest编译已先复现相同sending诊断，再确认隔离后通过；普通 `-typecheck` 不会触发这项SIL阶段检查，不能继续把先前的类型检查称作完整编译证据，见 [local-test-concurrency.json](local-test-concurrency.json)。另保留此前使用实际传输/执行器、受控时钟及URLProtocol的 [macOS取消运行证据](local-cancellation-harness.json)，它未运行完整iOS测试或界面。修复后的iOS干净CI和截图仍待验收，PR保持草稿。
+
 兼容边界：草稿消费发生在新回复的成功保存事务，未对旧数据库作内容迁移。升级前已经留在输入框的草稿仍由用户编辑，不能仅凭文字与历史原话相同就推断它应被删除。私有快照核对的是数据库逻辑内容一致，不声称对 SQLite 文件逐字节相同。
 
 ## 如何复验

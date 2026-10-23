@@ -218,6 +218,7 @@ final class DirectGLMClientTests: XCTestCase {
         XCTAssertTrue(GLMStubURLProtocol.requestBodies.isEmpty)
     }
 
+    @MainActor
     func testMentorDeadlineCancelsActualURLSessionTask() async throws {
         try await verifyDeadlineCancelsStartedURLSession(configuration: GLMClientConfiguration(
             baseURL: URL(string: "https://glm.test/api/paas/v4")!))
@@ -773,10 +774,12 @@ final class DirectGLMClientTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testResponsesMentorDeadlineCancelsUnderlyingTask() async throws {
         try await verifyDeadlineCancelsStartedURLSession(configuration: responsesConfiguration())
     }
 
+    @MainActor
     private func verifyDeadlineCancelsStartedURLSession(configuration: GLMClientConfiguration) async throws {
         let clock = ControlledGLMExecutionClock()
         defer { clock.finish() }

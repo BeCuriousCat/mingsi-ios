@@ -1,6 +1,6 @@
 {
-  "base_revision": "29375b24524552d19bc0110eef110e7ca90b244a",
-  "state": "candidate with controllable executor clock and started-request cancellation tests; full CI pending",
+  "base_revision": "a5989c37a79d0611ccb22077324af8085013c50f",
+  "state": "candidate after fourth CI compile failure; cancellation XCTest entry points and helper isolated to MainActor; full CI pending",
   "source_sha256": {
     "Sources/Features/Mentor/MentorHomeView.swift": "7487f66b4c7dacad49de7f6d6dd7e78ca451dc40bc8b84d62d5f3750236e7cf7",
     "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
@@ -12,6 +12,6 @@
     ".github/workflows/verify.yml": "c75fe4e5ac21ec6af208d1fb4cdb745306210e1aa25f681c1bddf2f8f9d9f0fe",
     "Sources/Services/DirectGLMClient.swift": "fd97ae6b819abf36b0c5a7e6d295122f64202c304e3f3fe15c7eb8ee16ffc6d0",
     "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
-    "Tests/Services/DirectGLMClientTests.swift": "c5729416b0d32ca6b587aecb5adfcf6813a12734907183c4a7f74d1a458a6ef7"
+    "Tests/Services/DirectGLMClientTests.swift": "9ebf575c5da4d3d2d0ac1d5387cf43cbc572ce185cca07ee41223aebd15d21ee"
   }
 }

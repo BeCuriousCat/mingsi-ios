@@ -1,0 +1,22 @@
+{
+  "base_revision": "a5989c37a79d0611ccb22077324af8085013c50f",
+  "scope": "macOS cross-module XCTest SIL compilation with actual DirectGLMClient and MentorRequestExecutor; minimal request models and extracted real clock/URLProtocol fixture; not full iOS build or UI acceptance",
+  "swift_mode": "Swift 6 with NonisolatedNonsendingByDefault",
+  "plain_typecheck_did_not_reproduce_error": true,
+  "negative_control_without_mainactor": {
+    "exit_code": 1,
+    "diagnostic": "passing closure as a sending parameter risks causing data races",
+    "captures": [
+      "client",
+      "request"
+    ]
+  },
+  "candidate_with_mainactor": {
+    "exit_code": 0
+  },
+  "source_sha256": {
+    "Tests/Services/DirectGLMClientTests.swift": "9ebf575c5da4d3d2d0ac1d5387cf43cbc572ce185cca07ee41223aebd15d21ee"
+  },
+  "new_model_requests": 0,
+  "ios_acceptance_passed": false
+}
