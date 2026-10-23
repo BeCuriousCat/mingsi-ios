@@ -2,6 +2,8 @@
 
 关联G1/G3/G10。状态：**候选已实现，macOS隔离运行和本机真实HTTP探针通过；完整iOS构建/全量测试/产品绑定与导出集成测试待干净CI。** 不是正式7天/50请求窗口，也不是手机或供应商兼容性验收。[候选源码与结果](result.json)绑定全部相关哈希，不借用此前ec444881的全绿结论。
 
+候选`3c211d0858b68c0649b229317c0b1cd9fadfb1c3`已提交[CI 40039311779](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40039311779)，[登记回执](ci-submission.json)仅证明提交且观察时在运行，不代表终态或通过。冻结该候选至CI终态，不提前推送取消它。
+
 ## 实现范围
 
 生产`PromptTracingLLMClient`在验证导师请求归属后，从SQLite审计仓库取得独立观测存储，绑定不可变session/request/epoch/semanticRevision/trace。Direct客户端的Chat普通完成、Chat导师SSE和Responses完成路径在派发前登记新的attempt UUID，并将本次delegate传给实际URLSession调用。注册只证明计划派发；从登记到系统调用之间仍可能取消，不能把登记行自动当作一次HTTP。

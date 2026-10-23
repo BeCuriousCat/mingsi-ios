@@ -55,4 +55,3 @@ extension StreamingLLMClient {
         stream(request, isolation: caller)
     }
 }
-

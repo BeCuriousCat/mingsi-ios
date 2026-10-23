@@ -1,0 +1,9 @@
+{
+  "run_id": 40039311779,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40039311779",
+  "submitted_head": "3c211d0858b68c0649b229317c0b1cd9fadfb1c3",
+  "last_observed_state": "in_progress",
+  "observation_kind": "submission receipt, not final result; recheck live gh state",
+  "scope": "full clean iOS build, all offline unit tests, 8 isolated UI paths, markers and optional HealthKit",
+  "goal_complete": false
+}
