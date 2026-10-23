@@ -1,13 +1,13 @@
 # G3 正式请求窗口的前置核查
 
-日期：2026-10-24。关联[长期契约 G3](../../mingsi-long-term-goal.md)。**7天/50次窗口尚未开始，本页不是验收通过报告。** 当前输入区候选仍由同一次 CI 复验；不在该候选验证期间混入传输层改动。
+日期：2026-10-24。关联[长期契约 G3](../../mingsi-long-term-goal.md)。**7天/50次窗口尚未开始，本页不是验收通过报告。** 输入区候选ec444881已完成[第九轮CI与AI截图审读](../2026-10-24-response-scroll/ci-ninth/result.json)，未混入传输层改动；正常App真实网络基础场景和下列G3接入工作仍缺。
 
 ## 当前源码证据
 
 | 项目 | 观察 | 结论 |
 | --- | --- | --- |
 | 导师应用层重发 | `DirectGLMClient.complete` 遇到 `mentorExecutionPolicy` 直接走单次 `send`，绕过普通请求重试及格式回退；`MentorRequestExecutor` 校验 `maxHTTPAttempts == 1` | 具备单次应用层派发规则；不能据此证明底层实际 HTTP 交易数 |
-| 底层计数 | 导师流调用 `session.bytes(for:)`，当前没有 `URLSessionTaskMetrics` 采集；仓库搜索没有原生交易计数 | 点击、导师请求行和 Prompt 审计行均不能代替底层 HTTP 计数 |
+| 底层计数 | 导师流仍调用未绑定delegate的 `session.bytes(for:)`；原生指标脱敏组件及五条测试已进入iOS目标，但尚未绑定App请求、落库或进入导出 | 点击、导师请求行和 Prompt 审计行均不能代替底层 HTTP 计数；组件测试通过不代表生产计数已可用 |
 | 输出预算 | Responses 请求字典没有输出上限字段；Chat 的 `GLMChatCompletionRequest` 也没有 token 上限属性 | 尚不能开展要求单次输出预算的正式批次；字符截断或 Prompt 要求“简短”不能替代服务端预算 |
 | 用量 | Responses 完成事件保留服务自报 model/usage；Chat 流的 usage-only 事件当前被跳过 | 不得将缺失用量填成0，服务自报 model 也不是独立的上游模型认证 |
 | 等待边界 | 生产流以有效内容更新空闲期限，默认600秒；非流式旧调用保持有限总期限，等待提示不超过10秒 | 与输出预算、底层计数分别验证；不是取消所有等待边界 |
