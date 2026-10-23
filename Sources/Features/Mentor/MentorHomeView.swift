@@ -695,12 +695,36 @@ struct MentorConversationView: View {
                     .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
                         if transitioning { readingPosition.reset() }
                     }
+                    .accessibilityIdentifier("mentor.conversation.reading-scroll")
                     .scrollDismissesKeyboard(.interactively)
+                    .task(id: feature.state.phase == .submitting) {
+                        guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                        await Task.yield()
+                        guard !Task.isCancelled, feature.state.phase == .submitting,
+                              !feature.state.isViewingHistory, !inputFocused else { return }
+                        scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
+                    }
+                    .onChange(of: feature.state.timeline.last?.id) { _, _ in
+                        guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                            scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
+                        }
+                    }
+                    .onChange(of: feature.state.streamingPreview.isEmpty) { _, empty in
+                        guard !empty, feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                            scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
+                        }
+                    }
                     .onChange(of: feature.state.responseItemID) { _, id in
                         guard let id, !feature.state.isViewingHistory else { return }
                         Task { @MainActor in
                             await Task.yield()
-                            guard feature.state.responseItemID == id, !inputFocused else { return }
+                            guard feature.state.responseItemID == id, !feature.state.isViewingHistory, !inputFocused else { return }
                             scroll.scrollTo(id, anchor: .top)
                         }
                     }
@@ -875,7 +899,8 @@ struct MentorConversationView: View {
                 .id(item.id)
             }
         }
-        status
+        VStack(alignment: .leading, spacing: 12) { status }
+            .id("mentor.conversation.request-status")
         if feature.state.session?.initialEntry == "review", let sessionID = feature.state.session?.id {
             LifeGuidanceReviewSection(guidance: app.lifeGuidanceStore, reviewID: "mentor:" + sessionID.uuidString)
         }
@@ -1338,6 +1363,7 @@ struct MentorConversationView: View {
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
             .frame(height: min(composerContentHeight, max(180, viewportHeight * 0.55)))
             .onPreferenceChange(ComposerHeight.self) { height in
                 guard height.isFinite, height > 0, abs(height - composerContentHeight) > 0.5 else { return }
@@ -1363,7 +1389,6 @@ struct MentorConversationView: View {
         .frame(maxWidth: .infinity)
         .background(DS.background)
         .overlay(alignment: .top) { Divider() }
-        .accessibilityIdentifier("mentor.conversation.composer")
     }
 
     private var canDiscussCapture: Bool {

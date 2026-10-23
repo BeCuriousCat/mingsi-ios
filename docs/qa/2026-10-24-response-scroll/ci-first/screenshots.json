@@ -1,0 +1,135 @@
+[
+  {
+    "file": "screenshots/mentor-active-conversation-keyboard-visible.png",
+    "sha256": "95c606826f7d8989d430e7cf45624f12b4bdf87653d40dd74c865ffe3b41662e",
+    "test": "MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/mentor-stream-dark-largest-interrupted.png",
+    "sha256": "ae1d5791bbcb762ad1711d36a2874b4697d09c813e052631e4b645858dc0f0e7",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/mentor-stream-dark-largest-preview.png",
+    "sha256": "f622fcc84fec194f59d88b09c918e5efa52584e3e0810cbebc19ff15e715dac5",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "review": "AI visual rejection: preview not visible; only original text shown, despite automated isHittable pass",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/mentor-stream-light-completed.png",
+    "sha256": "83ba1d7908c0e6469bafa162be16c558a4edc6c0ab553714cd6edde813d8cb6e",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/mentor-stream-light-preview.png",
+    "sha256": "b191cb99ebdf42967630bf3f52b35281bd75b34645d17d2f31268719dbda08de",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-next-send-ready.png",
+    "sha256": "01ff98ab9ae8608b2e85f8ddf05c7d5d28b777c753ddcfe035df19d8a063e656",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-next-input-keyboard.png",
+    "sha256": "c034acbb8d75ba5926afeea1dbe0675a52eeb4fe045fcdb4618fefa68e6a290d",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-before-next-input.png",
+    "sha256": "7e94da5c350e720639ee9bc9eb896aaef3eddfd235edb3aa4425b0bac7c0589c",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-light-next-send-ready.png",
+    "sha256": "df3f562551bb0799be661b70031c0d235c0eb99fdbe7e8cdb95ad720fd6f9fa8",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-light-next-input-keyboard.png",
+    "sha256": "e598ef70d124b1ba55ca4e6d284baf1651577e0185bc749f81093d71eb0a944b",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/saved-response-light-before-next-input.png",
+    "sha256": "5227d26bae74e78dbe4a64144617742fc8e3b8e4887e51e55904d9ea5541b52a",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "review": "AI reviewed: bounds and state visible in this screenshot",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/permissions-dark-largest.png",
+    "sha256": "2afd91e654086379c3f425967b4a7333978e794fde801881fc06d67f0b6729a5",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/health-permission-dark-largest.png",
+    "sha256": "3d578d09006d5e7c83235053592a0af16af4c4a9a4a75339d572a7b36a3bae1d",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/calendar-permission-dark-largest.png",
+    "sha256": "0c258628998594ea8f9366714e82e0c2bd5a38dd16a65f48fcf13b754b49223b",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/build-identity-dark-largest.png",
+    "sha256": "e237a2c88dca38fb67e5c24809af0a7357927dc3f423c5669a659019f55a27b2",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/permissions-light-normal.png",
+    "sha256": "6f55367c9f2016c1c816d1e416cec4657932f16efe6a72b69882ddd81b9c9777",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/health-permission-light-normal.png",
+    "sha256": "5db0d7ac7a2f517e299489f0848ecb9223975135907a233d90decaa6b34e69d0",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/calendar-permission-light-normal.png",
+    "sha256": "eafa499ed8fdac240df5ee29a4b398cb98ab314288ee347aa2c2c651a9399009",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  },
+  {
+    "file": "screenshots/build-identity-light-normal.png",
+    "sha256": "85e94e4d78afbd8139f432ac7df5f1c988e2fbecc2e6b840d26459410c4bf230",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "review": "not newly visually reviewed",
+    "data_kind": "synthetic"
+  }
+]

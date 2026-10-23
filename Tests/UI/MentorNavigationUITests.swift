@@ -652,13 +652,22 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertTrue(review.waitForExistence(timeout: 5))
         XCTAssertEqual(input.value as? String, "保留原文")
         let area = app.scrollViews["mentor.conversation.composer-scroll"]
+        XCTAssertTrue(area.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !review.isHittable { area.swipeUp(velocity: .slow) }
+        review.tap()
+        review.typeText("校对")
+        let corrected = try XCTUnwrap(review.value as? String)
+        XCTAssertTrue(corrected.contains("校对"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        for _ in 0..<3 where app.keyboards.firstMatch.exists { area.swipeDown(velocity: .slow) }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         let accept = app.buttons["speech-input.accept"]
         for _ in 0..<8 where !accept.isHittable { area.swipeUp(velocity: .slow) }
         XCTAssertTrue(accept.isHittable)
         XCTAssertTrue(app.buttons["发送"].isHittable)
         attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-review")
         accept.tap()
-        XCTAssertEqual(input.value as? String, "保留原文\n语音测试第 2 次。")
+        XCTAssertEqual(input.value as? String, "保留原文\n" + corrected.trimmingCharacters(in: .whitespacesAndNewlines))
         XCTAssertTrue(review.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["发送"].isHittable)
         attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-accepted")
@@ -755,6 +764,26 @@ final class MentorNavigationUITests: XCTestCase {
             expectation(for: grew, evaluatedWith: nil)
             waitForExpectations(timeout: 4)
         }
+        let readingArea = app.scrollViews["mentor.conversation.reading-scroll"]
+        XCTAssertTrue(readingArea.waitForExistence(timeout: 5))
+        let composerArea = app.scrollViews["mentor.conversation.composer-scroll"]
+        XCTAssertTrue(composerArea.waitForExistence(timeout: 5))
+        let visiblePreview = NSPredicate { _, _ in
+            guard preview.exists, readingArea.exists, composerArea.exists,
+                  preview.frame.height > 0, preview.frame.width > 0 else { return false }
+            // A scroll view's AX frame may extend under a safe-area inset.
+            // Exclude the fixed composer and navigation bar explicitly.
+            let top = max(readingArea.frame.minY, app.navigationBars["这次交流"].frame.maxY)
+            let bottom = min(readingArea.frame.maxY, composerArea.frame.minY)
+            let viewport = CGRect(x: readingArea.frame.minX, y: top,
+                                  width: readingArea.frame.width, height: max(0, bottom - top))
+            let visible = preview.frame.intersection(viewport).intersection(app.frame)
+            guard !visible.isNull else { return false }
+            return preview.isHittable && visible.height >= min(80, preview.frame.height) &&
+                visible.width >= min(100, preview.frame.width)
+        }
+        expectation(for: visiblePreview, evaluatedWith: nil)
+        waitForExpectations(timeout: 3)
         scrollTo(preview, in: app)
         XCTAssertTrue(preview.isHittable)
         XCTAssertGreaterThanOrEqual(preview.frame.minX, app.frame.minX + 18)
