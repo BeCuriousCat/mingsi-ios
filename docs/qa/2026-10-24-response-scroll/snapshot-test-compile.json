@@ -1,0 +1,10 @@
+{
+  "base_revision": "15afe940c0b4d134435f090da0f0fc5e4d3d6b4f",
+  "scope": "entire MentorNavigationUITests.swift compiled through Swift SIL for arm64 iOS26 Simulator with XCTest framework; no app linkage or UI execution",
+  "swift_mode": "Swift6 with NonisolatedNonsendingByDefault",
+  "exit_code": 0,
+  "source_sha256": "751732cb6ebd101e0994035ab36f174085c3f98d06f167b3f86339097f016587",
+  "runtime_acceptance_passed": false,
+  "new_model_requests": 0,
+  "first_macos_target_attempt": "failed because existing XCUIDevice.home APIs are iOS-only; corrected target to actual iOS Simulator"
+}

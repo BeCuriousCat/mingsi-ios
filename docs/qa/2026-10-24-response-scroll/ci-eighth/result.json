@@ -1,0 +1,45 @@
+{
+  "run_id": 40029472837,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40029472837",
+  "head_revision": "15afe940c0b4d134435f090da0f0fc5e4d3d6b4f",
+  "tested_merge_revision": "931de3679466271ca32795823a0bf564836afc5b",
+  "tested_tree": "066a36a38f7f8135a5555466f0310b772502ff83",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "failure",
+  "release_build_and_markers": "passed",
+  "debug_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1544,
+    "failed": 0,
+    "skipped": 24
+  },
+  "optional_healthkit_check": "passed",
+  "native_ui": {
+    "passed": 7,
+    "failed": 1,
+    "skipped": 0
+  },
+  "failure": "testMentorStreamShowsGrowingPreviewThenValidatedAnswer: three-second visible-preview predicate not fulfilled; pre-manual-scroll screenshot shows complete readable preview, raw frames intersect expected viewport; exact failed operand/timing not captured, cause unresolved",
+  "database_reopen_regressions": [
+    "original persisted-conversation reopen passed",
+    "temporary exclusive writer then reopen passed",
+    "persistent writer yields bounded SQLITE_BUSY and preserved data passed"
+  ],
+  "visual_review": {
+    "reviewer": "AI screenshot review",
+    "screenshots_inspected": 23,
+    "light_preview_before_manual_scroll": "readable complete synthetic preview visible above fixed composer",
+    "dark_largest_before_manual_scroll": "beginning of long preview visible above composer; remaining body requires reading scroll",
+    "keyboard_and_next_input": "controls within keyboard-safe region; original sent text consumed, next input preserved",
+    "speech_review": "review/accept/edited text and send reachable at largest type",
+    "permissions": "fixture state text and relevant controls visible in light and largest dark captures",
+    "limits": "still photos and deterministic fixtures do not establish real microphone, live provider streaming, device interaction, VoiceOver or human usability acceptance"
+  },
+  "new_model_requests": 0,
+  "goal_complete": false
+}

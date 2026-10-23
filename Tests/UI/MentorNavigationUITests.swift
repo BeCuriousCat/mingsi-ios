@@ -771,19 +771,42 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertTrue(readingArea.waitForExistence(timeout: 5))
         let composerArea = app.scrollViews["mentor.conversation.composer-scroll"]
         XCTAssertTrue(composerArea.waitForExistence(timeout: 5))
+        func elementSnapshot(in node: any XCUIElementSnapshot, type: XCUIElement.ElementType,
+                             identifier: String) -> (any XCUIElementSnapshot)? {
+            if node.elementType == type, node.identifier == identifier || node.label == identifier { return node }
+            for child in node.children {
+                if let found = elementSnapshot(in: child, type: type, identifier: identifier) { return found }
+            }
+            return nil
+        }
         let visiblePreview = NSPredicate { _, _ in
-            guard preview.exists, readingArea.exists, composerArea.exists,
-                  preview.frame.height > 0, preview.frame.width > 0 else { return false }
+            // Every frame must come from the same accessibility snapshot.
+            // Repeated live queries can mix two stream/layout states and take
+            // most of the predicate's observation window on hosted runners.
+            guard let root = try? app.snapshot(),
+                  let text = elementSnapshot(in: root, type: .staticText, identifier: "mentor.request.stream-preview"),
+                  let reading = elementSnapshot(in: root, type: .scrollView, identifier: "mentor.conversation.reading-scroll"),
+                  let composer = elementSnapshot(in: root, type: .scrollView, identifier: "mentor.conversation.composer-scroll"),
+                  let navigation = elementSnapshot(in: root, type: .navigationBar, identifier: "这次交流") else {
+                print("MENTOR_PREVIEW_VISIBILITY missing snapshot element")
+                return false
+            }
+            let textFrame = text.frame
+            let readingFrame = reading.frame
+            let composerFrame = composer.frame
+            guard textFrame.height > 0, textFrame.width > 0 else { return false }
             // A scroll view's AX frame may extend under a safe-area inset.
             // Exclude the fixed composer and navigation bar explicitly.
-            let top = max(readingArea.frame.minY, app.navigationBars["这次交流"].frame.maxY)
-            let bottom = min(readingArea.frame.maxY, composerArea.frame.minY)
-            let viewport = CGRect(x: readingArea.frame.minX, y: top,
-                                  width: readingArea.frame.width, height: max(0, bottom - top))
-            let visible = preview.frame.intersection(viewport).intersection(app.frame)
-            guard !visible.isNull else { return false }
-            return preview.isHittable && visible.height >= min(80, preview.frame.height) &&
-                visible.width >= min(100, preview.frame.width)
+            let top = max(readingFrame.minY, navigation.frame.maxY)
+            let bottom = min(readingFrame.maxY, composerFrame.minY)
+            let viewport = CGRect(x: readingFrame.minX, y: top,
+                                  width: readingFrame.width, height: max(0, bottom - top))
+            let visible = textFrame.intersection(viewport).intersection(root.frame)
+            let hittable = preview.isHittable
+            let matches = !visible.isNull && hittable && visible.height >= min(80, textFrame.height) &&
+                visible.width >= min(100, textFrame.width)
+            print("MENTOR_PREVIEW_VISIBILITY preview=\(textFrame) viewport=\(viewport) app=\(root.frame) intersection=\(visible) hittable=\(hittable) matches=\(matches)")
+            return matches
         }
         attachVoiceScreenshot(app, name: interrupted ? "mentor-stream-dark-largest-before-auto-visibility-check" : "mentor-stream-light-before-auto-visibility-check")
         print("MENTOR_PREVIEW_GEOMETRY preview=\(preview.frame) reading=\(readingArea.frame) composer=\(composerArea.frame) navigation=\(app.navigationBars["这次交流"].frame)")
