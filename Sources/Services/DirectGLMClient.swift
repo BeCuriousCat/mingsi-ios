@@ -117,15 +117,18 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     private let configuration: GLMClientConfiguration
     private let session: URLSession
     private let encoder: JSONEncoder
+    private let mentorExecutor: MentorRequestExecutor
 
     init(
         apiKey: String,
         configuration: GLMClientConfiguration = GLMClientConfiguration(),
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        mentorExecutor: MentorRequestExecutor = MentorRequestExecutor()
     ) {
         self.apiKey = apiKey
         self.configuration = configuration
         self.session = session
+        self.mentorExecutor = mentorExecutor
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
     }
@@ -133,7 +136,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     func complete(_ request: LLMRequest) async throws -> Data {
         if let policy = request.mentorExecutionPolicy {
             // Bypass both the recoverable-status loop and the response_format fallback.
-            return try await MentorRequestExecutor().execute({ [self] in
+            return try await mentorExecutor.execute({ [self] in
                 try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
             }, policy: policy, startedAt: request.mentorStartedAt, progress: request.mentorStreamProgress).data
         }

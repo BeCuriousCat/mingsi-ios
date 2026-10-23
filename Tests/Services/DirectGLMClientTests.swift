@@ -169,6 +169,7 @@ final class DirectGLMClientTests: XCTestCase {
         GLMStubURLProtocol.responseDelays = []
         GLMStubURLProtocol.transportErrors = []
         GLMStubURLProtocol.hangs = false
+        GLMStubURLProtocol.onStartLoading = nil
         GLMStubURLProtocol.onStopLoading = nil
         super.tearDown()
     }
@@ -218,15 +219,8 @@ final class DirectGLMClientTests: XCTestCase {
     }
 
     func testMentorDeadlineCancelsActualURLSessionTask() async throws {
-        GLMStubURLProtocol.hangs = true
-        let stopped = expectation(description: "URLSession stopped the request")
-        GLMStubURLProtocol.onStopLoading = { stopped.fulfill() }
-        var request = makeRequest()
-        request.mentorExecutionPolicy = MentorRequestPolicy(deadline: .milliseconds(100), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
-        do { _ = try await makeClient().complete(request); XCTFail("Expected total deadline") }
-        catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
-        await fulfillment(of: [stopped], timeout: 1)
-        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        try await verifyDeadlineCancelsStartedURLSession(configuration: GLMClientConfiguration(
+            baseURL: URL(string: "https://glm.test/api/paas/v4")!))
     }
 
     func testMentorPolicyMakesExactlyOneHTTPAttemptForRecoverableErrors() async throws {
@@ -780,14 +774,29 @@ final class DirectGLMClientTests: XCTestCase {
     }
 
     func testResponsesMentorDeadlineCancelsUnderlyingTask() async throws {
+        try await verifyDeadlineCancelsStartedURLSession(configuration: responsesConfiguration())
+    }
+
+    private func verifyDeadlineCancelsStartedURLSession(configuration: GLMClientConfiguration) async throws {
+        let clock = ControlledGLMExecutionClock()
+        defer { clock.finish() }
         GLMStubURLProtocol.hangs = true
-        let stopped = expectation(description: "Responses request cancelled")
+        let started = expectation(description: "URLSession started the request")
+        let stopped = expectation(description: "URLSession stopped the started request")
+        GLMStubURLProtocol.onStartLoading = { started.fulfill() }
         GLMStubURLProtocol.onStopLoading = { stopped.fulfill() }
+        defer { GLMStubURLProtocol.onStartLoading = nil; GLMStubURLProtocol.onStopLoading = nil }
+        let client = makeClient(configuration: configuration, mentorExecutor: clock.executor)
         var request = makeRequest()
-        request.mentorExecutionPolicy = MentorRequestPolicy(deadline: .milliseconds(100), waitingNoticeAfter: .milliseconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
-        do { _ = try await makeClient(configuration: responsesConfiguration()).complete(request); XCTFail("Expected deadline") }
+        let policy = MentorRequestPolicy.forProtocol(configuration.protocolKind)
+        request.mentorExecutionPolicy = policy
+        let operation = Task { try await client.complete(request) }
+        await fulfillment(of: [started], timeout: 10)
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        clock.advance(by: policy.deadline + .milliseconds(1))
+        do { _ = try await operation.value; XCTFail("Expected deadline") }
         catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
-        await fulfillment(of: [stopped], timeout: 1)
+        await fulfillment(of: [stopped], timeout: 10)
         XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
     }
 
@@ -839,7 +848,8 @@ final class DirectGLMClientTests: XCTestCase {
     private func makeClient(
         configuration clientConfiguration: GLMClientConfiguration = GLMClientConfiguration(
             baseURL: URL(string: "https://glm.test/api/paas/v4")!
-        )
+        ),
+        mentorExecutor: MentorRequestExecutor = MentorRequestExecutor()
     ) -> DirectGLMClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GLMStubURLProtocol.self]
@@ -847,7 +857,8 @@ final class DirectGLMClientTests: XCTestCase {
         return DirectGLMClient(
             apiKey: "test-key",
             configuration: clientConfiguration,
-            session: URLSession(configuration: configuration)
+            session: URLSession(configuration: configuration),
+            mentorExecutor: mentorExecutor
         )
     }
 
@@ -879,6 +890,55 @@ private struct StubbedHTTPResponse {
     let body: String
 }
 
+/// Time advances only after the test has observed actual URLProtocol startup.
+/// All mutable state is protected by the mutex, including waiter installation.
+private final class ControlledGLMExecutionClock: @unchecked Sendable {
+    private struct Sleeper {
+        let deadline: ContinuousClock.Instant
+        let continuation: CheckedContinuation<Void, Error>
+    }
+    private struct State {
+        var now = ContinuousClock.now
+        var sleepers: [Sleeper] = []
+        var finished = false
+    }
+    private let state = Mutex(State())
+
+    var executor: MentorRequestExecutor {
+        MentorRequestExecutor(now: { self.state.withLock { $0.now } }, sleepUntil: { deadline in
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.state.withLock { state in
+                    if state.finished || Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+                    else if deadline <= state.now { continuation.resume() }
+                    else { state.sleepers.append(Sleeper(deadline: deadline, continuation: continuation)) }
+                }
+            }
+            try Task.checkCancellation()
+        })
+    }
+
+    func advance(by duration: Duration) {
+        let ready = state.withLock { state in
+            state.now = state.now.advanced(by: duration)
+            let ready = state.sleepers.filter { $0.deadline <= state.now }
+            state.sleepers.removeAll { $0.deadline <= state.now }
+            return ready
+        }
+        ready.forEach { $0.continuation.resume() }
+    }
+
+    func finish() {
+        let pending = state.withLock { state in
+            state.finished = true
+            let pending = state.sleepers
+            state.sleepers.removeAll()
+            return pending
+        }
+        pending.forEach { $0.continuation.resume(throwing: CancellationError()) }
+    }
+}
+
 // URLSession owns the inherited request/client lifecycle. This stub adds no mutable
 // instance state, and every shared fixture value is protected by the mutex below.
 private final class GLMStubURLProtocol: URLProtocol, @unchecked Sendable {
@@ -889,6 +949,7 @@ private final class GLMStubURLProtocol: URLProtocol, @unchecked Sendable {
         var responseDelays: [Duration] = []
         var transportErrors: [URLError?] = []
         var hangs = false
+        var onStartLoading: (@Sendable () -> Void)?
         var onStopLoading: (@Sendable () -> Void)?
     }
 
@@ -921,6 +982,10 @@ private final class GLMStubURLProtocol: URLProtocol, @unchecked Sendable {
         get { state.withLock { $0.onStopLoading } }
         set { state.withLock { $0.onStopLoading = newValue } }
     }
+    static var onStartLoading: (@Sendable () -> Void)? {
+        get { state.withLock { $0.onStartLoading } }
+        set { state.withLock { $0.onStartLoading = newValue } }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool {
         true
@@ -942,6 +1007,7 @@ private final class GLMStubURLProtocol: URLProtocol, @unchecked Sendable {
                 : state.responses.removeFirst()
             return (hangs: state.hangs, error: error, response: response, delays: state.responseDelays)
         }
+        Self.onStartLoading?()
         if delivery.hangs { return }
         if let error = delivery.error {
             client?.urlProtocol(self, didFailWithError: error)

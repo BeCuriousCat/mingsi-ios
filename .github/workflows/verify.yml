@@ -69,6 +69,7 @@ jobs:
           # Inspect existing devices; do not create, delete or reset a simulator.
           python3 scripts/select_ci_simulator.py >> "$GITHUB_ENV"
       - name: Run unit tests with no paid model requests
+        id: offline-unit
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
@@ -104,6 +105,9 @@ jobs:
           print("Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed")
           PY
       - name: Run isolated permission and next-turn UI in light and dark largest text
+        # Preserve a failed unit gate while still collecting independent UI
+        # evidence. No continue-on-error: the overall job remains failed.
+        if: ${{ !cancelled() && (steps.offline-unit.outcome == 'success' || steps.offline-unit.outcome == 'failure') }}
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
