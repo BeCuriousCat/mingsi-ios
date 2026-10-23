@@ -1,0 +1,23 @@
+{
+  "caution": "Sparse CUA observation timestamps; these are not exact first token or completion timestamps. request_finished duration is reported separately.",
+  "observations": [
+    {
+      "case": "N01",
+      "event": "send_action",
+      "observedAt": "2026-10-23T17:02:58.375Z"
+    },
+    {
+      "case": "N01",
+      "event": "screenshot-observation",
+      "observedAt": "2026-10-23T17:03:30.908Z",
+      "elapsedMs": 32533
+    },
+    {
+      "case": "N01",
+      "event": "complete_seen",
+      "observedAt": "2026-10-23T17:04:32.571Z",
+      "elapsedMs": 94196,
+      "note": "preview growth not captured"
+    }
+  ]
+}

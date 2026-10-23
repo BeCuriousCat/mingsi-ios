@@ -1,0 +1,50 @@
+[
+  {
+    "file": "screenshots/configured.png",
+    "sha256": "df965bd9cae1147668500b73d2dc90c951e83924ebca8481887b6e03ba1a20cd",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-after-send.png",
+    "sha256": "44cbc4875ae6d5c567c9016b2b0490d37165b9dcedfac405f36a6e7d3be4c594",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-completed.png",
+    "sha256": "01811facf6f3dcc8d8a95a6288f78d3db9194944c4f38b75950b44e93f3f4e37",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-input.png",
+    "sha256": "1cd735586b0d85300a3d42b77144de22b8e03a3384111f775c51722d416d7a72",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-observation-1.png",
+    "sha256": "8ef3295b2ef99ebfb7be8e1a122c051c49fb73a9ef6d8bc25aba949d5279a760",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-reopened.png",
+    "sha256": "98976e6f31f4f41fa48c243ce2b4c64f498052d59382dd15e53f2b10167ee317",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n01-return-home.png",
+    "sha256": "0a1353a7a83317aae3cf1d14833d7ff575f6bdf798c667813c828c719a69d72d",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  },
+  {
+    "file": "screenshots/n02-input-not-reached.png",
+    "sha256": "d6d5fdaf764af7775b5b4247b281db2d54ba1b77716717721745721883f44315",
+    "reviewer": "Codex AI",
+    "contains": "synthetic input/response or connection configured state; no API key value"
+  }
+]

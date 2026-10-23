@@ -1,0 +1,18 @@
+{
+  "provenance": "Exact normalized response payload saved in the production mentor_items row; synthetic user case, not raw SSE",
+  "response": {
+    "lesson_ref": null,
+    "suggested_actions": [
+      "finish"
+    ],
+    "body": "这两个选择的关键取舍是：让已有知识更容易使用，还是增加一种新的做事手段。你目前没有紧急交付，因此不必按交付压力排序。\n\n整理笔记适合已有内容值得复用、但查找或理解起来不方便的情况。两小时可以集中整理一个主题，让它更便于调用；代价是暂缓接触新工具。\n\n学习新工具适合已有一个想用它解决的具体问题，或希望探索新做法的情况。两小时更适合体验一项核心功能，而不是追求熟练；代价是暂缓整理已有知识，而且工具是否值得继续学，可能仍不确定。",
+    "question_purpose": null,
+    "question": null,
+    "material_status": "usable",
+    "schema_version": "1.0.0",
+    "source_refs": [
+      "item:CC674D9C-7B10-41A7-B35E-6F23E7AF1630"
+    ],
+    "action": "compare"
+  }
+}

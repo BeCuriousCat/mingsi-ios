@@ -1,0 +1,53 @@
+{
+  "data_kind": "synthetic",
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "source_state": "clean",
+  "device": "fixed iPhone 17 / iOS 26.5 simulator",
+  "service_alias": "伊莉丝",
+  "model_configuration_alias": "gpt-6.1-sol",
+  "protocol": "Responses",
+  "actual_upstream_model_identity": "not independently verified",
+  "prompt_id": "mentorRespond",
+  "prompt_version": "2.17.0",
+  "lesson_catalog_version": "1.1",
+  "response_schema_version": "1.0.0",
+  "planned_generation_actions_maximum": 3,
+  "generation_actions_performed": 1,
+  "mentor_request_rows": 1,
+  "mentor_prompt_audit_rows": 1,
+  "committed_responses": 1,
+  "retry_of": null,
+  "independent_http_attempt_counter": "not instrumented; click and audit counts are not packet-level counts",
+  "request_duration_ms": 9985,
+  "request_duration_source": "persisted request_finished event",
+  "first_readable_preview_latency_ms": null,
+  "preview_growth_observed": false,
+  "n01": {
+    "completion_and_original_input": "verified in UI and SQLite",
+    "semantic_ai_review": "accepted for this synthetic case",
+    "stream_preview_growth": "not established by screenshots",
+    "saved_user_text": "我周五有两小时。可以整理已有笔记，也可以学习一个新工具。我暂时没有紧急交付，想把选择依据说清楚。请用中文简短解释两个选择各自适合什么情况，不必追问，也不替我选。",
+    "body_characters": 213
+  },
+  "n02": {
+    "sent": false,
+    "result": "not executed; CUA scroll/drag/PageDown did not move the current page, continued input not reached",
+    "cause": "not determined; cannot establish product defect from automation alone"
+  },
+  "n03": {
+    "sent": false,
+    "result": "not executed; Mac relocked before independent cancellation scenario"
+  },
+  "relaunch": {
+    "system_app_switcher_process_close": true,
+    "normal_launch_and_continue_button": true,
+    "saved_input_and_response_visible": true,
+    "sqlite_item_ids_and_payloads_identical": true,
+    "request_count_after_relaunch": 1,
+    "audit_count_after_relaunch": 1
+  },
+  "private_user_records_published": false,
+  "owner_trial_started": false,
+  "g3_50_request_window_started": false,
+  "goal_completed": false
+}

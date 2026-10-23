@@ -1,0 +1,20 @@
+{
+  "network_requests": 0,
+  "initial_import": "test bundle failed to load; stale host/test ABI mismatch",
+  "matched_host_tests_rebuilt_from": "57b8ee9df137a3c8b310915d6db242fa1a90c160",
+  "matched_import": {
+    "passedTests": 1,
+    "skippedTests": 0,
+    "failedTests": 0,
+    "result": "Passed"
+  },
+  "normal_app_restored_to_registered_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "existing_authorized_provider_reused": true,
+  "temporary_credential_file_removed": true,
+  "temporary_xctestrun_remaining": 0,
+  "app_database_before_network_mentor_requests": 0,
+  "app_database_before_network_prompt_runs": 5,
+  "secure_field_ui_save_not_clicked": true,
+  "reason": "UI save would automatically run connection test",
+  "key_values_in_evidence": false
+}
