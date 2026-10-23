@@ -808,13 +808,16 @@ final class MentorFeatureStoreTests: XCTestCase {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let transport = HeldMentorTransport()
         var tick = 10.0
+        let clock = ControlledMentorDeadlineClock()
         let store = MentorFeatureStore(repository: SQLiteMentorRepository(database: db), transport: transport,
-            uptime: { tick }, requestDeadlineAfter: .milliseconds(30))
+            uptime: { tick }, deadlineClock: clock.clock)
+        defer { clock.expire(); transport.pending?.resume(throwing: CancellationError()); transport.pending = nil }
         store.start(entry: "discuss")
         try await waitUntil { store.state.phase == .editing }
         store.submit(text: "超时的原话")
         try await waitUntil { transport.pending != nil }
         tick = 11
+        clock.expire()
         try await waitUntil { if case .failed = store.state.phase { return store.state.retryableRequest != nil }; return false }
         await store.flushUsageEvents()
         let facts = try await usageFacts(db)
@@ -3273,8 +3276,10 @@ final class MentorFeatureStoreTests: XCTestCase {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
         let held = HeldMentorTransport()
+        let clock = ControlledMentorDeadlineClock()
         let store = MentorFeatureStore(repository: repo, transport: held,
-            requestWaitingNoticeAfter: .milliseconds(2), requestDeadlineAfter: .milliseconds(20))
+            deadlineClock: clock.clock)
+        defer { clock.expire(); held.pending?.resume(throwing: CancellationError()); held.pending = nil }
         store.start(entry: "discuss")
         try await waitUntil { store.state.phase == .editing }
         store.submit(text: "需要一个明确的超时边界")
@@ -3282,6 +3287,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         let request = try XCTUnwrap(held.request)
         let sessionID = try XCTUnwrap(store.state.session?.id)
 
+        clock.expire()
         try await waitUntil {
             if case .failed = store.state.phase { return store.state.retryableRequest != nil }
             return false
@@ -3681,12 +3687,16 @@ final class MentorFeatureStoreTests: XCTestCase {
         }
     }
 
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 {
+    private enum StateWaitError: Error { case timedOut }
+
+    private func waitUntil(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while ContinuousClock.now < deadline {
             if condition() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTFail("Expected state was not reached")
+        XCTFail("Expected state was not reached within the test observation window", file: file, line: line)
+        throw StateWaitError.timedOut
     }
 
     private func catalog() throws -> MentorLessonCatalog {
@@ -3745,6 +3755,25 @@ private final class MentorStoreFixtureTransport: MentorTransport, LLMClient, @un
             "body": "把完成动作和实际效果分开看。", "question": NSNull(), "question_purpose": NSNull(),
             "source_refs": sourceRefs, "lesson_ref": NSNull(), "suggested_actions": suggestedActions
         ])
+    }
+}
+
+@MainActor
+private final class ControlledMentorDeadlineClock {
+    private var instant = ContinuousClock.now
+    private var expired = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    var clock: MentorDeadlineClock {
+        MentorDeadlineClock(now: { self.instant }, sleepUntil: { _ in
+            if !self.expired { await withCheckedContinuation { self.continuation = $0 } }
+            try Task.checkCancellation()
+        })
+    }
+    func expire() {
+        expired = true
+        instant = ContinuousClock.now.advanced(by: .seconds(600))
+        continuation?.resume()
+        continuation = nil
     }
 }
 

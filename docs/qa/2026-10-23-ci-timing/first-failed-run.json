@@ -1,0 +1,148 @@
+{
+  "run_id": 39854279265,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/39854279265",
+  "head_sha": "b03b2ad3afa789673b9d390ab8e04850be42d5ba",
+  "status": "completed",
+  "conclusion": "failure",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Record source and toolchain",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Verify local scripts without model credentials",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Build Release for Simulator",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Select existing runner iPhone",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run unit tests with no paid model requests",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Check optional HealthKit entitlement embedded for Simulator",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Run isolated permission UI in light and dark largest text",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Save test counts",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach compact test summary",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Attach isolated permission UI counts and screenshots",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Post Check out public source",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "unit_summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+          "deviceName": "iPhone 17 Pro",
+          "modelName": "iPhone 17 Pro",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 2,
+        "passedTests": 1529,
+        "skippedTests": 24,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "MingSi · Built with macOS 26.6.2",
+    "expectedFailures": 0,
+    "failedTests": 2,
+    "finishTime": 1792704327.164,
+    "passedTests": 1529,
+    "result": "Failed",
+    "skippedTests": 24,
+    "startTime": 1792703699.882,
+    "statistics": [],
+    "testFailures": [
+      {
+        "failureText": "failed - Expected state was not reached",
+        "targetName": "MingSiTests",
+        "testIdentifier": 861,
+        "testIdentifierString": "MentorFeatureStoreTests/testUserCriteriaStayInSamePersistedConversationAfterReopening()",
+        "testIdentifierURL": "test://com.apple.xcode/MingSi/MingSiTests/MentorFeatureStoreTests/testUserCriteriaStayInSamePersistedConversationAfterReopening",
+        "testName": "testUserCriteriaStayInSamePersistedConversationAfterReopening()"
+      },
+      {
+        "failureText": "failed - Expected state was not reached",
+        "targetName": "MingSiTests",
+        "testIdentifier": 863,
+        "testIdentifierString": "MentorFeatureStoreTests/testWatchdogTimeoutRecordsOneRequestDurationAndNoLateSuccess()",
+        "testIdentifierURL": "test://com.apple.xcode/MingSi/MingSiTests/MentorFeatureStoreTests/testWatchdogTimeoutRecordsOneRequestDurationAndNoLateSuccess",
+        "testName": "testWatchdogTimeoutRecordsOneRequestDurationAndNoLateSuccess()"
+      }
+    ],
+    "title": "Test - MingSi",
+    "topInsights": [
+      {
+        "category": "Common Failures",
+        "impact": "100% of failures",
+        "text": "4 runs of 2 tests failed with failed - Expected state was not reached"
+      },
+      {
+        "category": "Common Failures",
+        "impact": "50% of failures",
+        "text": "4 runs of 1 test failed with XCTAssertEqual failed: (\"1\") is not equal to (\"2\")"
+      },
+      {
+        "category": "Longest Test Runs",
+        "impact": "15% of duration",
+        "text": "5 longest test runs with outlier durations exceeding 1.44s (three standard deviations)"
+      }
+    ],
+    "totalTestCount": 1555
+  }
+}

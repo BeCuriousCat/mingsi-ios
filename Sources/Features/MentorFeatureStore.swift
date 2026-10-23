@@ -74,6 +74,16 @@ struct MentorFeatureState: Equatable {
     var isTransitioningSession = false
 }
 
+/// Uses the system clock in production; tests can advance the watchdog after a
+/// request reaches its intended lifecycle boundary without racing database setup.
+struct MentorDeadlineClock {
+    var now: () -> ContinuousClock.Instant
+    var sleepUntil: (ContinuousClock.Instant) async throws -> Void
+    static var live: Self {
+        Self(now: { ContinuousClock.now }, sleepUntil: { try await ContinuousClock().sleep(until: $0) })
+    }
+}
+
 /// The M1 flow coordinator. Persistence commands remain the authority for lifecycle
 /// and ownership; this store only owns foreground intent and presentation state.
 @MainActor
@@ -87,6 +97,7 @@ final class MentorFeatureStore: ObservableObject {
     private let timeZone: TimeZone
     private let now: () -> Date
     private let uptime: () -> TimeInterval
+    private let deadlineClock: MentorDeadlineClock
     private let onOwnedDataDeleted: (() -> Void)?
     private let onReviewReady: ((UUID, [LifeGuidanceEvent]) -> Void)?
     private let beginForegroundAIActivity: (() -> Bool)?
@@ -206,6 +217,7 @@ final class MentorFeatureStore: ObservableObject {
          endForegroundAIActivity: (() -> Void)? = nil,
          requestWaitingNoticeAfter: Duration? = nil,
          requestDeadlineAfter: Duration? = nil,
+         deadlineClock: MentorDeadlineClock = .live,
          requestPolicy: MentorRequestPolicy = .m1) {
         self.repository = repository
         self.transport = transport
@@ -215,6 +227,7 @@ final class MentorFeatureStore: ObservableObject {
         self.timeZone = timeZone
         self.now = now
         self.uptime = uptime
+        self.deadlineClock = deadlineClock
         self.onOwnedDataDeleted = onOwnedDataDeleted
         self.onReviewReady = onReviewReady
         self.beginForegroundAIActivity = beginForegroundAIActivity
@@ -285,10 +298,11 @@ final class MentorFeatureStore: ObservableObject {
                 while self != nil {
                     let expiry = self?.activeStreamProgress.map { max(startedAt, $0.lastContentAt).advanced(by: policy.streamingIdleDeadline) }
                         ?? startedAt.advanced(by: policy.deadline)
-                    try await ContinuousClock().sleep(until: expiry)
+                    guard let clock = self?.deadlineClock else { return }
+                    try await clock.sleepUntil(expiry)
                     let updated = self?.activeStreamProgress.map { max(startedAt, $0.lastContentAt).advanced(by: policy.streamingIdleDeadline) }
                         ?? startedAt.advanced(by: policy.deadline)
-                    if ContinuousClock.now >= updated { break }
+                    if clock.now() >= updated { break }
                 }
                 guard let self, !Task.isCancelled, requestWaitingGeneration == generation,
                       activeRequestGeneration == generation, activeRequestID != nil,

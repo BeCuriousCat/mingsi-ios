@@ -43,3 +43,5 @@ CI的Release和Debug都保留实际包标记检查；不会删掉断言、允许
 8张真实截图已逐张由AI视觉审读，映射见[索引](screenshots.json)。[常规字号版本信息](screenshots/build-identity-light-normal.png)正确显示0.1.0(1)、源码短标记及无本地修改；常规字号测试实际长按、找到复制菜单并点击。辅助字号测试也核对版本值；没有用本机Git状态替代App内值。
 
 首次视觉检查同时发现两处可读性改进：[最大字号版本行](screenshots/build-identity-dark-largest.png)左右列挤压导致标题分行；[最大字号健康动作](screenshots/health-permission-dark-largest.png)的并排按钮过窄。它们仍可读、可点击，原测试通过；改为辅助字号下版本信息上下排列、两个健康动作各占一行。新增真实UI布局断言检查两个动作可点、主按钮宽度和垂直关系；与HealthKit能力配置一起进行第二轮确认，不把前一候选结果套给新布局。
+
+辅助字号确认候选b03b2ad的Release通过，完整单元出现2项异步等待失败，UI未执行；[原始结果与修正](../2026-10-23-ci-timing/README.md)单独保留，不能把0bd24dd截图当作纵向布局的确认图。
