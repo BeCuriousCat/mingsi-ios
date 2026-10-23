@@ -1,6 +1,6 @@
 {
-  "base_revision": "a5989c37a79d0611ccb22077324af8085013c50f",
-  "state": "candidate after fourth CI compile failure; cancellation XCTest entry points and helper isolated to MainActor; full CI pending",
+  "base_revision": "b17345323ec387822da09febd1972c7a27f2dafa",
+  "state": "candidate after fifth CI: finite SQLite file-open lock wait, contention regressions and complete CI time allowance; full CI pending",
   "source_sha256": {
     "Sources/Features/Mentor/MentorHomeView.swift": "7487f66b4c7dacad49de7f6d6dd7e78ca451dc40bc8b84d62d5f3750236e7cf7",
     "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
@@ -9,9 +9,11 @@
     "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
     "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
     "Tests/UI/MentorNavigationUITests.swift": "a158d668c8c52f3f8029ded2ca5c7545cb2ff2cc4fe6137b00bedada193c2db1",
-    ".github/workflows/verify.yml": "c75fe4e5ac21ec6af208d1fb4cdb745306210e1aa25f681c1bddf2f8f9d9f0fe",
+    ".github/workflows/verify.yml": "5c40085ddc474587e5639808a568e14181a28808b3ad04d03f346baebf2b632f",
     "Sources/Services/DirectGLMClient.swift": "fd97ae6b819abf36b0c5a7e6d295122f64202c304e3f3fe15c7eb8ee16ffc6d0",
     "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
-    "Tests/Services/DirectGLMClientTests.swift": "9ebf575c5da4d3d2d0ac1d5387cf43cbc572ce185cca07ee41223aebd15d21ee"
+    "Tests/Services/DirectGLMClientTests.swift": "9ebf575c5da4d3d2d0ac1d5387cf43cbc572ce185cca07ee41223aebd15d21ee",
+    "Sources/Services/PersistenceCore.swift": "b31e4defc567e4e16ad0b2274c0a316deff34cc5d574c902341654a04133e3f6",
+    "Tests/Services/PersistenceCoreTests.swift": "cfee25a65f4809a4a8d4bf9a037206ae3837929a6af7176c6cca64a26d349a66"
   }
 }

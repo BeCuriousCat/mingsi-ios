@@ -33,7 +33,9 @@ jobs:
   source-verification:
     name: Clean build and offline tests
     runs-on: macos-26
-    timeout-minutes: 45
+    # A clean Release, Debug/unit run and eight UI paths exceeded 45 minutes
+    # on a slow hosted simulator. Keep the full gates and artifact collection.
+    timeout-minutes: 75
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:

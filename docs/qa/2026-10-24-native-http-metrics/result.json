@@ -1,0 +1,23 @@
+{
+  "scope": "macOS 26.6.2 command-line Foundation URLSession bytes(for:delegate:) against one localhost synthetic server; not iOS product, provider, UI, or G3 formal-window acceptance",
+  "swift": "Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0",
+  "server_requests": 4,
+  "native_network_transactions": 4,
+  "native_total_transactions": 5,
+  "observed_case_network_counts": {
+    "success": 1,
+    "redirect": 2,
+    "cancel": 1
+  },
+  "observation_wait_limit_seconds": 5,
+  "server_hanging_route_seconds": 8,
+  "new_model_requests": 0,
+  "credentials_used": false,
+  "transport_integrated_into_app": false,
+  "source_sha256": {
+    "probe.swift": "a297be6b5f05f4d82f23d623b95fc19e817b34fedaf0016d9c7b9811dbd742de",
+    "server.py": "d4c0789f3ee3a090acac17448feef6cdc8d1c7528d27d4288c18cb6d99344902"
+  },
+  "executed_server_variant": "before packaging, server result path was the fixed private temporary folder; packaged source changes only output path to required --output; Swift source is unchanged",
+  "result": "native metrics received for all three routes; network counts reconcile with four server requests; redirect metrics include an additional localCache entry"
+}

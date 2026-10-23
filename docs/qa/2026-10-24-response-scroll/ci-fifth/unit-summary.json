@@ -1,0 +1,53 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "F94FB7BA-C33C-4B3B-B505-F0FB478DB847",
+        "deviceName" : "iPhone 17",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 1536,
+      "skippedTests" : 24,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1792790430.635,
+  "passedTests" : 1536,
+  "result" : "Failed",
+  "skippedTests" : 24,
+  "startTime" : 1792789107.805,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "failed: caught error: \"SQLite error 5: database is locked - while executing `SELECT * FROM sqlite_master LIMIT 1`\"",
+      "targetName" : "MingSiTests",
+      "testIdentifier" : 865,
+      "testIdentifierString" : "MentorFeatureStoreTests/testUserCriteriaStayInSamePersistedConversationAfterReopening()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/MentorFeatureStoreTests/testUserCriteriaStayInSamePersistedConversationAfterReopening",
+      "testName" : "testUserCriteriaStayInSamePersistedConversationAfterReopening()"
+    }
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "15% of duration",
+      "text" : "11 longest test runs with outlier durations exceeding 1.97s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 1561
+}

@@ -1,0 +1,45 @@
+{
+  "run_id": 40021804431,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40021804431",
+  "head_revision": "b17345323ec387822da09febd1972c7a27f2dafa",
+  "tested_merge_revision": "89b0b4dfe50394bbec94f0f8260b113453cf409e",
+  "tested_tree": "aef4221bdd1683d545e6e84aca4fcb45a6db0af2",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "cancelled",
+  "cancellation_annotation": "The job has exceeded the maximum execution time of 45m0s",
+  "release_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1536,
+    "failed": 1,
+    "skipped": 24
+  },
+  "failure": "MentorFeatureStoreTests/testUserCriteriaStayInSamePersistedConversationAfterReopening: AppDatabase(url:) at line 206 fails with SQLITE_BUSY during SELECT * FROM sqlite_master LIMIT 1 while original connection is still open",
+  "deadline_tests": {
+    "chat": "passed (0.010 seconds)",
+    "responses": "passed (0.011 seconds)"
+  },
+  "debug_marker_postcheck": "not executed after failing unit command",
+  "optional_healthkit_check": "not executed after failing unit command",
+  "native_ui": {
+    "status": "cancelled by job limit; incomplete xcresult not exported",
+    "completed_passes_in_log": [
+      "testActiveConversationKeyboardKeepsInputAndExitReachable",
+      "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText"
+    ],
+    "next_test_interrupted": "testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText",
+    "full_summary_available": false,
+    "screenshots_available": false,
+    "visual_acceptance": "not passed; no exported screenshots"
+  },
+  "artifact_names": [
+    "unit-summary"
+  ],
+  "simulator_environment_observation": "unit step logs lockdown instruments service connection timeout after120 seconds; not proof of product hang",
+  "new_model_requests": 0,
+  "goal_complete": false
+}
