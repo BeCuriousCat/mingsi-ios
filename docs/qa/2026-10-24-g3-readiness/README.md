@@ -7,7 +7,7 @@
 | 项目 | 观察 | 结论 |
 | --- | --- | --- |
 | 导师应用层重发 | `DirectGLMClient.complete` 遇到 `mentorExecutionPolicy` 直接走单次 `send`，绕过普通请求重试及格式回退；`MentorRequestExecutor` 校验 `maxHTTPAttempts == 1` | 具备单次应用层派发规则；不能据此证明底层实际 HTTP 交易数 |
-| 底层计数 | 导师流仍调用未绑定delegate的 `session.bytes(for:)`；原生指标脱敏组件及五条测试已进入iOS目标，但尚未绑定App请求、落库或进入导出 | 点击、导师请求行和 Prompt 审计行均不能代替底层 HTTP 计数；组件测试通过不代表生产计数已可用 |
+| 底层计数 | 新候选已绑定每次attempt delegate并接入独立表/导出，取消后仍归旧请求，删除后不重建；macOS局部测试及真实localhost探针通过，完整iOS/产品集成待验 | 点击/登记/Prompt审计不代替实际HTTP；无原生指标、unknown分类与冲突均保持未知。见[本轮证据](../2026-10-24-http-observation/README.md) |
 | 输出预算 | Responses 请求字典没有输出上限字段；Chat 的 `GLMChatCompletionRequest` 也没有 token 上限属性 | 尚不能开展要求单次输出预算的正式批次；字符截断或 Prompt 要求“简短”不能替代服务端预算 |
 | 用量 | Responses 完成事件保留服务自报 model/usage；Chat 流的 usage-only 事件当前被跳过 | 不得将缺失用量填成0，服务自报 model 也不是独立的上游模型认证 |
 | 等待边界 | 生产流以有效内容更新空闲期限，默认600秒；非流式旧调用保持有限总期限，等待提示不超过10秒 | 与输出预算、底层计数分别验证；不是取消所有等待边界 |

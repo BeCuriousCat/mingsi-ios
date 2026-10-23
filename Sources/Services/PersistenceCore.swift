@@ -1286,6 +1286,9 @@ final class AppDatabase {
                 table.add(column: "principle_practice_assessment_json", .text)
             }
         }
+        if includesVNextMigrations {
+            SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        }
         return migrator
     }
 
@@ -4809,6 +4812,7 @@ enum DataExportSectionName: String, CaseIterable {
     case mentorFeedbackResets = "mentor_feedback_resets"
     case mentorRecallContinuations = "mentor_recall_continuations"
     case mentorUsageEvents = "mentor_usage_events"
+    case mentorHTTPAttempts = "mentor_http_attempts"
 }
 
 final class SQLiteDataExportRepository: DataExportRepository {

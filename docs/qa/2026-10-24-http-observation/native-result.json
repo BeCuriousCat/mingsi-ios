@@ -1,0 +1,47 @@
+[
+  {
+    "exactNetworkTransactionCount" : 1,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 1,
+      "redirectCount" : 0,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 1,
+      "unknownTransactionCount" : 0
+    },
+    "returnedData" : true,
+    "scenario" : "chat",
+    "terminalState" : "returned_data"
+  },
+  {
+    "exactNetworkTransactionCount" : 2,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 2,
+      "redirectCount" : 1,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 2,
+      "unknownTransactionCount" : 0
+    },
+    "returnedData" : true,
+    "scenario" : "redirect",
+    "terminalState" : "returned_data"
+  },
+  {
+    "exactNetworkTransactionCount" : 1,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 1,
+      "redirectCount" : 0,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 1,
+      "unknownTransactionCount" : 0
+    },
+    "returnedData" : false,
+    "scenario" : "cancel",
+    "terminalState" : "cancelled"
+  }
+]

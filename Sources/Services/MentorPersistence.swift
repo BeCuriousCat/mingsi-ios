@@ -1219,6 +1219,9 @@ final class SQLiteMentorRepository: MentorRepository {
 }
 
 extension SQLiteMentorRepository: MentorPromptAudit {
+    var httpObservationStore: (any MentorHTTPObservationStore)? {
+        SQLiteMentorHTTPObservationStore(queue: database.dbQueue)
+    }
     /// Validates the request's ownership and semantic snapshot immediately before
     /// PromptRun insertion. Prepared and in-flight requests are auditable; terminal,
     /// deleted, or superseded requests cannot receive a late trace.

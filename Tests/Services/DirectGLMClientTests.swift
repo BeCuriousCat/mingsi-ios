@@ -3,6 +3,63 @@ import Synchronization
 @testable import MingSi
 
 final class DirectGLMClientTests: XCTestCase {
+    @MainActor
+    func testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics() async throws {
+        for (kind, streaming) in [(GLMClientConfiguration.ProtocolKind.openAICompatible, false), (.openAICompatible, true), (.responses, true)] {
+            GLMStubURLProtocol.requestBodies = []
+            let chatSSE = "data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"body\\\":\\\"fixture\\\"}\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+            GLMStubURLProtocol.responses = [.init(statusCode: 200,
+                body: kind == .responses ? responsesSSE() : (streaming ? chatSSE : "{\"choices\":[]}"))]
+            let observations = RecordingHTTPObservationStore()
+            var request = makeRequest()
+            request.mentorExecutionPolicy = MentorRequestPolicy.forProtocol(kind)
+            if streaming { request.mentorStreamProgress = MentorStreamProgress() }
+            request.mentorHTTPObservation = observationChannel(request, store: observations)
+            _ = try await makeClient(configuration: GLMClientConfiguration(baseURL: URL(string: "https://glm.test/v4")!, protocolKind: kind)).complete(request)
+            let recorded = await observations.snapshot()
+            XCTAssertEqual(recorded.identities.count, 1)
+            XCTAssertEqual(recorded.identities.first?.traceID, request.traceID)
+            XCTAssertEqual(recorded.kinds, [kind == .responses ? .responses : .openAICompatible])
+            XCTAssertEqual(recorded.outcomes, [.returnedData])
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+            // URLProtocol does not establish native task-metrics support. The
+            // SQLite tests separately prove missing callbacks remain unknown.
+        }
+    }
+
+    @MainActor
+    func testMentorObservationFailureBeforeDispatchMakesNoHTTPRequest() async throws {
+        let observations = RecordingHTTPObservationStore(rejectRegistration: true)
+        var request = makeRequest()
+        request.mentorExecutionPolicy = .m1
+        request.mentorHTTPObservation = observationChannel(request, store: observations)
+        do { _ = try await makeClient().complete(request); XCTFail("Registration must succeed before HTTP") }
+        catch MentorHTTPObservationError.unavailable { }
+        XCTAssertTrue(GLMStubURLProtocol.requestBodies.isEmpty)
+        let recorded = await observations.snapshot()
+        XCTAssertTrue(recorded.outcomes.isEmpty)
+    }
+
+    @MainActor
+    func testMentorHTTPFailureIsAccountedOnceWithoutFallbackOrRetry() async throws {
+        GLMStubURLProtocol.responses = [.init(statusCode: 400, body: "response_format unsupported"),
+            .init(statusCode: 200, body: "unused")]
+        let observations = RecordingHTTPObservationStore()
+        var request = makeRequest()
+        request.mentorExecutionPolicy = .m1
+        request.mentorHTTPObservation = observationChannel(request, store: observations)
+        do { _ = try await makeClient().complete(request); XCTFail("HTTP failure") }
+        catch LLMClientError.httpStatus(let status, _) { XCTAssertEqual(status, 400) }
+        let recorded = await observations.snapshot()
+        XCTAssertEqual(recorded.identities.count, 1)
+        XCTAssertEqual(recorded.outcomes, [.failed])
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    private func observationChannel(_ request: LLMRequest, store: any MentorHTTPObservationStore) -> MentorHTTPObservation {
+        MentorHTTPObservation(traceID: request.traceID, sessionID: UUID(), requestID: UUID(),
+            requestEpoch: 0, semanticRevision: 0, store: store)
+    }
 
     func testGenericChatEOFDoesNotTurnPartialTextIntoCompletedOrRetry() async throws {
         GLMStubURLProtocol.responses = [.init(statusCode: 200,
@@ -786,6 +843,8 @@ final class DirectGLMClientTests: XCTestCase {
         GLMStubURLProtocol.hangs = true
         let started = expectation(description: "URLSession started the request")
         let stopped = expectation(description: "URLSession stopped the started request")
+        let accounted = expectation(description: "Cancelled transport remains accounted after foreground deadline")
+        let observations = RecordingHTTPObservationStore(onFinish: { accounted.fulfill() })
         GLMStubURLProtocol.onStartLoading = { started.fulfill() }
         GLMStubURLProtocol.onStopLoading = { stopped.fulfill() }
         defer { GLMStubURLProtocol.onStartLoading = nil; GLMStubURLProtocol.onStopLoading = nil }
@@ -793,6 +852,7 @@ final class DirectGLMClientTests: XCTestCase {
         var request = makeRequest()
         let policy = MentorRequestPolicy.forProtocol(configuration.protocolKind)
         request.mentorExecutionPolicy = policy
+        request.mentorHTTPObservation = observationChannel(request, store: observations)
         let operation = Task { try await client.complete(request) }
         await fulfillment(of: [started], timeout: 10)
         XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
@@ -800,6 +860,10 @@ final class DirectGLMClientTests: XCTestCase {
         do { _ = try await operation.value; XCTFail("Expected deadline") }
         catch { XCTAssertEqual(error as? MentorRequestExecutionError, .timedOut) }
         await fulfillment(of: [stopped], timeout: 10)
+        await fulfillment(of: [accounted], timeout: 10)
+        let recorded = await observations.snapshot()
+        XCTAssertEqual(recorded.identities.count, 1)
+        XCTAssertEqual(recorded.outcomes, [.cancelled])
         XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
     }
 
@@ -885,6 +949,28 @@ final class DirectGLMClientTests: XCTestCase {
         let messages = try XCTUnwrap(object?["messages"] as? [[String: Any]])
         let userMessage = try XCTUnwrap(messages.first { $0["role"] as? String == "user" })
         return try XCTUnwrap(userMessage["content"] as? String)
+    }
+}
+
+private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
+    private let rejectRegistration: Bool
+    private let onFinish: @Sendable () -> Void
+    private var identities: [MentorHTTPAttemptIdentity] = []
+    private var kinds: [MentorHTTPProtocol] = []
+    private var outcomes: [MentorHTTPAttemptOutcome] = []
+    init(rejectRegistration: Bool = false, onFinish: @escaping @Sendable () -> Void = {}) {
+        self.rejectRegistration = rejectRegistration; self.onFinish = onFinish
+    }
+    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date) async throws {
+        if rejectRegistration { throw MentorHTTPObservationError.unavailable }
+        identities.append(identity); kinds.append(protocolKind)
+    }
+    func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws { }
+    func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws {
+        outcomes.append(outcome); onFinish()
+    }
+    func snapshot() -> (identities: [MentorHTTPAttemptIdentity], kinds: [MentorHTTPProtocol], outcomes: [MentorHTTPAttemptOutcome]) {
+        (identities, kinds, outcomes)
     }
 }
 

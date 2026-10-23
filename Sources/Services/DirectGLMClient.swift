@@ -187,21 +187,23 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         }
 
 
-        do {
-            let (data, response) = try await session.data(for: urlRequest)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw LLMClientError.invalidResponse
-            }
+        return try await observeMentorHTTP(request) { delegate in
+            do {
+                let (data, response) = try await session.data(for: urlRequest, delegate: delegate)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw LLMClientError.invalidResponse
+                }
 
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                throw LLMClientError.httpStatus(httpResponse.statusCode, data)
-            }
+                guard (200..<300).contains(httpResponse.statusCode) else {
+                    throw LLMClientError.httpStatus(httpResponse.statusCode, data)
+                }
 
-            return data
-        } catch let error as LLMClientError {
-            throw error
-        } catch {
-            throw LLMClientError.transport(error)
+                return data
+            } catch let error as LLMClientError {
+                throw error
+            } catch {
+                throw LLMClientError.transport(error)
+            }
         }
     }
 
@@ -352,31 +354,34 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     /// preview as a completed response. Final content still goes through the parser.
     private func sendMentorStream(_ request: LLMRequest) async throws -> Data {
         let urlRequest = try makeURLRequest(request, usesJSONResponseFormat: false, stream: true)
-        do {
-            let (bytes, response) = try await session.bytes(for: urlRequest)
-            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
-            guard (200..<300).contains(http.statusCode) else {
-                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
-            }
-            var responses = ResponsesStreamAccumulator()
-            var chat = ChatStreamAccumulator(requiresStopReason: true)
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                if configuration.protocolKind == .responses {
-                    if let token = try responses.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
-                    if responses.isCompleted { return try responses.normalizedResponse() }
-                    continue
+        return try await observeMentorHTTP(request) { delegate in
+            do {
+                let (bytes, response) = try await session.bytes(for: urlRequest, delegate: delegate)
+                defer { bytes.task.cancel() }
+                guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
                 }
-                if let token = try chat.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
-                if chat.isCompleted {
-                    return try JSONSerialization.data(withJSONObject: ["choices": [[
-                        "message": ["role": "assistant", "content": chat.text], "finish_reason": "stop"]]])
+                var responses = ResponsesStreamAccumulator()
+                var chat = ChatStreamAccumulator(requiresStopReason: true)
+                for try await line in bytes.lines {
+                    try Task.checkCancellation()
+                    if configuration.protocolKind == .responses {
+                        if let token = try responses.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                        if responses.isCompleted { return try responses.normalizedResponse() }
+                        continue
+                    }
+                    if let token = try chat.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                    if chat.isCompleted {
+                        return try JSONSerialization.data(withJSONObject: ["choices": [[
+                            "message": ["role": "assistant", "content": chat.text], "finish_reason": "stop"]]])
+                    }
                 }
-            }
-            throw LLMClientError.incompleteResponse
-        } catch let error as LLMClientError { throw error }
-        catch is CancellationError { throw CancellationError() }
-        catch { throw LLMClientError.transport(error) }
+                throw LLMClientError.incompleteResponse
+            } catch let error as LLMClientError { throw error }
+            catch is CancellationError { throw CancellationError() }
+            catch { throw LLMClientError.transport(error) }
+        }
     }
 
     /// Responses providers may require SSE even for a logically complete request.
@@ -388,26 +393,57 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             urlRequest.timeoutInterval = min(configuration.requestTimeout,
                 Double(components.seconds) + Double(components.attoseconds) / 1e18)
         }
+        return try await observeMentorHTTP(request) { delegate in
+            do {
+                let (bytes, response) = try await session.bytes(for: urlRequest, delegate: delegate)
+                defer { bytes.task.cancel() }
+                guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
+                }
+                let iterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+                var accumulator = ResponsesStreamAccumulator()
+                while let line = try await nextLineWithIdleTimeout(from: iterator) {
+                    try Task.checkCancellation()
+                    _ = try accumulator.consume(line: line)
+                    if accumulator.isCompleted { return try accumulator.normalizedResponse() }
+                }
+                throw LLMClientError.incompleteResponse
+            } catch let error as LLMClientError {
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw LLMClientError.transport(error)
+            }
+        }
+    }
+
+    private func observeMentorHTTP(
+        _ request: LLMRequest,
+        operation: (MentorHTTPMetricsDelegate?) async throws -> Data
+    ) async throws -> Data {
+        let kind: MentorHTTPProtocol = configuration.protocolKind == .responses ? .responses : .openAICompatible
+        let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind)
+        let result: Result<Data, Error>
         do {
-            let (bytes, response) = try await session.bytes(for: urlRequest)
-            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
-            guard (200..<300).contains(http.statusCode) else {
-                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
-            }
-            let iterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
-            var accumulator = ResponsesStreamAccumulator()
-            while let line = try await nextLineWithIdleTimeout(from: iterator) {
-                try Task.checkCancellation()
-                _ = try accumulator.consume(line: line)
-                if accumulator.isCompleted { return try accumulator.normalizedResponse() }
-            }
-            throw LLMClientError.incompleteResponse
-        } catch let error as LLMClientError {
+            try Task.checkCancellation()
+            result = .success(try await operation(attempt?.delegate))
+        } catch { result = .failure(error) }
+        switch result {
+        case .success(let data):
+            try await attempt?.finish(.returnedData)
+            return data
+        case .failure(let error):
+            let cancelled = Task.isCancelled || error is CancellationError ||
+                (error as? URLError)?.code == .cancelled || {
+                    if case LLMClientError.transport(let underlying) = error {
+                        return (underlying as? URLError)?.code == .cancelled
+                    }
+                    return false
+                }()
+            try await attempt?.finish(cancelled ? .cancelled : .failed)
             throw error
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            throw LLMClientError.transport(error)
         }
     }
 

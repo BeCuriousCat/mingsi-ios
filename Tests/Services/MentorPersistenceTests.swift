@@ -3,6 +3,58 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let mentor = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await mentor.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await mentor.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+            text: "PRIVATE_SOURCE_SENTINEL", intent: "reply", contextSnapshotJSON: "{}"))
+        var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "observation", systemText: "PRIVATE_SYSTEM_SENTINEL",
+            userText: "{}", outputSchemaVersion: 1), inputSummary: "PRIVATE_SUMMARY_SENTINEL")
+        request.mentorExecutionPolicy = .m1
+        request.mentorAuditToken = .init(sessionID: sessionID, requestID: requestID, requestEpoch: 0, semanticRevision: 0)
+        let client = PromptTracingLLMClient(base: HTTPBindingProbeClient(), repository: SQLitePromptRunRepository(database: db),
+            modelProvider: "synthetic", modelName: "synthetic", mentorAudit: mentor)
+        _ = try await client.complete(request)
+        let package = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(package.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 1)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let records = try XCTUnwrap(sections[DataExportSectionName.mentorHTTPAttempts.rawValue] as? [[String: Any]])
+        let record = try XCTUnwrap(records.first)
+        XCTAssertEqual(record["request_id"] as? String, requestID.uuidString)
+        XCTAssertEqual(record["trace_id"] as? String, request.traceID.uuidString)
+        XCTAssertEqual(record["terminal_state"] as? String, "returned_data")
+        XCTAssertEqual(record["metrics_state"] as? String, "pending")
+        let numericSection = String(decoding: try JSONSerialization.data(withJSONObject: records), as: UTF8.self)
+        XCTAssertFalse(numericSection.contains("PRIVATE_"))
+        XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
+            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json"]))
+        try await mentor.deleteSession(id: sessionID)
+        let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)
+    }
+
+    func testPreVNextDatabaseDoesNotMarkObservationMigrationAsAlreadyApplied() throws {
+        let queue = try DatabaseQueue()
+        _ = try AppDatabase(dbQueue: queue, includesVNextMigrations: false)
+        try queue.read { db in
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v75_mentor_http_attempts"))
+            XCTAssertFalse(try db.tableExists("mentor_http_attempts"))
+        }
+    }
+
+    private final class HTTPBindingProbeClient: LLMClient {
+        func complete(_ request: LLMRequest) async throws -> Data {
+            let channel = try XCTUnwrap(request.mentorHTTPObservation)
+            let attempt = try await channel.beginAttempt(protocolKind: .responses)
+            try await attempt.finish(.returnedData)
+            return Data("{}".utf8)
+        }
+    }
+
     func testRequestOutcomeReturnsOnlyOwnedTerminalMetadata() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

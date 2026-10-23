@@ -1,0 +1,9 @@
+// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(name: "MingSiHTTPObservationProbe", platforms: [.macOS(.v15)],
+ dependencies: [.package(path: "<REPOSITORY_ROOT>/Vendor/GRDB.swift")],
+ targets: [.target(name: "MingSi", dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
+ swiftSettings: [.enableUpcomingFeature("NonisolatedNonsendingByDefault")]),
+ .executableTarget(name: "NativeProbe", dependencies: ["MingSi", .product(name: "GRDB", package: "GRDB.swift")], swiftSettings: [.enableUpcomingFeature("NonisolatedNonsendingByDefault")]),
+ .testTarget(name: "MingSiTests", dependencies: ["MingSi", .product(name: "GRDB", package: "GRDB.swift")],
+ swiftSettings: [.enableUpcomingFeature("NonisolatedNonsendingByDefault")])])

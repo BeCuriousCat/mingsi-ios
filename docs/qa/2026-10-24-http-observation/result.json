@@ -1,0 +1,40 @@
+{
+  "base_revision": "0c208365055ac04eb537c45919be2ded9f37b603",
+  "candidate_state": "working candidate; complete iOS build, full suite, production binding/export integration and UI await clean CI",
+  "local_tests": {
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "9 actual store tests plus 5 extracted transport tests; actual GRDB/DirectGLMClient/executor/channel/store sources, stub LLM request models; macOS Swift 6"
+  },
+  "native_probe": {
+    "scenarios": 3,
+    "actual_server_http_requests": 4,
+    "native_network_counts": [
+      1,
+      2,
+      1
+    ],
+    "scope": "actual DirectGLMClient -> per-attempt delegate -> actual SQLite store on macOS localhost; Chat success, Responses redirect and receiving-stream cancellation",
+    "limits": "minimal graph and request-model fixture; no App UI, real provider or iOS runtime",
+    "earlier_probe_preserved": "native-initial; 4 earlier localhost requests, not included in the final 4-request probe denominator"
+  },
+  "new_paid_model_requests": 0,
+  "new_N01_N02_N03_actions": 0,
+  "phone_installations": 0,
+  "formal_g3_window_started": false,
+  "goal_complete": false,
+  "source_sha256": {
+    "Sources/Services/MentorHTTPMetrics.swift": "cbc2dc742a08a68e07c515469e094002991a5ce26435d784eaf93af7d1e4f01b",
+    "Sources/Services/MentorHTTPObservationStore.swift": "19b356ed240d467f5a0a0032ecc0d31a23120e41606f85d795b8c9bf2c0d2ba6",
+    "Sources/Services/DirectGLMClient.swift": "3bc9540c9220a20df3a193b0dc4d8904fd128f93a5ed754ed86a2cba31c6592f",
+    "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
+    "Sources/Services/CoreProtocols.swift": "c3646d710f81e96d76d1fc07caa1c3b515202a84f8e6a69f5180baca10a2b9c0",
+    "Sources/Services/MentorPersistence.swift": "fb80cac7f4eff47b5251ba6f476a57950394eaf17ebb64955555e937fdfc3620",
+    "Sources/Services/PersistenceCore.swift": "d0099715115aad6ff8cb8afed7a0730359d453613a06ca97d2c021b1d280eb53",
+    "Tests/Services/MentorHTTPObservationTests.swift": "ae26c98db54a36b1aa983b9d9988b252e7e1218b02fe62ba677e9a52a75a5782",
+    "Tests/Services/DirectGLMClientTests.swift": "3b76c0cd3ade4a03a89eafe63eb6656828b7f60d011c7cebe85c11f07681f383",
+    "Tests/Services/MentorPersistenceTests.swift": "62df95a850bfe2b1513857328b7dfc623e610271c166a81e73ac7b4837444b12",
+    "MingSi.xcodeproj/project.pbxproj": "ebd64a1f95b4f3a9dbcb7b516989021591dfb44c83591e9b801eaf02340e71cf"
+  }
+}

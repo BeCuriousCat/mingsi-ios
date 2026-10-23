@@ -1,0 +1,16 @@
+{
+  "source_sha256": {
+    "Sources/Services/MentorHTTPMetrics.swift": "cbc2dc742a08a68e07c515469e094002991a5ce26435d784eaf93af7d1e4f01b",
+    "Sources/Services/MentorHTTPObservationStore.swift": "049d3fde115a8af5acb8dfaf624b50beed33104f79baf265db566dcf38657eff",
+    "Sources/Services/DirectGLMClient.swift": "3bc9540c9220a20df3a193b0dc4d8904fd128f93a5ed754ed86a2cba31c6592f",
+    "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
+    "Sources/Services/CoreProtocols.swift": "c3646d710f81e96d76d1fc07caa1c3b515202a84f8e6a69f5180baca10a2b9c0",
+    "Sources/Services/MentorPersistence.swift": "fb80cac7f4eff47b5251ba6f476a57950394eaf17ebb64955555e937fdfc3620",
+    "Sources/Services/PersistenceCore.swift": "d0099715115aad6ff8cb8afed7a0730359d453613a06ca97d2c021b1d280eb53",
+    "Tests/Services/MentorHTTPObservationTests.swift": "a78b5af39197efd26b71f9246dfe50d855cfc4688b2586f2c1f97bb05a3c542c",
+    "Tests/Services/DirectGLMClientTests.swift": "3b76c0cd3ade4a03a89eafe63eb6656828b7f60d011c7cebe85c11f07681f383",
+    "Tests/Services/MentorPersistenceTests.swift": "62df95a850bfe2b1513857328b7dfc623e610271c166a81e73ac7b4837444b12",
+    "MingSi.xcodeproj/project.pbxproj": "ebd64a1f95b4f3a9dbcb7b516989021591dfb44c83591e9b801eaf02340e71cf"
+  },
+  "scope": "initial local probe before fail-closed missing-parent migration guard"
+}
