@@ -37,6 +37,8 @@ xcrun swiftc -swift-version 6 -enable-upcoming-feature NonisolatedNonsendingByDe
 
 ## 原生转换组件的后续准备
 
-后续已在本机准备 `Sources/Services/MentorHTTPMetrics.swift`，将系统原始指标转换为仅含数字的快照，不向后续层暴露task、URL或头部。已使用该实际源文件重新编译[组件探针](component-probe.swift)，在同一本机服务执行成功、重定向和显式取消，网络数1/2/1与服务端4次请求相符，见[组件实际快照](component-observed-task-metrics.json)及[服务端序列](component-observed-server-requests.json)。未知分类或空指标回调不能得到“精确0/1”；非负计数、分类总和及反序列化溢出边界另有5条实际XCTest通过，见[测试日志](component-tests.log)。
+后续已在本机准备 `Sources/Services/MentorHTTPMetrics.swift`，将系统原始指标转换为仅含数字的快照，不向后续层暴露task、URL或头部。已使用该实际源文件重新编译[组件探针](component-probe.swift)，在同一本机服务执行成功、重定向和显式取消，网络数1/2/1与服务端4次请求相符，见[组件实际快照](component-observed-task-metrics.json)及[服务端序列](component-observed-server-requests.json)。未知分类或空指标回调不能得到“精确0/1”；非负计数、分类总和及反序列化溢出边界另有5条实际XCTest通过，见[测试日志](component-tests.txt)。
 
-[组件结果与源码哈希](component-result.json)明确绑定本机未提交源文件。测试副本只移除App模块import，使用实际XCTest方法和defaultTestSuite执行；首次链接/运行缺Xcode库搜索路径的失败与修正留在本机，不能把仅编译称作测试通过。这里仍是macOS组件准备，尚未进入第六轮CI候选，没有接入App请求、数据库或导出；下一步补这些调用与iOS回归，不宣布G3正式能力完成。
+[组件结果与源码哈希](component-result.json)绑定本机执行时的组件源文件。测试副本只移除App模块import，使用实际XCTest方法和defaultTestSuite执行；首次链接/运行缺Xcode库搜索路径的失败与修正留在本机，不能把仅编译称作测试通过。这里仍是macOS组件准备，不属于第六轮CI候选，没有接入App请求、数据库或导出；下一步补这些调用与iOS回归，不宣布G3正式能力完成。
+
+执行纠正：组件源文件被提前提交推送为 `f68f7fa`，触发[重复排队CI 40029089898](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40029089898)。已主动取消该排队运行；[原第六轮40028420412](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40028420412)最初仍显示运行，随后因并发替换而取消，不能据此判定数据库修复通过或失败。提前提交还漏了Xcode工程引用，且 `.log` 被全局忽略导致测试日志链接未入库；现已补齐引用和 `.txt` 日志，待提交新候选。不把取消当作测试失败，不称组件已由第六轮iOS编译验收。之后保持候选固定至验证终态。

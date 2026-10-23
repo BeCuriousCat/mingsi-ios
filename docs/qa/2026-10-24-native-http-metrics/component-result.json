@@ -1,6 +1,6 @@
 {
   "base_revision": "1152bd615d4cb079db35ac9f52890b7f2c3bc946",
-  "state": "local uncommitted component under preparation; not in candidate-sixth CI; no product transport binding or persistence",
+  "state": "source prepared locally and then committed in f68f7fa; not in candidate-sixth CI; product request binding and persistence still pending",
   "scope": "actual MentorHTTPMetrics.swift compiled and exercised by native localhost delegate callbacks on macOS; actual XCTest methods compiled with only app-module import removed, then run via XCTest defaultTestSuite",
   "swift_mode": "Swift 6 with NonisolatedNonsendingByDefault",
   "native_cases": [
@@ -25,5 +25,6 @@
     "first XCTest link omitted Swift support library search path; corrected with Developer/usr/lib",
     "first XCTest launch lacked PrivateFrameworks loader path; reran the same built test executable with DYLD_FRAMEWORK_PATH pointing at Xcode platform PrivateFrameworks",
     "no model or credentials used; local server stopped through original exec session"
-  ]
+  ],
+  "test_log": "component-tests.txt"
 }
