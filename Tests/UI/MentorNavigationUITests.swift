@@ -612,6 +612,118 @@ final class MentorNavigationUITests: XCTestCase {
     }
 
     @MainActor
+    func testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback() throws {
+        try verifyNextInputAfterSavedResponse(largestText: false)
+    }
+
+    @MainActor
+    func testSavedNetworkResponseAllowsNextInputAtLargestDarkText() throws {
+        try verifyNextInputAfterSavedResponse(largestText: true)
+    }
+
+    @MainActor
+    func testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-AppleInterfaceStyle", "Dark",
+            "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        defer { app.terminate() }
+        let discuss = app.buttons["我有一件事"]
+        XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+        scrollTo(discuss, in: app)
+        discuss.tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("保留原文")
+        let voice = app.buttons["speech-input.toggle"]
+        voice.tap()
+        assertVoiceLabel("停止语音输入", voice)
+        voice.tap()
+        assertVoiceLabel("取消语音识别", voice)
+        voice.tap()
+        assertVoiceLabel("开始语音输入", voice)
+        voice.tap()
+        assertVoiceLabel("停止语音输入", voice)
+        voice.tap()
+        let review = app.textFields["speech-input.review"]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "保留原文")
+        let area = app.scrollViews["mentor.conversation.composer-scroll"]
+        let accept = app.buttons["speech-input.accept"]
+        for _ in 0..<8 where !accept.isHittable { area.swipeUp(velocity: .slow) }
+        XCTAssertTrue(accept.isHittable)
+        XCTAssertTrue(app.buttons["发送"].isHittable)
+        attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-review")
+        accept.tap()
+        XCTAssertEqual(input.value as? String, "保留原文\n语音测试第 2 次。")
+        XCTAssertTrue(review.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["发送"].isHittable)
+        attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-accepted")
+    }
+
+    @MainActor
+    private func verifyNextInputAfterSavedResponse(largestText: Bool) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-response-scroll-fixture", "--speech-ui-fixture",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            "-AppleInterfaceStyle", largestText ? "Dark" : "Light",
+            "-UIPreferredContentSizeCategory", largestText ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+        app.launch()
+        defer { app.terminate() }
+        let discuss = app.buttons["我有一件事"]
+        XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+        scrollTo(discuss, in: app)
+        discuss.tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        scrollTo(input, in: app)
+        input.tap()
+        input.typeText("我周五有两小时。可以整理已有笔记，也可以学习一个新工具。我暂时没有紧急交付，想把选择依据说清楚。请用中文简短解释两个选择各自适合什么情况，不必追问，也不替我选。")
+        app.buttons["speech-input.keyboard-dismiss"].tap()
+        let send = app.buttons["发送"]
+        scrollTo(send, in: app)
+        send.tap()
+        let answer = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "这两个选择的关键取舍是：")).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 8))
+        scrollTo(answer, in: app, towardEarlierContent: true)
+        XCTAssertTrue(answer.label.hasSuffix("可能仍不确定。"))
+        let variant = largestText ? "dark-largest" : "light"
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-before-next-input")
+
+        // Reach the next composer with actual native swipes, leaving optional
+        // benefit feedback untouched. This replay is not real-network acceptance.
+        scrollTo(input, in: app)
+        input.tap()
+        let nextTurn = "补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。"
+        input.typeText(nextTurn)
+        XCTAssertEqual(input.value as? String, nextTurn)
+        let fullyVisible = NSPredicate { _, _ in
+            input.isHittable && app.buttons["speech-input.keyboard-dismiss"].isHittable &&
+            input.frame.minY >= app.navigationBars["这次交流"].frame.maxY - 1 &&
+            input.frame.maxY <= app.keyboards.firstMatch.frame.minY + 1
+        }
+        expectation(for: fullyVisible, evaluatedWith: nil)
+        waitForExpectations(timeout: 5)
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-next-input-keyboard")
+        XCTAssertTrue(input.isHittable)
+        XCTAssertTrue(app.navigationBars["这次交流"].buttons["到这里"].isHittable)
+        XCTAssertTrue(app.buttons["speech-input.keyboard-dismiss"].isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.navigationBars["这次交流"].frame.maxY - 1)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        app.buttons["speech-input.keyboard-dismiss"].tap()
+        scrollTo(send, in: app)
+        XCTAssertTrue(send.isEnabled, "Next turn must not require optional benefit feedback")
+        XCTAssertTrue(send.isHittable)
+        XCTAssertEqual(input.value as? String, nextTurn)
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-next-send-ready")
+        // Do not send a second response or create synthetic benefit feedback.
+    }
+
+    @MainActor
     private func verifyMentorStream(interrupted: Bool) throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-stream-ui-fixture", "--speech-ui-fixture",

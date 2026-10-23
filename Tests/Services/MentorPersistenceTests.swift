@@ -1117,6 +1117,63 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(links, 0)
     }
 
+    func testResponseConsumesOnlyTheMatchingDraftAndReplayPreservesLaterEdits() async throws {
+        for scenario in ["unchanged", "newer", "changed", "intentOnly", "otherInput"] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let id = UUID()
+            try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+                draftText: "已发送", draftRevision: 1, activityAt: .now))
+            let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+                text: scenario == "intentOnly" ? nil : (scenario == "otherInput" ? "别的输入" : "已发送"),
+                intent: scenario == "intentOnly" ? "explain" : "reply", contextSnapshotJSON: "{}"))
+            if scenario == "newer" || scenario == "changed" {
+                try await repo.saveDraft(sessionID: id, revision: 2, text: scenario == "newer" ? "已发送" : "下一轮")
+            }
+            let consumed = MentorConsumedDraft(revision: 1, text: "已发送")
+            let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+            let session = try await repo.session(id: id)
+            XCTAssertEqual(session?.draftText, scenario == "unchanged" ? "" : (scenario == "changed" ? "下一轮" : "已发送"), scenario)
+            if scenario == "unchanged" {
+                do {
+                    try await repo.saveDraft(sessionID: id, revision: 1, text: "已发送")
+                    XCTFail("A delayed same-revision write must not resurrect consumed text")
+                } catch {}
+            }
+            try await repo.saveDraft(sessionID: id, revision: 3, text: "另写的下一轮")
+            let replay = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}",
+                consumingDraft: MentorConsumedDraft(revision: 3, text: "另写的下一轮"))
+            XCTAssertEqual(replay, item)
+            let afterReplay = try await repo.session(id: id)
+            XCTAssertEqual(afterReplay?.draftText, "另写的下一轮")
+        }
+    }
+
+    func testDraftConsumptionFailureRollsBackResponseAndAllowsLocalRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "不能丢失的原话", draftRevision: 1, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "不能丢失的原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let consumed = MentorConsumedDraft(revision: 1, text: "不能丢失的原话")
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_consumption BEFORE UPDATE OF draft_text ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do {
+            _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+            XCTFail("Expected an atomic rollback")
+        } catch {}
+        let beforeRetry = try await repo.session(id: id)
+        XCTAssertEqual(beforeRetry?.draftText, consumed.text)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 0)
+        let outcome = try await repo.requestOutcome(sessionID: id, requestID: request)
+        XCTAssertNil(outcome, "The request must remain pending after rollback")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_consumption") }
+        _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+        let afterRetry = try await repo.session(id: id)
+        XCTAssertEqual(afterRetry?.draftText, "")
+    }
+
     func testResponseOwnershipAndAtomicRollback() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)

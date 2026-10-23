@@ -1,0 +1,17 @@
+{
+  "kind": "synthetic native replay",
+  "result": "Failed",
+  "passed": 0,
+  "failed": 2,
+  "skipped": 0,
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+      "message": "XCTAssertEqual failed: (\"Optional(\"补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。我周五有两小时。可以整理已有笔记，也可以学习一个新工具。我暂时没有紧急交付，想把选择依据说清楚。请用中文简短解释两个选择各自适合什么情况，不必追问，也不替我选。\")\") is not equal to (\"Optional(\"补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。\")\")"
+    },
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+      "message": "XCTAssertEqual failed: (\"Optional(\"补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。我周五有两小时。可以整理已有笔记，也可以学习一个新工具。我暂时没有紧急交付，想把选择依据说清楚。请用中文简短解释两个选择各自适合什么情况，不必追问，也不替我选。\")\") is not equal to (\"Optional(\"补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。\")\")"
+    }
+  ]
+}

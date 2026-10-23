@@ -4,6 +4,116 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testSuccessfulReplyConsumesComposerAndReopensEmptyWithoutCallingModel() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+        store.submit(text: "这轮原话只发送一次")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        XCTAssertEqual(store.state.inputText, "")
+        XCTAssertFalse(store.state.hasUnsavedDraft)
+        let saved = try await repo.session(id: sessionID)
+        XCTAssertEqual(saved?.draftText, "")
+        XCTAssertTrue(store.state.timeline.contains { $0.kind == .user && $0.payloadJSON.contains("这轮原话只发送一次") })
+        let reopened = MentorFeatureStore(repository: repo, transport: transport)
+        reopened.continueSession(id: sessionID)
+        try await waitUntil { reopened.state.phase == .showingResponse && !reopened.state.isTransitioningSession }
+        XCTAssertEqual(reopened.state.inputText, "")
+        XCTAssertEqual(transport.calls, 1)
+    }
+
+    func testResponsePreservesNewComposerEditsWhetherFlushedOrNot() async throws {
+        for flushNewDraft in [false, true] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let held = HeldMentorTransport()
+            let store = MentorFeatureStore(repository: repo, transport: held)
+            store.start(entry: "discuss")
+            try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+            store.submit(text: "已经发送的原话")
+            try await waitUntil { held.pending != nil }
+            store.updateInputText("等待期间新写的下一轮")
+            if flushNewDraft {
+                let saved = await store.flushDraft()
+                XCTAssertTrue(saved)
+            }
+            let payload = try await MentorStoreFixtureTransport().complete(try XCTUnwrap(held.request))
+            held.pending?.resume(returning: payload)
+            held.pending = nil
+            try await waitUntil { store.state.phase == .showingResponse }
+            XCTAssertEqual(store.state.inputText, "等待期间新写的下一轮")
+            let saved = await store.flushDraft()
+            XCTAssertTrue(saved)
+            let persisted = try await repo.session(id: XCTUnwrap(store.state.session?.id))
+            XCTAssertEqual(persisted?.draftText, "等待期间新写的下一轮")
+        }
+    }
+
+    func testReturnDuringResponseTransactionRollsBackWithoutLosingComposer() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+        let paused = DispatchSemaphore(value: 0)
+        try await db.dbQueue.write { database in
+            database.add(function: DatabaseFunction("pause_after_consumption", argumentCount: 0) { _ in
+                // Pause while SQLite owns the uncommitted response transaction,
+                // before the request task can publish its new screen state.
+                Task { @MainActor in store.pause(); paused.signal() }
+                guard paused.wait(timeout: .now() + 5) == .success else {
+                    throw PersistenceError.validationFailed("pause synchronization timed out")
+                }
+                return nil as String?
+            })
+            try database.execute(sql: "CREATE TRIGGER pause_consumption AFTER UPDATE OF draft_text ON mentor_sessions WHEN NEW.draft_text = '' AND OLD.draft_text != '' BEGIN SELECT pause_after_consumption(); END")
+        }
+        store.submit(text: "返回时这轮还未提交")
+        try await waitUntil { store.state.phase == .paused && !store.state.isTransitioningSession }
+        XCTAssertNil(store.state.draftSaveError)
+        XCTAssertEqual(store.state.inputText, "返回时这轮还未提交")
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        let persisted = try await repo.session(id: sessionID)
+        XCTAssertEqual(persisted?.draftText, "返回时这轮还未提交")
+        XCTAssertEqual(persisted?.lifecycle, .paused)
+        let items = try await repo.items(sessionID: sessionID)
+        XCTAssertEqual(items.filter { $0.kind == .user }.count, 1)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 0)
+        XCTAssertEqual(transport.calls, 1)
+    }
+
+    func testReturnAfterResponseCommitDoesNotResurrectConsumedComposer() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+        let paused = DispatchSemaphore(value: 0)
+        let observer = MentorResponseCommitObserver {
+            Task { @MainActor in store.pause(); paused.signal() }
+            _ = paused.wait(timeout: .now() + 5)
+        }
+        try await db.dbQueue.write { database in
+            database.add(transactionObserver: observer, extent: .databaseLifetime)
+        }
+        store.submit(text: "返回时这轮已经提交")
+        try await waitUntil { store.state.phase == .paused && !store.state.isTransitioningSession }
+        XCTAssertNil(store.state.draftSaveError)
+        XCTAssertEqual(store.state.inputText, "")
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        let persisted = try await repo.session(id: sessionID)
+        XCTAssertEqual(persisted?.draftText, "")
+        XCTAssertEqual(persisted?.lifecycle, .paused)
+        let items = try await repo.items(sessionID: sessionID)
+        XCTAssertEqual(items.filter { $0.kind == .user }.count, 1)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 1)
+        XCTAssertEqual(transport.calls, 1)
+    }
+
     func testStreamingPreviewSurvivesFailureWithoutBecomingSavedAssistant() async throws {
         for failure: LLMClientError in [.incompleteResponse,
             .providerStreamFailure(ProviderStreamFailure(event: .responsesError, reason: .quota))] {
@@ -717,8 +827,9 @@ final class MentorFeatureStoreTests: XCTestCase {
         try await waitUntil { store.state.phase == .showingResponse && !store.state.isTransitioningSession }
         store.acknowledgeResponse(itemID: try XCTUnwrap(store.state.responseItemID))
         await store.flushUsageEvents()
+        let previousResponseID = store.state.responseItemID
         store.submit(text: "这是对同一件事的补充")
-        try await waitUntil { store.state.phase == .showingResponse && store.state.inputText.contains("补充") }
+        try await waitUntil { store.state.phase == .showingResponse && store.state.responseItemID != previousResponseID }
         await store.flushUsageEvents()
         let facts = try await usageFacts(db)
         let requests = facts.filter { $0.kind == "request_finished" }
@@ -2294,7 +2405,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         let first = try XCTUnwrap(store.state.responseItemID)
         store.submit(text: "尚未呈现时不应提交")
         XCTAssertEqual(store.state.phase, .showingResponse)
-        XCTAssertEqual(store.state.inputText, "第一轮")
+        XCTAssertEqual(store.state.inputText, "")
         store.acknowledgeResponse(itemID: first)
         try await waitUntil { store.state.acknowledgedResponseItemID == first }
         store.submit(text: "第二轮")
@@ -3774,6 +3885,27 @@ private final class ControlledMentorDeadlineClock {
         instant = ContinuousClock.now.advanced(by: .seconds(600))
         continuation?.resume()
         continuation = nil
+    }
+}
+
+/// Observation flags belong exclusively to the database writer queue.
+private final class MentorResponseCommitObserver: TransactionObserver, @unchecked Sendable {
+    private var insertedResult = false
+    private let onCommit: @Sendable () -> Void
+
+    init(onCommit: @escaping @Sendable () -> Void) { self.onCommit = onCommit }
+
+    func observes(eventsOfKind eventKind: DatabaseEventKind) -> Bool {
+        eventKind.tableName == "mentor_request_results"
+    }
+
+    func databaseDidChange(with event: DatabaseEvent) { insertedResult = true }
+    func databaseWillCommit() throws {}
+    func databaseDidRollback(_ db: Database) { insertedResult = false }
+    func databaseDidCommit(_ db: Database) {
+        guard insertedResult else { return }
+        insertedResult = false
+        onCommit()
     }
 }
 
