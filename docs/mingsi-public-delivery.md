@@ -25,11 +25,11 @@
 
 ## 当前包配置与仍缺的证据
 
-App自身使用UserDefaults保存快捷请求/偏好，以及`ProcessInfo.systemUptime`计算会话/请求耗时。GRDB已有独立隐私清单，不能代替App声明自身API用途。已准备App清单：UserDefaults为`CA92.1`，事件间计时为`35F9.1`；仅声明已核对用途，不声称在线模型没有数据外传。
+App自身使用UserDefaults保存快捷请求/偏好，以及`ProcessInfo.systemUptime`计算会话/请求耗时。GRDB已有独立隐私清单，不能代替App声明自身API用途。App已包含自身隐私清单：UserDefaults为`CA92.1`，事件间计时为`35F9.1`。已直接读取当前已装候选496c526的App包，核对这两项理由以及日历、健康、麦克风和语音识别用途说明，见[包内核对](qa/2026-10-23-native-current/package-permissions.json)；这不代表实际权限授权或在线模型没有数据外传。
 
-日历读取使用`requestFullAccessToEvents`，已准备将旧说明键换为`NSCalendarsFullAccessUsageDescription`，并在构建后读取真实App包验证。语法、plist与工程配置检查不等于授权弹窗已经实际操作，完整构建/测试及真机授权仍待验收。
+日历读取使用`requestFullAccessToEvents`，已将旧说明键换为`NSCalendarsFullAccessUsageDescription`。候选496c526已完成干净环境Release/Debug构建、包内源码标记及单元/UI复验；此前包内权限说明核对见[配置专项](qa/2026-10-23-release-configuration/README.md)，后续完整候选见[实际结果](qa/2026-10-23-ci-timing/README.md)。隔离provider下的日历请求/拒绝界面已有证据，真实系统授权弹窗与真机读取仍未验收。
 
-生活奇遇原先缺少HealthKit entitlement，现已准备[可选健康能力配置](qa/2026-10-23-healthkit-capability/README.md)并用实际轻量模拟器产物核对；明思完整候选、真机签名和读取仍待验收。权限未知/仅写入的表达及请求反馈已通过[隔离原生UI验证](qa/2026-10-23-permission-states/README.md)。需用支持此能力的有效团队和描述文件签名；entitlement只允许请求授权，不代表用户已经授予读取。
+生活奇遇原先缺少HealthKit entitlement，现已补齐[可选健康能力配置](qa/2026-10-23-healthkit-capability/README.md)。候选496c526的明思完整Debug模拟器可执行文件已实际核对HealthKit能力为true、Info无healthkit设备安装限制；两条原生UI和8张截图已复验。权限未知/仅写入的表达及请求反馈使用隔离provider验证，未读取本人健康数据。真机仍需支持此能力的有效团队和描述文件，签名、系统授权与读取尚未验收；entitlement只允许请求授权，不代表用户已经授予读取。
 
 在线输入会直接发给用户选定的模型服务，系统语音可能使用联网识别。商店隐私披露还需核对实际服务、保留政策和审核配置；本次required-reason清单不能替代商店隐私表或完整数据流核对。
 

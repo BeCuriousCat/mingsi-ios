@@ -42,6 +42,10 @@ LNActionForAutoShortcutPhraseFetchError Code=1
 
 这证明该环境中同代码证书重签后的系统路径可用，不能推广为所有模拟器失败都只由签名导致。临时签名CI只验证其规定路径，不把它当成系统AppShortcut已执行的证明。手机描述文件和账号会话问题仍另见[实际复查](../2026-10-23-phone-delivery/account-recheck.json)。没有用模拟器成功推断手机签名可用。
 
+## 后续包内配置核对
+
+后续Mac再次锁屏，实际网络UI仍未执行。只读当前已装496c526 App包，核对自身PrivacyInfo.xcprivacy的UserDefaults CA92.1、SystemBootTime 35F9.1，日历FullAccess/健康/麦克风/语音识别用途说明存在、旧日历说明键不存在，且无healthkit设备限制。见[实际包内字段检查](package-permissions.json)。未请求系统权限或读取私人正文，也不将这项文件检查当作系统弹窗、健康读取或语音通过。
+
 ## 仍缺
 
 手机P01–P12、真实系统中文语音/中断/拒绝、VoiceOver、Siri、操作按钮、真实网络SSE，以及普通用户安装与真实价值均未因此通过。桌面入口的实际添加方式另写入[操作指南](../../mingsi-capture-shortcuts.md)。全部公开截图只含合成文字或系统界面，由Codex AI审读；文件哈希见[截图索引](screenshots.json)。

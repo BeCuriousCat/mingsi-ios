@@ -1,0 +1,21 @@
+{
+  "source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "source_state": "clean",
+  "calendar_full_access_purpose_present": true,
+  "legacy_calendar_purpose_absent": true,
+  "health_read_purpose_present": true,
+  "microphone_purpose_present": true,
+  "speech_purpose_present": true,
+  "app_required_reason_manifest_present": true,
+  "app_required_reasons": {
+    "NSPrivacyAccessedAPICategoryUserDefaults": [
+      "CA92.1"
+    ],
+    "NSPrivacyAccessedAPICategorySystemBootTime": [
+      "35F9.1"
+    ]
+  },
+  "healthkit_required_device": false,
+  "actual_system_permissions_tested": false,
+  "private_data_read": false
+}
