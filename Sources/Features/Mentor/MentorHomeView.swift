@@ -638,6 +638,12 @@ struct SingleNudgeSheet: View {
 }
 
 struct MentorConversationView: View {
+    private struct RequestReveal: Hashable {
+        let sessionID: UUID?
+        let isSubmitting: Bool
+        let latestItemID: UUID?
+        let hasPreview: Bool
+    }
     private struct ComposerHeight: PreferenceKey {
         static let defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
@@ -697,28 +703,18 @@ struct MentorConversationView: View {
                     }
                     .accessibilityIdentifier("mentor.conversation.reading-scroll")
                     .scrollDismissesKeyboard(.interactively)
-                    .task(id: feature.state.phase == .submitting) {
+                    .task(id: RequestReveal(sessionID: feature.state.session?.id,
+                                            isSubmitting: feature.state.phase == .submitting,
+                                            latestItemID: feature.state.timeline.last?.id,
+                                            hasPreview: !feature.state.streamingPreview.isEmpty)) {
                         guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
-                        await Task.yield()
+                        // Wait for the lazy timeline and new status to acquire
+                        // their layout. This task restarts only at transitions,
+                        // never for each streamed character or scroll offset.
+                        do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
                         guard !Task.isCancelled, feature.state.phase == .submitting,
                               !feature.state.isViewingHistory, !inputFocused else { return }
-                        scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
-                    }
-                    .onChange(of: feature.state.timeline.last?.id) { _, _ in
-                        guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
-                        Task { @MainActor in
-                            await Task.yield()
-                            guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
-                            scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
-                        }
-                    }
-                    .onChange(of: feature.state.streamingPreview.isEmpty) { _, empty in
-                        guard !empty, feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
-                        Task { @MainActor in
-                            await Task.yield()
-                            guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
-                            scroll.scrollTo("mentor.conversation.request-status", anchor: .top)
-                        }
+                        scroll.scrollTo("mentor.conversation.request-start", anchor: .top)
                     }
                     .onChange(of: feature.state.responseItemID) { _, id in
                         guard let id, !feature.state.isViewingHistory else { return }
@@ -899,6 +895,7 @@ struct MentorConversationView: View {
                 .id(item.id)
             }
         }
+        Color.clear.frame(height: 1).id("mentor.conversation.request-start")
         VStack(alignment: .leading, spacing: 12) { status }
             .id("mentor.conversation.request-status")
         if feature.state.session?.initialEntry == "review", let sessionID = feature.state.session?.id {
@@ -1363,7 +1360,7 @@ struct MentorConversationView: View {
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
             .frame(height: min(composerContentHeight, max(180, viewportHeight * 0.55)))
             .onPreferenceChange(ComposerHeight.self) { height in
                 guard height.isFinite, height > 0, abs(height - composerContentHeight) > 0.5 else { return }

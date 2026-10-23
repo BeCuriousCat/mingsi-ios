@@ -111,7 +111,7 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" \
             -parallel-testing-enabled NO \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 \
+            -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInLight \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest \
             -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback \

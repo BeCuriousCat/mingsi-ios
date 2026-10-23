@@ -1,0 +1,11 @@
+{
+  "source_revision": "7c898a96d99316e5e97ab725c225a88d4b55f7c8",
+  "source_sha256": {
+    "Sources/Services/DirectGLMClient.swift": "0a4c1d470a38616d1bc6b5c5ac581288009272ae514f4c27316f87d90ee79f89",
+    "Sources/Services/MentorRequestExecutor.swift": "701c1e2a967a299ea32921daf4de3158e1a64341b877116bda562cb619a1d8d1",
+    "Sources/Services/CoreProtocols.swift": "bdeec9b392c81ad2bab9b29336861ba2b2ff39494063b4fdc078d6f81af02ab5"
+  },
+  "inspection": "read only; not runtime HTTP measurement",
+  "new_model_requests": 0,
+  "g3_50_request_window_started": false
+}

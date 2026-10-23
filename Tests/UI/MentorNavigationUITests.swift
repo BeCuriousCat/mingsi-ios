@@ -624,6 +624,7 @@ final class MentorNavigationUITests: XCTestCase {
     @MainActor
     func testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText() throws {
         continueAfterFailure = false
+        executionTimeAllowance = 120
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture",
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-AppleInterfaceStyle", "Dark",
@@ -676,6 +677,7 @@ final class MentorNavigationUITests: XCTestCase {
     @MainActor
     private func verifyNextInputAfterSavedResponse(largestText: Bool) throws {
         continueAfterFailure = false
+        executionTimeAllowance = 120
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-response-scroll-fixture", "--speech-ui-fixture",
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
@@ -734,6 +736,7 @@ final class MentorNavigationUITests: XCTestCase {
 
     @MainActor
     private func verifyMentorStream(interrupted: Bool) throws {
+        executionTimeAllowance = 120
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-stream-ui-fixture", "--speech-ui-fixture",
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
@@ -782,6 +785,8 @@ final class MentorNavigationUITests: XCTestCase {
             return preview.isHittable && visible.height >= min(80, preview.frame.height) &&
                 visible.width >= min(100, preview.frame.width)
         }
+        attachVoiceScreenshot(app, name: interrupted ? "mentor-stream-dark-largest-before-auto-visibility-check" : "mentor-stream-light-before-auto-visibility-check")
+        print("MENTOR_PREVIEW_GEOMETRY preview=\(preview.frame) reading=\(readingArea.frame) composer=\(composerArea.frame) navigation=\(app.navigationBars["这次交流"].frame)")
         expectation(for: visiblePreview, evaluatedWith: nil)
         waitForExpectations(timeout: 3)
         scrollTo(preview, in: app)
