@@ -6,7 +6,7 @@
 
 只读搜索两个常用描述文件目录：`~/Library/Developer/Xcode/UserData/Provisioning Profiles`存在且无`.mobileprovision`；`~/Library/MobileDevice/Provisioning Profiles`不存在。合计0份本地描述文件。没有据此断言Apple账户会话或所有其他目录的状态，也没有重复运行已知No Accounts的自动签名构建。
 
-此前[模拟器新候选](2026-10-25-native-candidate/README.md)已匹配原App的实际签名证书、通过28项专项并保留数据；模拟器不需要真机开发描述文件，这些结果不能代替手机安装门槛。手机的旧App版本仍未知，没有把模拟器0aad77e标记归给手机。
+此前[模拟器新候选](2026-10-25-native-candidate/README.md)通过28项专项并保留数据；后续[签名复核](2026-10-25-configuration-identity/signature-correction.json)更正原证书断言：Xcode实际使用ad-hoc模拟器签名，嵌入应用身份已另行确认相同。模拟器不需要真机开发描述文件，这些结果不能代替手机安装门槛。手机的旧App版本仍未知，没有把模拟器源码标记归给手机。
 
 下一步保持[真机安装步骤](../mingsi-phone-acceptance.md)：本人在Xcode确认账户可用并选择自己的Team后，先执行只构建与包内标记核对。确有相容Bundle ID、签名、有效描述文件和用户自行控制的数据备份后才覆盖更新；不卸载、重置Keychain或复制私人数据到仓库。账户登录、验证码和系统授权由本人完成。
 
