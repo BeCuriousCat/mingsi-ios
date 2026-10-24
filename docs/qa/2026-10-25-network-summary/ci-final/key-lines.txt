@@ -1,0 +1,7 @@
+Clean build and offline tests	Check out public source	2026-10-24T17:58:19.5489310Z HEAD is now at 494bf8b Merge ca052ecadced1b90396cbf02f7551facd04be2be into 09a20787d7863717c98195f3ed19eade4cae34f7
+Clean build and offline tests	Verify local scripts without model credentials	2026-10-24T17:58:31.2017500Z Ran 61 tests in 1.712s
+Clean build and offline tests	Build Release for Simulator	2026-10-24T18:07:30.8773400Z ** BUILD SUCCEEDED **
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T18:17:25.1987650Z ** TEST SUCCEEDED **
+Clean build and offline tests	Check optional HealthKit entitlement embedded for Simulator	2026-10-24T18:17:26.0949120Z [36;1mprint("Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed")[0m
+Clean build and offline tests	Check optional HealthKit entitlement embedded for Simulator	2026-10-24T18:17:29.3659780Z Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T18:29:12.4479600Z ** TEST SUCCEEDED **

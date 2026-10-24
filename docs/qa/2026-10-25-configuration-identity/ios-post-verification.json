@@ -1,0 +1,11 @@
+{
+  "installed_source_revision": "521d824dd1042cf7036b6f0bb145c4fab11c84b6",
+  "installed_source_state": "clean",
+  "installed_by_isolated_test_host": true,
+  "personal_database_logical_dump_unchanged": true,
+  "normal_candidate_launch_performed": false,
+  "production_v79_migration_on_personal_db": "not applied by isolated tests",
+  "old_app_and_consistent_backup_preserved": true,
+  "model_calls": 0,
+  "phone_modified": false
+}

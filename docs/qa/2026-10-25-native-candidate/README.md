@@ -4,7 +4,9 @@
 
 ## 实际候选与构建
 
-本机空间从此前约1.9GiB恢复到4.4GiB后，在独立DerivedData进行一次Debug构建，成功；随后无签名build-for-testing成功。再按原已安装App的**实际签名证书**精确匹配本机身份，使用同一证书完成签名build-for-testing；未选择其他团队或导出私钥。严格签名校验、嵌入application-identifier及Keychain分组与旧包一致；HealthKit可选能力存在。
+**2026-10-25签名结论更正**：后续[实际签名与嵌入权限复核](../2026-10-25-configuration-identity/signature-correction.json)表明0aad77e模拟器包为ad-hoc签名；Xcode日志实际使用`Sign to Run Locally`，传入原证书参数没有证明使用了该证书。原“使用同一证书”断言撤回。模拟器的application-identifier与HealthKit位于Mach-O，嵌入身份匹配已另行确认；没有显式Keychain分组，不把缺失值相等解释为分组已验证。下方实际28项测试、数据库与普通启动结果保留其原范围。
+
+本机空间从此前约1.9GiB恢复到4.4GiB后，在独立DerivedData进行一次Debug构建，成功；随后无签名build-for-testing成功。再按旧回退包证书匹配本机身份并传入Xcode，build-for-testing成功，但模拟器实际使用ad-hoc签名；未选择其他团队或导出私钥。严格签名校验及嵌入application-identifier有证据；HealthKit可选能力存在。签名与Keychain实际配置读取分别验证，后者的普通启动证据只属于当时0aad77e。
 
 实际包内源码为`0aad77eaf48515c8d4b3b471f24ec9c1010a6bec`、clean。它比远端受验头`83c5aa9`多了离线Python对账工具、Python测试和资料，**全部Swift、工程与相关iOS测试源码相同，但整棵Git树不同**。不把本机HEAD或远端受测合并提交冒充已安装版本。
 

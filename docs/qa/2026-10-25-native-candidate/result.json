@@ -13,7 +13,7 @@
   },
   "debug_build": "passed",
   "test_build_unsigned": "passed",
-  "test_build_original_certificate": "passed",
+  "test_build_original_certificate": "not proven; requested certificate does not override actual Sign to Run Locally",
   "release_build": "not run locally",
   "focused_ios_tests": {
     "passed": 28,
@@ -23,12 +23,17 @@
   "full_unit_suite": "not run locally; remote CI separate",
   "new_ui_test_suite": "not run locally; native geometry unit regression passed",
   "signature": {
-    "exact_original_certificate": true,
+    "exact_original_certificate": false,
     "strict_verification": true,
     "application_identifier_matches_old": true,
-    "keychain_groups_match_old": true,
+    "keychain_groups_match_old": null,
     "private_key_exported": false,
-    "healthkit_optional_entitlement_embedded": true
+    "healthkit_optional_entitlement_embedded": true,
+    "previous_exact_original_certificate_claim": "retracted on 2026-10-25: Xcode actual simulator signature is ad-hoc",
+    "actual_simulator_signature": "ad-hoc",
+    "explicit_keychain_groups_present": false,
+    "embedded_application_identifier_matches_old": true,
+    "correction_evidence": "../2026-10-25-configuration-identity/signature-correction.json"
   },
   "installation": {
     "by_xctest_test_host_update": true,

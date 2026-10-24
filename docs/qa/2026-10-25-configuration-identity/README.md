@@ -1,6 +1,6 @@
 # 请求配置身份与分组 · 2026-10-25
 
-对应G3：防止切换服务、模型和执行参数后，将延迟混成同一配置的结果。**56项macOS局部Swift、22项对账专项和64项全部Python通过；完整iOS测试目标构建通过，但没有执行本候选iOS测试。** [源码与边界](result.json)。正式七天/50次窗口未开始，付费模型请求0。
+对应G3：防止切换服务、模型和执行参数后，将延迟混成同一配置的结果。**56项macOS局部Swift、22项对账专项和64项全部Python通过；后续30项实际iOS专项通过，0失败/0跳过。** [源码与边界](result.json)。正式七天/50次窗口未开始，付费模型请求0。
 
 ## 实现与限制
 
@@ -13,8 +13,12 @@
 
 - [56项局部Swift](local-tests.txt)：实际生产组件及GRDB，含配置区分/敏感URL拒绝、两种协议真实请求组装路径、指纹不进入模型正文、v78升级、不可重绑；沿用此前最小模型SwiftPM验证包，不是完整App运行。
 - [22项对账专项](network-tests.txt)、[64项全部Python](all-script-tests.txt)：多配置分开、旧配置未知、恶意值固定错误拒绝及原有计数/失败边界通过。全套脚本中两个argparse错误为预期负例，最终结果OK；ResourceWarning保留于本机原日志。
-- [完整iOS测试目标构建](ios-build.txt)：实际Xcode编译App和完整测试目标，未安装或运行该候选；生产导出绑定测试已适配新字段，运行仍待新CI。
+- [完整iOS测试目标构建](ios-build.txt)：初始实际Xcode编译App和完整测试目标。随后将同源干净候选521d824构建为模拟器测试宿主，执行[30项iOS专项](ios-unit-summary.json)，[日志](ios-executed-tests.txt)保留选择器结果；25项观测存储、3项新配置/实际请求组装测试、生产导出与旧库迁移注册各1项。宿主显式使用`--mentor-ui-test`内存夹具，不读个人库或已配置模型，不把局部运行当全量单元/UI通过。
 - [旧合成输入的v2结果](legacy-config-summary.json)：读取原v78公开输入，全部配置未知，原5次networkLoad保留，时点不填成同一配置分位数。没有伪造历史配置或追加HTTP。原v1报告继续保留。
-- [已安装版本复核](runtime-separation.json)：模拟器仍为0aad77e、clean；没有将工作目录提交或诊断构建冒充正常App版本。手机未改动。
+- [初始已装版本复核](runtime-separation.json)保留0aad77e历史状态；[专项执行后](ios-post-verification.json)测试机制覆盖安装521d824、clean，个人数据库逻辑dump与测试前完全一致。旧App及一致性数据库备份保留受限本机目录。新候选尚未普通启动，个人库v79没有由这些内存测试应用；上次正常设置/交流核对仍属于0aad77e。Mac锁屏，普通启动、Keychain可读性及N02/N03尚待实际操作。手机未改动。
 
-本机原始日志位于`/tmp/mingsi-native-candidate-20261025/configuration-*`。首次诊断编译传入短源码标记，未安装；最终构建已改为完整HEAD并如实标记dirty，源码哈希以result为准。原CI40118518363仍验证ca052ec，不覆盖本批改动；不提前推送取消它。PR保持草稿，真人价值与手机验收未因此通过。
+## 签名证据更正
+
+[复核结果](signature-correction.json)：当前旧0aad77e与新521d824实际均是Xcode的ad-hoc模拟器签名。传入既有证书参数不证明Xcode实际使用该证书；原本机报告的“原证书签名”结论撤回。最初证书提取命令和签名层权限预检未通过，均发生在安装前；没有导出私钥。模拟器权限实际在Mach-O `__TEXT,__entitlements`，后续已核对原496回退、0aad旧包与521新包的嵌入application-identifier一致，新旧HealthKit可选能力均存在。未显式设置keychain-access-groups，不能把两份缺失值相等称为存在且验证了分组。新候选正常启动后的Keychain实际读取仍待验证，不能由签名比较替代。
+
+本机原始日志位于`/tmp/mingsi-native-candidate-20261025/configuration-*`。首次诊断编译传入短源码标记，未安装；后续诊断构建使用完整HEAD和dirty标记；实际测试宿主使用已提交521d824与clean标记，源码哈希以result为准。CI40118518363已成功验证ca052ec，不覆盖本批改动。PR保持草稿，真人价值与手机验收未因此通过。

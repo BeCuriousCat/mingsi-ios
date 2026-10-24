@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-25",
+  "old_0aad_installed_signature": "ad-hoc",
+  "new_521_candidate_signature": "ad-hoc",
+  "original_496_rollback_has_certificate_chain": true,
+  "xcode_requested_certificate_is_not_proof_of_actual_certificate_use": true,
+  "old_report_exact_original_certificate_claim": "retracted",
+  "simulator_macho_application_identifier_matches_original_496_and_old_0aad": true,
+  "optional_healthkit_embedded_old_and_new": true,
+  "explicit_keychain_access_groups_present": false,
+  "keychain_runtime_readability_for_new_normal_launch": "not verified; Mac locked",
+  "no_private_key_export": true,
+  "initial_wrong_layer_preflight_stopped_before_install": true
+}

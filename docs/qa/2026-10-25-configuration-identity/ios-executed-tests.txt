@@ -1,0 +1,76 @@
+Test Suite 'Selected tests' started at 2026-10-25 02:30:20.106.
+Test Suite 'MingSiTests.xctest' started at 2026-10-25 02:30:20.107.
+Test Suite 'DirectGLMClientTests' started at 2026-10-25 02:30:20.107.
+Test Case '-[MingSiTests.DirectGLMClientTests testActualDispatchBindsConfigurationFingerprintWithoutSendingItToModel]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testActualDispatchBindsConfigurationFingerprintWithoutSendingItToModel]' passed (0.017 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testObservationFingerprintIsStableAndSeparatesServiceModelAndExecutionSettings]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testObservationFingerprintIsStableAndSeparatesServiceModelAndExecutionSettings]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testObservationFingerprintNeverHashesURLCredentialsQueryOrInvalidNumbers]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testObservationFingerprintNeverHashesURLCredentialsQueryOrInvalidNumbers]' passed (0.000 seconds).
+Test Suite 'DirectGLMClientTests' passed at 2026-10-25 02:30:20.125.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.018 (0.019) seconds
+Test Suite 'MentorHTTPObservationTests' started at 2026-10-25 02:30:20.126.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConfigurationFingerprintPersistsAndCannotBeReboundByLateObservation]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConfigurationFingerprintPersistsAndCannotBeReboundByLateObservation]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testEmptyUsageReportDoesNotBecomeZeroOrUsableUsage]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testEmptyUsageReportDoesNotBecomeZeroOrUsableUsage]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' passed (0.005 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateTimingForOldOrDeletedRequestsCannotChangeNewDraftOrResurrectRows]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateTimingForOldOrDeletedRequestsCannotChangeNewDraftOrResurrectRows]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMalformedConfigurationFingerprintCannotPersistPrivateText]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMalformedConfigurationFingerprintCannotPersistPrivateText]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' passed (0.009 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' passed (0.001 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingBindingCannotMoveOneProgressChannelToAnotherAttempt]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingBindingCannotMoveOneProgressChannelToAnotherAttempt]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingConflictsStayUnknownAndVisibilityCanLegitimatelyFollowSaving]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingConflictsStayUnknownAndVisibilityCanLegitimatelyFollowSaving]' passed (0.006 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageIsIdempotentConflictsStayUnknownAndLateCancelledReportCannotReviveDeletedSession]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageIsIdempotentConflictsStayUnknownAndLateCancelledReportCannotReviveDeletedSession]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageProtocolMismatchIsRejectedAndInvalidCountsCannotBecomeUsable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageProtocolMismatchIsRejectedAndInvalidCountsCannotBecomeUsable]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV76UpgradeDoesNotInventUsageOrChangeExistingDraftAndBudget]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV76UpgradeDoesNotInventUsageOrChangeExistingDraftAndBudget]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV77UpgradeKeepsReportedUsageAndLeavesHistoricalTimingsUnknown]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV77UpgradeKeepsReportedUsageAndLeavesHistoricalTimingsUnknown]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV78UpgradePreservesExistingMetricsAndDoesNotInventConfiguration]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV78UpgradePreservesExistingMetricsAndDoesNotInventConfiguration]' passed (0.002 seconds).
+Test Suite 'MentorHTTPObservationTests' passed at 2026-10-25 02:30:20.222.
+	 Executed 25 tests, with 0 failures (0 unexpected) in 0.092 (0.097) seconds
+Test Suite 'MentorPersistenceTests' started at 2026-10-25 02:30:20.222.
+Test Case '-[MingSiTests.MentorPersistenceTests testPreVNextDatabaseDoesNotMarkObservationMigrationAsAlreadyApplied]' started.
+Test Case '-[MingSiTests.MentorPersistenceTests testPreVNextDatabaseDoesNotMarkObservationMigrationAsAlreadyApplied]' passed (0.010 seconds).
+Test Case '-[MingSiTests.MentorPersistenceTests testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete]' started.
+Test Case '-[MingSiTests.MentorPersistenceTests testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete]' passed (0.075 seconds).
+Test Suite 'MentorPersistenceTests' passed at 2026-10-25 02:30:20.308.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.085 (0.086) seconds
+Test Suite 'MingSiTests.xctest' passed at 2026-10-25 02:30:20.308.
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.195 (0.202) seconds
+Test Suite 'Selected tests' passed at 2026-10-25 02:30:20.308.
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.195 (0.202) seconds
+** TEST EXECUTE SUCCEEDED **

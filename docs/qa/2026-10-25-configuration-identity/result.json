@@ -15,10 +15,10 @@
     "passed": 64,
     "failed": 0
   },
-  "ios_app_and_full_test_targets": "build-for-testing passed, not executed",
-  "candidate_installed": false,
+  "ios_app_and_full_test_targets": "built; 30 focused iOS tests executed successfully; full suite pending",
+  "candidate_installed": true,
   "candidate_full_ci_passed": false,
-  "installed_simulator_revision": "0aad77eaf48515c8d4b3b471f24ec9c1010a6bec",
+  "installed_simulator_revision": "521d824dd1042cf7036b6f0bb145c4fab11c84b6",
   "report_schema_version": 2,
   "legacy_export_configuration_unknown_attempts": 4,
   "new_model_calls": 0,
@@ -39,6 +39,14 @@
     "Configuration fingerprint does not identify API key/account, verified upstream or enforce output budgets.",
     "Returned model identity and independent durable observation-write-failure diagnosis remain missing.",
     "Actual normal App N02/N03, phone, formal window and all human-value requirements remain outstanding.",
-    "Current CI40118518363 tests ca052ec, not this working tree."
-  ]
+    "CI40118518363 completed successfully for ca052ec; it does not cover this candidate."
+  ],
+  "focused_ios_tests": {
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0
+  },
+  "previous_normal_runtime_verified_revision": "0aad77eaf48515c8d4b3b471f24ec9c1010a6bec",
+  "normal_candidate_launch_performed": false,
+  "personal_database_unchanged_after_isolated_tests": true
 }
