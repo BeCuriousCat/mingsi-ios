@@ -1,0 +1,10 @@
+{
+  "source": "2026-10-24 request timing native probe final SQLite, no personal data",
+  "data_kind": "synthetic",
+  "minimal_graph_adaptation": "created_at supplied from actual registration second; not an observed App submission timestamp",
+  "from": "2026-10-24T01:44:29Z",
+  "until": "2026-10-24T01:44:30+00:00",
+  "native_requests": 5,
+  "formal_G3_window": false,
+  "goal_complete": false
+}

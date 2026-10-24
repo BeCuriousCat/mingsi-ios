@@ -1,0 +1,110 @@
+test_credential_is_private_isolated_and_removed_after_success (test_cc_switch_lens_evaluation.LensEvaluationRunnerTests.test_credential_is_private_isolated_and_removed_after_success) ... ok
+test_mutually_exclusive_paid_operations_are_rejected (test_cc_switch_lens_evaluation.LensEvaluationRunnerTests.test_mutually_exclusive_paid_operations_are_rejected) ... /opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10a9a7a60>
+  def __init__(self, name, parent):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10aa5c8b0>
+  def __init__(self, name, parent):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:2252: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10a9a7b50>
+  def __init__(self, name, parent):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+usage: python3.14 -m unittest [-h] --source-xctestrun SOURCE_XCTESTRUN
+                              --result-bundle-path RESULT_BUNDLE_PATH
+                              [--mentor-streaming] [--request-boundaries]
+                              [--selected-excerpt] [--mentor-request]
+                              [--mentor-uncertainty] [--guidance-selection]
+                              [--mentor-criteria] [--direct-explanation]
+                              [--answer-review] [--lens-library]
+                              [--lens-goals LENS_GOALS]
+                              [--lens-case-ids LENS_CASE_IDS]
+                              [--perspective-understanding]
+                              [--import-connection] [--today-guidance]
+                              [--question-purpose-positive]
+                              [--outcome-guidance] [--result-calibration]
+                              [--history-evidence] [--principle-practice]
+                              [--guidance-evidence] [--topic-boundary]
+                              [--action-clarity] [--action-clarity-remaining]
+                              [--initial-coach-evidence]
+                              [--initial-coach-positive]
+python3.14 -m unittest: error: Choose one operation
+ok
+test_private_file_is_removed_after_execution_exception (test_cc_switch_lens_evaluation.LensEvaluationRunnerTests.test_private_file_is_removed_after_execution_exception) ... ok
+test_unknown_case_is_rejected_before_execution (test_cc_switch_lens_evaluation.LensEvaluationRunnerTests.test_unknown_case_is_rejected_before_execution) ... usage: python3.14 -m unittest [-h] --source-xctestrun SOURCE_XCTESTRUN
+                              --result-bundle-path RESULT_BUNDLE_PATH
+                              [--mentor-streaming] [--request-boundaries]
+                              [--selected-excerpt] [--mentor-request]
+                              [--mentor-uncertainty] [--guidance-selection]
+                              [--mentor-criteria] [--direct-explanation]
+                              [--answer-review] [--lens-library]
+                              [--lens-goals LENS_GOALS]
+                              [--lens-case-ids LENS_CASE_IDS]
+                              [--perspective-understanding]
+                              [--import-connection] [--today-guidance]
+                              [--question-purpose-positive]
+                              [--outcome-guidance] [--result-calibration]
+                              [--history-evidence] [--principle-practice]
+                              [--guidance-evidence] [--topic-boundary]
+                              [--action-clarity] [--action-clarity-remaining]
+                              [--initial-coach-evidence]
+                              [--initial-coach-positive]
+python3.14 -m unittest: error: Unknown lens case IDs
+ok
+test_ipad_and_invalid_identifiers_do_not_become_shell_output (test_ci_simulator_selection.CISimulatorSelectionTests.test_ipad_and_invalid_identifiers_do_not_become_shell_output) ... ok
+test_local_machine_is_refused_without_any_tool_invocation (test_ci_simulator_selection.CISimulatorSelectionTests.test_local_machine_is_refused_without_any_tool_invocation) ... ok
+test_runner_invokes_only_read_only_inventory_and_outputs_validated_id (test_ci_simulator_selection.CISimulatorSelectionTests.test_runner_invokes_only_read_only_inventory_and_outputs_validated_id) ... ok
+test_selects_only_existing_available_ios_26_iphone (test_ci_simulator_selection.CISimulatorSelectionTests.test_selects_only_existing_available_ios_26_iphone) ... ok
+test_uuid_matches_xcode_uppercase_destination_even_for_lowercase_inventory (test_ci_simulator_selection.CISimulatorSelectionTests.test_uuid_matches_xcode_uppercase_destination_even_for_lowercase_inventory) ... ok
+test_additional_attempts_retries_and_overrun_are_retained (test_mentor_network_summary.MentorNetworkSummaryTests.test_additional_attempts_retries_and_overrun_are_retained) ... ok
+test_before_window_request_dispatch_counts_against_actual_http_budget (test_mentor_network_summary.MentorNetworkSummaryTests.test_before_window_request_dispatch_counts_against_actual_http_budget) ... ok
+test_bool_negative_float_and_mismatched_native_totals_rejected (test_mentor_network_summary.MentorNetworkSummaryTests.test_bool_negative_float_and_mismatched_native_totals_rejected) ... ok
+test_cli_creates_only_new_private_file_and_never_overwrites (test_mentor_network_summary.MentorNetworkSummaryTests.test_cli_creates_only_new_private_file_and_never_overwrites) ... ok
+test_conflicting_timing_excluded_even_when_values_present (test_mentor_network_summary.MentorNetworkSummaryTests.test_conflicting_timing_excluded_even_when_values_present) ... ok
+test_counts_native_transactions_not_one_dispatch_and_keeps_cache_separate (test_mentor_network_summary.MentorNetworkSummaryTests.test_counts_native_transactions_not_one_dispatch_and_keeps_cache_separate) ... ok
+test_failed_body_and_visible_timings_report_missing_separately_and_never_use_terminal_as_first (test_mentor_network_summary.MentorNetworkSummaryTests.test_failed_body_and_visible_timings_report_missing_separately_and_never_use_terminal_as_first) ... ok
+test_foreign_request_or_epoch_never_counts_toward_current_request (test_mentor_network_summary.MentorNetworkSummaryTests.test_foreign_request_or_epoch_never_counts_toward_current_request) ... ok
+test_identical_duplicate_deduplicates_but_conflicting_identity_is_rejected (test_mentor_network_summary.MentorNetworkSummaryTests.test_identical_duplicate_deduplicates_but_conflicting_identity_is_rejected) ... ok
+test_known_network_lower_bound_keeps_known_loads_when_other_fetch_type_unknown (test_mentor_network_summary.MentorNetworkSummaryTests.test_known_network_lower_bound_keeps_known_loads_when_other_fetch_type_unknown) ... ok
+test_missing_empty_unknown_and_conflicting_native_metrics_block_budget_claim (test_mentor_network_summary.MentorNetworkSummaryTests.test_missing_empty_unknown_and_conflicting_native_metrics_block_budget_claim) ... ok
+test_missing_usage_is_null_and_explicit_zero_is_zero (test_mentor_network_summary.MentorNetworkSummaryTests.test_missing_usage_is_null_and_explicit_zero_is_zero) ... ok
+test_no_private_text_ids_urls_or_unknown_metadata_in_report_or_errors (test_mentor_network_summary.MentorNetworkSummaryTests.test_no_private_text_ids_urls_or_unknown_metadata_in_report_or_errors) ... ok
+test_old_rows_without_new_columns_keep_missing_observations (test_mentor_network_summary.MentorNetworkSummaryTests.test_old_rows_without_new_columns_keep_missing_observations) ... ok
+test_request_without_attempt_stays_in_denominator_and_stops_sending (test_mentor_network_summary.MentorNetworkSummaryTests.test_request_without_attempt_stays_in_denominator_and_stops_sending) ... ok
+test_usage_conflict_invalid_and_inconsistent_report_never_sum_as_real_usage (test_mentor_network_summary.MentorNetworkSummaryTests.test_usage_conflict_invalid_and_inconsistent_report_never_sum_as_real_usage) ... ok
+test_bad_metadata_and_unknown_kinds_are_rejected_without_private_error_details (test_mentor_usage_summary.MentorUsageSummaryTests.test_bad_metadata_and_unknown_kinds_are_rejected_without_private_error_details) ... ok
+test_cli_invalid_json_and_metadata_do_not_echo_private_source (test_mentor_usage_summary.MentorUsageSummaryTests.test_cli_invalid_json_and_metadata_do_not_echo_private_source) ... ok
+test_cli_preserves_input_creates_private_output_and_refuses_overwrite (test_mentor_usage_summary.MentorUsageSummaryTests.test_cli_preserves_input_creates_private_output_and_refuses_overwrite) ... ok
+test_duplicate_attempt_start_cannot_inflate_or_reclassify_denominator (test_mentor_usage_summary.MentorUsageSummaryTests.test_duplicate_attempt_start_cannot_inflate_or_reclassify_denominator) ... ok
+test_early_export_and_empty_observation_never_claim_a_completed_window (test_mentor_usage_summary.MentorUsageSummaryTests.test_early_export_and_empty_observation_never_claim_a_completed_window) ... ok
+test_failures_early_exit_and_missing_feedback_remain_in_initial_denominators (test_mentor_usage_summary.MentorUsageSummaryTests.test_failures_early_exit_and_missing_feedback_remain_in_initial_denominators) ... ok
+test_identical_duplicate_is_ignored_but_conflicting_identity_is_rejected (test_mentor_usage_summary.MentorUsageSummaryTests.test_identical_duplicate_is_ignored_but_conflicting_identity_is_rejected) ... ok
+test_invalid_cli_does_not_echo_argument_content (test_mentor_usage_summary.MentorUsageSummaryTests.test_invalid_cli_does_not_echo_argument_content) ... ok
+test_known_version_mixing_does_not_produce_pooled_latency (test_mentor_usage_summary.MentorUsageSummaryTests.test_known_version_mixing_does_not_produce_pooled_latency) ... ok
+test_later_feedback_is_latest_without_multiplying_attempts (test_mentor_usage_summary.MentorUsageSummaryTests.test_later_feedback_is_latest_without_multiplying_attempts) ... ok
+test_missing_usage_section_is_not_mistaken_for_zero_real_attempts (test_mentor_usage_summary.MentorUsageSummaryTests.test_missing_usage_section_is_not_mistaken_for_zero_real_attempts) ... ok
+test_multiple_first_content_events_are_not_cherry_picked_for_latency (test_mentor_usage_summary.MentorUsageSummaryTests.test_multiple_first_content_events_are_not_cherry_picked_for_latency) ... ok
+test_same_second_conflicting_feedback_is_unknown_not_arbitrary_latest (test_mentor_usage_summary.MentorUsageSummaryTests.test_same_second_conflicting_feedback_is_unknown_not_arbitrary_latest) ... ok
+test_switch_and_revisit_do_not_relabel_the_first_entry_or_new_content (test_mentor_usage_summary.MentorUsageSummaryTests.test_switch_and_revisit_do_not_relabel_the_first_entry_or_new_content) ... ok
+test_timezone_and_percentiles_have_explicit_semantics (test_mentor_usage_summary.MentorUsageSummaryTests.test_timezone_and_percentiles_have_explicit_semantics) ... ok
+test_window_cohort_keeps_orphans_separate_and_does_not_import_old_attempts (test_mentor_usage_summary.MentorUsageSummaryTests.test_window_cohort_keeps_orphans_separate_and_does_not_import_old_attempts) ... ok
+test_build_and_install_failure_never_claim_a_successful_delivery (test_phone_trial_preparation.PhoneTrialPreparationTests.test_build_and_install_failure_never_claim_a_successful_delivery) ... ok
+test_build_only_never_launches_or_validates_an_old_installed_app (test_phone_trial_preparation.PhoneTrialPreparationTests.test_build_only_never_launches_or_validates_an_old_installed_app) ... ok
+test_candidate_bundle_identifier_must_match_the_launch_target (test_phone_trial_preparation.PhoneTrialPreparationTests.test_candidate_bundle_identifier_must_match_the_launch_target) ... ok
+test_dirty_override_records_actual_local_changes_in_built_marker (test_phone_trial_preparation.PhoneTrialPreparationTests.test_dirty_override_records_actual_local_changes_in_built_marker) ... ok
+test_dry_run_build_only_has_no_build_install_or_launch_mutation (test_phone_trial_preparation.PhoneTrialPreparationTests.test_dry_run_build_only_has_no_build_install_or_launch_mutation) ... ok
+test_install_without_launch_keeps_manual_acceptance_pending (test_phone_trial_preparation.PhoneTrialPreparationTests.test_install_without_launch_keeps_manual_acceptance_pending) ... ok
+test_installed_and_launched_does_not_automatically_pass_manual_acceptance (test_phone_trial_preparation.PhoneTrialPreparationTests.test_installed_and_launched_does_not_automatically_pass_manual_acceptance) ... ok
+test_launch_failure_does_not_guess_profile_trust_as_the_cause (test_phone_trial_preparation.PhoneTrialPreparationTests.test_launch_failure_does_not_guess_profile_trust_as_the_cause) ... ok
+test_launch_only_does_not_build_install_or_claim_current_revision (test_phone_trial_preparation.PhoneTrialPreparationTests.test_launch_only_does_not_build_install_or_claim_current_revision) ... ok
+test_local_team_override_is_explicit_and_does_not_enable_provisioning (test_phone_trial_preparation.PhoneTrialPreparationTests.test_local_team_override_is_explicit_and_does_not_enable_provisioning) ... ok
+test_source_marker_is_injected_and_missing_or_old_candidate_is_never_installed (test_phone_trial_preparation.PhoneTrialPreparationTests.test_source_marker_is_injected_and_missing_or_old_candidate_is_never_installed) ... ok
+test_wrong_configuration_does_not_substitute_an_old_candidate (test_phone_trial_preparation.PhoneTrialPreparationTests.test_wrong_configuration_does_not_substitute_an_old_candidate) ... ok
+test_key_detection_accepts_text_utf8_and_hashed_indexes (test_simulator_glm_key_probe.SimulatorKeyProbeTests.test_key_detection_accepts_text_utf8_and_hashed_indexes) ... ok
+test_missing_database_is_not_created (test_simulator_glm_key_probe.SimulatorKeyProbeTests.test_missing_database_is_not_created) ... ok
+test_model_configuration_and_other_services_do_not_count_as_a_key (test_simulator_glm_key_probe.SimulatorKeyProbeTests.test_model_configuration_and_other_services_do_not_count_as_a_key) ... ok
+test_only_requested_device_is_considered (test_simulator_glm_key_probe.SimulatorKeyProbeTests.test_only_requested_device_is_considered) ... ok
+test_responses_key_metadata_is_detected_without_reading_credential_data (test_simulator_glm_key_probe.SimulatorKeyProbeTests.test_responses_key_metadata_is_detected_without_reading_credential_data) ... ok
+
+----------------------------------------------------------------------
+Ran 58 tests in 7.049s
+
+OK
