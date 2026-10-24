@@ -237,7 +237,8 @@ final class MentorFeatureStore: ObservableObject {
             deadline: requestDeadlineAfter ?? requestPolicy.deadline,
             waitingNoticeAfter: requestWaitingNoticeAfter ?? requestPolicy.waitingNoticeAfter,
             maxHTTPAttempts: requestPolicy.maxHTTPAttempts,
-            allowsFormatFallback: requestPolicy.allowsFormatFallback)
+            allowsFormatFallback: requestPolicy.allowsFormatFallback,
+            outputTokenBudget: requestPolicy.outputTokenBudget)
     }
 
     deinit { understandingDebounceTask?.cancel(); draftDebounceTask?.cancel(); draftWriteTask?.cancel(); readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); benefitFeedbackTask?.cancel(); requestTask?.cancel(); requestWaitingTask?.cancel(); requestDeadlineTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel(); understandingGenerationTask?.cancel() }
