@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-25",
+  "run_id": 40114680744,
+  "head_revision": "83c5aa98eb9f83b574703d85ec5218b2a2e7631e",
+  "tested_merge_revision": "3665153e0ee6877b65f373c5a08315e7fa4ef769",
+  "tested_tree": "5e9900a889463932acd33b5433336171b45d78c3",
+  "head_tree_matches_tested_tree": true,
+  "status": "completed",
+  "conclusion": "success",
+  "release_build_and_marker": "passed",
+  "debug_build_and_marker": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1582,
+    "failed": 0,
+    "skipped": 24
+  },
+  "native_ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "optional_healthkit_check": "passed",
+  "simulator_archive": {
+    "exists": true,
+    "sha256_verified": true,
+    "markers_and_tree_verified": true,
+    "downloaded_privately": true,
+    "installed": false,
+    "not_iphone_distribution": true
+  },
+  "screenshots": {
+    "preserved": 23,
+    "individually_AI_inspected": [
+      "4-92C9AAA0-FDDC-4F0F-B747-51DB62971868.png",
+      "7-229E5DC6-9D81-4287-BEAB-02C089F389BE.png",
+      "10-B8C66ECC-1911-4878-828A-0F8D23429A61.png",
+      "2-ACE7CCA4-5AD3-40A2-B950-3F6631A203DC.png"
+    ],
+    "all_individually_reviewed": false,
+    "review_note": "light preview readable before manual scroll; dark largest preview partly visible above composer; largest keyboard and speech-review controls reachable. Four fixture frames only, not human usability or actual microphone approval."
+  },
+  "source_sha256": {
+    "Sources/Services/MentorHTTPObservationStore.swift": "25e9deb31d8c8a3042200ab0650af048d19fee0dd8cdb133ba759d73ba8c654d",
+    "Sources/Services/MentorHTTPMetrics.swift": "4b4fc88f1544253ef6e998e6a606c90a0c1bde5f6e8919835c0056c9cb46a0a0",
+    "Sources/Services/MentorRequestExecutor.swift": "e0e700e103bcbb8945c097e12359da229a37b55bb8000255385aac7e46e6abe3",
+    "Sources/Services/DirectGLMClient.swift": "76b8956554b4afaba5670a7c00cc8c772056f5623de87c7f7c01926aaf133678",
+    "Sources/Services/PersistenceCore.swift": "ceba47f73a7311fa0c546aa0e48e35f500cf24b443dd5e48bac02a0b05c872e3",
+    "Sources/Features/MentorFeatureStore.swift": "4fa347d2fe77b23ba67dcf5121804353c7de6a784e611a41534f1e2f874b0b08",
+    "Sources/Features/Mentor/MentorHomeView.swift": "82a3ffdc611bbceb5f856d273a1ae59d4c7c1f8b3038c35525fa87c71345b38a",
+    "Sources/Features/Mentor/MentorReadingPosition.swift": "07a70e2a70fc07a61a3c6e12fc9150915caf49b5f28b0cadd56ec86f85b4fd2a",
+    ".github/workflows/verify.yml": "102576ab2b49c15d155e2565434908dee5c5481e13d41e99651c876a01f34d16"
+  },
+  "new_paid_model_calls": 0,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "CI does not contain later offline network-summary script tests; those are 61 locally executed tests, not CI42",
+    "Installed normal local bundle is0aad77e, not this CI archive, Swift/project sources are equal but full trees differ",
+    "Real provider and N02/N03, phone, VoiceOver and human value remain unverified",
+    "GitHub job step states lagged terminal success; logs and actual artifacts used for gate evidence"
+  ]
+}
