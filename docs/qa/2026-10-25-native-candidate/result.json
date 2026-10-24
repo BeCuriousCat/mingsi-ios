@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-25",
+  "candidate_source_revision": "0aad77eaf48515c8d4b3b471f24ec9c1010a6bec",
+  "candidate_source_state": "clean",
+  "previous_installed_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "same_ios_app_and_service_test_source_as_pending_CI_head": "83c5aa98eb9f83b574703d85ec5218b2a2e7631e",
+  "full_candidate_tree_equals_CI_head": false,
+  "difference_scope": "offline Python network summary, Python tests, documents and evidence; no Swift/project difference",
+  "toolchain": {
+    "xcode": "26.5 (17F42)",
+    "swift": "6.3.2",
+    "simulator": "fixed iPhone17 iOS26.5"
+  },
+  "debug_build": "passed",
+  "test_build_unsigned": "passed",
+  "test_build_original_certificate": "passed",
+  "release_build": "not run locally",
+  "focused_ios_tests": {
+    "passed": 28,
+    "failed": 0,
+    "skipped": 0
+  },
+  "full_unit_suite": "not run locally; remote CI separate",
+  "new_ui_test_suite": "not run locally; native geometry unit regression passed",
+  "signature": {
+    "exact_original_certificate": true,
+    "strict_verification": true,
+    "application_identifier_matches_old": true,
+    "keychain_groups_match_old": true,
+    "private_key_exported": false,
+    "healthkit_optional_entitlement_embedded": true
+  },
+  "installation": {
+    "by_xctest_test_host_update": true,
+    "uninstall": false,
+    "reset": false,
+    "model_credentials_reimported": false,
+    "private_db_unchanged_during_isolated_tests": true,
+    "old_user_assistant_payloads_and_request_states_unchanged_after_normal_launch": true,
+    "migrations_v75_to_v78_applied": true,
+    "ordinary_desktop_launch": true,
+    "original_synthetic_conversation_recovered": true,
+    "normal_existing_Responses_config_readable": true
+  },
+  "normal_ui": {
+    "bottom_input_and_send_visible": true,
+    "new_input_paste_success": false,
+    "N02_sent": false,
+    "N03_sent": false,
+    "blocker": "Chinese paste/type did not replace selected old draft; Mac then locked and CUA could not continue",
+    "attribution": "No conclusion yet whether simulator clipboard bridge or app input caused failure"
+  },
+  "new_paid_model_calls": 0,
+  "normal_http_attempts_in_private_db": 0,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "source_sha256": {
+    "Sources/Services/DirectGLMClient.swift": "76b8956554b4afaba5670a7c00cc8c772056f5623de87c7f7c01926aaf133678",
+    "Sources/Services/MentorHTTPMetrics.swift": "4b4fc88f1544253ef6e998e6a606c90a0c1bde5f6e8919835c0056c9cb46a0a0",
+    "Sources/Services/MentorHTTPObservationStore.swift": "25e9deb31d8c8a3042200ab0650af048d19fee0dd8cdb133ba759d73ba8c654d",
+    "Sources/Services/MentorRequestExecutor.swift": "e0e700e103bcbb8945c097e12359da229a37b55bb8000255385aac7e46e6abe3",
+    "Sources/Services/PersistenceCore.swift": "ceba47f73a7311fa0c546aa0e48e35f500cf24b443dd5e48bac02a0b05c872e3",
+    "Sources/Features/MentorFeatureStore.swift": "4fa347d2fe77b23ba67dcf5121804353c7de6a784e611a41534f1e2f874b0b08",
+    "Sources/Features/Mentor/MentorHomeView.swift": "82a3ffdc611bbceb5f856d273a1ae59d4c7c1f8b3038c35525fa87c71345b38a",
+    "Sources/Features/Mentor/MentorReadingPosition.swift": "07a70e2a70fc07a61a3c6e12fc9150915caf49b5f28b0cadd56ec86f85b4fd2a",
+    "Tests/Features/MentorFeatureStoreTests.swift": "e7e08ef757ef6c7845e543dee442274f2153ba8cd69a90ecad0294fd96257255",
+    "Tests/Features/MentorReadingPositionTests.swift": "c1ccf4615425272e4a365ab53775ee8000ebe2228435b596051be77e14155e63",
+    "Tests/Services/MentorPersistenceTests.swift": "fff6a906974d01148ca54848bca87bda32697f56d557c9089b29cc2e45ecf099",
+    "Tests/Services/PersistenceCoreTests.swift": "6fc9e5fe4b93dc75b1932ec2c920b39f32fe5a65757e4ddc2eea08c94d3e81d4"
+  },
+  "screenshots": {
+    "count": 1,
+    "content": "old synthetic N01 only; saved before N02 entry attempts",
+    "sha256": "9366a4c14eace9621fca79bbb5b8de59120ff797b7ec37a34111c26117d2551f",
+    "reviewer": "Codex AI, not human usability approval"
+  },
+  "limits": [
+    "No proof of actual provider compatibility, first token, N02 multi-turn or N03 cancellation",
+    "Old historical draft text is still present by design; no retroactive rewrite of old responses",
+    "CI40114680744 still active; no full remote pass or simulator archive attribution"
+  ]
+}

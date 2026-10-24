@@ -1,0 +1,10 @@
+<REPOSITORY_ROOT>/Tests/Features/MentorReadingPositionTests.swift:243:18: warning: 'init(frame:)' was deprecated in iOS 26.0: Use init(windowScene:) instead.
+<REPOSITORY_ROOT>/Tests/Services/MentorPersistenceTests.swift:1008:33: warning: no 'async' operations occur within 'await' expression
+<REPOSITORY_ROOT>/Tests/Features/MentorReadingPositionTests.swift:243:18: warning: 'init(frame:)' was deprecated in iOS 26.0: Use init(windowScene:) instead.
+<REPOSITORY_ROOT>/Tests/Features/MentorUnderstandingEditorTests.swift:27:26: warning: 'init(frame:)' was deprecated in iOS 26.0: Use init(windowScene:) instead.
+<REPOSITORY_ROOT>/Tests/Features/MentorFeatureStoreTests.swift:1285:25: warning: no 'async' operations occur within 'await' expression
+<REPOSITORY_ROOT>/Tests/Features/MentorFeatureStoreTests.swift:3592:28: warning: no 'async' operations occur within 'await' expression
+<REPOSITORY_ROOT>/Tests/Services/TodayAIResponseParserTests.swift:1318:13: warning: initialization of immutable value 'cardId1' was never used; consider replacing with assignment to '_' or removing it
+<REPOSITORY_ROOT>/Tests/Features/SpeechInputDraftTests.swift:132:13: warning: variable 'text' was never mutated; consider changing to 'let' constant
+2026-10-25 01:31:21.409 appintentsmetadataprocessor[49337:29892064] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+** TEST BUILD SUCCEEDED **

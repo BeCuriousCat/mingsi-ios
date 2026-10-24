@@ -1,0 +1,104 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun <PRIVATE_LOCAL_BUILD>/deriveddata/Build/Products/MingSi-focused-isolated.xctestrun -destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" -parallel-testing-enabled NO -resultBundlePath <PRIVATE_LOCAL_BUILD>/focused.xcresult -collect-test-diagnostics never "-only-testing:MingSiTests/MentorHTTPObservationTests" "-only-testing:MingSiTests/MentorFeatureStoreTests/testRequestTimingSeparatesPreviewPresentationFromSavingAndSupportsFastSavedReply" "-only-testing:MingSiTests/MentorReadingPositionTests/testPresentationExcludesInsetsHiddenAncestorsAndClippedBodyBeforeCountingVisibleText" "-only-testing:MingSiTests/MentorPersistenceTests/testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete" "-only-testing:MingSiTests/PersistenceCoreTests/testDataExport_preservesSQLiteStorageInsteadOfCoercingNumbersToBooleans" "-only-testing:MingSiTests/DirectGLMClientTests/testChatUsageOnlyEventIsRecordedAfterStopBeforeDoneWithoutBecomingContent" "-only-testing:MingSiTests/DirectGLMClientTests/testResponsesRecordsUsageForCompletedAndOutputLimitedAttemptsOnBothPaths"
+
+2026-10-25 01:38:13.280 xcodebuild[52688:29908260] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	<PRIVATE_LOCAL_BUILD>/focused.xcresult
+
+2026-10-25 01:38:13.315 xcodebuild[52688:29908260] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-10-25 01:38:15.666 xcodebuild[52688:29908260] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-10-25 01:38:15.952 xcodebuild[52688:29908260] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-10-25 01:38:24.171202+0800 MingSi[52751:29908969] [SceneConfiguration] Info.plist contained no UIScene configuration dictionary (looking for configuration named "Default Configuration")
+2026-10-25 01:38:24.920855+0800 MingSi[52751:29909181] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-10-25 01:38:25.125453+0800 MingSi[52751:29909158] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+Test Suite 'Selected tests' started at 2026-10-25 01:38:25.130.
+Test Suite 'MingSiTests.xctest' started at 2026-10-25 01:38:25.130.
+Test Suite 'DirectGLMClientTests' started at 2026-10-25 01:38:25.130.
+Test Case '-[MingSiTests.DirectGLMClientTests testChatUsageOnlyEventIsRecordedAfterStopBeforeDoneWithoutBecomingContent]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testChatUsageOnlyEventIsRecordedAfterStopBeforeDoneWithoutBecomingContent]' passed (0.016 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesRecordsUsageForCompletedAndOutputLimitedAttemptsOnBothPaths]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesRecordsUsageForCompletedAndOutputLimitedAttemptsOnBothPaths]' passed (0.004 seconds).
+Test Suite 'DirectGLMClientTests' passed at 2026-10-25 01:38:25.150.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.019 (0.020) seconds
+Test Suite 'MentorFeatureStoreTests' started at 2026-10-25 01:38:25.150.
+Test Case '-[MingSiTests.MentorFeatureStoreTests testRequestTimingSeparatesPreviewPresentationFromSavingAndSupportsFastSavedReply]' started.
+Test Case '-[MingSiTests.MentorFeatureStoreTests testRequestTimingSeparatesPreviewPresentationFromSavingAndSupportsFastSavedReply]' passed (0.325 seconds).
+Test Suite 'MentorFeatureStoreTests' passed at 2026-10-25 01:38:25.476.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.325 (0.326) seconds
+Test Suite 'MentorHTTPObservationTests' started at 2026-10-25 01:38:25.476.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testEmptyUsageReportDoesNotBecomeZeroOrUsableUsage]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testEmptyUsageReportDoesNotBecomeZeroOrUsableUsage]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateTimingForOldOrDeletedRequestsCannotChangeNewDraftOrResurrectRows]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateTimingForOldOrDeletedRequestsCannotChangeNewDraftOrResurrectRows]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' passed (0.008 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' passed (0.001 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingBindingCannotMoveOneProgressChannelToAnotherAttempt]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingBindingCannotMoveOneProgressChannelToAnotherAttempt]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingConflictsStayUnknownAndVisibilityCanLegitimatelyFollowSaving]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testTimingConflictsStayUnknownAndVisibilityCanLegitimatelyFollowSaving]' passed (0.005 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageIsIdempotentConflictsStayUnknownAndLateCancelledReportCannotReviveDeletedSession]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageIsIdempotentConflictsStayUnknownAndLateCancelledReportCannotReviveDeletedSession]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageProtocolMismatchIsRejectedAndInvalidCountsCannotBecomeUsable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageProtocolMismatchIsRejectedAndInvalidCountsCannotBecomeUsable]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV76UpgradeDoesNotInventUsageOrChangeExistingDraftAndBudget]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV76UpgradeDoesNotInventUsageOrChangeExistingDraftAndBudget]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV77UpgradeKeepsReportedUsageAndLeavesHistoricalTimingsUnknown]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV77UpgradeKeepsReportedUsageAndLeavesHistoricalTimingsUnknown]' passed (0.004 seconds).
+Test Suite 'MentorHTTPObservationTests' passed at 2026-10-25 01:38:25.560.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.079 (0.084) seconds
+Test Suite 'MentorPersistenceTests' started at 2026-10-25 01:38:25.560.
+Test Case '-[MingSiTests.MentorPersistenceTests testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete]' started.
+Test Case '-[MingSiTests.MentorPersistenceTests testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete]' passed (0.093 seconds).
+Test Suite 'MentorPersistenceTests' passed at 2026-10-25 01:38:25.654.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.093 (0.094) seconds
+Test Suite 'MentorReadingPositionTests' started at 2026-10-25 01:38:25.654.
+Test Case '-[MingSiTests.MentorReadingPositionTests testPresentationExcludesInsetsHiddenAncestorsAndClippedBodyBeforeCountingVisibleText]' started.
+Test Case '-[MingSiTests.MentorReadingPositionTests testPresentationExcludesInsetsHiddenAncestorsAndClippedBodyBeforeCountingVisibleText]' passed (0.005 seconds).
+Test Suite 'MentorReadingPositionTests' passed at 2026-10-25 01:38:25.659.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'PersistenceCoreTests' started at 2026-10-25 01:38:25.659.
+Test Case '-[MingSiTests.PersistenceCoreTests testDataExport_preservesSQLiteStorageInsteadOfCoercingNumbersToBooleans]' started.
+Test Case '-[MingSiTests.PersistenceCoreTests testDataExport_preservesSQLiteStorageInsteadOfCoercingNumbersToBooleans]' passed (0.068 seconds).
+Test Suite 'PersistenceCoreTests' passed at 2026-10-25 01:38:25.727.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.068 (0.068) seconds
+Test Suite 'MingSiTests.xctest' passed at 2026-10-25 01:38:25.727.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 0.589 (0.597) seconds
+Test Suite 'Selected tests' passed at 2026-10-25 01:38:25.727.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 0.589 (0.598) seconds
+2026-10-25 01:38:25.728401+0800 MingSi[52751:29908969] Unbalanced calls to begin/end appearance transitions for <UIViewController: 0x12420d000>.
+2026-10-25 01:38:26.013 xcodebuild[52688:29908260] [MT] IDETestOperationsObserverDebug: 10.337 elapsed -- Testing started completed.
+2026-10-25 01:38:26.014 xcodebuild[52688:29908260] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-25 01:38:26.014 xcodebuild[52688:29908260] [MT] IDETestOperationsObserverDebug: 10.337 sec, +10.337 sec -- end
+
+Test session results, code coverage, and logs:
+	<PRIVATE_LOCAL_BUILD>/focused.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started
