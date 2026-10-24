@@ -10,8 +10,13 @@ struct MentorHTTPAttemptRecord: Sendable {
     let metrics: MentorHTTPMetrics?
     let outputBudgetField: String?
     let outputBudget: Int?
+    let usageState: String
+    let serviceUsage: MentorServiceUsage?
     var exactNetworkTransactionCount: Int? {
         metricsState == "received" ? metrics?.exactNetworkTransactionCount : nil
+    }
+    var usableServiceUsage: MentorServiceUsage? {
+        usageState == "received" && serviceUsage?.hasInvalidFields == false ? serviceUsage : nil
     }
 }
 
@@ -56,6 +61,12 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 if !columns.contains("output_budget") {
                     t.add(column: "output_budget", .integer).check { $0 > 0 && $0 <= 100_000 }
                 }
+            }
+        }
+        migrator.registerMigration("v77_mentor_service_usage") { db in
+            try db.alter(table: "mentor_http_attempts") { t in
+                t.add(column: "usage_state", .text).notNull().defaults(to: "pending")
+                t.add(column: "usage_json", .text)
             }
         }
     }
@@ -136,6 +147,30 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
         }
     }
 
+    func recordServiceUsage(_ usage: MentorServiceUsage, identity: MentorHTTPAttemptIdentity) async throws {
+        guard [usage.inputTokens, usage.outputTokens, usage.totalTokens, usage.reasoningTokens].allSatisfy({ $0 == nil || $0! >= 0 }) else {
+            throw MentorHTTPObservationError.invalidIdentity
+        }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let json = String(decoding: try encoder.encode(usage), as: UTF8.self)
+        try await queue.write { db in
+            guard let row = try Self.ownedRow(identity, db: db) else { return }
+            guard (row["protocol_kind"] as String) == usage.source.protocolKind.rawValue else {
+                throw MentorHTTPObservationError.invalidIdentity
+            }
+            let state: String = row["usage_state"]
+            if state == "pending" {
+                try db.execute(sql: "UPDATE mentor_http_attempts SET usage_state = ?, usage_json = ? WHERE attempt_id = ?",
+                    arguments: [usage.hasInvalidFields ? "invalid" : (usage.hasReportedCounts ? "received" : "empty"), json, identity.attemptID.uuidString])
+            } else if state != "conflict", (row["usage_json"] as String?) != json {
+                // Preserve the first report without summing or silently replacing
+                // contradictory reports. A conflict is not usable billing data.
+                try db.execute(sql: "UPDATE mentor_http_attempts SET usage_state = 'conflict' WHERE attempt_id = ?",
+                    arguments: [identity.attemptID.uuidString])
+            }
+        }
+    }
+
     func attempts(requestID: UUID) async throws -> [MentorHTTPAttemptRecord] {
         try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM mentor_http_attempts WHERE request_id = ? ORDER BY rowid",
@@ -144,11 +179,15 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                       let sessionID = UUID(uuidString: row["session_id"]), let requestID = UUID(uuidString: row["request_id"]),
                       let kind = MentorHTTPProtocol(rawValue: row["protocol_kind"]) else { throw MentorHTTPObservationError.invalidIdentity }
                 let metricsJSON: String? = row["metrics_json"]
+                let usageJSON: String? = row["usage_json"]
                 return MentorHTTPAttemptRecord(identity: MentorHTTPAttemptIdentity(attemptID: attemptID, traceID: traceID,
                     sessionID: sessionID, requestID: requestID, requestEpoch: row["request_epoch"], semanticRevision: row["semantic_revision"]),
                     protocolKind: kind, terminalState: row["terminal_state"], elapsedMilliseconds: row["elapsed_ms"],
                     metricsState: row["metrics_state"], metrics: try metricsJSON.map { try JSONDecoder().decode(MentorHTTPMetrics.self, from: Data($0.utf8)) },
-                    outputBudgetField: row["output_budget_field"], outputBudget: row["output_budget"])
+                    outputBudgetField: row["output_budget_field"], outputBudget: row["output_budget"],
+                    usageState: row["usage_state"], serviceUsage: try usageJSON.map {
+                        try JSONDecoder().decode(MentorServiceUsage.self, from: Data($0.utf8))
+                    })
             }
         }
     }

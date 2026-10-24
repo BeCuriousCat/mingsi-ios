@@ -4,6 +4,103 @@ import GRDB
 @testable import MingSi
 
 final class MentorHTTPObservationTests: XCTestCase {
+    func testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields() throws {
+        XCTAssertNil(MentorServiceUsage(envelope: [:], source: .chatStream))
+        XCTAssertNil(MentorServiceUsage(envelope: ["usage": NSNull()], source: .chatStream))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(#"{"usage":{"prompt_tokens":true,"completion_tokens":-1,"total_tokens":"PRIVATE_TOKEN_SENTINEL","completion_tokens_details":{"reasoning_tokens":1.5},"private":"PRIVATE_ENVELOPE_SENTINEL"},"model":"PRIVATE_MODEL_SENTINEL"}"#.utf8)) as? [String: Any])
+        let invalid = try XCTUnwrap(MentorServiceUsage(envelope: object, source: .chatStream))
+        XCTAssertTrue(invalid.hasInvalidFields)
+        XCTAssertNil(invalid.inputTokens); XCTAssertNil(invalid.outputTokens)
+        XCTAssertNil(invalid.totalTokens); XCTAssertNil(invalid.reasoningTokens)
+        let encoded = String(decoding: try JSONEncoder().encode(invalid), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("PRIVATE_"))
+        let zero = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["prompt_tokens": 0]], source: .chatStream))
+        XCTAssertEqual(zero.inputTokens, 0)
+        XCTAssertNil(zero.totalTokens, "Do not compute an unreported total")
+        XCTAssertFalse(zero.hasInvalidFields)
+        for values in [["input_tokens": 10, "output_tokens": 5, "total_tokens": 1],
+                       ["input_tokens": Int.max, "output_tokens": 1, "total_tokens": Int.max],
+                       ["output_tokens": 1, "output_tokens_details": ["reasoning_tokens": 2]]] as [[String: Any]] {
+            let inconsistent = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": values], source: .responsesEvent))
+            XCTAssertTrue(inconsistent.hasInvalidFields)
+        }
+    }
+
+    func testUsageIsIdempotentConflictsStayUnknownAndLateCancelledReportCannotReviveDeletedSession() async throws {
+        let (queue, store, identity) = try fixture()
+        try await store.beginAttempt(identity, protocolKind: .responses, at: .now)
+        try await store.finishAttempt(identity, outcome: .cancelled, elapsedMilliseconds: 25)
+        let first = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 10, "output_tokens": 5]], source: .responsesEvent))
+        try await queue.write { db in
+            try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = 1, draft_text = 'new draft'")
+        }
+        try await store.recordServiceUsage(first, identity: identity)
+        try await store.recordServiceUsage(first, identity: identity)
+        var records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.terminalState, "cancelled")
+        XCTAssertEqual(records.first?.usableServiceUsage, first)
+        let second = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 11]], source: .responsesEvent))
+        try await store.recordServiceUsage(second, identity: identity)
+        records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.usageState, "conflict")
+        XCTAssertEqual(records.first?.serviceUsage, first, "Retain first evidence, do not sum")
+        XCTAssertNil(records.first?.usableServiceUsage)
+        let draft = try await queue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
+        XCTAssertEqual(draft, "new draft")
+        try await queue.write { db in try db.execute(sql: "DELETE FROM mentor_sessions") }
+        try await store.recordServiceUsage(second, identity: identity)
+        records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertTrue(records.isEmpty)
+    }
+
+    func testUsageProtocolMismatchIsRejectedAndInvalidCountsCannotBecomeUsable() async throws {
+        let (_, store, identity) = try fixture()
+        try await store.beginAttempt(identity, protocolKind: .responses, at: .now)
+        let wrong = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["prompt_tokens": 10]], source: .chatCompletion))
+        do { try await store.recordServiceUsage(wrong, identity: identity); XCTFail("Protocol mismatch") }
+        catch MentorHTTPObservationError.invalidIdentity { }
+        let invalid = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": -2]], source: .responsesEvent))
+        try await store.recordServiceUsage(invalid, identity: identity)
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.usageState, "invalid")
+        XCTAssertNil(records.first?.usableServiceUsage)
+    }
+
+    func testEmptyUsageReportDoesNotBecomeZeroOrUsableUsage() async throws {
+        let (_, store, identity) = try fixture()
+        try await store.beginAttempt(identity, protocolKind: .responses, at: .now)
+        let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": [:]], source: .responsesEvent))
+        try await store.recordServiceUsage(usage, identity: identity)
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.usageState, "empty")
+        XCTAssertNil(records.first?.serviceUsage?.totalTokens)
+        XCTAssertNil(records.first?.usableServiceUsage)
+    }
+
+    func testV76UpgradeDoesNotInventUsageOrChangeExistingDraftAndBudget() async throws {
+        let queue = try DatabaseQueue()
+        var migrator = Self.baseMigrator()
+        SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        try migrator.migrate(queue, upTo: "v76_mentor_http_output_budget")
+        let identity = try seed(queue)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO mentor_http_attempts
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind,
+                 dispatch_registered_at, output_budget_field, output_budget)
+                VALUES (?, ?, ?, ?, 0, 0, 'responses', '2026-10-24T00:00:00Z', 'max_output_tokens', 16000)
+                """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString, identity.sessionID.uuidString, identity.requestID.uuidString])
+        }
+        try migrator.migrate(queue)
+        let store = SQLiteMentorHTTPObservationStore(queue: queue)
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.usageState, "pending")
+        XCTAssertNil(records.first?.serviceUsage)
+        XCTAssertEqual(records.first?.outputBudget, 16_000)
+        let draft = try await queue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
+        XCTAssertEqual(draft, "preserve draft")
+    }
+
     func testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft() async throws {
         let queue = try DatabaseQueue()
         var migrator = Self.baseMigrator()
@@ -106,6 +203,9 @@ final class MentorHTTPObservationTests: XCTestCase {
         do { try await attempt.finish(.returnedData); XCTFail("Accounting write failure") }
         catch MentorHTTPObservationError.unavailable { }
         XCTAssertTrue(attempt.observationWriteFailed)
+        let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 10]], source: .responsesEvent))
+        do { try await attempt.recordServiceUsage(usage); XCTFail("Usage write failure") }
+        catch MentorHTTPObservationError.unavailable { }
         do { try await store.recordMetrics(MentorHTTPMetrics(fetchKinds: [.network], redirectCount: 0), identity: attempt.identity); XCTFail("Metrics write failure") }
         catch { }
         let records = try await store.attempts(requestID: owner.requestID)
@@ -113,6 +213,8 @@ final class MentorHTTPObservationTests: XCTestCase {
         XCTAssertEqual(records.first?.metricsState, "pending")
         XCTAssertNil(records.first?.exactNetworkTransactionCount)
         XCTAssertNil(records.first?.elapsedMilliseconds)
+        XCTAssertEqual(records.first?.usageState, "pending")
+        XCTAssertNil(records.first?.usableServiceUsage)
     }
 
     func testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse() async throws {
@@ -239,12 +341,15 @@ final class MentorHTTPObservationTests: XCTestCase {
         XCTAssertTrue(before.isEmpty, "No guessed metrics for historical requests")
         try await store.beginAttempt(identity, protocolKind: .responses, at: .now)
         try await store.recordMetrics(MentorHTTPMetrics(fetchKinds: [.network, .cache, .network], redirectCount: 1), identity: identity)
+        let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 12, "output_tokens": 4, "total_tokens": 16]], source: .responsesEvent))
+        try await store.recordServiceUsage(usage, identity: identity)
         try await store.finishAttempt(identity, outcome: .cancelled, elapsedMilliseconds: 25)
         let reopenedQueue = try DatabaseQueue(path: file.path)
         let reopened = try await SQLiteMentorHTTPObservationStore(queue: reopenedQueue).attempts(requestID: identity.requestID)
         XCTAssertEqual(reopened.first?.identity, identity)
         XCTAssertEqual(reopened.first?.exactNetworkTransactionCount, 2)
         XCTAssertEqual(reopened.first?.terminalState, "cancelled")
+        XCTAssertEqual(reopened.first?.usableServiceUsage, usage)
         let draft = try await reopenedQueue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
         XCTAssertEqual(draft, "preserve draft")
     }

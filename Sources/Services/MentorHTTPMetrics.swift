@@ -1,5 +1,82 @@
 import Foundation
 import Synchronization
+import CoreFoundation
+
+/// A provider's report, not a bill or independent proof of an upstream model.
+/// Only these numeric fields cross the boundary; never retain the raw envelope.
+struct MentorServiceUsage: Codable, Equatable, Sendable {
+    enum Source: String, Codable, Sendable {
+        case chatCompletion = "chat_completion_usage"
+        case chatStream = "chat_stream_usage"
+        case responsesEvent = "responses_event_usage"
+        var protocolKind: MentorHTTPProtocol { self == .responsesEvent ? .responses : .openAICompatible }
+    }
+    let source: Source
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let totalTokens: Int?
+    let reasoningTokens: Int?
+    let hasInvalidFields: Bool
+    var hasReportedCounts: Bool {
+        [inputTokens, outputTokens, totalTokens, reasoningTokens].contains { $0 != nil }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, inputTokens, outputTokens, totalTokens, reasoningTokens, hasInvalidFields
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        source = try values.decode(Source.self, forKey: .source)
+        inputTokens = try values.decodeIfPresent(Int.self, forKey: .inputTokens)
+        outputTokens = try values.decodeIfPresent(Int.self, forKey: .outputTokens)
+        totalTokens = try values.decodeIfPresent(Int.self, forKey: .totalTokens)
+        reasoningTokens = try values.decodeIfPresent(Int.self, forKey: .reasoningTokens)
+        hasInvalidFields = try values.decode(Bool.self, forKey: .hasInvalidFields)
+        guard [inputTokens, outputTokens, totalTokens, reasoningTokens].allSatisfy({ $0 == nil || $0! >= 0 }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid reported token counts"))
+        }
+    }
+
+    init?(envelope: [String: Any], source: Source) {
+        guard let raw = envelope["usage"], !(raw is NSNull) else { return nil }
+        self.source = source
+        let values = raw as? [String: Any] ?? [:]
+        var invalid = !(raw is [String: Any])
+        func count(_ value: Any?) -> Int? {
+            guard let value, !(value is NSNull) else { return nil }
+            guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                  let integer = Int(number.stringValue), integer >= 0 else { invalid = true; return nil }
+            return integer
+        }
+        let responses = source == .responsesEvent
+        inputTokens = count(values[responses ? "input_tokens" : "prompt_tokens"])
+        outputTokens = count(values[responses ? "output_tokens" : "completion_tokens"])
+        totalTokens = count(values["total_tokens"])
+        let detailValue = values[responses ? "output_tokens_details" : "completion_tokens_details"]
+        if let detailValue, !(detailValue is NSNull), !(detailValue is [String: Any]) { invalid = true }
+        reasoningTokens = count((detailValue as? [String: Any])?["reasoning_tokens"])
+        if let inputTokens, let outputTokens, let totalTokens {
+            let (sum, overflow) = inputTokens.addingReportingOverflow(outputTokens)
+            if overflow || sum != totalTokens { invalid = true }
+        }
+        if let reasoningTokens, let outputTokens, reasoningTokens > outputTokens { invalid = true }
+        hasInvalidFields = invalid
+    }
+
+    static func fromSSE(_ line: String, protocolKind: MentorHTTPProtocol) -> Self? {
+        let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("data:") else { return nil }
+        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard payload != "[DONE]", let data = payload.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        if protocolKind == .openAICompatible { return Self(envelope: object, source: .chatStream) }
+        guard let type = object["type"] as? String,
+              ["response.completed", "response.failed", "response.incomplete"].contains(type),
+              let response = object["response"] as? [String: Any] else { return nil }
+        return Self(envelope: response, source: .responsesEvent)
+    }
+}
 
 /// Only numeric, system-reported task metrics may cross the transport boundary.
 /// This does not count provider-side retries or prove an upstream model identity.
@@ -112,6 +189,7 @@ protocol MentorHTTPObservationStore: Sendable {
     func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date,
                       outputBudgetField: String?, outputBudget: Int?) async throws
     func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws
+    func recordServiceUsage(_ usage: MentorServiceUsage, identity: MentorHTTPAttemptIdentity) async throws
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws
 }
 
@@ -187,6 +265,17 @@ final class MentorHTTPAttempt: Sendable {
             // A cancelled foreground task must not cancel its accounting write.
             // This cannot save a response or revive a deleted conversation.
             try await Task { try await store.finishAttempt(identity, outcome: outcome, elapsedMilliseconds: milliseconds) }.value
+        } catch {
+            writeFailure.record()
+            throw MentorHTTPObservationError.unavailable
+        }
+    }
+
+    func recordServiceUsage(_ usage: MentorServiceUsage?) async throws {
+        guard let usage else { return }
+        let identity = identity, store = store
+        do {
+            try await Task { try await store.recordServiceUsage(usage, identity: identity) }.value
         } catch {
             writeFailure.record()
             throw MentorHTTPObservationError.unavailable

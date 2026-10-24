@@ -168,6 +168,54 @@ jobs:
           (evidence / "screenshots.json").write_text(json.dumps(mapping, indent=2) + "\n")
           PY
           fi
+      - name: Package verified simulator App for normal local validation
+        # Preserve the same Debug bundle that passed offline and UI gates.
+        # No device data, Keychain, API credentials or simulator container is
+        # packaged. This is a simulator artifact, never an iPhone distribution.
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import plistlib
+          import subprocess
+          task_temp = Path(os.environ["RUNNER_TEMP"])
+          app = task_temp / "mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app"
+          info = plistlib.loads((app / "Info.plist").read_bytes())
+          revision = os.environ["GITHUB_SHA"]
+          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == revision
+          assert info["MingSiSourceRevision"] == revision
+          assert info["MingSiSourceState"] == "clean"
+          assert info["CFBundleIdentifier"] == "com.codex.mingsi"
+          assert "iPhoneSimulator" in info["CFBundleSupportedPlatforms"]
+          unit = json.loads((task_temp / "mingsi-unit-summary.json").read_text())
+          ui = json.loads((task_temp / "permission-ui-evidence/summary.json").read_text())
+          assert unit["failedTests"] == 0 and unit["passedTests"] > 0
+          assert ui["failedTests"] == 0 and ui["passedTests"] == 8
+          evidence = task_temp / "verified-simulator-app"
+          evidence.mkdir()
+          archive = evidence / "MingSi-simulator.zip"
+          subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(archive)], check=True)
+          manifest = {"platform": "iPhoneSimulator", "configuration": "Debug",
+                      "source_revision": revision,
+                      "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                      "source_state": "clean", "bundle_id": info["CFBundleIdentifier"],
+                      "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                      "unit": {key: unit[key] for key in ["passedTests", "failedTests", "skippedTests"]},
+                      "ui": {key: ui[key] for key in ["passedTests", "failedTests", "skippedTests"]},
+                      "scope": "CI simulator only; no phone, personal data or provider validation"}
+          (evidence / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+      - name: Attach verified simulator App
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-simulator-app
+          path: ${{ runner.temp }}/verified-simulator-app
+          if-no-files-found: error
+          retention-days: 7
       - name: Attach compact test summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

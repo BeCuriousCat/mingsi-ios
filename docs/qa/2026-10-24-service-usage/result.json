@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-24",
+  "scope": "production Direct client -> real localhost URLSession -> native metrics -> actual SQLite observation store; minimal request models, no normal iOS App",
+  "local_unit": {
+    "passed": 44,
+    "failed": 0,
+    "groups": {
+      "transport": 11,
+      "store": 17,
+      "executor": 16
+    }
+  },
+  "script_unit": {
+    "passed": 42,
+    "failed": 0
+  },
+  "native_http": {
+    "scenarios": 4,
+    "server_received": 5,
+    "network_counts": [
+      1,
+      2,
+      1,
+      1
+    ],
+    "terminal_states": [
+      "returned_data",
+      "returned_data",
+      "failed",
+      "cancelled"
+    ],
+    "usage_states": [
+      "received",
+      "received",
+      "received",
+      "pending"
+    ]
+  },
+  "source_sha256": {
+    "Sources/Services/MentorHTTPMetrics.swift": "8c837fabe847d096ab2ff2165e803046ca76ef52c473635f6fbe9944d03320c7",
+    "Sources/Services/MentorHTTPObservationStore.swift": "b25fedb720198b9fd69644ff1faade171b2e26571ea4e5bb3bb960672914e7ef",
+    "Sources/Services/DirectGLMClient.swift": "ca037a9ff7343ce14328da84b1f8a213b348e685d6b1cd14622a005e43607b12",
+    "Sources/Services/MentorRequestExecutor.swift": "f596b5d34914ad2fc8ab05247301620ea3dfe69bc1d070eb1f1a599aac448337",
+    "Tests/Services/DirectGLMClientTests.swift": "89636a3af5d6f5027eb1d5d1b137e760147eca04cbe4665b901dff2312f36392",
+    "Tests/Services/MentorHTTPObservationTests.swift": "db960fd2c76c9dbc7cdbd8da1d474034901bbc0ba976f7bbf4786232c4452392",
+    "Tests/Services/MentorPersistenceTests.swift": "d964c378f4d81aad8c2634aa4a5640ff7d8560ac891050a647f281a2f1735449",
+    ".github/workflows/verify.yml": "102576ab2b49c15d155e2565434908dee5c5481e13d41e99651c876a01f34d16"
+  },
+  "full_ios_status": "not yet submitted; previous upgrade CI still running; will not supersede it",
+  "new_paid_model_calls": 0,
+  "normal_app_installed": false,
+  "phone_updated": false,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "Reported token numbers are synthetic provider fixtures, not billed token or real upstream identity verification.",
+    "Full App persistence/export integration test is edited but not part of the isolated macOS package.",
+    "CI simulator App packaging is new and has not yet executed.",
+    "First parsed/UI-visible/saved timings, returned model/config identity, durable write-failure diagnostics and bounded-window accounting remain incomplete."
+  ]
+}

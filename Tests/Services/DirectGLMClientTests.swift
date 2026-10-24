@@ -4,6 +4,110 @@ import Synchronization
 
 final class DirectGLMClientTests: XCTestCase {
     @MainActor
+    func testChatUsageOnlyEventIsRecordedAfterStopBeforeDoneWithoutBecomingContent() async throws {
+        let body = #"""
+        data: {"choices":[{"delta":{"content":"{\"body\":\"fixture\"}"}}],"usage":null}
+
+        data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+        data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20,"completion_tokens_details":{"reasoning_tokens":5},"private":"PRIVATE_USAGE_SENTINEL"}}
+
+        data: [DONE]
+
+        """#
+        for host in ["api.openai.com", "custom.test"] {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 200, body: body)]
+            let store = RecordingHTTPObservationStore()
+            var request = makeRequest(); request.mentorExecutionPolicy = .m1
+            request.mentorStreamProgress = MentorStreamProgress()
+            request.mentorHTTPObservation = observationChannel(request, store: store)
+            let data = try await makeClient(configuration: GLMClientConfiguration(baseURL: URL(string: "https://\(host)/v1")!)).complete(request)
+            let records = await store.snapshot()
+            XCTAssertEqual(records.outcomes, [.returnedData])
+            XCTAssertEqual(records.usages.count, 1)
+            XCTAssertEqual(records.usages.first?.source, .chatStream)
+            XCTAssertEqual(records.usages.first?.inputTokens, 12)
+            XCTAssertEqual(records.usages.first?.reasoningTokens, 5)
+            XCTAssertEqual(records.usages.first?.totalTokens, 20)
+            XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("PRIVATE_USAGE_SENTINEL"))
+            let raw = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+            let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+            let options = payload["stream_options"] as? [String: Any]
+            XCTAssertEqual(options?["include_usage"] as? Bool, host == "api.openai.com" ? true : nil)
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
+    @MainActor
+    func testNonStreamingChatRecordsPartialReportedUsageWithoutInventingTotal() async throws {
+        GLMStubURLProtocol.responses = [.init(statusCode: 200,
+            body: #"{"choices":[],"model":"PRIVATE_MODEL_SENTINEL","usage":{"prompt_tokens":0,"completion_tokens":7}}"#)]
+        let store = RecordingHTTPObservationStore()
+        var request = makeRequest(); request.mentorExecutionPolicy = .m1
+        request.mentorHTTPObservation = observationChannel(request, store: store)
+        _ = try await makeClient().complete(request)
+        let records = await store.snapshot()
+        XCTAssertEqual(records.usages.count, 1)
+        XCTAssertEqual(records.usages.first?.source, .chatCompletion)
+        XCTAssertEqual(records.usages.first?.inputTokens, 0)
+        XCTAssertEqual(records.usages.first?.outputTokens, 7)
+        XCTAssertNil(records.usages.first?.totalTokens)
+        XCTAssertNil(records.usages.first?.reasoningTokens)
+    }
+
+    @MainActor
+    func testReportedChatUsageDoesNotTurnTruncatedStreamIntoSuccess() async throws {
+        GLMStubURLProtocol.responses = [.init(statusCode: 200, body: #"""
+        data: {"choices":[{"delta":{"content":"partial"}}]}
+
+        data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":2,"total_tokens":13}}
+
+        """#)]
+        let store = RecordingHTTPObservationStore()
+        var request = makeRequest(); request.mentorExecutionPolicy = .m1
+        request.mentorStreamProgress = MentorStreamProgress()
+        request.mentorHTTPObservation = observationChannel(request, store: store)
+        do { _ = try await makeClient().complete(request); XCTFail("Missing terminal event") }
+        catch LLMClientError.incompleteResponse { }
+        let records = await store.snapshot()
+        XCTAssertEqual(records.outcomes, [.failed])
+        XCTAssertEqual(records.usages.first?.totalTokens, 13)
+        XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+    }
+
+    @MainActor
+    func testResponsesRecordsUsageForCompletedAndOutputLimitedAttemptsOnBothPaths() async throws {
+        let limited = #"""
+        data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":9,"output_tokens":16,"total_tokens":25,"output_tokens_details":{"reasoning_tokens":16}}}}
+
+        """#
+        for streaming in [false, true] {
+            for completed in [false, true] {
+                GLMStubURLProtocol.requestBodies = []
+                GLMStubURLProtocol.responses = [.init(statusCode: 200, body: completed ? responsesSSE() : limited)]
+                let store = RecordingHTTPObservationStore()
+                var request = makeRequest(); request.mentorExecutionPolicy = .responses
+                if streaming { request.mentorStreamProgress = MentorStreamProgress() }
+                request.mentorHTTPObservation = observationChannel(request, store: store)
+                do {
+                    _ = try await makeClient(configuration: responsesConfiguration()).complete(request)
+                    XCTAssertTrue(completed, "An output limit cannot become success")
+                } catch LLMClientError.providerStreamFailure(let failure) {
+                    XCTAssertFalse(completed); XCTAssertEqual(failure.reason, .outputLimit)
+                }
+                let records = await store.snapshot()
+                XCTAssertEqual(records.outcomes, [completed ? .returnedData : .failed])
+                XCTAssertEqual(records.usages.count, 1)
+                XCTAssertEqual(records.usages.first?.source, .responsesEvent)
+                XCTAssertEqual(records.usages.first?.inputTokens, completed ? 12 : 9)
+                XCTAssertEqual(records.usages.first?.reasoningTokens, completed ? nil : 16)
+                XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+            }
+        }
+    }
+
+    @MainActor
     func testSentOutputBudgetMatchesAttemptMetadataForEachSupportedContract() async throws {
         let cases: [(GLMClientConfiguration.ProtocolKind, String, String?, Int?)] = [
             (.openAICompatible, "api.z.ai", "max_tokens", 8_192),
@@ -74,6 +178,7 @@ final class DirectGLMClientTests: XCTestCase {
             XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
             // URLProtocol does not establish native task-metrics support. The
             // SQLite tests separately prove missing callbacks remain unknown.
+            if kind == .openAICompatible { XCTAssertTrue(recorded.usages.isEmpty, "Missing usage remains unknown") }
         }
     }
 
@@ -1025,6 +1130,7 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
     private var outcomes: [MentorHTTPAttemptOutcome] = []
     private var fields: [String?] = []
     private var budgets: [Int?] = []
+    private var usages: [MentorServiceUsage] = []
     init(rejectRegistration: Bool = false, onFinish: @escaping @Sendable () -> Void = {}) {
         self.rejectRegistration = rejectRegistration; self.onFinish = onFinish
     }
@@ -1035,11 +1141,14 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
         fields.append(outputBudgetField); budgets.append(outputBudget)
     }
     func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws { }
+    func recordServiceUsage(_ usage: MentorServiceUsage, identity: MentorHTTPAttemptIdentity) async throws {
+        usages.append(usage)
+    }
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws {
         outcomes.append(outcome); onFinish()
     }
-    func snapshot() -> (identities: [MentorHTTPAttemptIdentity], kinds: [MentorHTTPProtocol], outcomes: [MentorHTTPAttemptOutcome], fields: [String?], budgets: [Int?]) {
-        (identities, kinds, outcomes, fields, budgets)
+    func snapshot() -> (identities: [MentorHTTPAttemptIdentity], kinds: [MentorHTTPProtocol], outcomes: [MentorHTTPAttemptOutcome], fields: [String?], budgets: [Int?], usages: [MentorServiceUsage]) {
+        (identities, kinds, outcomes, fields, budgets, usages)
     }
 }
 

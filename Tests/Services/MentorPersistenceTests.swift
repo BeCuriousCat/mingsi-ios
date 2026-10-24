@@ -30,10 +30,17 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(record["metrics_state"] as? String, "pending")
         XCTAssertEqual(record["output_budget_field"] as? String, nil)
         XCTAssertEqual(record["output_budget"] as? Int, nil)
+        XCTAssertEqual(record["usage_state"] as? String, "received")
+        let usageJSON = try XCTUnwrap(record["usage_json"] as? String)
+        let usage = try JSONDecoder().decode(MentorServiceUsage.self, from: Data(usageJSON.utf8))
+        XCTAssertEqual(usage.source, .responsesEvent)
+        XCTAssertEqual(usage.inputTokens, 12)
+        XCTAssertEqual(usage.outputTokens, 4)
+        XCTAssertEqual(usage.totalTokens, 16)
         let numericSection = String(decoding: try JSONSerialization.data(withJSONObject: records), as: UTF8.self)
         XCTAssertFalse(numericSection.contains("PRIVATE_"))
         XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
-            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget"]))
+            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget", "usage_state", "usage_json"]))
         try await mentor.deleteSession(id: sessionID)
         let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
         XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)
@@ -44,6 +51,8 @@ final class MentorPersistenceTests: XCTestCase {
         _ = try AppDatabase(dbQueue: queue, includesVNextMigrations: false)
         try queue.read { db in
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v75_mentor_http_attempts"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v76_mentor_http_output_budget"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v77_mentor_service_usage"))
             XCTAssertFalse(try db.tableExists("mentor_http_attempts"))
         }
     }
@@ -52,6 +61,10 @@ final class MentorPersistenceTests: XCTestCase {
         func complete(_ request: LLMRequest) async throws -> Data {
             let channel = try XCTUnwrap(request.mentorHTTPObservation)
             let attempt = try await channel.beginAttempt(protocolKind: .responses)
+            let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 12,
+                "output_tokens": 4, "total_tokens": 16, "private": "PRIVATE_USAGE_SENTINEL"],
+                "model": "PRIVATE_MODEL_SENTINEL"], source: .responsesEvent))
+            try await attempt.recordServiceUsage(usage)
             try await attempt.finish(.returnedData)
             return Data("{}".utf8)
         }
