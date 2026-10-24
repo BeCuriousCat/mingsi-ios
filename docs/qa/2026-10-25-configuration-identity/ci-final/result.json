@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-25",
+  "run_id": 40121558528,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40121558528",
+  "head_revision": "23c47e5bd9d6a5a4d01ed00fe720dc1204bc6983",
+  "tested_merge_revision": "3b290752f6eb2ab3ee57fe8bac09a3869ccc8013",
+  "tested_tree": "2e102073284963973bc7b079a692b51f958d6ef7",
+  "head_tree_matches_tested_tree": true,
+  "status": "completed",
+  "conclusion": "success",
+  "scripts": {
+    "passed": 64,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1588,
+    "failed": 0,
+    "skipped": 24
+  },
+  "ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "release_debug_markers_and_optional_healthkit": "passed",
+  "simulator_archive": {
+    "sha256": "112c7418e756f46e8f7c69c143826b2801d0896555ca1e01460fbf8a4da7c6ee",
+    "hash_zip_integrity_markers_platform_bundle_and_tree_verified": true,
+    "installed": false
+  },
+  "installed_local_revision": "521d824dd1042cf7036b6f0bb145c4fab11c84b6",
+  "installed_local_full_tree_matches_CI": false,
+  "installed_local_app_project_tests_and_scripts_sources_match_CI_head": true,
+  "normal_candidate_launch_verified": false,
+  "screenshots_preserved_privately": 23,
+  "screenshots_individually_reviewed_this_run": 0,
+  "new_model_calls": 0,
+  "phone_modified": false,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "CI proves engineering gates for the tested tree, not normal App Keychain/provider or human acceptance.",
+    "CI simulator archive was verified but not installed; local installed bundle remains521d824.",
+    "Native normal startup, personal v79 migration, N02/N03, phone, formal window and all human-value gates remain outstanding."
+  ]
+}
