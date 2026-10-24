@@ -325,15 +325,20 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
 
         do {
             if configuration.protocolKind == .responses {
-                urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                var body: [String: Any] = [
                     "model": configuration.model,
                     "instructions": request.prompt.systemText,
                     "input": [["role": "user", "content": GLMChatCompletionRequest.userContent(for: request)]],
                     "store": false,
                     "stream": true
-                ])
+                ]
+                if let policy = request.mentorExecutionPolicy {
+                    body["max_output_tokens"] = policy.outputTokenBudget
+                }
+                urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
                 return urlRequest
             }
+            let budget = mentorOutputBudgetFields(for: request)
             urlRequest.httpBody = try encoder.encode(
                 GLMChatCompletionRequest(
                     request,
@@ -341,7 +346,9 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                     temperature: configuration.temperature,
                     stream: stream,
                     usesJSONResponseFormat: usesJSONResponseFormat,
-                    reasoningEffort: mentorReasoningEffort(for: request)
+                    reasoningEffort: mentorReasoningEffort(for: request),
+                    maxTokens: budget.maxTokens,
+                    maxCompletionTokens: budget.maxCompletionTokens
                 )
             )
         } catch {
@@ -424,7 +431,9 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         operation: (MentorHTTPMetricsDelegate?) async throws -> Data
     ) async throws -> Data {
         let kind: MentorHTTPProtocol = configuration.protocolKind == .responses ? .responses : .openAICompatible
-        let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind)
+        let budget = mentorOutputBudgetFields(for: request)
+        let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind,
+            outputBudgetField: budget.field, outputBudget: budget.value)
         let result: Result<Data, Error>
         do {
             try Task.checkCancellation()
@@ -444,6 +453,24 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                 }()
             try await attempt?.finish(cancelled ? .cancelled : .failed)
             throw error
+        }
+    }
+
+    private func mentorOutputBudgetFields(for request: LLMRequest) -> (field: String?, value: Int?, maxTokens: Int?, maxCompletionTokens: Int?) {
+        guard let policy = request.mentorExecutionPolicy else { return (nil, nil, nil, nil) }
+        if configuration.protocolKind == .responses {
+            return ("max_output_tokens", policy.outputTokenBudget, nil, nil)
+        }
+        switch configuration.baseURL.host?.lowercased() {
+        case "api.z.ai", "open.bigmodel.cn":
+            return ("max_tokens", policy.outputTokenBudget, policy.outputTokenBudget, nil)
+        case "api.openai.com":
+            return ("max_completion_tokens", policy.outputTokenBudget, nil, policy.outputTokenBudget)
+        default:
+            // Unknown compatible gateways are not silently assigned a provider
+            // contract. The request still runs for legacy compatibility, while
+            // its budget field is explicitly unknown and must not enter G3.
+            return (nil, nil, nil, nil)
         }
     }
 
@@ -755,6 +782,8 @@ private struct GLMChatCompletionRequest: Encodable {
     let stream: Bool
     let responseFormat: GLMResponseFormat?
     let reasoningEffort: String?
+    let maxTokens: Int?
+    let maxCompletionTokens: Int?
 
     init(
         _ request: LLMRequest,
@@ -762,7 +791,9 @@ private struct GLMChatCompletionRequest: Encodable {
         temperature: Double,
         stream: Bool,
         usesJSONResponseFormat: Bool,
-        reasoningEffort: String?
+        reasoningEffort: String?,
+        maxTokens: Int? = nil,
+        maxCompletionTokens: Int? = nil
     ) {
         self.model = model
         self.messages = [
@@ -773,6 +804,13 @@ private struct GLMChatCompletionRequest: Encodable {
         self.stream = stream
         self.responseFormat = usesJSONResponseFormat && !stream ? GLMResponseFormat(type: "json_object") : nil
         self.reasoningEffort = reasoningEffort
+        self.maxTokens = maxTokens
+        self.maxCompletionTokens = maxCompletionTokens
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case model, messages, temperature, stream, responseFormat = "response_format"
+        case reasoningEffort = "reasoning_effort", maxTokens = "max_tokens", maxCompletionTokens = "max_completion_tokens"
     }
 
     static func userContent(for request: LLMRequest) -> String {

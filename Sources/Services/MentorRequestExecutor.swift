@@ -5,10 +5,23 @@ struct MentorRequestPolicy: Hashable {
     let waitingNoticeAfter: Duration
     let maxHTTPAttempts: Int
     let allowsFormatFallback: Bool
-    static let m1 = MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+    /// Provider output budget. It includes reasoning and other non-visible
+    /// tokens where the provider contract says so; it is not a visible-text cap.
+    let outputTokenBudget: Int
+
+    init(deadline: Duration, waitingNoticeAfter: Duration, maxHTTPAttempts: Int,
+         allowsFormatFallback: Bool, outputTokenBudget: Int = 8_192) {
+        self.deadline = deadline
+        self.waitingNoticeAfter = waitingNoticeAfter
+        self.maxHTTPAttempts = maxHTTPAttempts
+        self.allowsFormatFallback = allowsFormatFallback
+        self.outputTokenBudget = outputTokenBudget
+    }
+
+    static let m1 = MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 8_192)
     // Legacy completions without a progress channel retain a finite total budget.
     // Production mentor streams use the shared content-idle budget below.
-    static let responses = MentorRequestPolicy(deadline: .seconds(120), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+    static let responses = MentorRequestPolicy(deadline: .seconds(120), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 16_000)
 
     static func forProtocol(_ kind: GLMClientConfiguration.ProtocolKind) -> Self {
         kind == .responses ? .responses : .m1
@@ -60,7 +73,8 @@ final class MentorRequestExecutor: Sendable {
         guard policy.deadline > .zero, policy.deadline <= Self.maximumDeadline,
               policy.waitingNoticeAfter >= .zero, policy.waitingNoticeAfter <= .seconds(10),
               policy.waitingNoticeAfter < policy.deadline, policy.maxHTTPAttempts == 1,
-              !policy.allowsFormatFallback else { throw MentorRequestExecutionError.invalidPolicy }
+              !policy.allowsFormatFallback, policy.outputTokenBudget > 0,
+              policy.outputTokenBudget <= 100_000 else { throw MentorRequestExecutionError.invalidPolicy }
         let start = startedAt ?? now()
         guard start <= now() else { throw MentorRequestExecutionError.invalidPolicy }
         let race = MentorRequestRace(now: now, start: start, policy: policy, progress: progress, onState: onState)

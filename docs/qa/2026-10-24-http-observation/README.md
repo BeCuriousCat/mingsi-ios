@@ -4,15 +4,17 @@
 
 候选`3c211d0858b68c0649b229317c0b1cd9fadfb1c3`已提交[CI 40039311779](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40039311779)，[登记回执](ci-submission.json)仅证明提交且观察时在运行，不代表终态或通过。冻结该候选至CI终态，不提前推送取消它。
 
+该 CI 已于 2026-10-24 成功结束：Release/Debug 标记、42 项脚本、**1558 项单元通过 / 24 跳过 / 0 失败**、8 项隔离 UI 全通过及可选 HealthKit 检查通过。最终日志、23 张截图和摘要保存在 [ci-final](ci-final/result.json)。它绑定的是 `3c211d0`；后续输出预算改动尚未包含在这次结果中，必须由下一轮 CI 单独验证。
+
 ## 实现范围
 
 生产`PromptTracingLLMClient`在验证导师请求归属后，从SQLite审计仓库取得独立观测存储，绑定不可变session/request/epoch/semanticRevision/trace。Direct客户端的Chat普通完成、Chat导师SSE和Responses完成路径在派发前登记新的attempt UUID，并将本次delegate传给实际URLSession调用。注册只证明计划派发；从登记到系统调用之间仍可能取消，不能把登记行自动当作一次HTTP。
 
-`v75_mentor_http_attempts`保存协议、登记时间、传输终态、登记起点至传输返回的单调耗时，以及系统报告的network/cache/serverPush/unknown/redirect计数。`returned_data`仅表示客户端返回数据，不表示语义有效、正式保存、界面可见或用户获益。该耗时不用于首字指标。
+`v75_mentor_http_attempts`保存协议、实际发送的输出预算字段和值、登记时间、传输终态、登记起点至传输返回的单调耗时，以及系统报告的network/cache/serverPush/unknown/redirect计数。`returned_data`仅表示客户端返回数据，不表示语义有效、正式保存、界面可见或用户获益。该耗时不用于首字指标。
 
 指标写入不走当前轮次的正文审计。它只能更新与全部身份相符的既有attempt：取消、保存或切到下一轮后，迟到指标仍属于旧请求；删请求/会话时外键级联，回调不会重新插入。相同指标幂等，不相加；冲突保留原计数并标记conflict，精确计数返回未知。无回调、空指标或unknown分类均不能填成0/1。传输退出时取消本次SSE任务以释放接收；前台截止与后台记账独立，不能因此恢复回答。
 
-本机导出增加`mentor_http_attempts`白名单分区，不含原文、提示词、响应正文、认证头、URL、地址、证书或原始错误；配置/服务用量/输出预算尚未加入。私有导出仍含关联UUID，不应直接当匿名公开报告。未给历史请求补造观测。
+本机导出增加`mentor_http_attempts`白名单分区，不含原文、提示词、响应正文、认证头、URL、地址、证书或原始错误；已记录实际发送的预算字段和值，但尚未记录服务自报用量。私有导出仍含关联UUID，不应直接当匿名公开报告。未给历史请求补造观测。未知兼容网关不会猜测字段，预算字段保留为空，不能进入正式G3窗口。
 
 ## 实际证据
 
@@ -22,6 +24,8 @@
 - 补充缺父表不记迁移成功的保护后，本机测试增至14项并重建原生探针，再以全新数据库复验上述三场景；[先前13项](local-tests-initial13.txt)及[早期原生结果](native-initial/native-result.json)保留，两个本机探针各4次HTTP接收分别计数，不混成一个批次。原探针首次编译仅因测试驱动遗漏GRDB异步调用的await而失败，[失败日志](native-first-build.txt)保留；修正探针后[编译通过](native-build.txt)。未据此改产品逻辑，也未抹去失败。
 
 另已加入真实AppDatabase/PromptTracing/导出/级联删除集成测试，以及pre-vNext不提前登记v75的回归；这些不在上述macOS14项范围内，等待完整iOS CI。Xcode源文件与测试引用已显式增加，语法解析和工程plist检查通过，不能替代实际构建。
+
+输出预算字段的编码规则和官方依据见 [output-budget.md](output-budget.md)。当前候选默认 Chat 8,192、Responses 16,000；未知兼容网关不猜字段。输出预算改动发生在 `3c211d0` CI 之后，不能引用该 CI 证明预算字段已经通过 iOS 构建。
 
 ## 尚未完成
 

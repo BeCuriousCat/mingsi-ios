@@ -335,6 +335,8 @@ final class DirectGLMClientTests: XCTestCase {
                 let body = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
                 let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
                 XCTAssertEqual(payload["reasoning_effort"] as? String, "low")
+                XCTAssertEqual(payload["max_tokens"] as? Int, 8_192)
+                XCTAssertNil(payload["max_completion_tokens"])
                 XCTAssertNil(payload["thinking"], "GLM-5.3 rejects disabled thinking")
                 XCTAssertEqual(payload["stream"] as? Bool, false)
                 XCTAssertEqual((payload["response_format"] as? [String: String])?["type"], "json_object")
@@ -363,6 +365,16 @@ final class DirectGLMClientTests: XCTestCase {
             XCTAssertNil(payload["reasoning_effort"], "Unexpected extension for \(host)/\(model), mentor=\(isMentor)")
             XCTAssertNil(payload["thinking"])
         }
+    }
+
+    func testKnownOpenAIChatContractUsesMaxCompletionTokens() async throws {
+        GLMStubURLProtocol.responses = [StubbedHTTPResponse(statusCode: 200, body: #"{"choices":[{"message":{"content":"{}"}}]}"#)]
+        var request = makeRequest(); request.mentorExecutionPolicy = .m1
+        _ = try await makeClient(configuration: GLMClientConfiguration(baseURL: URL(string: "https://api.openai.com/v1")!)).complete(request)
+        let body = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(payload["max_completion_tokens"] as? Int, 8_192)
+        XCTAssertNil(payload["max_tokens"])
     }
 
     func testComplete_retriesWithoutResponseFormatWhenEndpointRejectsIt() async throws {
@@ -961,7 +973,8 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
     init(rejectRegistration: Bool = false, onFinish: @escaping @Sendable () -> Void = {}) {
         self.rejectRegistration = rejectRegistration; self.onFinish = onFinish
     }
-    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date) async throws {
+    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date,
+                      outputBudgetField: String?, outputBudget: Int?) async throws {
         if rejectRegistration { throw MentorHTTPObservationError.unavailable }
         identities.append(identity); kinds.append(protocolKind)
     }

@@ -1,0 +1,51 @@
+{
+  "run_id": 40039311779,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40039311779",
+  "head_revision": "3c211d0858b68c0649b229317c0b1cd9fadfb1c3",
+  "status": "completed",
+  "conclusion": "success",
+  "tested_scope": "clean Release/Debug iOS simulator build, scripts, offline units, HealthKit optional check, 8 isolated UI tests",
+  "release_build_and_markers": "passed",
+  "debug_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1558,
+    "failed": 0,
+    "skipped": 24
+  },
+  "native_ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "optional_healthkit_check": "passed; entitlement optional, no health authorization",
+  "preview_visibility": "same tested source predicate logged hittable=true matches=true before manual scroll for light and dark largest fixtures",
+  "screenshots": {
+    "count": 23,
+    "preserved": true,
+    "review_note": "same UI production source as prior reviewed fixture; final CI screenshots preserved and source-bound; no new product layout claim"
+  },
+  "new_model_requests": 0,
+  "goal_complete": false,
+  "source_sha256": {
+    "Sources/Services/CoreProtocols.swift": "c3646d710f81e96d76d1fc07caa1c3b515202a84f8e6a69f5180baca10a2b9c0",
+    "Sources/Services/DirectGLMClient.swift": "3bc9540c9220a20df3a193b0dc4d8904fd128f93a5ed754ed86a2cba31c6592f",
+    "Sources/Services/MentorHTTPMetrics.swift": "cbc2dc742a08a68e07c515469e094002991a5ce26435d784eaf93af7d1e4f01b",
+    "Sources/Services/MentorHTTPObservationStore.swift": "19b356ed240d467f5a0a0032ecc0d31a23120e41606f85d795b8c9bf2c0d2ba6",
+    "Sources/Services/MentorPersistence.swift": "fb80cac7f4eff47b5251ba6f476a57950394eaf17ebb64955555e937fdfc3620",
+    "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
+    "Sources/Services/PersistenceCore.swift": "d0099715115aad6ff8cb8afed7a0730359d453613a06ca97d2c021b1d280eb53",
+    "Tests/Services/DirectGLMClientTests.swift": "3b76c0cd3ade4a03a89eafe63eb6656828b7f60d011c7cebe85c11f07681f383",
+    "Tests/Services/MentorHTTPObservationTests.swift": "ae26c98db54a36b1aa983b9d9988b252e7e1218b02fe62ba677e9a52a75a5782",
+    "Tests/Services/MentorPersistenceTests.swift": "62df95a850bfe2b1513857328b7dfc623e610271c166a81e73ac7b4837444b12",
+    "Tests/Services/MentorRequestExecutorTests.swift": "402f3addbefcf2026f9fcdee1da098654f4e164ab364a28e82fa4e5515871dc5",
+    "MingSi.xcodeproj/project.pbxproj": "ebd64a1f95b4f3a9dbcb7b516989021591dfb44c83591e9b801eaf02340e71cf"
+  },
+  "limits": [
+    "CI did not validate output-budget changes staged after this commit",
+    "simulator fixtures do not prove real microphone, provider streaming, VoiceOver, phone or human value"
+  ]
+}

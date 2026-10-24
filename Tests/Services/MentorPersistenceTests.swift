@@ -28,10 +28,12 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(record["trace_id"] as? String, request.traceID.uuidString)
         XCTAssertEqual(record["terminal_state"] as? String, "returned_data")
         XCTAssertEqual(record["metrics_state"] as? String, "pending")
+        XCTAssertEqual(record["output_budget_field"] as? String, nil)
+        XCTAssertEqual(record["output_budget"] as? Int, nil)
         let numericSection = String(decoding: try JSONSerialization.data(withJSONObject: records), as: UTF8.self)
         XCTAssertFalse(numericSection.contains("PRIVATE_"))
         XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
-            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json"]))
+            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget"]))
         try await mentor.deleteSession(id: sessionID)
         let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
         XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)

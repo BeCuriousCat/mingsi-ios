@@ -8,6 +8,8 @@ struct MentorHTTPAttemptRecord: Sendable {
     let elapsedMilliseconds: Int64?
     let metricsState: String
     let metrics: MentorHTTPMetrics?
+    let outputBudgetField: String?
+    let outputBudget: Int?
     var exactNetworkTransactionCount: Int? {
         metricsState == "received" ? metrics?.exactNetworkTransactionCount : nil
     }
@@ -39,12 +41,16 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 t.column("elapsed_ms", .integer).check { $0 >= 0 }
                 t.column("metrics_state", .text).notNull().defaults(to: "pending")
                 t.column("metrics_json", .text)
+                t.column("output_budget_field", .text)
+                t.column("output_budget", .integer).check { $0 > 0 }
             }
         }
     }
 
-    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at date: Date) async throws {
-        guard identity.requestEpoch >= 0, identity.semanticRevision >= 0, date.timeIntervalSince1970.isFinite else {
+    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at date: Date,
+                      outputBudgetField: String?, outputBudget: Int?) async throws {
+        guard identity.requestEpoch >= 0, identity.semanticRevision >= 0, date.timeIntervalSince1970.isFinite,
+              outputBudget == nil || (outputBudgetField != nil && outputBudget! > 0) else {
             throw MentorHTTPObservationError.invalidIdentity
         }
         let timestamp = ISO8601DateFormatter().string(from: date)
@@ -60,15 +66,18 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
             }
             if let row = try Self.ownedRow(identity, db: db) {
                 guard (row["protocol_kind"] as String) == protocolKind.rawValue,
-                      (row["dispatch_registered_at"] as String) == timestamp else { throw MentorHTTPObservationError.conflict }
+                      (row["dispatch_registered_at"] as String) == timestamp,
+                      (row["output_budget_field"] as String?) == outputBudgetField,
+                      (row["output_budget"] as Int?) == outputBudget else { throw MentorHTTPObservationError.conflict }
                 return
             }
             try db.execute(sql: """
                 INSERT INTO mentor_http_attempts
-                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind, dispatch_registered_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind, dispatch_registered_at, output_budget_field, output_budget)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString, identity.sessionID.uuidString,
-                    identity.requestID.uuidString, identity.requestEpoch, identity.semanticRevision, protocolKind.rawValue, timestamp])
+                    identity.requestID.uuidString, identity.requestEpoch, identity.semanticRevision, protocolKind.rawValue, timestamp,
+                    outputBudgetField, outputBudget])
         }
     }
 
@@ -116,7 +125,8 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 return MentorHTTPAttemptRecord(identity: MentorHTTPAttemptIdentity(attemptID: attemptID, traceID: traceID,
                     sessionID: sessionID, requestID: requestID, requestEpoch: row["request_epoch"], semanticRevision: row["semantic_revision"]),
                     protocolKind: kind, terminalState: row["terminal_state"], elapsedMilliseconds: row["elapsed_ms"],
-                    metricsState: row["metrics_state"], metrics: try metricsJSON.map { try JSONDecoder().decode(MentorHTTPMetrics.self, from: Data($0.utf8)) })
+                    metricsState: row["metrics_state"], metrics: try metricsJSON.map { try JSONDecoder().decode(MentorHTTPMetrics.self, from: Data($0.utf8)) },
+                    outputBudgetField: row["output_budget_field"], outputBudget: row["output_budget"])
             }
         }
     }

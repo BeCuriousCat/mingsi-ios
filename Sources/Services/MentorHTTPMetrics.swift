@@ -109,9 +109,16 @@ enum MentorHTTPAttemptOutcome: String, Sendable {
 enum MentorHTTPObservationError: Error { case unavailable, invalidIdentity, conflict, staleRequest }
 
 protocol MentorHTTPObservationStore: Sendable {
-    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date) async throws
+    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date,
+                      outputBudgetField: String?, outputBudget: Int?) async throws
     func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws
+}
+
+extension MentorHTTPObservationStore {
+    func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date) async throws {
+        try await beginAttempt(identity, protocolKind: protocolKind, at: at, outputBudgetField: nil, outputBudget: nil)
+    }
 }
 
 private final class MentorHTTPWriteFailure: Sendable {
@@ -138,13 +145,14 @@ final class MentorHTTPObservation: Hashable, Sendable {
     static func == (lhs: MentorHTTPObservation, rhs: MentorHTTPObservation) -> Bool { lhs === rhs }
     func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
 
-    func beginAttempt(protocolKind: MentorHTTPProtocol) async throws -> MentorHTTPAttempt {
+    func beginAttempt(protocolKind: MentorHTTPProtocol, outputBudgetField: String? = nil, outputBudget: Int? = nil) async throws -> MentorHTTPAttempt {
         let identity = MentorHTTPAttemptIdentity(attemptID: UUID(), traceID: traceID,
             sessionID: sessionID, requestID: requestID, requestEpoch: requestEpoch, semanticRevision: semanticRevision)
         let started = ContinuousClock.now
         // Registration must succeed before dispatch. It proves intent to dispatch,
         // not that one HTTP load occurred; only native metrics can supply that.
-        try await store.beginAttempt(identity, protocolKind: protocolKind, at: .now)
+        try await store.beginAttempt(identity, protocolKind: protocolKind, at: .now,
+            outputBudgetField: outputBudgetField, outputBudget: outputBudget)
         return MentorHTTPAttempt(identity: identity, started: started, store: store)
     }
 }
