@@ -195,6 +195,11 @@ final class MentorFeatureStoreTests: XCTestCase {
                 XCTAssertNil(records.first?.requestTimings[.firstVisibleBody])
                 feature.acknowledgeResponse(itemID: try XCTUnwrap(feature.state.responseItemID))
                 await progress.flushTimingWrites()
+                records = try await observations.attempts(requestID: token.requestID)
+                XCTAssertNil(records.first?.requestTimings[.firstVisibleBody], "Whole-response receipt is not a body visibility measurement")
+                feature.acknowledgeSavedResponseBody(requestID: UUID())
+                feature.acknowledgeSavedResponseBody(requestID: token.requestID)
+                await progress.flushTimingWrites()
             }
             records = try await observations.attempts(requestID: token.requestID)
             XCTAssertNotNil(records.first?.requestTimings[.firstVisibleBody])

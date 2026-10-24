@@ -32,6 +32,7 @@ struct MentorFeatureState: Equatable {
     var isSavingBenefitFeedback = false
     var response: MentorValidatedTurn?
     var responseItemID: UUID?
+    var responseBodyRequestID: UUID?
     var acknowledgedResponseItemID: UUID?
     var presentationError: String?
     var understandings: [MentorUnderstanding] = []
@@ -139,7 +140,7 @@ final class MentorFeatureStore: ObservableObject {
     private var activeRequestID: UUID?
     private var activeRequestGeneration: UUID?
     private var displayedPreviewTiming: (requestID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
-    private var savedResponseTiming: (itemID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
+    private var savedResponseTiming: (itemID: UUID, requestID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
     private var dependencyGeneration = UUID()
     private struct DraftSnapshot: Equatable {
         let sessionID: UUID
@@ -1882,10 +1883,17 @@ final class MentorFeatureStore: ObservableObject {
     func acknowledgeResponse(itemID: UUID) {
         guard state.responseItemID == itemID else { return }
         if state.isViewingHistory { observeHistoryPresentation(itemID: itemID, isResponse: true); return }
-        if let saved = savedResponseTiming, saved.itemID == itemID, saved.sessionID == state.session?.id {
-            saved.progress.recordTiming(.firstVisibleBody)
-        }
         acknowledge(itemID: itemID, isResponse: true)
+    }
+
+    /// A separate body-only marker observes timing without changing the
+    /// existing whole-response presentation receipt or next-turn gate.
+    func acknowledgeSavedResponseBody(requestID: UUID) {
+        guard !state.isViewingHistory, !state.isTransitioningSession,
+              state.responseBodyRequestID == requestID,
+              let saved = savedResponseTiming, saved.requestID == requestID,
+              saved.itemID == state.responseItemID, saved.sessionID == state.session?.id else { return }
+        saved.progress.recordTiming(.firstVisibleBody)
     }
 
     /// The visible lesson's identity travels with scroll events, so a disappearing
@@ -2675,7 +2683,8 @@ final class MentorFeatureStore: ObservableObject {
         state.retryError = nil
         state.response = pending.validated
         state.responseItemID = item.id
-        savedResponseTiming = (item.id, pending.sessionID, pending.progress)
+        state.responseBodyRequestID = pending.requestID
+        savedResponseTiming = (item.id, pending.requestID, pending.sessionID, pending.progress)
         state.acknowledgedResponseItemID = nil
         state.canRetryResponseSave = false
         pendingResponse = nil

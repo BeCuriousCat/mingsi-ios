@@ -699,6 +699,7 @@ struct MentorConversationView: View {
                                 if id == feature.state.responseItemID { feature.acknowledgeResponse(itemID: id) }
                                 if id == feature.state.lesson?.id { feature.acknowledgeLesson() }
                                 if id == feature.state.streamingPreviewRequestID { feature.acknowledgeStreamingPreview(requestID: id) }
+                                if id == feature.state.responseBodyRequestID { feature.acknowledgeSavedResponseBody(requestID: id) }
                             }))
                     }
                     .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
@@ -887,12 +888,17 @@ struct MentorConversationView: View {
                                     .font(.subheadline).foregroundStyle(DS.mutedInk)
                             }
                             Text(response.body).textSelection(.enabled)
-                                .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
+                                .background {
+                                    if item.id == feature.state.responseItemID, let requestID = feature.state.responseBodyRequestID {
+                                        MentorReadingMarker(geometry: readingGeometry, itemID: requestID)
+                                    }
+                                }
                             if let question = response.question { Text(question).fontWeight(.medium) }
                             if !response.sourceRefs.isEmpty {
                                 sourceButton(response.sourceRefs)
                             }
                         }
+                        .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
                     }
                 }
                 .id(item.id)

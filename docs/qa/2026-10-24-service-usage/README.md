@@ -22,7 +22,7 @@
 
 本机剩余空间约1.9GiB，Mac锁屏阻止直接UI验收。CI新增在全部工程门槛成功后保存相同Debug模拟器App的步骤：包内源码/状态/Bundle ID/平台核对、测试计数、源码树与zip哈希一起保留7天，不包含模拟器数据容器、Keychain或模型凭据。内嵌Python语法已检查，实际打包尚未执行，不能称产物已可下载或安装。它只能用于模拟器，不是iPhone签名分发或G9通过。
 
-上一候选c120e8c的[CI 40048831633](https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40048831633)仍运行；不提前推送取消它，也不把它的结果归给本次用量和打包改动。PR保持草稿。
+上一候选c120e8c的[CI 40048831633](../2026-10-24-http-observation/ci-upgrade-final/result.json)已成功：1565单元/24跳过/0失败、8条隔离UI及Release/Debug等门槛通过；它不含本次用量、打包和后续时点/导出修复。现可提交后续候选单独验证，PR保持草稿。
 
 ## 仍缺什么
 
