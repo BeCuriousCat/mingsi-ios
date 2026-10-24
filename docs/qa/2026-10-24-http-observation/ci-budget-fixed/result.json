@@ -1,0 +1,46 @@
+{
+  "run_id": 40045799446,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40045799446",
+  "head_revision": "fe31d3d96ff2df7ad5e37b5fd7e8d51b06e8814a",
+  "tested_merge_revision": "8a6fba26d2b8233a1d464710c5270608977a1799",
+  "tested_tree": "9e8a44517630df92010de519968af04dedf0e9c2",
+  "head_tree_matches_tested_tree": true,
+  "status": "completed",
+  "conclusion": "success",
+  "release_and_debug_build_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1560,
+    "failed": 0,
+    "skipped": 24
+  },
+  "native_ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "optional_healthkit_check": "passed; no health authorization",
+  "screenshots": {
+    "count": 23,
+    "preserved": true,
+    "new_visual_review": false
+  },
+  "source_sha256": {
+    "Sources/Services/MentorHTTPObservationStore.swift": "9ec64a7a3abe7b27cc0c8e193812c0dc0bcb8ec63d4b2592bd0a4d9db518e10b",
+    "Sources/Services/MentorRequestExecutor.swift": "f596b5d34914ad2fc8ab05247301620ea3dfe69bc1d070eb1f1a599aac448337",
+    "Sources/Features/MentorFeatureStore.swift": "b17551da864eb49b4de9de9daee1af0dd841a595dd6cb83e4372d44bab823c0f",
+    "Sources/Services/DirectGLMClient.swift": "509f4ac560c5223fc3723b8cddf3702e8262d985f70ca4bdbf937d3ccc293b5e",
+    "Tests/Services/DirectGLMClientTests.swift": "5dbe4d6525f2189b02c65005025990280ffff95e7501df69e204d91fc3de0d4d",
+    "Tests/Services/MentorHTTPObservationTests.swift": "ae26c98db54a36b1aa983b9d9988b252e7e1218b02fe62ba677e9a52a75a5782"
+  },
+  "new_model_requests": 0,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "This revision predates the v76 migration and expanded budget tests; their full iOS verification is separate.",
+    "No phone, real provider compatibility, human benefit, or independent reuse acceptance."
+  ]
+}

@@ -1,0 +1,13 @@
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4500860Z /Users/runner/work/mingsi-ios/mingsi-ios/Tests/Services/DirectGLMClientTests.swift:793:25: error: passing closure as a 'sending' parameter risks causing data races between code in the current task and concurrent execution of the closure
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4613740Z         let operation = Task { try await client.complete(request) }
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4726870Z                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4833440Z /Users/runner/work/mingsi-ios/mingsi-ios/Tests/Services/DirectGLMClientTests.swift:793:49: note: closure captures non-Sendable 'client'
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4949500Z         let operation = Task { try await client.complete(request) }
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4961920Z                                                 ^
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4964070Z /Users/runner/work/mingsi-ios/mingsi-ios/Tests/Services/DirectGLMClientTests.swift:793:58: note: closure captures non-Sendable 'request'
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4983570Z         let operation = Task { try await client.complete(request) }
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4986810Z                                                          ^
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4988090Z 
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4989050Z SwiftCompile normal arm64 /Users/runner/work/mingsi-ios/mingsi-ios/Tests/Services/DirectGLMClientTests.swift (in target 'MingSiTests' from project 'MingSi')
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4990630Z     cd /Users/runner/work/mingsi-ios/mingsi-ios
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-23T20:41:41.4992970Z     

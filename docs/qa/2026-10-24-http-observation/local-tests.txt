@@ -1,0 +1,58 @@
+[0/1] Planning build
+Building for debugging...
+[0/6] Write sources
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/8] Emitting module MingSi
+[5/8] Compiling MingSi MentorHTTPObservationStore.swift
+[5/10] Write Objects.LinkFileList
+[7/12] Compiling MingSiTests MentorHTTPObservationTests.swift
+[8/12] Emitting module MingSiTests
+[8/12] Linking NativeProbe
+[9/12] Applying NativeProbe
+[10/12] Write Objects.LinkFileList
+[11/12] Linking MingSiHTTPObservationProbePackageTests
+Build complete! (2.38s)
+Test Suite 'All tests' started at 2026-10-24 07:20:16.431.
+Test Suite 'MingSiHTTPObservationProbePackageTests.xctest' started at 2026-10-24 07:20:16.431.
+Test Suite 'DirectGLMClientTests' started at 2026-10-24 07:20:16.431.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorDeadlineCancelsActualURLSessionTask]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorDeadlineCancelsActualURLSessionTask]' passed (0.008 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorHTTPFailureIsAccountedOnceWithoutFallbackOrRetry]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorHTTPFailureIsAccountedOnceWithoutFallbackOrRetry]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationFailureBeforeDispatchMakesNoHTTPRequest]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationFailureBeforeDispatchMakesNoHTTPRequest]' passed (0.000 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesMentorDeadlineCancelsUnderlyingTask]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesMentorDeadlineCancelsUnderlyingTask]' passed (0.000 seconds).
+Test Suite 'DirectGLMClientTests' passed at 2026-10-24 07:20:16.442.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.010 (0.011) seconds
+Test Suite 'MentorHTTPObservationTests' started at 2026-10-24 07:20:16.442.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' passed (0.004 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' passed (0.001 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' passed (0.002 seconds).
+Test Suite 'MentorHTTPObservationTests' passed at 2026-10-24 07:20:16.463.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.020 (0.020) seconds
+Test Suite 'MingSiHTTPObservationProbePackageTests.xctest' passed at 2026-10-24 07:20:16.463.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.030 (0.031) seconds
+Test Suite 'All tests' passed at 2026-10-24 07:20:16.463.
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.030 (0.032) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

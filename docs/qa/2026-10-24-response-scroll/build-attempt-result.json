@@ -1,0 +1,7 @@
+{
+  "result": "failed before tests",
+  "stage": "accessibility-reveal build",
+  "exit": 65,
+  "error": "CodeSign failed with internal error on generated debug dylib",
+  "action": "Retained private log; existing ad-hoc codesign command succeeded when applied directly, then full build succeeded. No product test was counted for the failed build."
+}

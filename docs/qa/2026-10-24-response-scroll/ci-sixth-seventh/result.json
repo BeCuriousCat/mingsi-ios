@@ -1,0 +1,20 @@
+{
+  "sixth": {
+    "run_id": 40028420412,
+    "head_revision": "1152bd615d4cb079db35ac9f52890b7f2c3bc946",
+    "conclusion": "cancelled",
+    "reason": "new pushed PR candidate replaced active workflow; not a test failure",
+    "script_tests": "passed",
+    "release_build": "cancelled before completion",
+    "unit": "not executed",
+    "native_ui": "not executed"
+  },
+  "seventh": {
+    "run_id": 40029089898,
+    "head_revision": "f68f7fab14ab90a9705c5d0f4717806c0b0bbce3",
+    "conclusion": "cancelled",
+    "reason": "agent cancelled duplicate pending workflow; no runner jobs started"
+  },
+  "new_model_requests": 0,
+  "goal_complete": false
+}

@@ -168,6 +168,7 @@ struct PushToTalkInput: View {
     var speechPreviewBinding: Binding<String>?
     var onAcceptSpeech: ((String) -> Void)?
     var usesTextEditor = false
+    var textEditorHeight: CGFloat?
     var autofocus = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var textFieldFocused: Bool
@@ -186,6 +187,7 @@ struct PushToTalkInput: View {
         speechPreviewBinding: Binding<String>? = nil,
         onAcceptSpeech: ((String) -> Void)? = nil,
         usesTextEditor: Bool = false,
+        textEditorHeight: CGFloat? = nil,
         autofocus: Bool = false,
         speech: SpeechTranscriptionService? = nil
     ) {
@@ -197,6 +199,7 @@ struct PushToTalkInput: View {
         self.speechPreviewBinding = speechPreviewBinding
         self.onAcceptSpeech = onAcceptSpeech
         self.usesTextEditor = usesTextEditor
+        self.textEditorHeight = textEditorHeight
         self.autofocus = autofocus
         _controller = StateObject(wrappedValue: SpeechInputController(speech: speech ?? SpeechTranscriptionService.inputService()))
     }
@@ -304,7 +307,7 @@ struct PushToTalkInput: View {
         ZStack(alignment: .topLeading) {
             if usesTextEditor {
                 TextEditor(text: $text)
-                    .frame(minHeight: usesTextEditor ? 64 : 44, maxHeight: usesTextEditor ? 220 : 140)
+                    .frame(minHeight: textEditorHeight ?? 64, maxHeight: textEditorHeight ?? 220)
                     .scrollContentBackground(.hidden)
                     .focused($textFieldFocused)
                     .accessibilityLabel(placeholder)

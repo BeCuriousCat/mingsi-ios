@@ -1,0 +1,26 @@
+{
+  "run_id": 40015372080,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40015372080",
+  "head_revision": "29375b24524552d19bc0110eef110e7ca90b244a",
+  "tested_merge_revision": "32598327cc4e5fdc2cfa99022d95242751417d04",
+  "tested_tree": "aad862db60963e984286cf9baf60a42980ad691b",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "failure",
+  "release_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1536,
+    "failed": 1,
+    "skipped": 24
+  },
+  "debug_marker_postcheck": "not executed after failing test command",
+  "optional_healthkit_check": "not executed after unit failure",
+  "native_ui": "not executed after unit failure",
+  "failure": "DirectGLMClientTests/testMentorDeadlineCancelsActualURLSessionTask: one second stop-loading observation expired under a 100ms real deadline; no passing assertion for the stop callback.",
+  "new_model_requests": 0,
+  "goal_complete": false
+}

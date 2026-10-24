@@ -33,7 +33,9 @@ jobs:
   source-verification:
     name: Clean build and offline tests
     runs-on: macos-26
-    timeout-minutes: 45
+    # A clean Release, Debug/unit run and eight UI paths exceeded 45 minutes
+    # on a slow hosted simulator. Keep the full gates and artifact collection.
+    timeout-minutes: 75
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
@@ -69,6 +71,7 @@ jobs:
           # Inspect existing devices; do not create, delete or reset a simulator.
           python3 scripts/select_ci_simulator.py >> "$GITHUB_ENV"
       - name: Run unit tests with no paid model requests
+        id: offline-unit
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
@@ -103,15 +106,26 @@ jobs:
           assert "healthkit" not in required, "HealthKit must remain optional"
           print("Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed")
           PY
-      - name: Run isolated permission UI in light and dark largest text
+      - name: Run isolated permission and next-turn UI in light and dark largest text
+        # Preserve a failed unit gate while still collecting independent UI
+        # evidence. No continue-on-error: the overall job remains failed.
+        if: ${{ !cancelled() && (steps.offline-unit.outcome == 'success' || steps.offline-unit.outcome == 'failure') }}
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/mingsi-tests" \
             -resultBundlePath "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInLight \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText \
             -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test

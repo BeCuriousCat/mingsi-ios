@@ -1,0 +1,25 @@
+{
+  "source_revision": "a5989c37a79d0611ccb22077324af8085013c50f",
+  "scope": "macOS isolated harness using actual transport/executor and extracted clock/URLProtocol fixture, minimal request models; not full iOS build or product UI",
+  "swift_mode": "Swift 6 with NonisolatedNonsendingByDefault",
+  "passed_protocols": [
+    "openAICompatible",
+    "responses"
+  ],
+  "observed_order": [
+    "URLProtocol startLoading",
+    "advance controlled deadline",
+    "mentor timedOut",
+    "URLProtocol stopLoading"
+  ],
+  "urlprotocol_requests_per_protocol": 1,
+  "new_model_requests": 0,
+  "provider_network_calls": 0,
+  "ios_acceptance_passed": false,
+  "source_sha256": {
+    "Sources/Services/DirectGLMClient.swift": "fd97ae6b819abf36b0c5a7e6d295122f64202c304e3f3fe15c7eb8ee16ffc6d0",
+    "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
+    "Tests/Services/DirectGLMClientTests.swift": "c5729416b0d32ca6b587aecb5adfcf6813a12734907183c4a7f74d1a458a6ef7"
+  },
+  "harness_binary_sha256": "1e09e642fbe0d0b211ebc58963b1c55236d4e3e6b4c4bff619b825099c5f35e4"
+}

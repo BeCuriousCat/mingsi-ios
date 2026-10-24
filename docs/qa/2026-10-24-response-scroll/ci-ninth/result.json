@@ -1,0 +1,49 @@
+{
+  "run_id": 40034006532,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40034006532",
+  "head_revision": "ec444881d138fb9112cef7689cee313ddbee7b50",
+  "tested_merge_revision": "299acd4683c42d573317d25a8eeee57093ae14c5",
+  "tested_tree": "61f5e2536413e3aec6f088a4e8e67bfc87ecc6a0",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "success",
+  "release_build_and_markers": "passed",
+  "debug_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1544,
+    "failed": 0,
+    "skipped": 24
+  },
+  "optional_healthkit_check": "passed; simulator entitlement and optional capability only",
+  "native_ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "preview_visibility": {
+    "light": "same-snapshot complete preview visible; hittable=true matches=true",
+    "dark_largest": "same-snapshot 283.39208984375pt visible height; hittable=true matches=true",
+    "timing": "before any manual test scroll; original 3-second predicate, size thresholds and hittability retained",
+    "prior_failure": "eighth-run individual predicate operands unavailable; root cause remains unproven"
+  },
+  "visual_review": {
+    "reviewer": "Codex AI screenshot review",
+    "screenshots_inspected": 23,
+    "scope_result": "no new blocking issue found within recorded fixture scenes",
+    "limits": "long text uses native scrolling; still screenshots do not prove real microphone, live provider streaming, phone, VoiceOver or human acceptance"
+  },
+  "new_model_requests": 0,
+  "new_phone_installations": 0,
+  "formal_g3_window_started": false,
+  "goal_complete": false,
+  "next_gaps": [
+    "normal App candidate build/install and N02/N03 real network UI",
+    "immutable request/attempt metrics persistence, usage, output budget and first-readable timing",
+    "real iPhone speech, shortcut, VoiceOver and valid signing",
+    "owner and external real use, four-week independent reuse, human comparison, installations and another builder"
+  ]
+}

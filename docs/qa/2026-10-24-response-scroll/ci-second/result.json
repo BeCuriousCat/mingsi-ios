@@ -1,0 +1,31 @@
+{
+  "run_id": 40010252928,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40010252928",
+  "head_revision": "7c898a96d99316e5e97ab725c225a88d4b55f7c8",
+  "tested_merge_revision": "24d595fc1e8d074b0f8435c9c455ddb2f1178c7c",
+  "tested_tree": "250419882ccaa450c94b750e272397a02942286c",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "failure",
+  "release_build_and_markers": "passed",
+  "debug_source_markers": "passed",
+  "optional_healthkit_embedded_check": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1537,
+    "failed": 0,
+    "skipped": 24
+  },
+  "native_ui": {
+    "passed": 4,
+    "failed": 4,
+    "skipped": 0
+  },
+  "visual_review": "Two stream screenshots inspected after test manual scrolling; pre-scroll viewport not captured, so no automatic-visibility pass claimed. Other screenshots retained without new visual verdict.",
+  "new_model_requests": 0,
+  "phone_updated": false,
+  "goal_complete": false
+}

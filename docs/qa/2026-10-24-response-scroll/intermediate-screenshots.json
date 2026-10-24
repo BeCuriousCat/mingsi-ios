@@ -1,0 +1,79 @@
+[
+  {
+    "file": "intermediate-screenshots/mentor-stream-dark-largest-interrupted.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "5a186252d6dfa1e2ba8652b50ced6a51f517ff0e5e369a00ea5a53094804e11e",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed at original capture; synthetic preview/terminal state labels readable, no protocol JSON exposed; long content scrolls at largest text"
+  },
+  {
+    "file": "intermediate-screenshots/mentor-stream-dark-largest-preview.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "e02cbcecab844936a3eed80ccf0ca6ff0ca33679445e2c1376c612d222d457a2",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed at original capture; synthetic preview/terminal state labels readable, no protocol JSON exposed; long content scrolls at largest text"
+  },
+  {
+    "file": "intermediate-screenshots/mentor-stream-light-completed.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "6dc77107cb9387deee927e2750411e24563e61373993ff0594605355993109b1",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed at original capture; synthetic preview/terminal state labels readable, no protocol JSON exposed; long content scrolls at largest text"
+  },
+  {
+    "file": "intermediate-screenshots/mentor-stream-light-preview.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "3c6747615ccb3b7d57bafa25c887eec6d4828085e767b3853b0d2b52d6580a6e",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed at original capture; synthetic preview/terminal state labels readable, no protocol JSON exposed; long content scrolls at largest text"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-dark-largest-next-send-ready.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "23fae61c8471dff4f38eadf8d8ed3435fb9f84acda690887b273c3cfd304fd51",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed; largest keyboard capture still clips editor above navigation"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-dark-largest-next-input-keyboard.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "d9cd153010d71fc72fb20da308fb37acdae35b9a9029208a13e3c0bf01a398c0",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed; largest keyboard capture still clips editor above navigation"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-dark-largest-before-next-input.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "9335cc08d0db690b98a307591ef8247fc2e9f39102f3678a0f9596d94e1c88fe",
+    "data_kind": "synthetic",
+    "review_status": "not visually reviewed; retained as intermediate capture"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-light-next-send-ready.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "a8e34d25d1b9e596b5cbf4ae5e1f263dcdd6cbb958d3b5a6bba7f410c9ed59ac",
+    "data_kind": "synthetic",
+    "review_status": "not visually reviewed; retained as intermediate capture"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-light-next-input-keyboard.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "949499ac76892c3a12fb59d3cb5ddc395499c74884a7dc4f4c66b1977fe9eba4",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed; largest keyboard capture still clips editor above navigation"
+  },
+  {
+    "file": "intermediate-screenshots/saved-response-light-before-next-input.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "f070e5c0eb24fb7e40108675deb2147b8582382b9c7e45683e12fe130a842766",
+    "data_kind": "synthetic",
+    "review_status": "not visually reviewed; retained as intermediate capture"
+  },
+  {
+    "file": "intermediate-screenshots/before-fix-largest-keyboard-video-frame.png",
+    "source": "First regression screen recording, ffmpeg -sseof -1, first decoded frame",
+    "sha256": "d6837c5ce32e61f36ad90b4bcb0e34919287b48f7acab85ec21fbcb0eebc6d5d",
+    "data_kind": "synthetic",
+    "review_status": "AI reviewed; largest keyboard capture still clips editor above navigation"
+  }
+]

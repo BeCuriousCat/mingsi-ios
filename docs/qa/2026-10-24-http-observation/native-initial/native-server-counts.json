@@ -1,0 +1,9 @@
+{
+  "received_count": 4,
+  "routes": [
+    "/chat/chat/completions",
+    "/redirect/responses",
+    "/success/responses",
+    "/cancel/responses"
+  ]
+}

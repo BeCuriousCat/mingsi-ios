@@ -1,0 +1,24 @@
+[0/1] Planning build
+Building for debugging...
+[0/6] Write sources
+[1/6] Write NativeProbe-entitlement.plist
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/8] Emitting module NativeProbe
+[5/8] Compiling NativeProbe Probe.swift
+/private/tmp/mingsi-http-observation-20261024/Sources/NativeProbe/Probe.swift:19:9: error: expression is 'async' but is not marked with 'await'
+17 |         let port = CommandLine.arguments[1]
+18 |         let queue = try DatabaseQueue(path: CommandLine.arguments[2])
+19 |         try queue.write { db in
+   |         |   `- note: call is 'async'
+   |         `- error: expression is 'async' but is not marked with 'await'
+20 |             try db.execute(sql: """
+21 |                 CREATE TABLE mentor_sessions (id TEXT PRIMARY KEY, request_epoch INTEGER NOT NULL, semantic_revision INTEGER NOT NULL);
+
+/private/tmp/mingsi-http-observation-20261024/Sources/NativeProbe/Probe.swift:33:13: error: expression is 'async' but is not marked with 'await'
+31 |         for scenario in ["chat", "redirect", "cancel"] {
+32 |             let sessionID = UUID(), requestID = UUID()
+33 |             try queue.write { db in
+   |             |   `- note: call is 'async'
+   |             `- error: expression is 'async' but is not marked with 'await'
+34 |                 try db.execute(sql: "INSERT INTO mentor_sessions VALUES (?, 0, 0)", arguments: [sessionID.uuidString])
+35 |                 try db.execute(sql: "INSERT INTO mentor_requests VALUES (?, ?, 'in_flight', 0, 0)", arguments: [requestID.uuidString, sessionID.uuidString])

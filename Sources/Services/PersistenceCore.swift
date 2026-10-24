@@ -388,11 +388,11 @@ final class AppDatabase {
             migrationLease.release()
 
             let finalLease = try AppDatabaseFileLease(databaseURL: url, exclusive: false)
-            let finalQueue = try DatabaseQueue(path: url.path)
+            let finalQueue = try DatabaseQueue(path: url.path, configuration: Self.fileConfiguration())
             self.dbQueue = finalQueue
             self.fileLease = finalLease
         } else {
-            let queue = try DatabaseQueue(path: url.path)
+            let queue = try DatabaseQueue(path: url.path, configuration: Self.fileConfiguration())
             let migrator = Self.makeMigrator(includesVNextMigrations: includesVNextMigrations)
             try migrator.migrate(queue)
             self.dbQueue = queue
@@ -405,6 +405,14 @@ final class AppDatabase {
         self.fileLease = nil
         let migrator = Self.makeMigrator(includesVNextMigrations: includesVNextMigrations)
         try migrator.migrate(dbQueue)
+    }
+
+    private static func fileConfiguration() -> Configuration {
+        var configuration = Configuration()
+        // Another live connection may be finishing a local write as this file
+        // opens. Wait briefly for that lock, then propagate a genuine failure.
+        configuration.busyMode = .timeout(2)
+        return configuration
     }
 
     static func defaultURL() throws -> URL {
@@ -1278,6 +1286,9 @@ final class AppDatabase {
                 table.add(column: "principle_practice_assessment_json", .text)
             }
         }
+        if includesVNextMigrations {
+            SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        }
         return migrator
     }
 
@@ -1304,7 +1315,7 @@ final class AppDatabase {
     }
 
     private static func requiresVNextMigration(at url: URL) throws -> Bool {
-        let queue = try DatabaseQueue(path: url.path)
+        let queue = try DatabaseQueue(path: url.path, configuration: fileConfiguration())
         defer { try? queue.close() }
         return try queue.read { db in
             guard try db.tableExists("grdb_migrations") else {
@@ -4801,6 +4812,7 @@ enum DataExportSectionName: String, CaseIterable {
     case mentorFeedbackResets = "mentor_feedback_resets"
     case mentorRecallContinuations = "mentor_recall_continuations"
     case mentorUsageEvents = "mentor_usage_events"
+    case mentorHTTPAttempts = "mentor_http_attempts"
 }
 
 final class SQLiteDataExportRepository: DataExportRepository {

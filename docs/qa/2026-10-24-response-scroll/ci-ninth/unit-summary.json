@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+        "deviceName" : "iPhone 17 Pro",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 1544,
+      "skippedTests" : 24,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1792795327.064,
+  "passedTests" : 1544,
+  "result" : "Passed",
+  "skippedTests" : 24,
+  "startTime" : 1792794972.742,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "14% of duration",
+      "text" : "7 longest test runs with outlier durations exceeding 0.89s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 1568
+}

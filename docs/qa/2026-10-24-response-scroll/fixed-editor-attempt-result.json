@@ -1,0 +1,14 @@
+{
+  "result": "Failed",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "stopped_after_verified_hang": true,
+  "details": "Fixed editor height did not resolve light keyboard-dismissal hang; stopped after live 100 percent CPU recurrence. The shared component API experiment was reverted.",
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+      "message": "Testing was canceled"
+    }
+  ]
+}

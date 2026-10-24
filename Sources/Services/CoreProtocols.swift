@@ -142,6 +142,8 @@ struct LLMRequest: Hashable {
     /// Ephemeral preview channel; never encoded into model context or persisted as a response.
     var mentorStreamProgress: MentorStreamProgress? = nil
     var mentorAuditToken: MentorAuditToken? = nil
+    /// Independent numeric accounting; never participates in response ownership.
+    var mentorHTTPObservation: MentorHTTPObservation? = nil
 
     var decisionRoute: LLMDecisionRoute {
         prompt.id.decisionRoute
@@ -1445,6 +1447,11 @@ extension MissingAPIKeyLLMClient: StreamingLLMClient {
 protocol MentorPromptAudit {
     func validate(_ token: LLMRequest.MentorAuditToken) async throws
     func savePromptRun(_ run: PromptRun, token: LLMRequest.MentorAuditToken) async throws
+    var httpObservationStore: (any MentorHTTPObservationStore)? { get }
+}
+
+extension MentorPromptAudit {
+    var httpObservationStore: (any MentorHTTPObservationStore)? { nil }
 }
 
 final class PromptTracingLLMClient: LLMClient {
@@ -1492,7 +1499,13 @@ final class PromptTracingLLMClient: LLMClient {
             try Task.checkCancellation()
         }
         do {
-            let data = try await base.complete(request)
+            var observed = request
+            if let token = request.mentorAuditToken, let store = mentorAudit?.httpObservationStore {
+                observed.mentorHTTPObservation = MentorHTTPObservation(traceID: request.traceID,
+                    sessionID: token.sessionID, requestID: token.requestID, requestEpoch: token.requestEpoch,
+                    semanticRevision: token.semanticRevision, store: store)
+            }
+            let data = try await base.complete(observed)
             if request.mentorExecutionPolicy != nil { try Task.checkCancellation() }
             try await saveRun(for: request, responseData: data, error: nil)
             if request.mentorExecutionPolicy != nil { try Task.checkCancellation() }

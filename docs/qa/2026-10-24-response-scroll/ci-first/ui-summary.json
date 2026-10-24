@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+        "deviceName" : "iPhone 17 Pro",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 7,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1792782500.535,
+  "passedTests" : 7,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1792781736.168,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "Failed to swipe up \"mentor.conversation.composer-scroll\" ScrollView: No matches found for Elements matching predicate '\"mentor.conversation.composer-scroll\" IN identifiers' from input {(\n    ScrollView,\n    ScrollView, identifier: 'mentor.conversation.composer',\n    ScrollView\n)}",
+      "targetName" : "MingSiUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText",
+      "testName" : "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()"
+    }
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 8
+}

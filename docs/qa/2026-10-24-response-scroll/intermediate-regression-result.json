@@ -1,0 +1,25 @@
+{
+  "kind": "synthetic offline native regression",
+  "result": "Passed",
+  "unit": {
+    "passed": 1537,
+    "failed": 0,
+    "skipped": 24
+  },
+  "ui": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "model_requests": 0,
+  "device": "fixed iPhone 17 / iOS 26.5 simulator",
+  "source_manifest": "intermediate-test-source.json",
+  "human_benefit_claim": false,
+  "real_network_batch_passed": false,
+  "visual_acceptance": "failed: editor top clipped at largest keyboard despite passing weak geometry assertion",
+  "verification_scope": "Intermediate candidate only; final UI source changed afterward. Unit implementation hashes unchanged in final candidate; final keyboard acceptance recorded separately."
+}

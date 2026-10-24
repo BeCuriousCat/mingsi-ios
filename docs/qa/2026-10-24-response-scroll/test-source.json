@@ -1,0 +1,22 @@
+{
+  "base_revision": "15afe940c0b4d134435f090da0f0fc5e4d3d6b4f",
+  "state": "candidate with one-snapshot UI visibility predicate and full operand diagnostics; same hittability, area thresholds, and time limit; full CI pending",
+  "source_sha256": {
+    "Sources/Features/Mentor/MentorHomeView.swift": "7487f66b4c7dacad49de7f6d6dd7e78ca451dc40bc8b84d62d5f3750236e7cf7",
+    "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
+    "Sources/Features/PushToTalkInput.swift": "aac7de0155b1cc90f8ebedc05170e2373fd81e1ef2eda7bad777d1966ebf4f87",
+    "Sources/Services/MentorPersistence.swift": "7a20690a0d1f4faa4c7be926cdec160215b0fb64ac555b69b7ab7a0860736b22",
+    "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
+    "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
+    "Tests/UI/MentorNavigationUITests.swift": "751732cb6ebd101e0994035ab36f174085c3f98d06f167b3f86339097f016587",
+    ".github/workflows/verify.yml": "5c40085ddc474587e5639808a568e14181a28808b3ad04d03f346baebf2b632f",
+    "Sources/Services/DirectGLMClient.swift": "fd97ae6b819abf36b0c5a7e6d295122f64202c304e3f3fe15c7eb8ee16ffc6d0",
+    "Sources/Services/MentorRequestExecutor.swift": "8ac335efe649b059677b4f33f99f4858555616ae006d78e329de7bc6b528b4be",
+    "Tests/Services/DirectGLMClientTests.swift": "9ebf575c5da4d3d2d0ac1d5387cf43cbc572ce185cca07ee41223aebd15d21ee",
+    "Sources/Services/PersistenceCore.swift": "b31e4defc567e4e16ad0b2274c0a316deff34cc5d574c902341654a04133e3f6",
+    "Tests/Services/PersistenceCoreTests.swift": "cfee25a65f4809a4a8d4bf9a037206ae3837929a6af7176c6cca64a26d349a66",
+    "MingSi.xcodeproj/project.pbxproj": "e7b4b814b373d02f6a79ce3b6a7956a6094b3e93c1090f1bfb9bd8a27609a0d0",
+    "Sources/Services/MentorHTTPMetrics.swift": "da356a351623f6df080237b8ad2cc5972cd8fe7daa0eb8ac286d8060b7d9f47a",
+    "Tests/Services/MentorHTTPMetricsTests.swift": "e276f3e62112a8f794dcdc3098c0f2d8d4785813c1428f221e18cd5a2beb50d3"
+  }
+}

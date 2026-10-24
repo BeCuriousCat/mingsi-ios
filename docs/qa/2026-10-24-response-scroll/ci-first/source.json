@@ -1,0 +1,14 @@
+{
+  "base_revision": "09a20787d7863717c98195f3ed19eade4cae34f7",
+  "state": "final bottom composer candidate, clean CI pending; no compiled binary claimed",
+  "source_sha256": {
+    "Sources/Features/Mentor/MentorHomeView.swift": "18f29ed6324dbf16467caf52312c7514f8e28b951193dda5d6c918662ab8fa37",
+    "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
+    "Sources/Features/PushToTalkInput.swift": "aac7de0155b1cc90f8ebedc05170e2373fd81e1ef2eda7bad777d1966ebf4f87",
+    "Sources/Services/MentorPersistence.swift": "7a20690a0d1f4faa4c7be926cdec160215b0fb64ac555b69b7ab7a0860736b22",
+    "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
+    "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
+    "Tests/UI/MentorNavigationUITests.swift": "43353af1354572f1008d3b235ea80ba6dbb87e06306c092659be834340f7e95b",
+    ".github/workflows/verify.yml": "8a84856dcabbeddeab8b1eb1b9900b0e9e6221d963172c0d05d7497db8b805f5"
+  }
+}

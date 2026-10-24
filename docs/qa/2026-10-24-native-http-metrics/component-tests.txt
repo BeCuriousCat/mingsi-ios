@@ -1,0 +1,13 @@
+Test Suite 'MentorHTTPMetricsTests' started at 2026-10-24 05:44:17.963.
+Test Case '-[main.MentorHTTPMetricsTests testCacheAndServerPushRemainSeparateFromNewNetworkLoads]' started.
+Test Case '-[main.MentorHTTPMetricsTests testCacheAndServerPushRemainSeparateFromNewNetworkLoads]' passed (0.003 seconds).
+Test Case '-[main.MentorHTTPMetricsTests testMalformedStoredCountersCannotProduceTrustedCountsOrOverflow]' started.
+Test Case '-[main.MentorHTTPMetricsTests testMalformedStoredCountersCannotProduceTrustedCountsOrOverflow]' passed (0.003 seconds).
+Test Case '-[main.MentorHTTPMetricsTests testMissingAndUnknownMetricsCannotBecomeExactZeroOrOne]' started.
+Test Case '-[main.MentorHTTPMetricsTests testMissingAndUnknownMetricsCannotBecomeExactZeroOrOne]' passed (0.000 seconds).
+Test Case '-[main.MentorHTTPMetricsTests testRedirectCacheEntryDoesNotInflateNetworkCount]' started.
+Test Case '-[main.MentorHTTPMetricsTests testRedirectCacheEntryDoesNotInflateNetworkCount]' passed (0.000 seconds).
+Test Case '-[main.MentorHTTPMetricsTests testStoredPayloadContainsOnlyAllowlistedNonnegativeCounters]' started.
+Test Case '-[main.MentorHTTPMetricsTests testStoredPayloadContainsOnlyAllowlistedNonnegativeCounters]' passed (0.000 seconds).
+Test Suite 'MentorHTTPMetricsTests' passed at 2026-10-24 05:44:17.971.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.007 (0.008) seconds

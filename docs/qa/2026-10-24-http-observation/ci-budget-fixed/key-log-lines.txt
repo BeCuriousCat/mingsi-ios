@@ -1,0 +1,10 @@
+Clean build and offline tests	Verify local scripts without model credentials	2026-10-24T00:36:47.7794910Z Ran 42 tests in 1.379s
+Clean build and offline tests	Build Release for Simulator	2026-10-24T00:36:49.6748260Z     MINGSI_SOURCE_REVISION = 8a6fba26d2b8233a1d464710c5270608977a1799
+Clean build and offline tests	Build Release for Simulator	2026-10-24T00:44:26.3158670Z ** BUILD SUCCEEDED **
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T00:44:31.1131780Z     MINGSI_SOURCE_REVISION = 8a6fba26d2b8233a1d464710c5270608977a1799
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T00:52:46.2025020Z ** TEST SUCCEEDED **
+Clean build and offline tests	Check optional HealthKit entitlement embedded for Simulator	2026-10-24T00:52:56.5892290Z Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T00:52:58.3164740Z     MINGSI_SOURCE_REVISION = 8a6fba26d2b8233a1d464710c5270608977a1799
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T00:56:25.3817450Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 283.27457682291663, 338.0, 497.66666666666663) viewport=(0.0, 132.0, 402.0, 434.66666666666663) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 283.27457682291663, 338.0, 283.39208984375) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T00:57:03.4026330Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 324.6163736979167, 338.0, 64.33333333333331) viewport=(0.0, 132.0, 402.0, 506.0) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 324.6163736979167, 338.0, 64.33333333333331) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T01:04:27.1947750Z ** TEST SUCCEEDED **

@@ -1,0 +1,186 @@
+[
+  {
+    "file": "0-6101C878-D2EC-4BAD-836B-2BEBB72BA1BF.png",
+    "name": "mentor-active-conversation-keyboard-visible_0_50E6C57A-12AD-48A6-9C96-C23BAE3918E1.png",
+    "test": "MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable()",
+    "sha256": "72f96d82fc1a738a537c1b8c74ac9440ef0749dc0920eac75e1482ce3453d119",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "1-1116668E-270B-4C2A-B0B1-19C5B3F3358D.png",
+    "name": "bottom-composer-largest-speech-accepted_0_CF8446F5-4C8E-462C-BC06-622478E043F7.png",
+    "test": "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()",
+    "sha256": "1c92676660421eea2ed96b8c4304ade158e3c184004903fc11182cdb8e88f49d",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "2-474F405F-2C42-4FF8-A48C-C915DA9306B6.png",
+    "name": "bottom-composer-largest-speech-review_0_A53C176A-4C64-4A5E-9105-E24586A09BA3.png",
+    "test": "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()",
+    "sha256": "2f9318b3533a09f6bc8b581edf6722e53930a8d31ee72b859c2540e6726ca40a",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "3-CC8D68C5-3617-49A7-9349-5B251BA0AD2F.png",
+    "name": "mentor-stream-dark-largest-interrupted_0_A332A888-20B1-45D1-9E7A-8BA106B8969F.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "d0a3f40e09bc2c283c98ced6fd99cb16239128f19ba5b2b7423ea203b1c94591",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "4-9BCF2339-3E64-458D-B084-C5AD7AA50C7D.png",
+    "name": "mentor-stream-dark-largest-preview_0_29549F74-B32F-41A7-90D5-08295D87E345.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "cd9a6053a7bb046cc4b3b66f3870dd292e254660d7b8cea5a557e07c34afc48f",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "5-4D8F203E-027B-4F34-904D-C02C40F6C5C2.png",
+    "name": "mentor-stream-dark-largest-before-auto-visibility-check_0_E3CA1581-620C-433E-80EE-B767069E51A7.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "cd9a6053a7bb046cc4b3b66f3870dd292e254660d7b8cea5a557e07c34afc48f",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "6-34C44577-E325-4380-91D1-D4E7CB023581.png",
+    "name": "mentor-stream-light-completed_0_B991F4D0-9EE9-482D-93B5-FBE76BEE4DAC.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "ac333904579f845acbcded8a6e13e51bfd4b23f0741f2a64c10253fffed1a3f9",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "7-27823A1C-D244-447D-A9D4-4A317F250287.png",
+    "name": "mentor-stream-light-preview_0_6458C774-245D-4FD0-9094-D3EE531BD822.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "f779fddad5b5c20996e2521db656d0b31645862a6a02abbb588d9e5218fa93c5",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "8-1D15B606-3A04-49B9-AE70-8EDBD3598C03.png",
+    "name": "mentor-stream-light-before-auto-visibility-check_0_13F41A2B-DCE3-4125-951A-0BF59729ECF6.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "3b521ceba8f6a6ca1b7ffa2eb541249813675bb6d0c8b0675e5226c7bad70f8e",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "9-5BD6FE45-25A4-4316-ADB2-EA8D90989EDF.png",
+    "name": "saved-response-dark-largest-next-send-ready_0_624988A8-EFE3-43DD-8BFD-B21155DA5F4F.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "d686c42965e86f5d32fec04449c19fcc220e3d4249b24c95984b1acee2a2cbe5",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "10-7EFB897F-220F-42C1-9C37-CED995A9FDE3.png",
+    "name": "saved-response-dark-largest-next-input-keyboard_0_3974D94F-9EAF-4A11-97E2-532235E994D7.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "58c7df8dc5f929dd77354a4c0a9b4e63c9e67e3c957f4cf9c1c10cfdd8804fbf",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "11-A4D9ABEE-06F9-48E0-B75E-246FFBA9442C.png",
+    "name": "saved-response-dark-largest-before-next-input_0_5212A978-4360-4F1C-8F16-F792C66254AC.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "3d6ed85dce22c4f5c53608b233221e02502a97a53ae95645f9fae84946bc25eb",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "12-6ADA3F20-EA19-4FCF-8ADB-1B6B3DEA7BE6.png",
+    "name": "saved-response-light-next-send-ready_0_9C87D3A6-E025-4413-8879-66A3AC0F1702.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "8be0f7cb07e289caa8a8ef973c371022802094568f98de6935710e265486f31d",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "13-C0B02EC0-B3B8-41DE-8AAB-9BC4A3292D17.png",
+    "name": "saved-response-light-next-input-keyboard_0_E4BB1B6D-E4F6-4473-A146-A4B05F062952.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "8cd141bc4ea6826c79257c8cd01631260551ecb1b4876bfd04633d0a5a4616b0",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "14-9540158A-B224-4377-8CD4-F13EA067C431.png",
+    "name": "saved-response-light-before-next-input_0_4EF6917C-FEC2-437F-977D-1A0115736251.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "bab87a54e6e75a15988f9f22393c9eb3c7b90e85cbe30e0998fb58595a1a2b1b",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "15-99D84102-9EF4-4107-9239-C273FFA1EF03.png",
+    "name": "permissions-dark-largest_0_CE7509BB-7F43-490C-BF10-47E1C8BB1B99.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "9c38b3e2e843371a3774513c1919c6a31ccd0b86516b98765405e66ec6ae79a6",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "16-03116CD2-C5B6-465A-A8E6-C1D96BF2F494.png",
+    "name": "health-permission-dark-largest_0_A28EF4BC-8F2D-4715-B9AD-77B5E15289F4.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "3a5569c080b4292087e8db964e940a6676e0ab59c5c3c7236e853cc6d77567c2",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "17-6CC59BE4-4FEF-4E9F-880D-4F0721771913.png",
+    "name": "calendar-permission-dark-largest_0_D842019E-5FFA-4A91-A114-A7E5638983EF.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "db695c7d428dead30d124fefd7229ec23576bd6f77075b1deadfb841f46d268f",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "18-D9FBC947-D55B-4AC4-9348-97ABCA2ABA47.png",
+    "name": "build-identity-dark-largest_0_0CEB6B8D-748D-4FCA-8171-B0884E60E840.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "ec08bd14814c59eb308cd8aaaa5cd733dfe15c51a7b0242e6e1a637a1fa70644",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "19-A18CA57E-BB49-4E86-ABB8-402418424539.png",
+    "name": "permissions-light-normal_0_DCC9923E-08CA-4C89-BBA1-A6B11D36991D.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "c79908c6feb372669460ff8e997c9422019ab2378eb423868d497ba05d7583ad",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "20-98AB4024-9FBA-4F42-86C2-4416667B9340.png",
+    "name": "health-permission-light-normal_0_B53BE8FB-75B3-4B40-ADCA-32781E019B56.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "edf2df0e5bf29acb9814b993069f7f1ad41d70fa7e31d7c5672bd3efb6190cd4",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "21-13AA00B8-5DA0-4162-AFEB-C18F62595854.png",
+    "name": "calendar-permission-light-normal_0_8F4D5A30-302E-468D-A5C7-00D138EEB349.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "a2919ff65adde425f778737b8b5f39ddeb81ef677be3b2902f7561a7ce7a6aaf",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  },
+  {
+    "file": "22-2E02351D-F431-4594-ADE4-8A775A0F20A0.png",
+    "name": "build-identity-light-normal_0_018CDC40-F76A-4109-BBFB-E6E50FE5504E.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "67a3c6c3289621adf4b0fd357a7235043965463131fa6d1171fe30258b01d8c3",
+    "reviewed_by": "AI",
+    "status": "inspected; stage limitations in result.json"
+  }
+]

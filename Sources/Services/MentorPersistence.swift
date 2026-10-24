@@ -237,10 +237,15 @@ protocol MentorRepository {
     func resumeSession(id: UUID) async throws
     func continueRecall(sessionID: UUID, commandID: UUID, expectedEpoch: Int) async throws
     func correctUserItem(sessionID: UUID, itemID: UUID, commandID: UUID, expectedRevision: Int, text: String) async throws -> MentorTimelineItem
-    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem
+    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String,
+                        consumingDraft: MentorConsumedDraft?) async throws -> MentorTimelineItem
 }
 
 extension MentorRepository {
+    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem {
+        try await commitResponse(sessionID: sessionID, requestID: requestID, payloadJSON: payloadJSON, consumingDraft: nil)
+    }
+
     /// Existing section-only callers intentionally restore to the section start.
     func saveReadingPosition(sessionID: UUID, itemID: UUID, revision: Int, section: MentorReadingSection) async throws {
         try await saveReadingPosition(sessionID: sessionID, itemID: itemID, revision: revision,
@@ -249,6 +254,14 @@ extension MentorRepository {
 }
 
 enum MentorRequestEndReason: String { case failed, cancelled, timedOut = "timed_out" }
+
+/// An unchanged composer may be consumed only with its committed response.
+/// The revision remains a watermark: delayed writes at that same revision
+/// cannot restore different text; subsequent user edits advance it normally.
+struct MentorConsumedDraft: Equatable, Sendable {
+    let revision: Int
+    let text: String
+}
 
 enum MentorRequestOutcome: String {
     case succeeded = "committed", failed, cancelled, interrupted, timedOut = "timed_out"
@@ -992,7 +1005,8 @@ final class SQLiteMentorRepository: MentorRepository {
 
     /// Storage boundary only: caller must first validate the mentor response protocol
     /// and dynamic source/intent rules. Does not mark content as presented.
-    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem {
+    func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String,
+                        consumingDraft: MentorConsumedDraft? = nil) async throws -> MentorTimelineItem {
         guard let data = payloadJSON.data(using: .utf8),
               let response = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw PersistenceError.validationFailed("invalid mentor response JSON")
@@ -1034,6 +1048,15 @@ final class SQLiteMentorRepository: MentorRepository {
             try db.execute(sql: "UPDATE mentor_items SET requires_material = ? WHERE id = ?", arguments: [consumesMaterial, item.id.uuidString])
             try db.execute(sql: "INSERT INTO mentor_request_results (request_id, session_id, item_id) VALUES (?, ?, ?)", arguments: [request.id, session.id, item.id.uuidString])
             try db.execute(sql: "UPDATE mentor_requests SET state = 'committed' WHERE id = ?", arguments: [request.id])
+            if let draft = consumingDraft, draft.revision == session.draftRevision, draft.text == session.draftText,
+               let userItemID = request.userItemID, let user = try MentorItemRow.fetchOne(db, key: userItemID),
+               user.sessionID == session.id, user.kind == "user",
+               let original = try JSONDecoder().decode([String: String].self, from: Data(user.payloadJSON.utf8))["text"],
+               original == draft.text {
+                // Clear only this submitted composer, in the response transaction.
+                // Newer drafts and intent-only teaching actions remain untouched.
+                try db.execute(sql: "UPDATE mentor_sessions SET draft_text = '' WHERE id = ?", arguments: [session.id])
+            }
             try db.execute(sql: "UPDATE mentor_sessions SET activity_at = ? WHERE id = ?", arguments: [ISO8601DateFormatter().string(from: .now), session.id])
             return item
         }
@@ -1196,6 +1219,9 @@ final class SQLiteMentorRepository: MentorRepository {
 }
 
 extension SQLiteMentorRepository: MentorPromptAudit {
+    var httpObservationStore: (any MentorHTTPObservationStore)? {
+        SQLiteMentorHTTPObservationStore(queue: database.dbQueue)
+    }
     /// Validates the request's ownership and semantic snapshot immediately before
     /// PromptRun insertion. Prepared and in-flight requests are auditable; terminal,
     /// deleted, or superseded requests cannot receive a late trace.

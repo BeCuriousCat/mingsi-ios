@@ -1,0 +1,28 @@
+{
+  "run_id": 40043067169,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40043067169",
+  "head_revision": "95d8e4b6e4678b15de477435bd0852499fcb76bb",
+  "status": "completed",
+  "conclusion": "failure",
+  "failed_gate": "unit",
+  "passed_before_failure": {
+    "release_build": "passed",
+    "scripts": 42
+  },
+  "unit": {
+    "passed": 1559,
+    "failed": 1,
+    "skipped": 24,
+    "failing_test": "MentorFeatureStoreTests/testDependencyRefreshOnlyChangesFutureTurns()",
+    "failure": "Initializer rebuilt MentorRequestPolicy to apply timeout overrides without preserving Responses outputTokenBudget; observed 8192 instead of 16000"
+  },
+  "ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "UI ran independently after unit failure; not a green candidate"
+  },
+  "new_model_requests": 0,
+  "goal_complete": false,
+  "repair": "Preserve requestPolicy.outputTokenBudget in the MentorFeatureStore initializer; original failing log retained"
+}

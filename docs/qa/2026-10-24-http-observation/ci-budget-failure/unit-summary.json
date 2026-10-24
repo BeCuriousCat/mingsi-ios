@@ -1,0 +1,53 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "E839A11B-51B4-4AD3-ACF4-A53B95B7C957",
+        "deviceName" : "iPhone 17 Pro",
+        "modelName" : "iPhone 17 Pro",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 1559,
+      "skippedTests" : 24,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1792801282.065,
+  "passedTests" : 1559,
+  "result" : "Failed",
+  "skippedTests" : 24,
+  "startTime" : 1792800779.844,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertEqual failed: (\"Optional(MingSi.MentorRequestPolicy(deadline: 120.0 seconds, waitingNoticeAfter: 10.0 seconds, maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 8192))\") is not equal to (\"Optional(MingSi.MentorRequestPolicy(deadline: 120.0 seconds, waitingNoticeAfter: 10.0 seconds, maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 16000))\")",
+      "targetName" : "MingSiTests",
+      "testIdentifier" : 756,
+      "testIdentifierString" : "MentorFeatureStoreTests/testDependencyRefreshOnlyChangesFutureTurns()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiTests/MentorFeatureStoreTests/testDependencyRefreshOnlyChangesFutureTurns",
+      "testName" : "testDependencyRefreshOnlyChangesFutureTurns()"
+    }
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "18% of duration",
+      "text" : "10 longest test runs with outlier durations exceeding 1.18s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 1584
+}

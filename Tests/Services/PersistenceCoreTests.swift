@@ -22,6 +22,68 @@ final class PersistenceCoreTests: XCTestCase {
         super.tearDown()
     }
 
+    func testOpeningFileWaitsForTemporaryWriterAndPreservesSavedData() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("opening-lock-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("saved.sqlite")
+        let original = try AppDatabase(url: url)
+        try original.dbQueue.write { db in
+            try db.execute(sql: "CREATE TABLE opening_probe (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO opening_probe VALUES ('preserved')")
+        }
+        try original.dbQueue.close()
+
+        var configuration = Configuration()
+        configuration.allowsUnsafeTransactions = true
+        let writer = try DatabaseQueue(path: url.path, configuration: configuration)
+        defer { try? writer.close() }
+        try writer.writeWithoutTransaction { try $0.execute(sql: "BEGIN EXCLUSIVE") }
+        let released = expectation(description: "Existing writer commits")
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(300)) {
+            defer { released.fulfill() }
+            do { try writer.writeWithoutTransaction { try $0.execute(sql: "COMMIT") } }
+            catch { XCTFail("Unable to release fixture writer: \(error)") }
+        }
+        let reopened = try AppDatabase(url: url)
+        defer { try? reopened.dbQueue.close() }
+        let value = try reopened.dbQueue.read { try String.fetchOne($0, sql: "SELECT value FROM opening_probe") }
+        XCTAssertEqual(value, "preserved")
+        wait(for: [released], timeout: 5)
+    }
+
+    func testOpeningFileReportsPersistentWriterLockWithoutReplacingSavedData() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("persistent-opening-lock-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("saved.sqlite")
+        let original = try AppDatabase(url: url)
+        try original.dbQueue.write { db in
+            try db.execute(sql: "CREATE TABLE opening_probe (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO opening_probe VALUES ('preserved')")
+        }
+        try original.dbQueue.close()
+
+        var configuration = Configuration()
+        configuration.allowsUnsafeTransactions = true
+        let writer = try DatabaseQueue(path: url.path, configuration: configuration)
+        defer { try? writer.close() }
+        try writer.writeWithoutTransaction { try $0.execute(sql: "BEGIN EXCLUSIVE") }
+        defer { try? writer.writeWithoutTransaction { try $0.execute(sql: "ROLLBACK") } }
+        let start = ContinuousClock.now
+        XCTAssertThrowsError(try AppDatabase(url: url)) { error in
+            XCTAssertEqual((error as? DatabaseError)?.resultCode, .SQLITE_BUSY)
+        }
+        let elapsed = start.duration(to: .now)
+        XCTAssertGreaterThanOrEqual(elapsed, .seconds(1))
+        XCTAssertLessThan(elapsed, .seconds(10), "Persistent locks must return a bounded failure")
+        try writer.writeWithoutTransaction { try $0.execute(sql: "COMMIT") }
+        let reopened = try AppDatabase(url: url)
+        defer { try? reopened.dbQueue.close() }
+        let value = try reopened.dbQueue.read { try String.fetchOne($0, sql: "SELECT value FROM opening_probe") }
+        XCTAssertEqual(value, "preserved")
+    }
+
     func testNewBuiltinLensSelectionsPersistAndRestoreWithExistingStorage() async throws {
         let repository = SQLiteDailyEntryRepository(database: database)
         for (index, lens) in [ThinkingLens.opportunityCost, .reversibleDecision, .perspectiveTaking, .controlBoundary].enumerated() {

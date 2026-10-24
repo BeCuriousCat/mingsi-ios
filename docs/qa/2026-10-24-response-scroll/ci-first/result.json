@@ -1,0 +1,36 @@
+{
+  "run_id": 40004709050,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40004709050",
+  "head_revision": "abb5580d0c5577c778329b348b2856088f1986cf",
+  "tested_merge_revision": "d2dea177978ede1e37bdaecbe8fc68a435d769e8",
+  "tested_tree": "cbadf86e1ef3b70de8ddd78badc5e9b4673ea972",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "failure",
+  "release_build_and_source_markers": "passed",
+  "debug_source_markers": "passed",
+  "optional_healthkit_embedded_check": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1537,
+    "failed": 0,
+    "skipped": 24
+  },
+  "native_ui": {
+    "passed": 7,
+    "failed": 1,
+    "skipped": 0
+  },
+  "visual_review": {
+    "affected_screenshots_inspected": 11,
+    "largest_stream_preview": "rejected: only original user text visible despite isHittable passing",
+    "other_permission_screenshots": "retained, not newly visually adjudicated"
+  },
+  "model_requests_added": 0,
+  "phone_updated": false,
+  "real_network_batch_passed": false,
+  "goal_complete": false
+}

@@ -121,6 +121,7 @@ final class MentorFeatureStore: ObservableObject {
         let requestID: UUID
         let payload: String
         let validated: MentorValidatedTurn
+        let consumedDraft: MentorConsumedDraft?
     }
     private struct PendingRequestEnd {
         let sessionID: UUID
@@ -236,7 +237,8 @@ final class MentorFeatureStore: ObservableObject {
             deadline: requestDeadlineAfter ?? requestPolicy.deadline,
             waitingNoticeAfter: requestWaitingNoticeAfter ?? requestPolicy.waitingNoticeAfter,
             maxHTTPAttempts: requestPolicy.maxHTTPAttempts,
-            allowsFormatFallback: requestPolicy.allowsFormatFallback)
+            allowsFormatFallback: requestPolicy.allowsFormatFallback,
+            outputTokenBudget: requestPolicy.outputTokenBudget)
     }
 
     deinit { understandingDebounceTask?.cancel(); draftDebounceTask?.cancel(); draftWriteTask?.cancel(); readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); benefitFeedbackTask?.cancel(); requestTask?.cancel(); requestWaitingTask?.cancel(); requestDeadlineTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel(); understandingGenerationTask?.cancel() }
@@ -482,6 +484,16 @@ final class MentorFeatureStore: ObservableObject {
             return true
         }
         do {
+            // A response transaction may have finished just as Return or
+            // Finish cancelled its task. Reconcile its consumed composer
+            // before suspension tries to persist an obsolete snapshot.
+            if let pending = pendingResponse, let draft = pending.consumedDraft,
+               state.session?.id == pending.sessionID, state.draftRevision == draft.revision,
+               state.inputText == draft.text,
+               try await repository.requestOutcome(sessionID: pending.sessionID, requestID: pending.requestID) == .succeeded,
+               let session = try await repository.session(id: pending.sessionID) {
+                applyConsumedDraft(pending, session: session)
+            }
             guard let materialized = try await materializePendingSessionIfNeeded() else {
                 return pendingSession == nil
             }
@@ -2440,6 +2452,8 @@ final class MentorFeatureStore: ObservableObject {
             pruneUsageAttempts()
         }
         var submittedRequestID: UUID?
+        let consumedDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.inputText == text
+            ? MentorConsumedDraft(revision: state.draftRevision, text: text) : nil
         var prospectiveItems: [MentorTimelineItem] = []
         let prospectiveUserID = pendingMaterialSubmission?.userItemID ?? UUID()
         do {
@@ -2508,7 +2522,8 @@ final class MentorFeatureStore: ObservableObject {
                 initialEntry: built.payload.initialEntry, intent: intent)
             let validated = supportedSuggestions(parsed)
             let pending = PendingResponse(sessionID: current.id, requestID: requestID,
-                payload: String(decoding: try JSONEncoder().encode(validated.response), as: UTF8.self), validated: validated)
+                payload: String(decoding: try JSONEncoder().encode(validated.response), as: UTF8.self), validated: validated,
+                consumedDraft: consumedDraft)
             pendingResponse = pending
             try await saveResponse(pending)
             state.streamingPreview = ""
@@ -2606,16 +2621,30 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    private func applyConsumedDraft(_ pending: PendingResponse, session: MentorSession) {
+        guard state.session?.id == pending.sessionID,
+              let draft = pending.consumedDraft, state.draftRevision == draft.revision, state.inputText == draft.text,
+              session.draftRevision == draft.revision, session.draftText.isEmpty else { return }
+        draftDebounceTask?.cancel()
+        draftDebounceTask = nil
+        state.inputText = ""
+        state.hasUnsavedDraft = false
+        state.draftSaveError = nil
+    }
+
     private func saveResponse(_ pending: PendingResponse) async throws {
         try Task.checkCancellation()
         let item = try await repository.commitResponse(sessionID: pending.sessionID,
-            requestID: pending.requestID, payloadJSON: pending.payload)
+            requestID: pending.requestID, payloadJSON: pending.payload, consumingDraft: pending.consumedDraft)
         recordUsageEvent(.requestFinished, sessionID: pending.sessionID,
             attributes: ["reason": "succeeded"], requestID: pending.requestID)
         let timeline = try await repository.items(sessionID: pending.sessionID)
+        let session = try await repository.session(id: pending.sessionID)
+        guard state.session?.id == pending.sessionID, let session else { return }
+        applyConsumedDraft(pending, session: session)
         try Task.checkCancellation()
-        guard state.session?.id == pending.sessionID else { return }
         state.timeline = timeline
+        state.session = session
         state.retryableRequest = nil
         state.retryError = nil
         state.response = pending.validated

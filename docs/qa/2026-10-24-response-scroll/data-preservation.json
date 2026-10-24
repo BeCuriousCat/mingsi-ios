@@ -1,0 +1,9 @@
+{
+  "production_database_logical_dump_unchanged_after_all_local_attempts": true,
+  "uninstall_or_reset_performed": false,
+  "preserved_normal_app_restored": true,
+  "restored_source_revision": "496c5266c8ca151df7b15f5b0430bd0f710e62b4",
+  "final_candidate_installed_as_normal_app": false,
+  "phone_updated": false,
+  "model_requests_added": 0
+}

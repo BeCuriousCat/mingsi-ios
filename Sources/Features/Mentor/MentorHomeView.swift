@@ -638,18 +638,28 @@ struct SingleNudgeSheet: View {
 }
 
 struct MentorConversationView: View {
+    private struct RequestReveal: Hashable {
+        let sessionID: UUID?
+        let isSubmitting: Bool
+        let latestItemID: UUID?
+        let hasPreview: Bool
+    }
+    private struct ComposerHeight: PreferenceKey {
+        static let defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+    }
     @EnvironmentObject private var app: AppStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var feature: MentorFeatureStore
     @State private var inputFocused = false
+    @State private var composerContentHeight: CGFloat = 180
     @State private var wantsClose = false
     @State private var pendingExitEnding = false
     @State private var showsDiscardUnsavedDraftConfirmation = false
     @State private var showsSettings = false
     @State private var needsConfiguration = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .body) private var inputHeight = 120.0
     @StateObject private var readingPosition = MentorReadingPositionCoordinator()
     @StateObject private var readingGeometry = MentorReadingGeometry()
     @State private var showsDeleteConfirmation = false
@@ -691,7 +701,29 @@ struct MentorConversationView: View {
                     .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
                         if transitioning { readingPosition.reset() }
                     }
+                    .accessibilityIdentifier("mentor.conversation.reading-scroll")
                     .scrollDismissesKeyboard(.interactively)
+                    .task(id: RequestReveal(sessionID: feature.state.session?.id,
+                                            isSubmitting: feature.state.phase == .submitting,
+                                            latestItemID: feature.state.timeline.last?.id,
+                                            hasPreview: !feature.state.streamingPreview.isEmpty)) {
+                        guard feature.state.phase == .submitting, !feature.state.isViewingHistory, !inputFocused else { return }
+                        // Wait for the lazy timeline and new status to acquire
+                        // their layout. This task restarts only at transitions,
+                        // never for each streamed character or scroll offset.
+                        do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+                        guard !Task.isCancelled, feature.state.phase == .submitting,
+                              !feature.state.isViewingHistory, !inputFocused else { return }
+                        scroll.scrollTo("mentor.conversation.request-start", anchor: .top)
+                    }
+                    .onChange(of: feature.state.responseItemID) { _, id in
+                        guard let id, !feature.state.isViewingHistory else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard feature.state.responseItemID == id, !feature.state.isViewingHistory, !inputFocused else { return }
+                            scroll.scrollTo(id, anchor: .top)
+                        }
+                    }
                     .task(id: "\(feature.state.lesson?.id.uuidString ?? "")/\(feature.state.isTransitioningSession)") {
                         guard !feature.state.isTransitioningSession, let lesson = feature.state.lesson else { return }
                         await Task.yield()
@@ -699,6 +731,11 @@ struct MentorConversationView: View {
                         readingPosition.revealIfNeeded(itemID: lesson.id) {
                             scroll.scrollTo(lesson.id, anchor: .top)
                         }
+                    }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if showsComposer {
+                        conversationComposer(viewportHeight: viewport.size.height)
                     }
                 }
             }
@@ -858,7 +895,9 @@ struct MentorConversationView: View {
                 .id(item.id)
             }
         }
-        status
+        Color.clear.frame(height: 1).id("mentor.conversation.request-start")
+        VStack(alignment: .leading, spacing: 12) { status }
+            .id("mentor.conversation.request-status")
         if feature.state.session?.initialEntry == "review", let sessionID = feature.state.session?.id {
             LifeGuidanceReviewSection(guidance: app.lifeGuidanceStore, reviewID: "mentor:" + sessionID.uuidString)
         }
@@ -1257,27 +1296,6 @@ struct MentorConversationView: View {
                 .foregroundStyle(DS.mutedInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("mentor.conversation.multiturn-hint")
-            PushToTalkInput(
-                text: Binding(get: { feature.state.inputText }, set: { feature.updateInputText($0) }),
-                placeholder: "你想说的话",
-                focusBinding: Binding(get: { inputFocused }, set: { inputFocused = $0 }),
-                usesTextEditor: true
-            )
-            .frame(minHeight: inputHeight, alignment: .top)
-            .padding(8)
-            .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
-            Button {
-                inputFocused = false
-                online { feature.submit() }
-            } label: {
-                Text(canDiscussCapture ? "聊聊这条闪念" : "发送")
-                    .foregroundStyle(DS.onAccent).frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(![.editing, .reading, .showingResponse].contains(feature.state.phase) || app.isAIRunning ||
-                      feature.state.materialSelection != nil ||
-                      (feature.state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !canDiscussCapture) ||
-                      (feature.state.phase == .showingResponse && feature.state.acknowledgedResponseItemID != feature.state.responseItemID))
             ForEach(feature.state.response?.availableSuggestedActions.filter {
                 $0 == .explain || $0 == .anotherLesson || $0 == .draftUnderstanding
             } ?? [], id: \.self) { action in
@@ -1314,6 +1332,60 @@ struct MentorConversationView: View {
                 .accessibilityHint("保留已有交流，继续输入另一段回忆")
             }
         }
+    }
+
+    private var showsComposer: Bool {
+        !feature.state.isTransitioningSession && !feature.state.isViewingHistory &&
+        feature.state.session != nil && feature.state.phase != .paused && feature.state.phase != .ended &&
+        feature.state.legacyChain?.canContinueAutomatically != false
+    }
+
+    private func conversationComposer(viewportHeight: CGFloat) -> some View {
+        VStack(spacing: 8) {
+            // Recognition review can expand; only this input area scrolls,
+            // while the submit action remains reachable above the keyboard.
+            ScrollView {
+                PushToTalkInput(
+                    text: Binding(get: { feature.state.inputText }, set: { feature.updateInputText($0) }),
+                    placeholder: "你想说的话",
+                    focusBinding: Binding(get: { inputFocused }, set: { inputFocused = $0 }),
+                    usesTextEditor: true,
+                    textEditorHeight: dynamicTypeSize.isAccessibilitySize ? 140 : 88
+                )
+                .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
+                .background {
+                    GeometryReader { content in
+                        Color.clear.preference(key: ComposerHeight.self, value: content.size.height)
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.immediately)
+            .frame(height: min(composerContentHeight, max(180, viewportHeight * 0.55)))
+            .onPreferenceChange(ComposerHeight.self) { height in
+                guard height.isFinite, height > 0, abs(height - composerContentHeight) > 0.5 else { return }
+                composerContentHeight = height
+            }
+            .accessibilityIdentifier("mentor.conversation.composer-scroll")
+            Button {
+                inputFocused = false
+                online { feature.submit() }
+            } label: {
+                Text(canDiscussCapture ? "聊聊这条闪念" : "发送")
+                    .foregroundStyle(DS.onAccent).frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(![.editing, .reading, .showingResponse].contains(feature.state.phase) || app.isAIRunning ||
+                      feature.state.materialSelection != nil ||
+                      (feature.state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !canDiscussCapture) ||
+                      (feature.state.phase == .showingResponse && feature.state.acknowledgedResponseItemID != feature.state.responseItemID))
+        }
+        .frame(maxWidth: 640)
+        .padding(.horizontal, DS.pagePadding)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(DS.background)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private var canDiscussCapture: Bool {
@@ -1675,7 +1747,8 @@ struct MentorUITestHarness: View {
                     try await Task.sleep(for: .milliseconds(300))
                 }
                 isFixtureReady = true
-                app.apiKeyConfigured = balanceFailure || ProcessInfo.processInfo.arguments.contains("--mentor-stream-ui-fixture")
+                app.apiKeyConfigured = balanceFailure || ProcessInfo.processInfo.arguments.contains("--mentor-stream-ui-fixture") ||
+                    ProcessInfo.processInfo.arguments.contains("--mentor-response-scroll-fixture")
             } catch { self.error = String(describing: error) }
         }
     }
@@ -1683,14 +1756,23 @@ struct MentorUITestHarness: View {
 private struct MentorUIOfflineTransport: MentorTransport {
     var balanceFailure = false
     func complete(_ request: LLMRequest) async throws -> Data {
-        if ProcessInfo.processInfo.arguments.contains("--mentor-stream-ui-fixture") {
+        let replaySavedResponse = ProcessInfo.processInfo.arguments.contains("--mentor-response-scroll-fixture")
+        if ProcessInfo.processInfo.arguments.contains("--mentor-stream-ui-fixture") || replaySavedResponse {
             let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(request.inputSummary.utf8))
-            let body = "完成一次尝试，和确认它有效，是两件事。可以先看实际结果改变了什么，再保留暂时无法判断的部分。"
+            // Exact synthetic N01 response, replayed without accessing credentials or the network.
+            let body = replaySavedResponse ? """
+                这两个选择的关键取舍是：让已有知识更容易使用，还是增加一种新的做事手段。你目前没有紧急交付，因此不必按交付压力排序。
+
+                整理笔记适合已有内容值得复用、但查找或理解起来不方便的情况。两小时可以集中整理一个主题，让它更便于调用；代价是暂缓接触新工具。
+
+                学习新工具适合已有一个想用它解决的具体问题，或希望探索新做法的情况。两小时更适合体验一项核心功能，而不是追求熟练；代价是暂缓整理已有知识，而且工具是否值得继续学，可能仍不确定。
+                """ : "完成一次尝试，和确认它有效，是两件事。可以先看实际结果改变了什么，再保留暂时无法判断的部分。"
             let object: [String: Any] = ["schema_version": "1.0.0", "action": "explain", "material_status": "usable",
                 "body": body, "question": NSNull(), "question_purpose": NSNull(),
                 "source_refs": context.latestUserSourceRef.map { [$0.value] } ?? [],
                 "lesson_ref": NSNull(), "suggested_actions": ["finish"]]
             let payload = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+            if replaySavedResponse { return payload }
             let raw = String(decoding: payload, as: UTF8.self)
             for character in raw {
                 try Task.checkCancellation()

@@ -1,0 +1,14 @@
+{
+  "base_revision": "abb5580d0c5577c778329b348b2856088f1986cf",
+  "state": "candidate after first CI failure and visual rejection; new CI pending",
+  "source_sha256": {
+    "Sources/Features/Mentor/MentorHomeView.swift": "55bbc74e5d10970ef47b2cd99c2ad96808466aa614b54242958147c6e12a36f9",
+    "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
+    "Sources/Features/PushToTalkInput.swift": "aac7de0155b1cc90f8ebedc05170e2373fd81e1ef2eda7bad777d1966ebf4f87",
+    "Sources/Services/MentorPersistence.swift": "7a20690a0d1f4faa4c7be926cdec160215b0fb64ac555b69b7ab7a0860736b22",
+    "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
+    "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
+    "Tests/UI/MentorNavigationUITests.swift": "44193278b13e1638c3470e48c8a80f9e7f864c07ed2b92d9b080105b5df62665",
+    ".github/workflows/verify.yml": "83aa86f8e271bd197cb5fce52fde0e4fbc5ea17023d41510d1cd6af7e81a15a7"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "result": "Failed",
+  "passed": 1,
+  "failed": 2,
+  "skipped": 0,
+  "details": "Both next-turn full-visibility assertions failed. No normal-size reveal loop, but normal keyboard covered the lower editor. Final implementation moves composer out of the reading scroll view.",
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+      "message": "Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: \"Expect predicate `BLOCKPREDICATE(0x113188570)`\"."
+    },
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+      "message": "Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: \"Expect predicate `BLOCKPREDICATE(0x112af8990)`\"."
+    }
+  ]
+}
