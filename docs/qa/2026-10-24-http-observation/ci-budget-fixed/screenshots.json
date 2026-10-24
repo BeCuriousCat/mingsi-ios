@@ -1,0 +1,117 @@
+[
+  {
+    "file": "0-E184C884-758C-406D-858E-36CC0D1D4346.png",
+    "name": "mentor-active-conversation-keyboard-visible_0_C7DBFD63-2763-489A-AC4B-34E217263AB8.png",
+    "test": "MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable()"
+  },
+  {
+    "file": "1-B947C1C0-03B5-4326-92C3-05FD38098A93.png",
+    "name": "bottom-composer-largest-speech-accepted_0_69FB6BC0-5C6E-45D1-8215-B67FFA2C5DDF.png",
+    "test": "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()"
+  },
+  {
+    "file": "2-26CDBDEC-81BE-495E-878B-528A39EB0386.png",
+    "name": "bottom-composer-largest-speech-review_0_B95A65F1-C59E-47D9-B23C-86D6C5D449EF.png",
+    "test": "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()"
+  },
+  {
+    "file": "3-96DDE15B-14AC-4EC4-81CC-58AD5C0076B0.png",
+    "name": "mentor-stream-dark-largest-interrupted_0_18A923B6-2040-4598-BFB8-CCE35385E04F.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()"
+  },
+  {
+    "file": "4-9D97737C-5076-4BAE-A947-0F0E6CF2F626.png",
+    "name": "mentor-stream-dark-largest-preview_0_1264AD82-17DA-4D44-B54B-F4336A7C25EB.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()"
+  },
+  {
+    "file": "5-659CB4FC-9A4D-40D3-955B-269294840C71.png",
+    "name": "mentor-stream-dark-largest-before-auto-visibility-check_0_454E84A8-FC68-4F05-AF40-C45DA4197EE0.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()"
+  },
+  {
+    "file": "6-3B03D35F-DFAC-412F-AA93-BE68598F6817.png",
+    "name": "mentor-stream-light-completed_0_8AFBA565-C812-46AF-91D3-C40AC8D2CEB6.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()"
+  },
+  {
+    "file": "7-29CF458D-86F5-4B37-B2FB-F43BB194D51F.png",
+    "name": "mentor-stream-light-preview_0_0F823FFF-9E07-4449-9172-EAE194FB541D.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()"
+  },
+  {
+    "file": "8-60D913CE-AB5F-47B2-BB84-C0916E90A9BF.png",
+    "name": "mentor-stream-light-before-auto-visibility-check_0_CD580A77-BAE1-4AA7-8805-4C2D75D5F947.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()"
+  },
+  {
+    "file": "9-12CB799F-FF56-438A-9078-D392DE16B960.png",
+    "name": "saved-response-dark-largest-next-send-ready_0_58FA1D39-C9F3-4EBE-8D17-D6ED6AE79671.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()"
+  },
+  {
+    "file": "10-DAA9159B-24CE-42DA-BE0E-514A0E489E5D.png",
+    "name": "saved-response-dark-largest-next-input-keyboard_0_B1EFB05A-E68C-4AEE-9A1E-F00E1D07CB63.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()"
+  },
+  {
+    "file": "11-25A8AD23-2CAD-4E37-9C8B-2FB4B927E007.png",
+    "name": "saved-response-dark-largest-before-next-input_0_210ACD58-5B86-4849-B893-B35E504E6DDE.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()"
+  },
+  {
+    "file": "12-467EB175-BC28-4705-A050-0857F5E29561.png",
+    "name": "saved-response-light-next-send-ready_0_2ADAD945-FF42-407F-8749-00C552F7DC5F.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()"
+  },
+  {
+    "file": "13-F7F0C3F6-2C73-4450-91A5-978B40D7E797.png",
+    "name": "saved-response-light-next-input-keyboard_0_A7C4F6B5-D223-45B4-A8E4-5CF33AE9856D.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()"
+  },
+  {
+    "file": "14-A0D6BA56-458D-4A28-A29B-3AD1898284B4.png",
+    "name": "saved-response-light-before-next-input_0_943FE37D-8AAE-41D4-AA5F-3B2B3D0A88E0.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()"
+  },
+  {
+    "file": "15-E2FB76AD-458D-4C30-AE87-B7A3132A2EF1.png",
+    "name": "permissions-dark-largest_0_141780C5-6C06-4950-A67A-CDD0F8E72C01.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()"
+  },
+  {
+    "file": "16-B9F023D4-A87A-487A-A40B-87BC9E59459A.png",
+    "name": "health-permission-dark-largest_0_8A803E6B-CE1E-4F08-B054-1B1A4D4287BB.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()"
+  },
+  {
+    "file": "17-144A2556-19BA-44EE-A94D-31F1B270CB23.png",
+    "name": "calendar-permission-dark-largest_0_A5438D5E-2FEE-422F-A920-E67A5CBD3D91.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()"
+  },
+  {
+    "file": "18-DF4ABECC-D68F-409F-89A6-A5247EA37C0D.png",
+    "name": "build-identity-dark-largest_0_1E43EBA6-E48C-4965-BA18-4FA5BD7966CA.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()"
+  },
+  {
+    "file": "19-A8CA85CA-C76B-4D16-BEEE-60EF3B010E82.png",
+    "name": "permissions-light-normal_0_36190FB4-22A3-4422-B6CA-99B6746968FF.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()"
+  },
+  {
+    "file": "20-C993A87E-B516-402D-8FB2-4669CB4C8FE6.png",
+    "name": "health-permission-light-normal_0_D872405E-5432-4541-919C-386B2DAC8896.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()"
+  },
+  {
+    "file": "21-4DD1C908-FEB6-415C-AA3D-C5E768B2CF28.png",
+    "name": "calendar-permission-light-normal_0_F255165F-DA0D-4651-96CA-FFFB0BAB4AE0.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()"
+  },
+  {
+    "file": "22-E494A476-A0D8-4826-BDD1-E1E4D39F417A.png",
+    "name": "build-identity-light-normal_0_A63F7033-852A-409B-A161-D29C00794F78.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()"
+  }
+]

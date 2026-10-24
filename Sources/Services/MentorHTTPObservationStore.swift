@@ -41,16 +41,38 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 t.column("elapsed_ms", .integer).check { $0 >= 0 }
                 t.column("metrics_state", .text).notNull().defaults(to: "pending")
                 t.column("metrics_json", .text)
-                t.column("output_budget_field", .text)
-                t.column("output_budget", .integer).check { $0 > 0 }
+            }
+        }
+        // v75 shipped without these columns. Keep its definition intact and
+        // upgrade existing files; a fresh database is not an upgrade test.
+        migrator.registerMigration("v76_mentor_http_output_budget") { db in
+            let columns = Set(try db.columns(in: "mentor_http_attempts").map(\.name))
+            try db.alter(table: "mentor_http_attempts") { t in
+                // Some intermediate candidates created these columns in v75.
+                // Add only missing columns, without rewriting existing rows.
+                if !columns.contains("output_budget_field") {
+                    t.add(column: "output_budget_field", .text)
+                }
+                if !columns.contains("output_budget") {
+                    t.add(column: "output_budget", .integer).check { $0 > 0 && $0 <= 100_000 }
+                }
             }
         }
     }
 
     func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at date: Date,
                       outputBudgetField: String?, outputBudget: Int?) async throws {
+        let validBudget: Bool
+        switch (outputBudgetField, outputBudget) {
+        case (nil, nil): validBudget = true
+        case (let field?, let value?):
+            let allowedFields: Set<String> = protocolKind == .responses
+                ? ["max_output_tokens"] : ["max_tokens", "max_completion_tokens"]
+            validBudget = allowedFields.contains(field) && (1...100_000).contains(value)
+        default: validBudget = false
+        }
         guard identity.requestEpoch >= 0, identity.semanticRevision >= 0, date.timeIntervalSince1970.isFinite,
-              outputBudget == nil || (outputBudgetField != nil && outputBudget! > 0) else {
+              validBudget else {
             throw MentorHTTPObservationError.invalidIdentity
         }
         let timestamp = ISO8601DateFormatter().string(from: date)

@@ -4,6 +4,86 @@ import GRDB
 @testable import MingSi
 
 final class MentorHTTPObservationTests: XCTestCase {
+    func testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft() async throws {
+        let queue = try DatabaseQueue()
+        var migrator = Self.baseMigrator()
+        SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        try migrator.migrate(queue, upTo: "v75_mentor_http_attempts")
+        let old = try seed(queue)
+        let json = String(decoding: try JSONEncoder().encode(MentorHTTPMetrics(fetchKinds: [.network], redirectCount: 0)), as: UTF8.self)
+        try await queue.write { db in
+            let columns = Set(try db.columns(in: "mentor_http_attempts").map(\.name))
+            XCTAssertFalse(columns.contains("output_budget_field"))
+            XCTAssertFalse(columns.contains("output_budget"))
+            try db.execute(sql: """
+                INSERT INTO mentor_http_attempts
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind,
+                 dispatch_registered_at, terminal_state, elapsed_ms, metrics_state, metrics_json)
+                VALUES (?, ?, ?, ?, 0, 0, 'responses', '2026-10-24T00:00:00Z', 'cancelled', 25, 'received', ?)
+                """, arguments: [old.attemptID.uuidString, old.traceID.uuidString, old.sessionID.uuidString, old.requestID.uuidString, json])
+        }
+        try migrator.migrate(queue)
+        let store = SQLiteMentorHTTPObservationStore(queue: queue)
+        let beforeNewAttempt = try await store.attempts(requestID: old.requestID)
+        let migrated = try XCTUnwrap(beforeNewAttempt.first)
+        XCTAssertEqual(migrated.identity, old)
+        XCTAssertEqual(migrated.exactNetworkTransactionCount, 1)
+        XCTAssertEqual(migrated.terminalState, "cancelled")
+        XCTAssertEqual(migrated.elapsedMilliseconds, 25)
+        XCTAssertNil(migrated.outputBudgetField)
+        XCTAssertNil(migrated.outputBudget, "Historical requests have no known budget")
+        let new = copy(old, attemptID: UUID())
+        try await store.beginAttempt(new, protocolKind: .responses, at: .now,
+            outputBudgetField: "max_output_tokens", outputBudget: 16_000)
+        let after = try await store.attempts(requestID: old.requestID)
+        XCTAssertEqual(after.count, 2)
+        XCTAssertEqual(after.last?.outputBudgetField, "max_output_tokens")
+        XCTAssertEqual(after.last?.outputBudget, 16_000)
+        let draft = try await queue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
+        XCTAssertEqual(draft, "preserve draft")
+    }
+
+    func testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure() async throws {
+        let queue = try DatabaseQueue()
+        var migrator = Self.baseMigrator()
+        SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        try migrator.migrate(queue, upTo: "v75_mentor_http_attempts")
+        let identity = try seed(queue)
+        try await queue.write { db in
+            try db.execute(sql: "ALTER TABLE mentor_http_attempts ADD COLUMN output_budget_field TEXT")
+            try db.execute(sql: "ALTER TABLE mentor_http_attempts ADD COLUMN output_budget INTEGER")
+            try db.execute(sql: """
+                INSERT INTO mentor_http_attempts
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind,
+                 dispatch_registered_at, output_budget_field, output_budget)
+                VALUES (?, ?, ?, ?, 0, 0, 'responses', '2026-10-24T00:00:00Z', 'max_output_tokens', 16000)
+                """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString, identity.sessionID.uuidString, identity.requestID.uuidString])
+        }
+        try migrator.migrate(queue)
+        let records = try await SQLiteMentorHTTPObservationStore(queue: queue).attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.outputBudgetField, "max_output_tokens")
+        XCTAssertEqual(records.first?.outputBudget, 16_000)
+    }
+
+    func testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts() async throws {
+        let (_, store, identity) = try fixture()
+        let invalid: [(MentorHTTPProtocol, String?, Int?)] = [
+            (.responses, "PRIVATE_TEXT_SENTINEL", 1), (.responses, "max_output_tokens", nil),
+            (.responses, nil, 1), (.responses, "max_tokens", 1),
+            (.openAICompatible, "max_output_tokens", 1), (.responses, "max_output_tokens", 0),
+            (.responses, "max_output_tokens", -1), (.responses, "max_output_tokens", 100_001)
+        ]
+        for (kind, field, amount) in invalid {
+            do {
+                try await store.beginAttempt(copy(identity, attemptID: UUID()), protocolKind: kind, at: .now,
+                    outputBudgetField: field, outputBudget: amount)
+                XCTFail("Invalid numeric metadata")
+            } catch MentorHTTPObservationError.invalidIdentity { }
+        }
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertTrue(records.isEmpty)
+    }
+
     func testMissingParentGraphCannotSilentlyMarkMigrationApplied() throws {
         let queue = try DatabaseQueue()
         var migrator = DatabaseMigrator()

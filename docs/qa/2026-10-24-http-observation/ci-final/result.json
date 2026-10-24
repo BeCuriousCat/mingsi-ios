@@ -47,5 +47,8 @@
   "limits": [
     "CI did not validate output-budget changes staged after this commit",
     "simulator fixtures do not prove real microphone, provider streaming, VoiceOver, phone or human value"
-  ]
+  ],
+  "tested_merge_revision": "92133c1122259f5f470d1c045b6330de88628605",
+  "tested_tree": "02bd30dee0e3e3ae1ac71644d18ff6f800a3c5c1",
+  "head_tree_matches_tested_tree": true
 }

@@ -4,6 +4,56 @@ import Synchronization
 
 final class DirectGLMClientTests: XCTestCase {
     @MainActor
+    func testSentOutputBudgetMatchesAttemptMetadataForEachSupportedContract() async throws {
+        let cases: [(GLMClientConfiguration.ProtocolKind, String, String?, Int?)] = [
+            (.openAICompatible, "api.z.ai", "max_tokens", 8_192),
+            (.openAICompatible, "open.bigmodel.cn", "max_tokens", 8_192),
+            (.openAICompatible, "api.openai.com", "max_completion_tokens", 8_192),
+            (.openAICompatible, "custom.test", nil, nil),
+            (.responses, "custom.test", "max_output_tokens", 16_000)
+        ]
+        for (kind, host, field, amount) in cases {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 200,
+                body: kind == .responses ? responsesSSE() : "{\"choices\":[]}")]
+            let observations = RecordingHTTPObservationStore()
+            var request = makeRequest()
+            request.mentorExecutionPolicy = MentorRequestPolicy.forProtocol(kind)
+            request.mentorHTTPObservation = observationChannel(request, store: observations)
+            _ = try await makeClient(configuration: GLMClientConfiguration(baseURL: URL(string: "https://\(host)/v1")!, protocolKind: kind)).complete(request)
+            let raw = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+            let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+            for candidate in ["max_tokens", "max_completion_tokens", "max_output_tokens"] {
+                XCTAssertEqual(payload[candidate] as? Int, candidate == field ? amount : nil)
+            }
+            let recorded = await observations.snapshot()
+            XCTAssertEqual(recorded.fields, [field])
+            XCTAssertEqual(recorded.budgets, [amount])
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        }
+    }
+
+    @MainActor
+    func testProviderBudgetRejectionCannotStripFieldAndResend() async throws {
+        for (kind, host, field) in [(GLMClientConfiguration.ProtocolKind.openAICompatible, "api.openai.com", "max_completion_tokens"),
+                                   (.responses, "custom.test", "max_output_tokens")] {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 400, body: "unsupported output budget"),
+                .init(statusCode: 200, body: "unused")]
+            var request = makeRequest()
+            request.mentorExecutionPolicy = MentorRequestPolicy.forProtocol(kind)
+            do {
+                _ = try await makeClient(configuration: GLMClientConfiguration(baseURL: URL(string: "https://\(host)/v1")!, protocolKind: kind)).complete(request)
+                XCTFail("Budget rejection must be terminal")
+            } catch LLMClientError.httpStatus(let status, _) { XCTAssertEqual(status, 400) }
+            XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+            let raw = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+            let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+            XCTAssertEqual(payload[field] as? Int, MentorRequestPolicy.forProtocol(kind).outputTokenBudget)
+        }
+    }
+
+    @MainActor
     func testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics() async throws {
         for (kind, streaming) in [(GLMClientConfiguration.ProtocolKind.openAICompatible, false), (.openAICompatible, true), (.responses, true)] {
             GLMStubURLProtocol.requestBodies = []
@@ -259,6 +309,9 @@ final class DirectGLMClientTests: XCTestCase {
         let data = try await makeClient(configuration: responsesConfiguration()).complete(request)
         XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("choices"))
         XCTAssertEqual(GLMStubURLProtocol.requestBodies.count, 1)
+        let firstBody = try XCTUnwrap(GLMStubURLProtocol.requestBodies.first)
+        let firstPayload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(firstBody.utf8)) as? [String: Any])
+        XCTAssertEqual(firstPayload["max_output_tokens"] as? Int, 16_000)
         GLMStubURLProtocol.requestBodies = []
         GLMStubURLProtocol.responses = [.init(statusCode: 503, body: "busy"), .init(statusCode: 200, body: responsesSSE())]
         do { _ = try await makeClient(configuration: responsesConfiguration()).complete(request); XCTFail("No hidden retry") }
@@ -970,6 +1023,8 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
     private var identities: [MentorHTTPAttemptIdentity] = []
     private var kinds: [MentorHTTPProtocol] = []
     private var outcomes: [MentorHTTPAttemptOutcome] = []
+    private var fields: [String?] = []
+    private var budgets: [Int?] = []
     init(rejectRegistration: Bool = false, onFinish: @escaping @Sendable () -> Void = {}) {
         self.rejectRegistration = rejectRegistration; self.onFinish = onFinish
     }
@@ -977,13 +1032,14 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
                       outputBudgetField: String?, outputBudget: Int?) async throws {
         if rejectRegistration { throw MentorHTTPObservationError.unavailable }
         identities.append(identity); kinds.append(protocolKind)
+        fields.append(outputBudgetField); budgets.append(outputBudget)
     }
     func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws { }
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws {
         outcomes.append(outcome); onFinish()
     }
-    func snapshot() -> (identities: [MentorHTTPAttemptIdentity], kinds: [MentorHTTPProtocol], outcomes: [MentorHTTPAttemptOutcome]) {
-        (identities, kinds, outcomes)
+    func snapshot() -> (identities: [MentorHTTPAttemptIdentity], kinds: [MentorHTTPProtocol], outcomes: [MentorHTTPAttemptOutcome], fields: [String?], budgets: [Int?]) {
+        (identities, kinds, outcomes, fields, budgets)
     }
 }
 
