@@ -208,9 +208,21 @@ final class MentorStreamProgress: @unchecked Sendable, Hashable {
     private let field: String
     private let onPreview: @Sendable (String) -> Void
     private var preview = ""
+    private let requestStartedAt: ContinuousClock.Instant
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private var timings: [MentorRequestTimingStage: Int64] = [:]
+    private var timingAttempt: MentorHTTPAttempt?
+    private var timingWrites: [Task<Void, Never>] = []
 
-    init(startedAt: ContinuousClock.Instant = .now, field: String = "body",
+    convenience init(startedAt: ContinuousClock.Instant = .now, field: String = "body",
          onPreview: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.init(startedAt: startedAt, field: field, clockNow: { .now }, onPreview: onPreview)
+    }
+
+    init(startedAt: ContinuousClock.Instant, field: String = "body",
+         clockNow: @escaping @Sendable () -> ContinuousClock.Instant,
+         onPreview: @escaping @Sendable (String) -> Void = { _ in }) {
+        requestStartedAt = startedAt; self.now = clockNow
         lastContent = startedAt; self.field = field; self.onPreview = onPreview
     }
     static func == (lhs: MentorStreamProgress, rhs: MentorStreamProgress) -> Bool { lhs === rhs }
@@ -223,13 +235,60 @@ final class MentorStreamProgress: @unchecked Sendable, Hashable {
         guard raw.utf8.count + token.utf8.count <= 128_000 else {
             lock.unlock(); throw LLMClientError.invalidResponse
         }
-        lastContent = .now
+        lastContent = now()
         raw += token
         let next = Self.preview(in: raw, field: field)
         let changed = next != preview
         preview = next
+        if !next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            recordTimingWhileLocked(.firstReadableBody)
+        }
         lock.unlock()
         if changed { onPreview(next) }
+    }
+
+    /// One root clock is shared by parsing, native UI presentation and saving.
+    /// Binding may happen after an early event; buffered numeric events retain
+    /// their original time and never get retimed at database-write completion.
+    func bindTimingAttempt(_ attempt: MentorHTTPAttempt) throws {
+        lock.lock(); defer { lock.unlock() }
+        if let previous = timingAttempt {
+            guard previous.identity == attempt.identity else { throw MentorHTTPObservationError.conflict }
+            return
+        }
+        timingAttempt = attempt
+        for (stage, elapsed) in timings { enqueueTiming(stage, elapsed: elapsed, attempt: attempt) }
+    }
+
+    func recordTiming(_ stage: MentorRequestTimingStage) {
+        lock.lock(); defer { lock.unlock() }
+        // A visibility callback cannot manufacture first-readable content.
+        guard stage != .firstVisibleBody || timings[.firstReadableBody] != nil else { return }
+        recordTimingWhileLocked(stage)
+    }
+
+    private func recordTimingWhileLocked(_ stage: MentorRequestTimingStage) {
+        guard timings[stage] == nil else { return }
+        let duration = requestStartedAt.duration(to: now())
+        guard duration >= .zero else { return }
+        let parts = duration.components
+        let (seconds, overflow) = parts.seconds.multipliedReportingOverflow(by: 1_000)
+        guard !overflow else { return }
+        let (elapsed, additionOverflow) = seconds.addingReportingOverflow(parts.attoseconds / 1_000_000_000_000_000)
+        guard !additionOverflow else { return }
+        timings[stage] = elapsed
+        if let attempt = timingAttempt { enqueueTiming(stage, elapsed: elapsed, attempt: attempt) }
+    }
+
+    private func enqueueTiming(_ stage: MentorRequestTimingStage, elapsed: Int64, attempt: MentorHTTPAttempt) {
+        timingWrites.append(Task { await attempt.recordTiming(stage, elapsedMilliseconds: elapsed) })
+    }
+
+    private func pendingTimingWrites() -> [Task<Void, Never>] {
+        lock.lock(); defer { lock.unlock() }; return timingWrites
+    }
+    func flushTimingWrites() async {
+        for write in pendingTimingWrites() { await write.value }
     }
 
     /// Decode only a top-level string field. Partial escapes and surrogate pairs

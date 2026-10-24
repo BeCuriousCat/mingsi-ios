@@ -688,7 +688,9 @@ struct MentorConversationView: View {
                             lesson: feature.state.isTransitioningSession ? nil : feature.state.lesson,
                             layoutKey: "\(Int(viewport.size.width.rounded()))/\(dynamicTypeSize)",
                             canSave: !feature.state.isViewingHistory,
-                            isActive: !feature.state.isTransitioningSession && !wantsClose && scenePhase != .background,
+                            isActive: !feature.state.isTransitioningSession && !wantsClose && scenePhase == .active &&
+                                !showsSettings && sourceSelection == nil && correctionSelection == nil &&
+                                !needsConfiguration && !showsDeleteConfirmation && !showsDiscardUnsavedDraftConfirmation,
                             save: { [weak feature] position in
                                 feature?.saveReadingPosition(itemID: position.itemID, section: position.section,
                                     offset: position.offset, layoutKey: position.layoutKey)
@@ -696,6 +698,7 @@ struct MentorConversationView: View {
                                 guard let feature, !feature.state.isTransitioningSession else { return }
                                 if id == feature.state.responseItemID { feature.acknowledgeResponse(itemID: id) }
                                 if id == feature.state.lesson?.id { feature.acknowledgeLesson() }
+                                if id == feature.state.streamingPreviewRequestID { feature.acknowledgeStreamingPreview(requestID: id) }
                             }))
                     }
                     .onChange(of: feature.state.isTransitioningSession) { _, transitioning in
@@ -884,12 +887,12 @@ struct MentorConversationView: View {
                                     .font(.subheadline).foregroundStyle(DS.mutedInk)
                             }
                             Text(response.body).textSelection(.enabled)
+                                .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
                             if let question = response.question { Text(question).fontWeight(.medium) }
                             if !response.sourceRefs.isEmpty {
                                 sourceButton(response.sourceRefs)
                             }
                         }
-                        .background(MentorReadingMarker(geometry: readingGeometry, itemID: item.id))
                     }
                 }
                 .id(item.id)
@@ -1150,6 +1153,11 @@ struct MentorConversationView: View {
                     .font(.body).fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("mentor.request.stream-preview")
+                    .background {
+                        if let requestID = feature.state.streamingPreviewRequestID {
+                            MentorReadingMarker(geometry: readingGeometry, itemID: requestID)
+                        }
+                    }
                 if isInterruptedPreview {
                     Text("连接已停止。这段预览尚未保存为完整回应，可先复制保留；重试会重新生成。")
                         .font(.subheadline).foregroundStyle(DS.caution)

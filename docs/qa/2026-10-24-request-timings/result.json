@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-24",
+  "scope": "actual production transport, stream parser, SQLite timing persistence plus extracted exact export-value conversion in isolated macOS SwiftPM; minimal request models",
+  "local_unit": {
+    "passed": 50,
+    "failed": 0,
+    "groups": {
+      "transport": 11,
+      "store": 22,
+      "executor": 16,
+      "extracted_export_conversion": 1
+    }
+  },
+  "retained_failures": {
+    "initial_compile": "Adding a default clock closure changed trailing-closure resolution; preserved original initializer and separate required clockNow injection fixed it",
+    "export_before": {
+      "tests": 1,
+      "assertion_failures": 5,
+      "symptoms": [
+        "integer and real became Bool",
+        "UTF-8 blob became text instead of base64"
+      ]
+    }
+  },
+  "native_http": {
+    "scenarios": 4,
+    "server_received": 5,
+    "network_counts": [
+      1,
+      2,
+      1,
+      1
+    ],
+    "scope": "no UI or business-response saving in probe; those fields remain absent",
+    "independent_initial_probe": {
+      "server_received": 5,
+      "result_path": "native-initial/native-result.json",
+      "note": "Before freezing the v78 column list; separate earlier observation, not pooled into final probe"
+    }
+  },
+  "source_sha256": {
+    "Sources/Services/MentorHTTPMetrics.swift": "4b4fc88f1544253ef6e998e6a606c90a0c1bde5f6e8919835c0056c9cb46a0a0",
+    "Sources/Services/MentorHTTPObservationStore.swift": "25e9deb31d8c8a3042200ab0650af048d19fee0dd8cdb133ba759d73ba8c654d",
+    "Sources/Services/DirectGLMClient.swift": "76b8956554b4afaba5670a7c00cc8c772056f5623de87c7f7c01926aaf133678",
+    "Sources/Services/MentorRequestExecutor.swift": "e0e700e103bcbb8945c097e12359da229a37b55bb8000255385aac7e46e6abe3",
+    "Sources/Services/PersistenceCore.swift": "ceba47f73a7311fa0c546aa0e48e35f500cf24b443dd5e48bac02a0b05c872e3",
+    "Sources/Features/MentorFeatureStore.swift": "e8baade694289c964fc7e1f4fec050e635be8bf707cabdf3ebe75e8b5685db33",
+    "Sources/Features/Mentor/MentorHomeView.swift": "d4cc66f3bf24794b89975d991a6c0ad8c68dc41bc702d38c7fef3279c1ce5eda",
+    "Sources/Features/Mentor/MentorReadingPosition.swift": "07a70e2a70fc07a61a3c6e12fc9150915caf49b5f28b0cadd56ec86f85b4fd2a",
+    "Tests/Services/DirectGLMClientTests.swift": "09ea4bb7b808f8015fd40f470c3c8f261d37514352b3ab5dbcd4679c73aba2d8",
+    "Tests/Services/MentorHTTPObservationTests.swift": "b18e70856b84ec2248af75e132ec44cc63219d6016d299a4bd6147016370cadf",
+    "Tests/Services/MentorPersistenceTests.swift": "fff6a906974d01148ca54848bca87bda32697f56d557c9089b29cc2e45ecf099",
+    "Tests/Services/PersistenceCoreTests.swift": "6fc9e5fe4b93dc75b1932ec2c920b39f32fe5a65757e4ddc2eea08c94d3e81d4",
+    "Tests/Features/MentorFeatureStoreTests.swift": "d1370c0a0642252feb76a7fa462622929699ddf6085d27177f0fa3eb06783b85",
+    "Tests/Features/MentorReadingPositionTests.swift": "c1ccf4615425272e4a365ab53775ee8000ebe2228435b596051be77e14155e63"
+  },
+  "full_ios_status": "not yet submitted; prior candidate CI remains separate",
+  "new_paid_model_calls": 0,
+  "normal_app_installed": false,
+  "phone_updated": false,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "Feature-store save/fast-response callbacks, UIKit inset/clip/visibility tests and whole-App export integration are added but have not run in this macOS package.",
+    "No current UI screenshot or normal App acceptance is attributed to these changes.",
+    "Understanding-editor visibility without a streamed preview is not instrumented; missing visibility stays null.",
+    "Write failures still lack an independent durable diagnostic; returned model/config identity and bounded-window accounting remain incomplete."
+  ],
+  "script_unit": {
+    "passed": 42,
+    "failed": 0
+  }
+}

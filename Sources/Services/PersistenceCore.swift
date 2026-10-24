@@ -4876,25 +4876,16 @@ final class SQLiteDataExportRepository: DataExportRepository {
     }
 
     private static func exportValue(_ value: DatabaseValue) -> Any {
-        if value.isNull {
-            return NSNull()
+        // Preserve SQLite storage, rather than testing coercions in order:
+        // Bool accepts every integer/real, and String accepts UTF-8 blobs.
+        // SQLite booleans remain their stored 0/1 integers in this raw export.
+        switch value.storage {
+        case .null: return NSNull()
+        case .int64(let number): return number
+        case .double(let number): return number
+        case .string(let text): return text
+        case .blob(let data): return data.base64EncodedString()
         }
-        if let string = String.fromDatabaseValue(value) {
-            return string
-        }
-        if let bool = Bool.fromDatabaseValue(value) {
-            return bool
-        }
-        if let int64 = Int64.fromDatabaseValue(value) {
-            return int64
-        }
-        if let double = Double.fromDatabaseValue(value) {
-            return double
-        }
-        if let data = Data.fromDatabaseValue(value) {
-            return data.base64EncodedString()
-        }
-        return "\(value)"
     }
 
     private static func decodeExportJSONValue(_ json: String) -> Any? {

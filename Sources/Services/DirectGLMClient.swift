@@ -446,11 +446,13 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         let budget = mentorOutputBudgetFields(for: request)
         let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind,
             outputBudgetField: budget.field, outputBudget: budget.value)
+        if let attempt { try request.mentorStreamProgress?.bindTimingAttempt(attempt) }
         let result: Result<Data, Error>
         do {
             try Task.checkCancellation()
             result = .success(try await operation(attempt))
         } catch { result = .failure(error) }
+        request.mentorStreamProgress?.recordTiming(.transportFinished)
         switch result {
         case .success(let data):
             try await attempt?.finish(.returnedData)

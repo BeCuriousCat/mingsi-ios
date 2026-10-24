@@ -1144,6 +1144,7 @@ private actor RecordingHTTPObservationStore: MentorHTTPObservationStore {
     func recordServiceUsage(_ usage: MentorServiceUsage, identity: MentorHTTPAttemptIdentity) async throws {
         usages.append(usage)
     }
+    func recordTiming(_ stage: MentorRequestTimingStage, elapsedMilliseconds: Int64, identity: MentorHTTPAttemptIdentity) async throws { }
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws {
         outcomes.append(outcome); onFinish()
     }

@@ -1,0 +1,10 @@
+[0/1] Planning build
+Building for debugging...
+[0/3] Write swift-version--58304C5D6DBC2206.txt
+[1/4] Write sources
+[3/6] Emitting module NativeProbe
+[4/6] Compiling NativeProbe Probe.swift
+[4/7] Write Objects.LinkFileList
+[5/7] Linking NativeProbe
+[6/7] Applying NativeProbe
+Build of product 'NativeProbe' complete! (1.38s)

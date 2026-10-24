@@ -1,5 +1,6 @@
 import CryptoKit
 import XCTest
+import CoreFoundation
 import GRDB
 @testable import MingSi
 
@@ -3132,6 +3133,32 @@ final class PersistenceCoreTests: XCTestCase {
     }
 
     // MARK: - DataExportRepository
+
+    func testDataExport_preservesSQLiteStorageInsteadOfCoercingNumbersToBooleans() async throws {
+        let draft = DailyEntryDraft(rawText: "isolated export fixture")
+        try await SQLiteDailyEntryRepository(database: database).saveDraft(draft)
+        // Test-only columns exercise every raw SQLite storage class through the
+        // real exporter, without changing a production migration or user file.
+        try await database.dbQueue.write { db in
+            for (name, type) in [("qa_integer", "INTEGER"), ("qa_real", "REAL"), ("qa_text", "TEXT"),
+                                 ("qa_blob", "BLOB"), ("qa_null", "BLOB")] {
+                try db.execute(sql: "ALTER TABLE daily_entries ADD COLUMN \(name) \(type)")
+            }
+            try db.execute(sql: "UPDATE daily_entries SET qa_integer = 12, qa_real = 1.25, qa_text = 'body', qa_blob = X'626f6479', qa_null = NULL")
+        }
+        let package = try await SQLiteDataExportRepository(database: database).exportPackage()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let rows = try XCTUnwrap(sections["daily_entries"] as? [[String: Any]])
+        let row = try XCTUnwrap(rows.first)
+        let integer = try XCTUnwrap(row["qa_integer"] as? NSNumber)
+        XCTAssertNotEqual(CFGetTypeID(integer), CFBooleanGetTypeID())
+        XCTAssertEqual(integer.int64Value, 12)
+        XCTAssertEqual((row["qa_real"] as? NSNumber)?.doubleValue, 1.25)
+        XCTAssertEqual(row["qa_text"] as? String, "body")
+        XCTAssertEqual(row["qa_blob"] as? String, Data("body".utf8).base64EncodedString())
+        XCTAssertTrue(row["qa_null"] is NSNull)
+    }
 
     func testDataExport_includesSavedDraftAndPromptRun() async throws {
         let dailyRepo = SQLiteDailyEntryRepository(database: database)

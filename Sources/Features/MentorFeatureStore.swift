@@ -60,6 +60,7 @@ struct MentorFeatureState: Equatable {
     /// threshold. It is separate from the transport timeout and session phase.
     var requestWaitingNotice = false
     var streamingPreview = ""
+    var streamingPreviewRequestID: UUID?
     var requestFailureMessage: String?
     var retryableRequest: MentorRetryableRequest?
     var retryError: String?
@@ -122,6 +123,7 @@ final class MentorFeatureStore: ObservableObject {
         let payload: String
         let validated: MentorValidatedTurn
         let consumedDraft: MentorConsumedDraft?
+        let progress: MentorStreamProgress
     }
     private struct PendingRequestEnd {
         let sessionID: UUID
@@ -136,6 +138,8 @@ final class MentorFeatureStore: ObservableObject {
     private var requestWaitingGeneration = UUID()
     private var activeRequestID: UUID?
     private var activeRequestGeneration: UUID?
+    private var displayedPreviewTiming: (requestID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
+    private var savedResponseTiming: (itemID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
     private var dependencyGeneration = UUID()
     private struct DraftSnapshot: Equatable {
         let sessionID: UUID
@@ -267,6 +271,8 @@ final class MentorFeatureStore: ObservableObject {
         activeRequestGeneration = nil
         state.requestWaitingNotice = false
         state.streamingPreview = ""
+        state.streamingPreviewRequestID = nil
+        displayedPreviewTiming = nil
         activeStreamProgress = nil
         requestWaitingTask = Task { [weak self] in
             do {
@@ -290,7 +296,22 @@ final class MentorFeatureStore: ObservableObject {
             }
         }
         activeStreamProgress = progress
+        if let requestID = activeRequestID, let sessionID = state.session?.id {
+            state.streamingPreviewRequestID = requestID
+            displayedPreviewTiming = (requestID, sessionID, progress)
+        }
         return progress
+    }
+
+    /// Called only by the native reading-region geometry sampler for the exact
+    /// non-empty preview marker, never by State updates or onAppear.
+    func acknowledgeStreamingPreview(requestID: UUID) {
+        guard !state.isViewingHistory, !state.isTransitioningSession,
+              !state.streamingPreview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              state.streamingPreviewRequestID == requestID,
+              let displayed = displayedPreviewTiming, displayed.requestID == requestID,
+              displayed.sessionID == state.session?.id else { return }
+        displayed.progress.recordTiming(.firstVisibleBody)
     }
 
     private func armRequestDeadline(generation: UUID, policy: MentorRequestPolicy, startedAt: ContinuousClock.Instant) {
@@ -1523,6 +1544,7 @@ final class MentorFeatureStore: ObservableObject {
                 let saved = try await repository.beginAIUnderstanding(sessionID: current.id, draftID: UUID(),
                     text: draft.text, sourceRefs: draft.sourceRefs)
                 try await repository.completeUnderstandingRequest(sessionID: current.id, requestID: requestID)
+                progress.recordTiming(.responseSaved)
                 recordUsageEvent(.requestFinished, sessionID: current.id,
                                  attributes: ["reason": "succeeded"], requestID: requestID)
                 requestCompleted = true
@@ -1860,6 +1882,9 @@ final class MentorFeatureStore: ObservableObject {
     func acknowledgeResponse(itemID: UUID) {
         guard state.responseItemID == itemID else { return }
         if state.isViewingHistory { observeHistoryPresentation(itemID: itemID, isResponse: true); return }
+        if let saved = savedResponseTiming, saved.itemID == itemID, saved.sessionID == state.session?.id {
+            saved.progress.recordTiming(.firstVisibleBody)
+        }
         acknowledge(itemID: itemID, isResponse: true)
     }
 
@@ -2523,7 +2548,7 @@ final class MentorFeatureStore: ObservableObject {
             let validated = supportedSuggestions(parsed)
             let pending = PendingResponse(sessionID: current.id, requestID: requestID,
                 payload: String(decoding: try JSONEncoder().encode(validated.response), as: UTF8.self), validated: validated,
-                consumedDraft: consumedDraft)
+                consumedDraft: consumedDraft, progress: progress)
             pendingResponse = pending
             try await saveResponse(pending)
             state.streamingPreview = ""
@@ -2636,6 +2661,7 @@ final class MentorFeatureStore: ObservableObject {
         try Task.checkCancellation()
         let item = try await repository.commitResponse(sessionID: pending.sessionID,
             requestID: pending.requestID, payloadJSON: pending.payload, consumingDraft: pending.consumedDraft)
+        pending.progress.recordTiming(.responseSaved)
         recordUsageEvent(.requestFinished, sessionID: pending.sessionID,
             attributes: ["reason": "succeeded"], requestID: pending.requestID)
         let timeline = try await repository.items(sessionID: pending.sessionID)
@@ -2649,6 +2675,7 @@ final class MentorFeatureStore: ObservableObject {
         state.retryError = nil
         state.response = pending.validated
         state.responseItemID = item.id
+        savedResponseTiming = (item.id, pending.sessionID, pending.progress)
         state.acknowledgedResponseItemID = nil
         state.canRetryResponseSave = false
         pendingResponse = nil

@@ -1,9 +1,119 @@
 import Foundation
 import XCTest
 import GRDB
+import Synchronization
 @testable import MingSi
 
 final class MentorHTTPObservationTests: XCTestCase {
+    func testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace() async throws {
+        let (_, store, identity) = try fixture()
+        let channel = MentorHTTPObservation(traceID: identity.traceID, sessionID: identity.sessionID, requestID: identity.requestID,
+            requestEpoch: 0, semanticRevision: 0, store: store)
+        let attempt = try await channel.beginAttempt(protocolKind: .responses)
+        let start = ContinuousClock.now
+        let clock = Mutex(start)
+        let progress = MentorStreamProgress(startedAt: start, clockNow: { clock.withLock { $0 } })
+        progress.recordTiming(.firstVisibleBody)
+        clock.withLock { $0 = start.advanced(by: .milliseconds(10)) }
+        try progress.receive(#"{"reasoning":"PRIVATE_REASONING","nested":{"body":"PRIVATE_NESTED"},"body":"  "#)
+        clock.withLock { $0 = start.advanced(by: .milliseconds(25)) }
+        try progress.receive("正文")
+        // The event predates the binding, but keeps the original clock time.
+        try progress.bindTimingAttempt(attempt)
+        try progress.bindTimingAttempt(attempt)
+        clock.withLock { $0 = start.advanced(by: .milliseconds(40)) }
+        progress.recordTiming(.firstVisibleBody)
+        clock.withLock { $0 = start.advanced(by: .milliseconds(60)) }
+        try progress.receive("后续文字")
+        progress.recordTiming(.firstVisibleBody)
+        progress.recordTiming(.transportFinished)
+        clock.withLock { $0 = start.advanced(by: .milliseconds(80)) }
+        progress.recordTiming(.responseSaved)
+        await progress.flushTimingWrites()
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.requestTimings, [.firstReadableBody: 25, .firstVisibleBody: 40,
+            .transportFinished: 60, .responseSaved: 80])
+        XCTAssertEqual(records.first?.timingState, "recording")
+        XCTAssertEqual(records.first?.terminalState, "pending", "Timing cannot change request outcome")
+        XCTAssertNil(records.first?.exactNetworkTransactionCount)
+    }
+
+    func testTimingBindingCannotMoveOneProgressChannelToAnotherAttempt() async throws {
+        let (_, store, identity) = try fixture()
+        let channel = MentorHTTPObservation(traceID: identity.traceID, sessionID: identity.sessionID, requestID: identity.requestID,
+            requestEpoch: 0, semanticRevision: 0, store: store)
+        let first = try await channel.beginAttempt(protocolKind: .responses)
+        let second = try await channel.beginAttempt(protocolKind: .responses)
+        let progress = MentorStreamProgress()
+        try progress.bindTimingAttempt(first)
+        XCTAssertThrowsError(try progress.bindTimingAttempt(second))
+        try progress.receive(#"{"body":"正文"}"#)
+        await progress.flushTimingWrites()
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertNotNil(records.first?.requestTimings[.firstReadableBody])
+        XCTAssertTrue(records.last?.requestTimings.isEmpty == true)
+    }
+
+    func testTimingConflictsStayUnknownAndVisibilityCanLegitimatelyFollowSaving() async throws {
+        let (_, store, identity) = try fixture()
+        try await store.beginAttempt(identity, protocolKind: .responses, at: .now)
+        // Database scheduling order may differ from event order.
+        try await store.recordTiming(.firstVisibleBody, elapsedMilliseconds: 100, identity: identity)
+        try await store.recordTiming(.responseSaved, elapsedMilliseconds: 80, identity: identity)
+        try await store.recordTiming(.transportFinished, elapsedMilliseconds: 60, identity: identity)
+        try await store.recordTiming(.firstReadableBody, elapsedMilliseconds: 25, identity: identity)
+        try await store.recordTiming(.firstReadableBody, elapsedMilliseconds: 25, identity: identity)
+        var records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertNotNil(records.first?.usableRequestTimings)
+        try await store.recordTiming(.firstReadableBody, elapsedMilliseconds: 99, identity: identity)
+        records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.requestTimings[.firstReadableBody], 25)
+        XCTAssertEqual(records.first?.timingState, "conflict")
+        XCTAssertNil(records.first?.usableRequestTimings)
+        do { try await store.recordTiming(.firstReadableBody, elapsedMilliseconds: -1, identity: identity); XCTFail("Negative clock value") }
+        catch MentorHTTPObservationError.invalidIdentity { }
+    }
+
+    func testLateTimingForOldOrDeletedRequestsCannotChangeNewDraftOrResurrectRows() async throws {
+        let (queue, store, old) = try fixture()
+        try await store.beginAttempt(old, protocolKind: .responses, at: .now)
+        try await store.finishAttempt(old, outcome: .cancelled, elapsedMilliseconds: 9)
+        try await queue.write { db in
+            try db.execute(sql: "UPDATE mentor_sessions SET request_epoch = 1, draft_text = 'new draft'")
+        }
+        try await store.recordTiming(.firstReadableBody, elapsedMilliseconds: 5, identity: old)
+        let draft = try await queue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
+        XCTAssertEqual(draft, "new draft")
+        var records = try await store.attempts(requestID: old.requestID)
+        XCTAssertEqual(records.first?.terminalState, "cancelled")
+        try await queue.write { db in try db.execute(sql: "DELETE FROM mentor_sessions") }
+        try await store.recordTiming(.firstVisibleBody, elapsedMilliseconds: 10, identity: old)
+        records = try await store.attempts(requestID: old.requestID)
+        XCTAssertTrue(records.isEmpty)
+    }
+
+    func testV77UpgradeKeepsReportedUsageAndLeavesHistoricalTimingsUnknown() async throws {
+        let queue = try DatabaseQueue()
+        var migrator = Self.baseMigrator()
+        SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        try migrator.migrate(queue, upTo: "v77_mentor_service_usage")
+        let identity = try seed(queue)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO mentor_http_attempts
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind,
+                 dispatch_registered_at, usage_state, usage_json)
+                VALUES (?, ?, ?, ?, 0, 0, 'responses', '2026-10-24T00:00:00Z', 'received', ?)
+                """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString, identity.sessionID.uuidString,
+                    identity.requestID.uuidString, #"{"source":"responses_event_usage","inputTokens":12,"hasInvalidFields":false}"#])
+        }
+        try migrator.migrate(queue)
+        let records = try await SQLiteMentorHTTPObservationStore(queue: queue).attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.first?.serviceUsage?.inputTokens, 12)
+        XCTAssertEqual(records.first?.timingState, "recording")
+        XCTAssertTrue(records.first?.requestTimings.isEmpty == true, "No timings invented for historical rows")
+    }
+
     func testUsageSanitizationKeepsMissingUnknownAndNeverStoresRawProviderFields() throws {
         XCTAssertNil(MentorServiceUsage(envelope: [:], source: .chatStream))
         XCTAssertNil(MentorServiceUsage(envelope: ["usage": NSNull()], source: .chatStream))

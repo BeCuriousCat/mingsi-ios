@@ -37,10 +37,15 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertEqual(usage.inputTokens, 12)
         XCTAssertEqual(usage.outputTokens, 4)
         XCTAssertEqual(usage.totalTokens, 16)
+        XCTAssertEqual(record["first_readable_body_ms"] as? Int, 12)
+        XCTAssertEqual(record["request_transport_finished_ms"] as? Int, 20)
+        XCTAssertTrue(record["first_visible_body_ms"] is NSNull)
+        XCTAssertTrue(record["response_saved_ms"] is NSNull)
         let numericSection = String(decoding: try JSONSerialization.data(withJSONObject: records), as: UTF8.self)
         XCTAssertFalse(numericSection.contains("PRIVATE_"))
         XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
-            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget", "usage_state", "usage_json"]))
+            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget", "usage_state", "usage_json", "timing_state",
+            "first_readable_body_ms", "first_visible_body_ms", "request_transport_finished_ms", "response_saved_ms"]))
         try await mentor.deleteSession(id: sessionID)
         let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
         XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)
@@ -53,6 +58,7 @@ final class MentorPersistenceTests: XCTestCase {
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v75_mentor_http_attempts"))
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v76_mentor_http_output_budget"))
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v77_mentor_service_usage"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v78_mentor_request_timings"))
             XCTAssertFalse(try db.tableExists("mentor_http_attempts"))
         }
     }
@@ -65,6 +71,8 @@ final class MentorPersistenceTests: XCTestCase {
                 "output_tokens": 4, "total_tokens": 16, "private": "PRIVATE_USAGE_SENTINEL"],
                 "model": "PRIVATE_MODEL_SENTINEL"], source: .responsesEvent))
             try await attempt.recordServiceUsage(usage)
+            await attempt.recordTiming(.firstReadableBody, elapsedMilliseconds: 12)
+            await attempt.recordTiming(.transportFinished, elapsedMilliseconds: 20)
             try await attempt.finish(.returnedData)
             return Data("{}".utf8)
         }

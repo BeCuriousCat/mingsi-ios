@@ -12,11 +12,16 @@ struct MentorHTTPAttemptRecord: Sendable {
     let outputBudget: Int?
     let usageState: String
     let serviceUsage: MentorServiceUsage?
+    let timingState: String
+    let requestTimings: [MentorRequestTimingStage: Int64]
     var exactNetworkTransactionCount: Int? {
         metricsState == "received" ? metrics?.exactNetworkTransactionCount : nil
     }
     var usableServiceUsage: MentorServiceUsage? {
         usageState == "received" && serviceUsage?.hasInvalidFields == false ? serviceUsage : nil
+    }
+    var usableRequestTimings: [MentorRequestTimingStage: Int64]? {
+        timingState == "recording" ? requestTimings : nil
     }
 }
 
@@ -67,6 +72,17 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
             try db.alter(table: "mentor_http_attempts") { t in
                 t.add(column: "usage_state", .text).notNull().defaults(to: "pending")
                 t.add(column: "usage_json", .text)
+            }
+        }
+        migrator.registerMigration("v78_mentor_request_timings") { db in
+            try db.alter(table: "mentor_http_attempts") { t in
+                t.add(column: "timing_state", .text).notNull().defaults(to: "recording")
+                // Freeze this migration's schema even if a future stage is
+                // added to the enum; future columns need their own migration.
+                for column in ["first_readable_body_ms", "first_visible_body_ms",
+                               "request_transport_finished_ms", "response_saved_ms"] {
+                    t.add(column: column, .integer).check { $0 >= 0 }
+                }
             }
         }
     }
@@ -171,6 +187,41 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
         }
     }
 
+    func recordTiming(_ stage: MentorRequestTimingStage, elapsedMilliseconds: Int64, identity: MentorHTTPAttemptIdentity) async throws {
+        guard elapsedMilliseconds >= 0 else { throw MentorHTTPObservationError.invalidIdentity }
+        try await queue.write { db in
+            guard let row = try Self.ownedRow(identity, db: db) else { return }
+            // The interpolated column comes exclusively from the fixed enum.
+            let column = stage.rawValue
+            if let previous: Int64 = row[column] {
+                if previous != elapsedMilliseconds {
+                    try db.execute(sql: "UPDATE mentor_http_attempts SET timing_state = 'conflict' WHERE attempt_id = ?",
+                        arguments: [identity.attemptID.uuidString])
+                }
+                return
+            }
+            try db.execute(sql: "UPDATE mentor_http_attempts SET \(column) = ? WHERE attempt_id = ?",
+                arguments: [elapsedMilliseconds, identity.attemptID.uuidString])
+            var known = Dictionary(uniqueKeysWithValues: MentorRequestTimingStage.allCases.compactMap {
+                stage -> (MentorRequestTimingStage, Int64)? in
+                guard let value: Int64 = row[stage.rawValue] else { return nil }
+                return (stage, value)
+            })
+            known[stage] = elapsedMilliseconds
+            let ordering: [(MentorRequestTimingStage, MentorRequestTimingStage)] = [
+                (.firstReadableBody, .firstVisibleBody), (.firstReadableBody, .transportFinished),
+                (.firstReadableBody, .responseSaved), (.transportFinished, .responseSaved)
+            ]
+            if ordering.contains(where: { before, after in
+                guard let first = known[before], let second = known[after] else { return false }
+                return first > second
+            }) {
+                try db.execute(sql: "UPDATE mentor_http_attempts SET timing_state = 'conflict' WHERE attempt_id = ?",
+                    arguments: [identity.attemptID.uuidString])
+            }
+        }
+    }
+
     func attempts(requestID: UUID) async throws -> [MentorHTTPAttemptRecord] {
         try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM mentor_http_attempts WHERE request_id = ? ORDER BY rowid",
@@ -187,7 +238,11 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                     outputBudgetField: row["output_budget_field"], outputBudget: row["output_budget"],
                     usageState: row["usage_state"], serviceUsage: try usageJSON.map {
                         try JSONDecoder().decode(MentorServiceUsage.self, from: Data($0.utf8))
-                    })
+                    }, timingState: row["timing_state"], requestTimings: Dictionary(uniqueKeysWithValues:
+                        MentorRequestTimingStage.allCases.compactMap { stage -> (MentorRequestTimingStage, Int64)? in
+                            guard let value: Int64 = row[stage.rawValue] else { return nil }
+                            return (stage, value)
+                        }))
             }
         }
     }

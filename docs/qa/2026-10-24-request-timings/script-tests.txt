@@ -1,0 +1,51 @@
+/opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/_colorize.py:276: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10a4735b0>
+  def _safe_getenv(k: str, fallback: str | None = None) -> str | None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/_colorize.py:276: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10a52c400>
+  def _safe_getenv(k: str, fallback: str | None = None) -> str | None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/opt/homebrew/Cellar/python@3.14/3.14.2_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/_colorize.py:276: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x10a4736a0>
+  def _safe_getenv(k: str, fallback: str | None = None) -> str | None:
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+usage: python3.14 -m unittest [-h] --source-xctestrun SOURCE_XCTESTRUN
+                              --result-bundle-path RESULT_BUNDLE_PATH
+                              [--mentor-streaming] [--request-boundaries]
+                              [--selected-excerpt] [--mentor-request]
+                              [--mentor-uncertainty] [--guidance-selection]
+                              [--mentor-criteria] [--direct-explanation]
+                              [--answer-review] [--lens-library]
+                              [--lens-goals LENS_GOALS]
+                              [--lens-case-ids LENS_CASE_IDS]
+                              [--perspective-understanding]
+                              [--import-connection] [--today-guidance]
+                              [--question-purpose-positive]
+                              [--outcome-guidance] [--result-calibration]
+                              [--history-evidence] [--principle-practice]
+                              [--guidance-evidence] [--topic-boundary]
+                              [--action-clarity] [--action-clarity-remaining]
+                              [--initial-coach-evidence]
+                              [--initial-coach-positive]
+python3.14 -m unittest: error: Choose one operation
+usage: python3.14 -m unittest [-h] --source-xctestrun SOURCE_XCTESTRUN
+                              --result-bundle-path RESULT_BUNDLE_PATH
+                              [--mentor-streaming] [--request-boundaries]
+                              [--selected-excerpt] [--mentor-request]
+                              [--mentor-uncertainty] [--guidance-selection]
+                              [--mentor-criteria] [--direct-explanation]
+                              [--answer-review] [--lens-library]
+                              [--lens-goals LENS_GOALS]
+                              [--lens-case-ids LENS_CASE_IDS]
+                              [--perspective-understanding]
+                              [--import-connection] [--today-guidance]
+                              [--question-purpose-positive]
+                              [--outcome-guidance] [--result-calibration]
+                              [--history-evidence] [--principle-practice]
+                              [--guidance-evidence] [--topic-boundary]
+                              [--action-clarity] [--action-clarity-remaining]
+                              [--initial-coach-evidence]
+                              [--initial-coach-positive]
+python3.14 -m unittest: error: Unknown lens case IDs
+----------------------------------------------------------------------
+Ran 42 tests in 7.671s
+
+OK

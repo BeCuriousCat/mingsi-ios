@@ -185,11 +185,19 @@ enum MentorHTTPAttemptOutcome: String, Sendable {
 }
 enum MentorHTTPObservationError: Error { case unavailable, invalidIdentity, conflict, staleRequest }
 
+enum MentorRequestTimingStage: String, CaseIterable, Sendable {
+    case firstReadableBody = "first_readable_body_ms"
+    case firstVisibleBody = "first_visible_body_ms"
+    case transportFinished = "request_transport_finished_ms"
+    case responseSaved = "response_saved_ms"
+}
+
 protocol MentorHTTPObservationStore: Sendable {
     func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at: Date,
                       outputBudgetField: String?, outputBudget: Int?) async throws
     func recordMetrics(_ metrics: MentorHTTPMetrics, identity: MentorHTTPAttemptIdentity) async throws
     func recordServiceUsage(_ usage: MentorServiceUsage, identity: MentorHTTPAttemptIdentity) async throws
+    func recordTiming(_ stage: MentorRequestTimingStage, elapsedMilliseconds: Int64, identity: MentorHTTPAttemptIdentity) async throws
     func finishAttempt(_ identity: MentorHTTPAttemptIdentity, outcome: MentorHTTPAttemptOutcome, elapsedMilliseconds: Int64) async throws
 }
 
@@ -280,5 +288,10 @@ final class MentorHTTPAttempt: Sendable {
             writeFailure.record()
             throw MentorHTTPObservationError.unavailable
         }
+    }
+
+    func recordTiming(_ stage: MentorRequestTimingStage, elapsedMilliseconds: Int64) async {
+        do { try await store.recordTiming(stage, elapsedMilliseconds: elapsedMilliseconds, identity: identity) }
+        catch { writeFailure.record() }
     }
 }

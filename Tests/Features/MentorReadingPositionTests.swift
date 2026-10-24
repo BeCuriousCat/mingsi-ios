@@ -4,6 +4,43 @@ import UIKit
 
 @MainActor
 final class MentorReadingPositionTests: XCTestCase {
+    func testPresentationExcludesInsetsHiddenAncestorsAndClippedBodyBeforeCountingVisibleText() {
+        let fixture = ReadingScrollFixture()
+        defer { fixture.close() }
+        let coordinator = MentorReadingPositionCoordinator()
+        let geometry = MentorReadingGeometry()
+        defer { geometry.reset(); coordinator.reset() }
+        var presented: [UUID] = []
+        geometry.configure(coordinator: coordinator, lesson: nil, layoutKey: "320/large", canSave: false,
+            save: { _ in }, presented: { presented.append($0) })
+        fixture.scroll.contentInset.top = 60
+        fixture.scroll.contentInset.bottom = 180 // fixed composer / keyboard exclusion
+        fixture.scroll.setContentOffset(.zero, animated: false)
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 400))
+        let marker = MentorReadingMarker.Marker(frame: CGRect(x: 0, y: 10, width: 300, height: 20))
+        marker.itemID = fixture.itemID; marker.geometry = geometry
+        container.addSubview(marker); fixture.scroll.addSubview(container)
+        fixture.window.layoutIfNeeded()
+        geometry.flush()
+        XCTAssertTrue(presented.isEmpty, "Navigation inset is outside the reading region")
+        marker.frame.origin.y = 350
+        geometry.flush()
+        XCTAssertTrue(presented.isEmpty, "Composer inset is outside the reading region")
+        marker.frame.origin.y = 100
+        container.isHidden = true
+        geometry.flush()
+        XCTAssertTrue(presented.isEmpty)
+        container.isHidden = false; container.alpha = 0
+        geometry.flush()
+        XCTAssertTrue(presented.isEmpty)
+        container.alpha = 1; container.clipsToBounds = true; container.frame.size.height = 80
+        geometry.flush()
+        XCTAssertTrue(presented.isEmpty, "A mounted marker clipped by an ancestor is not visible")
+        container.frame.size.height = 400
+        geometry.flush()
+        XCTAssertEqual(presented, [fixture.itemID])
+    }
+
     func testVisibleResponseIsPresentedWithoutLessonAndSuspendedSurfaceStaysInactive() async throws {
         let fixture = ReadingScrollFixture()
         defer { fixture.close() }

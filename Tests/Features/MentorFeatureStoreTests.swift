@@ -142,6 +142,68 @@ final class MentorFeatureStoreTests: XCTestCase {
         }
     }
 
+    func testRequestTimingSeparatesPreviewPresentationFromSavingAndSupportsFastSavedReply() async throws {
+        for (visibleBeforeSave, saveFailsFirst) in [(false, false), (true, false), (true, true)] {
+            let db = try AppDatabase(dbQueue: DatabaseQueue())
+            let repo = SQLiteMentorRepository(database: db)
+            let transport = HeldMentorTransport()
+            let feature = MentorFeatureStore(repository: repo, transport: transport)
+            feature.start(entry: "discuss")
+            try await waitUntil { feature.state.phase == .editing && !feature.state.isTransitioningSession }
+            feature.submit(text: "今天完成改动，先比较动作和实际效果。")
+            try await waitUntil { transport.pending != nil }
+            let request = try XCTUnwrap(transport.request)
+            let token = try XCTUnwrap(request.mentorAuditToken)
+            let progress = try XCTUnwrap(request.mentorStreamProgress)
+            let observations = SQLiteMentorHTTPObservationStore(queue: db.dbQueue)
+            let channel = MentorHTTPObservation(traceID: request.traceID, sessionID: token.sessionID,
+                requestID: token.requestID, requestEpoch: token.requestEpoch,
+                semanticRevision: token.semanticRevision, store: observations)
+            let attempt = try await channel.beginAttempt(protocolKind: .responses)
+            try progress.bindTimingAttempt(attempt)
+            let data = try await MentorStoreFixtureTransport().complete(request)
+            try progress.receive(String(decoding: data, as: UTF8.self))
+            try await waitUntil { !feature.state.streamingPreview.isEmpty }
+            XCTAssertEqual(feature.state.streamingPreviewRequestID, token.requestID)
+            feature.acknowledgeStreamingPreview(requestID: UUID())
+            await progress.flushTimingWrites()
+            var records = try await observations.attempts(requestID: token.requestID)
+            XCTAssertNotNil(records.first?.requestTimings[.firstReadableBody])
+            XCTAssertNil(records.first?.requestTimings[.firstVisibleBody], "State assignment and stale marker do not prove visibility")
+            XCTAssertNil(records.first?.requestTimings[.responseSaved])
+            if visibleBeforeSave { feature.acknowledgeStreamingPreview(requestID: token.requestID) }
+            if saveFailsFirst {
+                try await db.dbQueue.write {
+                    try $0.execute(sql: "CREATE TRIGGER reject_response BEFORE INSERT ON mentor_items WHEN NEW.kind = 'assistant' BEGIN SELECT RAISE(ABORT, 'injected'); END")
+                }
+            }
+            progress.recordTiming(.transportFinished)
+            transport.pending?.resume(returning: data); transport.pending = nil
+            if saveFailsFirst {
+                try await waitUntil { feature.state.canRetryResponseSave }
+                await progress.flushTimingWrites()
+                records = try await observations.attempts(requestID: token.requestID)
+                XCTAssertNil(records.first?.requestTimings[.responseSaved])
+                try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_response") }
+                feature.retryResponseSave()
+            }
+            try await waitUntil { feature.state.phase == .showingResponse }
+            await progress.flushTimingWrites()
+            records = try await observations.attempts(requestID: token.requestID)
+            XCTAssertNotNil(records.first?.requestTimings[.responseSaved])
+            if !visibleBeforeSave {
+                XCTAssertNil(records.first?.requestTimings[.firstVisibleBody])
+                feature.acknowledgeResponse(itemID: try XCTUnwrap(feature.state.responseItemID))
+                await progress.flushTimingWrites()
+            }
+            records = try await observations.attempts(requestID: token.requestID)
+            XCTAssertNotNil(records.first?.requestTimings[.firstVisibleBody])
+            XCTAssertEqual(records.first?.timingState, "recording")
+            let items = try await repo.items(sessionID: token.sessionID)
+            XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 1)
+        }
+    }
+
     func testCancelledStreamCannotUpdatePreviewOrPersistLateAnswer() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let transport = HeldMentorTransport()
