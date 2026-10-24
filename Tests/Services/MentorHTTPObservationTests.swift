@@ -5,6 +5,63 @@ import Synchronization
 @testable import MingSi
 
 final class MentorHTTPObservationTests: XCTestCase {
+    private func fingerprinted(_ identity: MentorHTTPAttemptIdentity, _ fingerprint: String) -> MentorHTTPAttemptIdentity {
+        MentorHTTPAttemptIdentity(attemptID: identity.attemptID, traceID: identity.traceID,
+            sessionID: identity.sessionID, requestID: identity.requestID, requestEpoch: identity.requestEpoch,
+            semanticRevision: identity.semanticRevision, configurationFingerprint: fingerprint)
+    }
+
+    func testConfigurationFingerprintPersistsAndCannotBeReboundByLateObservation() async throws {
+        let (_, store, base) = try fixture()
+        let identity = fingerprinted(base, "cfg1_" + String(repeating: "a", count: 64))
+        let date = Date.now
+        try await store.beginAttempt(identity, protocolKind: .responses, at: date)
+        try await store.beginAttempt(identity, protocolKind: .responses, at: date)
+        let other = fingerprinted(identity, "cfg1_" + String(repeating: "b", count: 64))
+        do { try await store.recordMetrics(MentorHTTPMetrics(fetchKinds: [.network], redirectCount: 0), identity: other); XCTFail("Configuration rebound") }
+        catch MentorHTTPObservationError.conflict { }
+        do { try await store.beginAttempt(other, protocolKind: .responses, at: date); XCTFail("Registration rebound") }
+        catch MentorHTTPObservationError.conflict { }
+        let records = try await store.attempts(requestID: identity.requestID)
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.identity.configurationFingerprint, identity.configurationFingerprint)
+        XCTAssertEqual(records.first?.metricsState, "pending")
+    }
+
+    func testMalformedConfigurationFingerprintCannotPersistPrivateText() async throws {
+        let (_, store, base) = try fixture()
+        for value in ["PRIVATE_KEY_SENTINEL", "cfg1_" + String(repeating: "G", count: 64), "cfg1_abc"] {
+            let identity = fingerprinted(base, value)
+            do { try await store.beginAttempt(identity, protocolKind: .responses, at: .now); XCTFail("Invalid fingerprint") }
+            catch MentorHTTPObservationError.invalidIdentity { }
+        }
+        let records = try await store.attempts(requestID: base.requestID)
+        XCTAssertTrue(records.isEmpty)
+    }
+
+    func testV78UpgradePreservesExistingMetricsAndDoesNotInventConfiguration() async throws {
+        let queue = try DatabaseQueue()
+        var migrator = Self.baseMigrator()
+        SQLiteMentorHTTPObservationStore.registerMigration(on: &migrator)
+        try migrator.migrate(queue, upTo: "v78_mentor_request_timings")
+        let identity = try seed(queue)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO mentor_http_attempts
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind,
+                 dispatch_registered_at, first_readable_body_ms)
+                VALUES (?, ?, ?, ?, 0, 0, 'responses', '2026-10-24T00:00:00Z', 25)
+                """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString,
+                    identity.sessionID.uuidString, identity.requestID.uuidString])
+        }
+        try migrator.migrate(queue)
+        let records = try await SQLiteMentorHTTPObservationStore(queue: queue).attempts(requestID: identity.requestID)
+        XCTAssertNil(records.first?.identity.configurationFingerprint)
+        XCTAssertEqual(records.first?.requestTimings[.firstReadableBody], 25)
+        let draft = try await queue.read { try String.fetchOne($0, sql: "SELECT draft_text FROM mentor_sessions") }
+        XCTAssertEqual(draft, "preserve draft")
+    }
+
     func testRequestTimingsUseOneClockAndFirstReadableBodyExcludesKeysReasoningAndWhitespace() async throws {
         let (_, store, identity) = try fixture()
         let channel = MentorHTTPObservation(traceID: identity.traceID, sessionID: identity.sessionID, requestID: identity.requestID,

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct GLMClientConfiguration: Hashable {
     enum ProtocolKind: String, Hashable, CaseIterable {
@@ -74,6 +75,35 @@ struct GLMClientConfiguration: Hashable {
         case .responses:
             return Self.endpoint(from: Self.baseURL(from: baseURL, protocolKind: .responses), pathSuffix: "responses")
         }
+    }
+
+    /// A versioned grouping key for configuration, never a credential/account
+    /// identity or proof of the upstream model. Do not hash API keys or URLs
+    /// carrying credentials/query parameters. Historical/unsupported cases stay unknown.
+    var mentorObservationFingerprint: String? {
+        guard let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false),
+              let scheme = parts.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = parts.host?.lowercased(), !host.isEmpty,
+              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+              temperature.isFinite, requestTimeout.isFinite else { return nil }
+        struct Fields: Encodable {
+            let scheme: String
+            let host: String
+            let port: Int?
+            let path: String
+            let protocolKind: String
+            let requestedModel: String
+            let temperature: Double
+            let idleTimeout: Double
+            let jsonResponseFormat: Bool
+        }
+        let fields = Fields(scheme: scheme, host: host, port: parts.port, path: parts.percentEncodedPath,
+            protocolKind: protocolKind.rawValue, requestedModel: model, temperature: temperature,
+            idleTimeout: requestTimeout, jsonResponseFormat: usesJSONResponseFormat)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(fields) else { return nil }
+        return "cfg1_" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     static func normalizeBaseURL(_ url: URL, protocolKind: ProtocolKind = .openAICompatible) -> URL {
@@ -445,7 +475,8 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         let kind: MentorHTTPProtocol = configuration.protocolKind == .responses ? .responses : .openAICompatible
         let budget = mentorOutputBudgetFields(for: request)
         let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind,
-            outputBudgetField: budget.field, outputBudget: budget.value)
+            outputBudgetField: budget.field, outputBudget: budget.value,
+            configurationFingerprint: configuration.mentorObservationFingerprint)
         if let attempt { try request.mentorStreamProgress?.bindTimingAttempt(attempt) }
         let result: Result<Data, Error>
         do {

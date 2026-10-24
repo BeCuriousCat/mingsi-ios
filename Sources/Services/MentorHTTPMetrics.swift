@@ -175,6 +175,14 @@ struct MentorHTTPAttemptIdentity: Codable, Equatable, Sendable {
     let requestID: UUID
     let requestEpoch: Int
     let semanticRevision: Int
+    let configurationFingerprint: String?
+
+    init(attemptID: UUID, traceID: UUID, sessionID: UUID, requestID: UUID,
+         requestEpoch: Int, semanticRevision: Int, configurationFingerprint: String? = nil) {
+        self.attemptID = attemptID; self.traceID = traceID; self.sessionID = sessionID; self.requestID = requestID
+        self.requestEpoch = requestEpoch; self.semanticRevision = semanticRevision
+        self.configurationFingerprint = configurationFingerprint
+    }
 }
 
 enum MentorHTTPProtocol: String, Sendable { case openAICompatible, responses }
@@ -231,9 +239,11 @@ final class MentorHTTPObservation: Hashable, Sendable {
     static func == (lhs: MentorHTTPObservation, rhs: MentorHTTPObservation) -> Bool { lhs === rhs }
     func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) }
 
-    func beginAttempt(protocolKind: MentorHTTPProtocol, outputBudgetField: String? = nil, outputBudget: Int? = nil) async throws -> MentorHTTPAttempt {
+    func beginAttempt(protocolKind: MentorHTTPProtocol, outputBudgetField: String? = nil, outputBudget: Int? = nil,
+                      configurationFingerprint: String? = nil) async throws -> MentorHTTPAttempt {
         let identity = MentorHTTPAttemptIdentity(attemptID: UUID(), traceID: traceID,
-            sessionID: sessionID, requestID: requestID, requestEpoch: requestEpoch, semanticRevision: semanticRevision)
+            sessionID: sessionID, requestID: requestID, requestEpoch: requestEpoch, semanticRevision: semanticRevision,
+            configurationFingerprint: configurationFingerprint)
         let started = ContinuousClock.now
         // Registration must succeed before dispatch. It proves intent to dispatch,
         // not that one HTTP load occurred; only native metrics can supply that.

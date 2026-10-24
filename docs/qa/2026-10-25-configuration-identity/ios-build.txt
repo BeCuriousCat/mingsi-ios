@@ -1,0 +1,12 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project MingSi.xcodeproj -scheme MingSi -configuration Debug -destination "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4" -derivedDataPath /tmp/mingsi-native-candidate-20261025/deriveddata CODE_SIGNING_ALLOWED=NO MINGSI_SOURCE_REVISION=af68b5f64068c847b924fa22b94672375392a46f MINGSI_SOURCE_STATE=dirty build-for-testing
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+    MINGSI_SOURCE_REVISION = af68b5f64068c847b924fa22b94672375392a46f
+    MINGSI_SOURCE_STATE = dirty
+
+Resolve Package Graph
+
+** TEST BUILD SUCCEEDED **
+App and full test targets compiled; no candidate test execution/installation.

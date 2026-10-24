@@ -17,6 +17,7 @@ network = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(network)
 
 START, UNTIL = "2026-10-01T00:00:00Z", "2026-10-08T00:00:00Z"
+CONFIGURATION = "cfg1_" + "a" * 64
 
 
 def fixture():
@@ -25,7 +26,7 @@ def fixture():
                "serverPushTransactionCount": 0, "unknownTransactionCount": 0, "redirectCount": 1}
     row = {"schema_version": 1, "attempt_id": str(uuid4()), "trace_id": str(uuid4()), "session_id": session,
            "request_id": request, "request_epoch": 0, "semantic_revision": 0,
-           "protocol_kind": "responses", "dispatch_registered_at": "2026-10-02T00:00:01Z",
+           "protocol_kind": "responses", "configuration_fingerprint": CONFIGURATION, "dispatch_registered_at": "2026-10-02T00:00:01Z",
            "terminal_state": "returned_data", "metrics_state": "received", "metrics_json": json.dumps(metrics),
            "output_budget_field": "max_output_tokens", "output_budget": 16000,
            "usage_state": "received", "usage_json": json.dumps({"source": "responses_event_usage",
@@ -44,6 +45,37 @@ def fixture():
 class MentorNetworkSummaryTests(unittest.TestCase):
     def report(self, document, **kwargs):
         return network.summarize(document, START, UNTIL, **kwargs)
+
+    def test_different_configurations_never_share_latency_distribution(self):
+        doc, row = fixture()
+        other = copy.deepcopy(row)
+        other.update(attempt_id=str(uuid4()), configuration_fingerprint="cfg1_" + "b" * 64,
+                     first_readable_body_ms=250, first_visible_body_ms=400,
+                     request_transport_finished_ms=600, response_saved_ms=800)
+        doc["sections"]["mentor_http_attempts"].append(other)
+        report = self.report(doc)
+        groups = report["timing_by_configuration_protocol_budget_and_outcome"]
+        self.assertEqual(len(groups), 2)
+        values = sorted(group["first_readable_body_ms"]["returned_data"]["p50_ms"] for group in groups.values())
+        self.assertEqual(values, [25, 250])
+        self.assertFalse(report["configuration_binding"]["single_known_configuration"])
+        self.assertTrue(report["budget"]["stop_new_dispatches_until_reconciled"])
+
+    def test_legacy_unknown_configuration_cannot_be_used_for_latency_or_fixed_batch(self):
+        doc, row = fixture(); del row["configuration_fingerprint"]
+        report = self.report(doc)
+        self.assertEqual(report["configuration_binding"]["unknown_attempts"], 1)
+        self.assertEqual(report["native_http"]["exact_total_if_fully_observed"], 2)
+        self.assertTrue(report["budget"]["stop_new_dispatches_until_reconciled"])
+        timing = next(iter(report["timing_by_configuration_protocol_budget_and_outcome"].values()))
+        self.assertIsNone(timing["first_readable_body_ms"]["returned_data"]["p50_ms"])
+        self.assertEqual(timing["first_readable_body_ms"]["returned_data"]["missing_conflicting_or_unbound"], 1)
+
+    def test_malformed_fingerprint_is_rejected_without_echoing_private_value(self):
+        for value in [True, 12, "PRIVATE_KEY_SENTINEL", "cfg1_" + "z" * 64]:
+            doc, row = fixture(); row["configuration_fingerprint"] = value
+            with self.assertRaisesRegex(network.InvalidInput, "^invalid_configuration_fingerprint$"):
+                self.report(doc)
 
     def test_counts_native_transactions_not_one_dispatch_and_keeps_cache_separate(self):
         doc, _ = fixture()
@@ -140,14 +172,14 @@ class MentorNetworkSummaryTests(unittest.TestCase):
     def test_failed_body_and_visible_timings_report_missing_separately_and_never_use_terminal_as_first(self):
         doc, row = fixture(); row.update(terminal_state="failed", first_readable_body_ms=None, first_visible_body_ms=None, response_saved_ms=None)
         report = self.report(doc)
-        timings = report["timing_by_protocol_budget_and_outcome"]["responses:max_output_tokens:16000"]
+        timings = report["timing_by_configuration_protocol_budget_and_outcome"][f"{CONFIGURATION}/responses:max_output_tokens:16000"]
         self.assertIsNone(timings["first_readable_body_ms"]["failed"]["p50_ms"])
-        self.assertEqual(timings["first_readable_body_ms"]["failed"]["missing_or_conflicting"], 1)
+        self.assertEqual(timings["first_readable_body_ms"]["failed"]["missing_conflicting_or_unbound"], 1)
         self.assertEqual(timings["request_transport_finished_ms"]["failed"]["p50_ms"], 60)
 
     def test_conflicting_timing_excluded_even_when_values_present(self):
         doc, row = fixture(); row["first_visible_body_ms"] = 1
-        timing = self.report(doc)["timing_by_protocol_budget_and_outcome"]["responses:max_output_tokens:16000"]
+        timing = self.report(doc)["timing_by_configuration_protocol_budget_and_outcome"][f"{CONFIGURATION}/responses:max_output_tokens:16000"]
         self.assertEqual(timing["first_readable_body_ms"]["returned_data"]["count"], 0)
 
     def test_different_output_budgets_never_share_one_latency_percentile(self):
@@ -158,9 +190,9 @@ class MentorNetworkSummaryTests(unittest.TestCase):
                       request_transport_finished_ms=600, response_saved_ms=800)
         doc["sections"]["mentor_http_attempts"].append(second)
         report = self.report(doc)
-        timing = report["timing_by_protocol_budget_and_outcome"]
-        self.assertEqual(timing["responses:max_output_tokens:8192"]["first_readable_body_ms"]["returned_data"]["p50_ms"], 250)
-        self.assertEqual(timing["responses:max_output_tokens:16000"]["first_readable_body_ms"]["returned_data"]["p50_ms"], 25)
+        timing = report["timing_by_configuration_protocol_budget_and_outcome"]
+        self.assertEqual(timing[f"{CONFIGURATION}/responses:max_output_tokens:8192"]["first_readable_body_ms"]["returned_data"]["p50_ms"], 250)
+        self.assertEqual(timing[f"{CONFIGURATION}/responses:max_output_tokens:16000"]["first_readable_body_ms"]["returned_data"]["p50_ms"], 25)
 
     def test_observation_after_snapshot_is_rejected_and_early_snapshot_is_flagged(self):
         doc, _ = fixture(); doc["created_at"] = "2026-10-02T00:00:00Z"

@@ -26,6 +26,7 @@ final class MentorPersistenceTests: XCTestCase {
         let record = try XCTUnwrap(records.first)
         XCTAssertEqual(record["request_id"] as? String, requestID.uuidString)
         XCTAssertEqual(record["trace_id"] as? String, request.traceID.uuidString)
+        XCTAssertEqual(record["configuration_fingerprint"] as? String, "cfg1_" + String(repeating: "c", count: 64))
         XCTAssertEqual(record["terminal_state"] as? String, "returned_data")
         XCTAssertEqual(record["metrics_state"] as? String, "pending")
         XCTAssertEqual(record["output_budget_field"] as? String, nil)
@@ -45,7 +46,7 @@ final class MentorPersistenceTests: XCTestCase {
         XCTAssertFalse(numericSection.contains("PRIVATE_"))
         XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
             "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget", "usage_state", "usage_json", "timing_state",
-            "first_readable_body_ms", "first_visible_body_ms", "request_transport_finished_ms", "response_saved_ms"]))
+            "first_readable_body_ms", "first_visible_body_ms", "request_transport_finished_ms", "response_saved_ms", "configuration_fingerprint"]))
         try await mentor.deleteSession(id: sessionID)
         let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
         XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)
@@ -59,6 +60,7 @@ final class MentorPersistenceTests: XCTestCase {
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v76_mentor_http_output_budget"))
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v77_mentor_service_usage"))
             XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v78_mentor_request_timings"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v79_mentor_configuration_fingerprint"))
             XCTAssertFalse(try db.tableExists("mentor_http_attempts"))
         }
     }
@@ -66,7 +68,8 @@ final class MentorPersistenceTests: XCTestCase {
     private final class HTTPBindingProbeClient: LLMClient {
         func complete(_ request: LLMRequest) async throws -> Data {
             let channel = try XCTUnwrap(request.mentorHTTPObservation)
-            let attempt = try await channel.beginAttempt(protocolKind: .responses)
+            let attempt = try await channel.beginAttempt(protocolKind: .responses,
+                configurationFingerprint: "cfg1_" + String(repeating: "c", count: 64))
             let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 12,
                 "output_tokens": 4, "total_tokens": 16, "private": "PRIVATE_USAGE_SENTINEL"],
                 "model": "PRIVATE_MODEL_SENTINEL"], source: .responsesEvent))

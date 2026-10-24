@@ -1,0 +1,233 @@
+{
+  "report_schema_version": 2,
+  "data_kind": "synthetic",
+  "goal_status": "not_assessed",
+  "window": {
+    "from_inclusive": "2026-10-24T01:44:29+00:00",
+    "until_exclusive": "2026-10-24T01:44:30+00:00",
+    "export_created_at": "2026-10-24T01:44:30+00:00",
+    "snapshot_before_window_end": false
+  },
+  "application_requests": 4,
+  "application_request_states": {
+    "in_flight": 4
+  },
+  "requests_without_attempt_observation": 0,
+  "dispatch_registrations": 4,
+  "dispatches_for_requests_started_outside_window": 0,
+  "transport_terminal_states": {
+    "cancelled": 1,
+    "failed": 1,
+    "returned_data": 2
+  },
+  "protocols": {
+    "openAICompatible": 1,
+    "responses": 3
+  },
+  "configuration_binding": {
+    "known_fingerprints": {},
+    "unknown_attempts": 4,
+    "single_known_configuration": false
+  },
+  "native_http": {
+    "known_network_lower_bound": 5,
+    "exact_total_if_fully_observed": 5,
+    "attempts_with_unknown_count": 0,
+    "cache_transactions_observed": 0
+  },
+  "budget": {
+    "registered_max_http": 50,
+    "observed_over_limit": false,
+    "remaining_if_fully_observed": 45,
+    "unknown_output_budget_attempts": 1,
+    "stop_new_dispatches_until_reconciled": true,
+    "not_authorization_to_send": true
+  },
+  "reported_usage": {
+    "states": {
+      "pending": 1,
+      "received": 3
+    },
+    "usable_reports": 3,
+    "tokens_by_field": {
+      "inputTokens": {
+        "sum_reported": 36,
+        "report_count": 3
+      },
+      "outputTokens": {
+        "sum_reported": 24,
+        "report_count": 3
+      },
+      "totalTokens": {
+        "sum_reported": 60,
+        "report_count": 3
+      },
+      "reasoningTokens": {
+        "sum_reported": 15,
+        "report_count": 3
+      }
+    },
+    "verified_cost": null
+  },
+  "timing_by_configuration_protocol_budget_and_outcome": {
+    "unknown_configuration/openAICompatible:unknown": {
+      "first_readable_body_ms": {
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "first_visible_body_ms": {
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "request_transport_finished_ms": {
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "response_saved_ms": {
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      }
+    },
+    "unknown_configuration/responses:max_output_tokens:16000": {
+      "first_readable_body_ms": {
+        "cancelled": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "failed": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "first_visible_body_ms": {
+        "cancelled": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "failed": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "request_transport_finished_ms": {
+        "cancelled": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "failed": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      },
+      "response_saved_ms": {
+        "cancelled": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "failed": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        },
+        "returned_data": {
+          "count": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "maximum_ms": null,
+          "attempts": 1,
+          "missing_conflicting_or_unbound": 1
+        }
+      }
+    }
+  },
+  "percentiles": "nearest_rank",
+  "latency_scope": "configuration_grouped_but_build_prompt_content_and_account_unverified; diagnostic_only",
+  "duplicate_identical_rows_ignored": 0,
+  "complete_usable_responses": null,
+  "limits": [
+    "One export cannot recover deleted requests or failed observation writes; preregistered request/UI records remain necessary.",
+    "Native metrics do not reveal provider-side retries or establish billing or upstream identity.",
+    "A fingerprint groups client configuration, not API keys, accounts or verified upstream identity; build/Prompt/content still need registration.",
+    "Transport returned_data or a committed request does not independently prove validated, saved, visible and useful content.",
+    "This report does not open a formal window, authorize a paid call, determine G3 success or establish human benefit."
+  ]
+}

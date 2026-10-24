@@ -61,6 +61,10 @@ def parse_attempt(row):
     kind = row.get("protocol_kind")
     if kind not in {"responses", "openAICompatible"}:
         raise InvalidInput("unsupported_transport_protocol")
+    fingerprint = row.get("configuration_fingerprint")
+    if fingerprint is not None and (not isinstance(fingerprint, str) or len(fingerprint) != 69
+            or not fingerprint.startswith("cfg1_") or any(c not in "0123456789abcdef" for c in fingerprint[5:])):
+        raise InvalidInput("invalid_configuration_fingerprint")
     terminal = row.get("terminal_state")
     metrics_state = row.get("metrics_state")
     usage_state = row.get("usage_state", "pending")
@@ -124,7 +128,7 @@ def parse_attempt(row):
             "revision": nonnegative(row.get("semantic_revision")), "protocol": kind,
             "at": instant(row.get("dispatch_registered_at")), "terminal": terminal,
             "metrics_state": metrics_state, "network": network, "counters": counters,
-            "budget_known": budget_known, "timing_state": timing_state,
+            "budget_known": budget_known, "timing_state": timing_state, "configuration": fingerprint,
             "budget_scope": f"{kind}:{field}:{amount}" if budget_known else f"{kind}:unknown",
             "timings": timings, "usage_state": usage_state, "usage": usage}
 
@@ -162,32 +166,39 @@ def summarize(document, start, until, max_http=50, data_kind="unknown"):
     exact = lower_bound if unknown == 0 and unobserved == 0 else None
     unknown_budget = sum(not a["budget_known"] for a in dispatches)
     pending = sum(a["terminal"] in {"pending", "conflict"} for a in dispatches)
-    safe_to_continue = exact is not None and pending == 0 and unknown_budget == 0 and exact < max_http
+    configurations = Counter(a["configuration"] for a in dispatches if a["configuration"] is not None)
+    unknown_configuration = sum(a["configuration"] is None for a in dispatches)
+    single_configuration = len(configurations) == 1 and unknown_configuration == 0
+    safe_to_continue = exact is not None and pending == 0 and unknown_budget == 0 and single_configuration and exact < max_http
     protocols = Counter(a["protocol"] for a in dispatches)
     states = Counter(a["terminal"] for a in dispatches)
     timing_report = {}
-    for scope in sorted({a["budget_scope"] for a in dispatches}):
-        scoped = [a for a in dispatches if a["budget_scope"] == scope]
+    for configuration, budget_scope in sorted({(a["configuration"] or "unknown_configuration", a["budget_scope"]) for a in dispatches}):
+        scope = f"{configuration}/{budget_scope}"
+        scoped = [a for a in dispatches if (a["configuration"] or "unknown_configuration") == configuration and a["budget_scope"] == budget_scope]
         timing_report[scope] = {}
         for stage in STAGES:
             timing_report[scope][stage] = {}
             for state in sorted({a["terminal"] for a in scoped}):
                 group = [a for a in scoped if a["terminal"] == state]
-                values = [a["timings"][stage] for a in group if a["timing_state"] != "conflict" and a["timings"][stage] is not None]
+                values = [a["timings"][stage] for a in group if a["configuration"] is not None and a["timing_state"] != "conflict" and a["timings"][stage] is not None]
                 timing_report[scope][stage][state] = {**distribution(values), "attempts": len(group),
-                                                     "missing_or_conflicting": len(group) - len(values)}
+                                                     "missing_conflicting_or_unbound": len(group) - len(values)}
     usage_sums = {}
     for key in USAGE_COUNTS:
         values = [a["usage"][key] for a in dispatches if a["usage"] is not None and a["usage"][key] is not None]
         usage_sums[key] = {"sum_reported": sum(values) if values else None, "report_count": len(values)}
     return {
-        "report_schema_version": 1, "data_kind": data_kind, "goal_status": "not_assessed",
+        "report_schema_version": 2, "data_kind": data_kind, "goal_status": "not_assessed",
         "window": {"from_inclusive": start.isoformat(), "until_exclusive": until.isoformat(),
                    "export_created_at": snapshot.isoformat(), "snapshot_before_window_end": snapshot < until},
         "application_requests": len(cohort), "application_request_states": dict(sorted(Counter(r["state"] for r in cohort.values()).items())),
         "requests_without_attempt_observation": unobserved,
         "dispatch_registrations": len(dispatches), "dispatches_for_requests_started_outside_window": sum(a["request"] not in cohort for a in dispatches),
         "transport_terminal_states": dict(sorted(states.items())), "protocols": dict(sorted(protocols.items())),
+        "configuration_binding": {"known_fingerprints": dict(sorted(configurations.items())),
+                                  "unknown_attempts": unknown_configuration,
+                                  "single_known_configuration": single_configuration},
         "native_http": {"known_network_lower_bound": lower_bound, "exact_total_if_fully_observed": exact,
                         "attempts_with_unknown_count": unknown,
                         "cache_transactions_observed": sum((a["counters"] or {}).get("cacheTransactionCount", 0) for a in dispatches if a["metrics_state"] == "received")},
@@ -201,13 +212,13 @@ def summarize(document, start, until, max_http=50, data_kind="unknown"):
                            "usable_reports": sum(a["usage"] is not None for a in dispatches),
                            "tokens_by_field": usage_sums,
                            "verified_cost": None},
-        "timing_by_protocol_budget_and_outcome": timing_report, "percentiles": "nearest_rank",
-        "latency_scope": "unverified_build_prompt_and_service_binding; diagnostic_only",
+        "timing_by_configuration_protocol_budget_and_outcome": timing_report, "percentiles": "nearest_rank",
+        "latency_scope": "configuration_grouped_but_build_prompt_content_and_account_unverified; diagnostic_only",
         "duplicate_identical_rows_ignored": duplicate_requests + duplicate_attempts,
         "complete_usable_responses": None,
         "limits": ["One export cannot recover deleted requests or failed observation writes; preregistered request/UI records remain necessary.",
                    "Native metrics do not reveal provider-side retries or establish billing or upstream identity.",
-                   "Build, Prompt, content and service configuration are not bound by this tool; never pool candidates based on this report.",
+                   "A fingerprint groups client configuration, not API keys, accounts or verified upstream identity; build/Prompt/content still need registration.",
                    "Transport returned_data or a committed request does not independently prove validated, saved, visible and useful content.",
                    "This report does not open a formal window, authorize a paid call, determine G3 success or establish human benefit."]}
 

@@ -85,6 +85,11 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 }
             }
         }
+        migrator.registerMigration("v79_mentor_configuration_fingerprint") { db in
+            try db.alter(table: "mentor_http_attempts") { t in
+                t.add(column: "configuration_fingerprint", .text)
+            }
+        }
     }
 
     func beginAttempt(_ identity: MentorHTTPAttemptIdentity, protocolKind: MentorHTTPProtocol, at date: Date,
@@ -99,7 +104,7 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
         default: validBudget = false
         }
         guard identity.requestEpoch >= 0, identity.semanticRevision >= 0, date.timeIntervalSince1970.isFinite,
-              validBudget else {
+              validBudget, Self.isValidFingerprint(identity.configurationFingerprint) else {
             throw MentorHTTPObservationError.invalidIdentity
         }
         let timestamp = ISO8601DateFormatter().string(from: date)
@@ -122,11 +127,11 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
             }
             try db.execute(sql: """
                 INSERT INTO mentor_http_attempts
-                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind, dispatch_registered_at, output_budget_field, output_budget)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (attempt_id, trace_id, session_id, request_id, request_epoch, semantic_revision, protocol_kind, dispatch_registered_at, output_budget_field, output_budget, configuration_fingerprint)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [identity.attemptID.uuidString, identity.traceID.uuidString, identity.sessionID.uuidString,
                     identity.requestID.uuidString, identity.requestEpoch, identity.semanticRevision, protocolKind.rawValue, timestamp,
-                    outputBudgetField, outputBudget])
+                    outputBudgetField, outputBudget, identity.configurationFingerprint])
         }
     }
 
@@ -232,7 +237,8 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
                 let metricsJSON: String? = row["metrics_json"]
                 let usageJSON: String? = row["usage_json"]
                 return MentorHTTPAttemptRecord(identity: MentorHTTPAttemptIdentity(attemptID: attemptID, traceID: traceID,
-                    sessionID: sessionID, requestID: requestID, requestEpoch: row["request_epoch"], semanticRevision: row["semantic_revision"]),
+                    sessionID: sessionID, requestID: requestID, requestEpoch: row["request_epoch"], semanticRevision: row["semantic_revision"],
+                    configurationFingerprint: row["configuration_fingerprint"]),
                     protocolKind: kind, terminalState: row["terminal_state"], elapsedMilliseconds: row["elapsed_ms"],
                     metricsState: row["metrics_state"], metrics: try metricsJSON.map { try JSONDecoder().decode(MentorHTTPMetrics.self, from: Data($0.utf8)) },
                     outputBudgetField: row["output_budget_field"], outputBudget: row["output_budget"],
@@ -254,7 +260,16 @@ final class SQLiteMentorHTTPObservationStore: MentorHTTPObservationStore {
               (row["request_id"] as String) == identity.requestID.uuidString,
               (row["trace_id"] as String) == identity.traceID.uuidString,
               (row["request_epoch"] as Int) == identity.requestEpoch,
-              (row["semantic_revision"] as Int) == identity.semanticRevision else { throw MentorHTTPObservationError.conflict }
+              (row["semantic_revision"] as Int) == identity.semanticRevision,
+              (row["configuration_fingerprint"] as String?) == identity.configurationFingerprint else { throw MentorHTTPObservationError.conflict }
         return row
+    }
+
+    private static func isValidFingerprint(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let bytes = Array(value.utf8)
+        return bytes.count == 69 && value.hasPrefix("cfg1_") && bytes.dropFirst(5).allSatisfy {
+            (48...57).contains($0) || (97...102).contains($0)
+        }
     }
 }

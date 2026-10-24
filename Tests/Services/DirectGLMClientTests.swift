@@ -3,6 +3,55 @@ import Synchronization
 @testable import MingSi
 
 final class DirectGLMClientTests: XCTestCase {
+    func testObservationFingerprintIsStableAndSeparatesServiceModelAndExecutionSettings() throws {
+        let baseline = GLMClientConfiguration(baseURL: URL(string: "https://private-service.test/v1")!, model: "PRIVATE_MODEL_SENTINEL")
+        let fingerprint = try XCTUnwrap(baseline.mentorObservationFingerprint)
+        XCTAssertEqual(fingerprint.count, 69)
+        XCTAssertTrue(fingerprint.hasPrefix("cfg1_"))
+        XCTAssertFalse(fingerprint.contains("PRIVATE")); XCTAssertFalse(fingerprint.contains("private-service"))
+        XCTAssertEqual(fingerprint, GLMClientConfiguration(endpoint: baseline.endpoint, model: baseline.model).mentorObservationFingerprint)
+        let variants = [
+            GLMClientConfiguration(baseURL: URL(string: "https://other.test/v1")!, model: baseline.model),
+            GLMClientConfiguration(baseURL: URL(string: "https://private-service.test/other")!, model: baseline.model),
+            GLMClientConfiguration(baseURL: baseline.baseURL, model: "another-model"),
+            GLMClientConfiguration(baseURL: baseline.baseURL, model: baseline.model, temperature: 0.5),
+            GLMClientConfiguration(baseURL: baseline.baseURL, model: baseline.model, requestTimeout: 30),
+            GLMClientConfiguration(baseURL: baseline.baseURL, model: baseline.model, protocolKind: .responses),
+            GLMClientConfiguration(baseURL: baseline.baseURL, model: baseline.model, usesJSONResponseFormat: false)
+        ]
+        for variant in variants {
+            XCTAssertNotNil(variant.mentorObservationFingerprint)
+            XCTAssertNotEqual(fingerprint, variant.mentorObservationFingerprint)
+        }
+    }
+
+    func testObservationFingerprintNeverHashesURLCredentialsQueryOrInvalidNumbers() {
+        for address in ["https://user:PRIVATE_PASSWORD@test.invalid/v1", "https://test.invalid/v1?key=PRIVATE_KEY",
+                        "https://test.invalid/v1#PRIVATE_FRAGMENT"] {
+            XCTAssertNil(GLMClientConfiguration(baseURL: URL(string: address)!).mentorObservationFingerprint)
+        }
+        XCTAssertNil(GLMClientConfiguration(temperature: .nan).mentorObservationFingerprint)
+        XCTAssertNil(GLMClientConfiguration(requestTimeout: .infinity).mentorObservationFingerprint)
+    }
+
+    @MainActor
+    func testActualDispatchBindsConfigurationFingerprintWithoutSendingItToModel() async throws {
+        for kind in GLMClientConfiguration.ProtocolKind.allCases {
+            GLMStubURLProtocol.requestBodies = []
+            GLMStubURLProtocol.responses = [.init(statusCode: 200, body: kind == .responses ? responsesSSE() : #"{"choices":[]}"#)]
+            let configuration = GLMClientConfiguration(baseURL: URL(string: "https://custom.test/v1")!, model: "fixture-model", protocolKind: kind)
+            let store = RecordingHTTPObservationStore()
+            var request = makeRequest()
+            request.mentorExecutionPolicy = kind == .responses ? .responses : .m1
+            request.mentorHTTPObservation = observationChannel(request, store: store)
+            _ = try await makeClient(configuration: configuration).complete(request)
+            let snapshot = await store.snapshot()
+            XCTAssertEqual(snapshot.identities.first?.configurationFingerprint, configuration.mentorObservationFingerprint)
+            XCTAssertEqual(snapshot.identities.count, 1)
+            XCTAssertFalse(try XCTUnwrap(GLMStubURLProtocol.requestBodies.first).contains("cfg1_"))
+        }
+    }
+
     @MainActor
     func testChatUsageOnlyEventIsRecordedAfterStopBeforeDoneWithoutBecomingContent() async throws {
         let body = #"""
