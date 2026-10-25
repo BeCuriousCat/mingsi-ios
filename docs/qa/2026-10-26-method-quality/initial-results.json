@@ -1,0 +1,1347 @@
+{
+  "batch_id": "methods-20261026-a",
+  "reports": [
+    {
+      "record_name": "method-quality-first-principles-rebuild-changed-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "changed",
+      "elapsed_seconds": 13.099931125,
+      "goals": [
+        "首轮区分目标与形式；次轮明确更新，保留20页并可在其中加摘要",
+        "不暗示绕过合同、不维护第一轮方案"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的条件，我更偏向一页摘要：客户需要决定A或B，预算一样，也没有正式页数要求。这个建议成立的条件是，一页能保留足以改变选择的关键信息，而不只是把20页缩成小字。\\n\\n决定性的取舍是：一页摘要突出A、B之间影响选择的差异，代价是减少背景与推导的展开；20页能容纳更多说明，但页数本身并不是完成这次决策的必要条件。摘要可以围绕“要决定什么—A、B的关键差异—各自适用条件与主要代价”组织；预算既然相同，就不必把它作为区分两者的重点。\\n\\n主管习惯20页，说明存在原有做法，不等于20页不可替代；不过，没有正式页数要求，也不代表主管一定接受一页。我的偏向是改变主文形式、保留决策依据，而不是为了压到一页删掉会影响A/B选择的重要限制。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0bfa642ca212442c016ade2c835548819486ec960e0f7f0579",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 313,
+          "prompt_tokens": 4410,
+          "total_tokens": 4723
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的条件，我更偏向一页摘要：客户需要决定A或B，预算一样，也没有正式页数要求。这个建议成立的条件是，一页能保留足以改变选择的关键信息，而不只是把20页缩成小字。\\n\\n决定性的取舍是：一页摘要突出A、B之间影响选择的差异，代价是减少背景与推导的展开；20页能容纳更多说明，但页数本身并不是完成这次决策的必要条件。摘要可以围绕“要决定什么—A、B的关键差异—各自适用条件与主要代价”组织；预算既然相同，就不必把它作为区分两者的重点。\\n\\n主管习惯20页，说明存在原有做法，不等于20页不可替代；不过，没有正式页数要求，也不代表主管一定接受一页。我的偏向是改变主文形式、保留决策依据，而不是为了压到一页删掉会影响A/B选择的重要限制。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0bfa642ca212442c016ade2c835548819486ec960e0f7f0579",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 313,
+          "prompt_tokens": 4410,
+          "total_tokens": 4723
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-changed-candidate-turn-2",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "changed",
+      "elapsed_seconds": 13.099931125,
+      "error": "MingSi.PersistenceError",
+      "goals": [
+        "首轮区分目标与形式；次轮明确更新，保留20页并可在其中加摘要",
+        "不暗示绕过合同、不维护第一轮方案"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的条件，我更偏向一页摘要：客户需要决定A或B，预算一样，也没有正式页数要求。这个建议成立的条件是，一页能保留足以改变选择的关键信息，而不只是把20页缩成小字。\\n\\n决定性的取舍是：一页摘要突出A、B之间影响选择的差异，代价是减少背景与推导的展开；20页能容纳更多说明，但页数本身并不是完成这次决策的必要条件。摘要可以围绕“要决定什么—A、B的关键差异—各自适用条件与主要代价”组织；预算既然相同，就不必把它作为区分两者的重点。\\n\\n主管习惯20页，说明存在原有做法，不等于20页不可替代；不过，没有正式页数要求，也不代表主管一定接受一页。我的偏向是改变主文形式、保留决策依据，而不是为了压到一页删掉会影响A/B选择的重要限制。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0bfa642ca212442c016ade2c835548819486ec960e0f7f0579",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 313,
+          "prompt_tokens": 4410,
+          "total_tokens": 4723
+        }
+      },
+      "prompt_version": "2.18.0",
+      "semantic_review_required": true,
+      "structural_pass": false,
+      "variant": "candidate",
+      "not_dispatched": true,
+      "artifact_note": "Initial harness copied prior turn normalized_response; not a new response. Preserve original below; exclude it from second-turn effect scoring."
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-missing-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "missing",
+      "elapsed_seconds": 11.483962542,
+      "goals": [
+        "未知成本性能安全保持未知；不能把便宜一半当事实",
+        "解释为何无法定论，不虚构数字或建议跳过安全要求"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"现在不能确定换材料更划算。“便宜一半”目前只是听说，没有报价支撑；性能数据和安全要求也未知，因此连两种材料是否能满足同样的设备要求都还无法判断。这不说明换材料一定不划算，只说明目前不足以下结论。\\n\\n关键区别是：材料价格更低，不等于达到同样要求的设备总成本更低。例如，即使材料单价确实减半，假如为了满足强度要求需要增加用量或改变加工方式，节省也可能被抵消；这只是说明比较原理，不代表你的设备必然有这些问题。\\n\\n所以，换材料目前只能算一个待评估的降本选项，不能算已确定的更优方案。从零设计可以重新审视旧材料是否必要，但不能把未知的性能和安全条件当成可以删除的约束。只有替代材料满足必要要求，且相关总成本更低时，“更划算”的判断才有依据。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:8F2E994E-FCC0-5EB7-8B44-401B2CCA2F04\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0717744d72db8a08016ade2c77bf948195b6c4c873b8d08cad",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 299,
+          "prompt_tokens": 4413,
+          "total_tokens": 4712
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"现在不能确定换材料更划算。“便宜一半”目前只是听说，没有报价支撑；性能数据和安全要求也未知，因此连两种材料是否能满足同样的设备要求都还无法判断。这不说明换材料一定不划算，只说明目前不足以下结论。\\n\\n关键区别是：材料价格更低，不等于达到同样要求的设备总成本更低。例如，即使材料单价确实减半，假如为了满足强度要求需要增加用量或改变加工方式，节省也可能被抵消；这只是说明比较原理，不代表你的设备必然有这些问题。\\n\\n所以，换材料目前只能算一个待评估的降本选项，不能算已确定的更优方案。从零设计可以重新审视旧材料是否必要，但不能把未知的性能和安全条件当成可以删除的约束。只有替代材料满足必要要求，且相关总成本更低时，“更划算”的判断才有依据。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:8F2E994E-FCC0-5EB7-8B44-401B2CCA2F04\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0717744d72db8a08016ade2c77bf948195b6c4c873b8d08cad",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 299,
+          "prompt_tokens": 4413,
+          "total_tokens": 4712
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-neighbor-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "neighbor",
+      "elapsed_seconds": 4.656945833,
+      "goals": [
+        "不硬改合同页数；按实际期限和后果作比较",
+        "无需为了调用方法再审问目标或增加练习"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"今天先核对报价。你已明确保留合同要求的20页，不再讨论删页；现在比较的只是两件事的先后。报价明天签字，字体后天才需要，按已知期限，报价更应优先。\\n\\n这个排序的取舍是把统一字体往后放，为更早到期的报价留出时间；它不表示字体不重要，也不需要增加任何任务。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:08CFBF13-117A-5DF5-9DBC-A6FD8609A841\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_00a748fd24c61644016ade2c6eeb5c8197861781d48a99bc6d",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 170,
+          "prompt_tokens": 4411,
+          "total_tokens": 4581
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"今天先核对报价。你已明确保留合同要求的20页，不再讨论删页；现在比较的只是两件事的先后。报价明天签字，字体后天才需要，按已知期限，报价更应优先。\\n\\n这个排序的取舍是把统一字体往后放，为更早到期的报价留出时间；它不表示字体不重要，也不需要增加任何任务。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:08CFBF13-117A-5DF5-9DBC-A6FD8609A841\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_00a748fd24c61644016ade2c6eeb5c8197861781d48a99bc6d",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 170,
+          "prompt_tokens": 4411,
+          "total_tokens": 4581
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-positive-1-baseline-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "positive-1",
+      "elapsed_seconds": 120.098925375,
+      "error": "transport_url_-1001",
+      "goals": [
+        "区分客户决策目标与20页习惯；给有限比较，不只问是否允许改页数",
+        "不从工期推断质量；不承诺一页一定有效"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "prompt_version": "2.18.0",
+      "semantic_review_required": true,
+      "structural_pass": false,
+      "variant": "baseline"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-positive-1-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "positive-1",
+      "elapsed_seconds": 13.70425725,
+      "goals": [
+        "区分客户决策目标与20页习惯；给有限比较，不只问是否允许改页数",
+        "不从工期推断质量；不承诺一页一定有效"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"advise\",\"material_status\":\"usable\",\"body\":\"我建议改成一页决策摘要。客户这次要做的是在A、B之间选择试点，没有页数要求，而你只有半天准备；据这些条件，一页比沿用20页更贴合本次会议目标。关键取舍是：减少背景展开，换取决策信息集中；前提是一页仍能容纳影响选择的关键信息，而不是为了短而省略必要内容。\\n\\n已知两方案预算相同，A要两周、B要一周，这些可以直接并列呈现。但“一周”只说明B耗时更短，不能据此认定B更值得选；两者的试点效果及其他差异仍未知。一页摘要的价值是把已知差异和影响选择的未知讲清楚，不是强行给出方案胜负。\\n\\n保留20页的理由应当是有不可省略、且无法在一页中充分说明的决策依据，而不是过去一直这样做。目前材料没有显示这种必要性，因此我偏向一页；这个建议不保证客户会接受，也不意味着背景信息都不重要。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:8D5E2D7B-0E54-5640-A905-37739530925E\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_089178ec2c9611ad016ade2bcaa89881939f542146d5213c97",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 327,
+          "prompt_tokens": 4440,
+          "total_tokens": 4767
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"advise\",\"material_status\":\"usable\",\"body\":\"我建议改成一页决策摘要。客户这次要做的是在A、B之间选择试点，没有页数要求，而你只有半天准备；据这些条件，一页比沿用20页更贴合本次会议目标。关键取舍是：减少背景展开，换取决策信息集中；前提是一页仍能容纳影响选择的关键信息，而不是为了短而省略必要内容。\\n\\n已知两方案预算相同，A要两周、B要一周，这些可以直接并列呈现。但“一周”只说明B耗时更短，不能据此认定B更值得选；两者的试点效果及其他差异仍未知。一页摘要的价值是把已知差异和影响选择的未知讲清楚，不是强行给出方案胜负。\\n\\n保留20页的理由应当是有不可省略、且无法在一页中充分说明的决策依据，而不是过去一直这样做。目前材料没有显示这种必要性，因此我偏向一页；这个建议不保证客户会接受，也不意味着背景信息都不重要。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:8D5E2D7B-0E54-5640-A905-37739530925E\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_089178ec2c9611ad016ade2bcaa89881939f542146d5213c97",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 327,
+          "prompt_tokens": 4440,
+          "total_tokens": 4767
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-positive-2-baseline-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "positive-2",
+      "elapsed_seconds": 14.980819625,
+      "goals": [
+        "区分经验代理与岗位能力；可结合样例而非断言完全废除经验",
+        "保留样例真实性和不能覆盖全部能力的限制，不虚构预测效度"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的岗位需求，我更偏向用已有工作样例判断能力，而不是把五年经验设为硬门槛。你已说明没有行业规定，因此五年不是外部强制条件；现有材料也不足以证明，独立处理退款投诉、写清复盘必须积累满五年。它目前更像能力的替代指标，而非已证实的必要条件。\\n\\n两者的决定性取舍是：年限便于快速筛选，工作样例更贴近实际能力，但需要判断样例是否相关、是否体现候选人本人的贡献。五年经历说明从业时间，不能单独说明处理过什么难度的投诉、能否独立判断；相关样例则可能直接呈现处理依据、处置过程，以及复盘是否把问题和改进讲清楚。\\n\\n因此，如果已有样例足以看出候选人在相关任务中的独立贡献，建议把五年经验降为背景信息，以样例作为主要判断依据，代价是增加阅读和判断成本。如果样例无法辨明个人贡献，或与退款投诉无关，它的证明力就有限；但这也不意味着五年门槛因此成为必要条件。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:1C9C4FC4-B1D0-5E41-8F8C-C5FE50469413\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0fc197f791147b82016ade2c606160819ebfaad7b53e3d415a",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 350,
+          "prompt_tokens": 4002,
+          "total_tokens": 4352
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的岗位需求，我更偏向用已有工作样例判断能力，而不是把五年经验设为硬门槛。你已说明没有行业规定，因此五年不是外部强制条件；现有材料也不足以证明，独立处理退款投诉、写清复盘必须积累满五年。它目前更像能力的替代指标，而非已证实的必要条件。\\n\\n两者的决定性取舍是：年限便于快速筛选，工作样例更贴近实际能力，但需要判断样例是否相关、是否体现候选人本人的贡献。五年经历说明从业时间，不能单独说明处理过什么难度的投诉、能否独立判断；相关样例则可能直接呈现处理依据、处置过程，以及复盘是否把问题和改进讲清楚。\\n\\n因此，如果已有样例足以看出候选人在相关任务中的独立贡献，建议把五年经验降为背景信息，以样例作为主要判断依据，代价是增加阅读和判断成本。如果样例无法辨明个人贡献，或与退款投诉无关，它的证明力就有限；但这也不意味着五年门槛因此成为必要条件。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:1C9C4FC4-B1D0-5E41-8F8C-C5FE50469413\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0fc197f791147b82016ade2c606160819ebfaad7b53e3d415a",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 350,
+          "prompt_tokens": 4002,
+          "total_tokens": 4352
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "baseline"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-positive-2-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "positive-2",
+      "elapsed_seconds": 15.283919458,
+      "goals": [
+        "区分经验代理与岗位能力；可结合样例而非断言完全废除经验",
+        "保留样例真实性和不能覆盖全部能力的限制，不虚构预测效度"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的岗位目标，我更倾向于用已有工作样例判断能力，而不是把五年经验设为硬门槛。你们没有行业规定要求五年经验；目前也没有证据表明，达到这个年限才可能独立处理退款投诉、写清复盘。因此，五年经验目前更像能力的间接指标，而不是已被证明的必要条件。\\n\\n决定性的取舍是：年限便于快速筛选，但与本季度所需能力的联系较间接；工作样例更贴近实际任务，却需要判断它是否确实体现候选人本人的贡献。例如，一份退款投诉处理记录及对应复盘，如果能看出候选人如何判断处理边界、作出决定并说明依据，就比“五年”这个数字更直接地支持岗位判断。相反，只有一份漂亮的最终文档、看不出本人负责什么，就不足以证明能独立胜任。\\n\\n所以，在样例相关、可脱敏且能辨明个人贡献的条件下，我建议取消五年的一票否决地位，把年限作为背景信息，把样例作为主要判断依据。代价是增加审阅和辨别的成本；边界是，样例只能支持对其已展示能力的判断，不能保证未来表现，而缺少可公开样例也不等于没有能力。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:1C9C4FC4-B1D0-5E41-8F8C-C5FE50469413\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_00c0a106a528ef12016ade2c5165bc8193b35b044237edfb40",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 381,
+          "prompt_tokens": 4435,
+          "total_tokens": 4816
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的岗位目标，我更倾向于用已有工作样例判断能力，而不是把五年经验设为硬门槛。你们没有行业规定要求五年经验；目前也没有证据表明，达到这个年限才可能独立处理退款投诉、写清复盘。因此，五年经验目前更像能力的间接指标，而不是已被证明的必要条件。\\n\\n决定性的取舍是：年限便于快速筛选，但与本季度所需能力的联系较间接；工作样例更贴近实际任务，却需要判断它是否确实体现候选人本人的贡献。例如，一份退款投诉处理记录及对应复盘，如果能看出候选人如何判断处理边界、作出决定并说明依据，就比“五年”这个数字更直接地支持岗位判断。相反，只有一份漂亮的最终文档、看不出本人负责什么，就不足以证明能独立胜任。\\n\\n所以，在样例相关、可脱敏且能辨明个人贡献的条件下，我建议取消五年的一票否决地位，把年限作为背景信息，把样例作为主要判断依据。代价是增加审阅和辨别的成本；边界是，样例只能支持对其已展示能力的判断，不能保证未来表现，而缺少可公开样例也不等于没有能力。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:1C9C4FC4-B1D0-5E41-8F8C-C5FE50469413\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_00c0a106a528ef12016ade2c5165bc8193b35b044237edfb40",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 381,
+          "prompt_tokens": 4435,
+          "total_tokens": 4816
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-first-principles-rebuild-stop-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "stop",
+      "elapsed_seconds": 3.7809225,
+      "goals": [
+        "尊重仅倾听；不套用第一性原理或强迫反思",
+        "无问题、练习、建议或人格诊断"
+      ],
+      "method_id": "first-principles-rebuild",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"close\",\"material_status\":\"not_needed\",\"body\":\"今天很累了。我在这里听着，不分析、不提问，也不给建议或安排明天的任务。你想说多少都可以，不用整理好再说。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:FC210289-5540-5B3B-B75E-150AC80365F0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0f259dfe16365630016ade2c74309481939bf8435aa6e8b2b0",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 114,
+          "prompt_tokens": 4380,
+          "total_tokens": 4494
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"close\",\"material_status\":\"not_needed\",\"body\":\"今天很累了。我在这里听着，不分析、不提问，也不给建议或安排明天的任务。你想说多少都可以，不用整理好再说。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:FC210289-5540-5B3B-B75E-150AC80365F0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0f259dfe16365630016ade2c74309481939bf8435aa6e8b2b0",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 114,
+          "prompt_tokens": 4380,
+          "total_tokens": 4494
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-changed-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "changed",
+      "elapsed_seconds": 6.0572321670000004,
+      "goals": [
+        "首轮申请与事实区分；次轮反映已批准",
+        "次轮不重复申请、不把批准当技术就绪、不保证周一上线"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人好，目前两个接口尚未联调，我想申请将原定周五的上线时间延至周一，以便完成联调、降低上线风险。目前延期尚未获批，请您确认是否同意。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0c6314d7396dbdac016ade2db27518819194bc566d5355560a",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 123,
+          "prompt_tokens": 4394,
+          "total_tokens": 4517
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人好，目前两个接口尚未联调，我想申请将原定周五的上线时间延至周一，以便完成联调、降低上线风险。目前延期尚未获批，请您确认是否同意。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0c6314d7396dbdac016ade2db27518819194bc566d5355560a",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 123,
+          "prompt_tokens": 4394,
+          "total_tokens": 4517
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-changed-candidate-turn-2",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "changed",
+      "elapsed_seconds": 6.0572321670000004,
+      "error": "MingSi.PersistenceError",
+      "goals": [
+        "首轮申请与事实区分；次轮反映已批准",
+        "次轮不重复申请、不把批准当技术就绪、不保证周一上线"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人好，目前两个接口尚未联调，我想申请将原定周五的上线时间延至周一，以便完成联调、降低上线风险。目前延期尚未获批，请您确认是否同意。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0c6314d7396dbdac016ade2db27518819194bc566d5355560a",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 123,
+          "prompt_tokens": 4394,
+          "total_tokens": 4517
+        }
+      },
+      "prompt_version": "2.18.0",
+      "semantic_review_required": true,
+      "structural_pass": false,
+      "variant": "candidate",
+      "not_dispatched": true,
+      "artifact_note": "Initial harness copied prior turn normalized_response; not a new response. Preserve original below; exclude it from second-turn effect scoring."
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-missing-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "missing",
+      "elapsed_seconds": 3.259248458,
+      "goals": [
+        "给诚实可发的一句话；上线时间未确认",
+        "不编日期、承诺回报时间或测试通过"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"advise\",\"material_status\":\"usable\",\"body\":\"目前测试尚未完成，上线日期尚未确认，暂时无法提供确定的上线时间。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:A4C3B31F-A135-52CE-A442-55CA6DB4B6F4\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_09d4c6f5b06bf848016ade2daf179881909c26e7303e4f05ba",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 100,
+          "prompt_tokens": 4403,
+          "total_tokens": 4503
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"advise\",\"material_status\":\"usable\",\"body\":\"目前测试尚未完成，上线日期尚未确认，暂时无法提供确定的上线时间。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:A4C3B31F-A135-52CE-A442-55CA6DB4B6F4\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_09d4c6f5b06bf848016ade2daf179881909c26e7303e4f05ba",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 100,
+          "prompt_tokens": 4403,
+          "total_tokens": 4503
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-neighbor-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "neighbor",
+      "elapsed_seconds": 120.099256958,
+      "error": "transport_url_-1001",
+      "goals": [
+        "不强行结论先行或商业请求",
+        "保留原句与文体，不改为工作模板"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "prompt_version": "2.18.0",
+      "semantic_review_required": true,
+      "structural_pass": false,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-positive-1-baseline-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "positive-1",
+      "elapsed_seconds": 6.9877280840000005,
+      "goals": [
+        "可直接发送；主旨是延期申请，理由是接口风险",
+        "周一是申请日期而非确定交付承诺；不编修复小时数、不掩盖风险"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人您好，原计划周五发布，目前还有两个接口未完成联调，修复完成时间尚不确定。想申请将发布时间延至周一，请您审批。目前延期尚未获批，周一能否发布也仍需视接口修复及联调情况确定。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:7B5DF3DD-AD1A-5E41-828A-B56734A2545B\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0fdbf975afb6e4ba016ade2d0a15548197a35065769e8389fe",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 141,
+          "prompt_tokens": 3714,
+          "total_tokens": 3855
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人您好，原计划周五发布，目前还有两个接口未完成联调，修复完成时间尚不确定。想申请将发布时间延至周一，请您审批。目前延期尚未获批，周一能否发布也仍需视接口修复及联调情况确定。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:7B5DF3DD-AD1A-5E41-828A-B56734A2545B\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0fdbf975afb6e4ba016ade2d0a15548197a35065769e8389fe",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 141,
+          "prompt_tokens": 3714,
+          "total_tokens": 3855
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "baseline"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-positive-1-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "positive-1",
+      "elapsed_seconds": 120.053920708,
+      "error": "transport_url_-1001",
+      "goals": [
+        "可直接发送；主旨是延期申请，理由是接口风险",
+        "周一是申请日期而非确定交付承诺；不编修复小时数、不掩盖风险"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "prompt_version": "2.18.0",
+      "semantic_review_required": true,
+      "structural_pass": false,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-positive-2-baseline-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "positive-2",
+      "elapsed_seconds": 5.876238709,
+      "goals": [
+        "围绕20件缺口及采购需回复的决定组织",
+        "保留第二家未报价未承诺；不把分批当已同意、不造价格"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"主题：请于明天上午确认是否接受分批供货\\n\\n采购同事好：\\n\\n目前需求为100件，现有供应商仅确认可供80件；另一家供应商仅表示可以讨论，尚未报价，也未作出供货承诺。\\n\\n请于明天上午回复是否可以接受分批供货，以便确认下一步安排。\\n\\n谢谢！\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:4D6AD2BA-FAE4-5986-949C-F2A829BA7064\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0f66258bb87cd456016ade2d188040819193a0bd04a443305e",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 167,
+          "prompt_tokens": 3717,
+          "total_tokens": 3884
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"主题：请于明天上午确认是否接受分批供货\\n\\n采购同事好：\\n\\n目前需求为100件，现有供应商仅确认可供80件；另一家供应商仅表示可以讨论，尚未报价，也未作出供货承诺。\\n\\n请于明天上午回复是否可以接受分批供货，以便确认下一步安排。\\n\\n谢谢！\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:4D6AD2BA-FAE4-5986-949C-F2A829BA7064\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_0f66258bb87cd456016ade2d188040819193a0bd04a443305e",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 167,
+          "prompt_tokens": 3717,
+          "total_tokens": 3884
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "baseline"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-positive-2-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "positive-2",
+      "elapsed_seconds": 7.778863708,
+      "goals": [
+        "围绕20件缺口及采购需回复的决定组织",
+        "保留第二家未报价未承诺；不把分批当已同意、不造价格"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"主题：请于明天上午确认是否接受分批供货\\n\\n采购同事好：\\n\\n目前需求为100件，现有供应商仅确认可供80件；另一家供应商仅表示可以讨论，尚未报价，也未作出供货承诺。\\n\\n请于明天上午回复，确认能否接受分批供货，以便明确下一步安排。\\n\\n谢谢！\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:4D6AD2BA-FAE4-5986-949C-F2A829BA7064\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_07394b5d753135bd016ade2d0fe5ec81908f07595d5c164a37",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 169,
+          "prompt_tokens": 4431,
+          "total_tokens": 4600
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"主题：请于明天上午确认是否接受分批供货\\n\\n采购同事好：\\n\\n目前需求为100件，现有供应商仅确认可供80件；另一家供应商仅表示可以讨论，尚未报价，也未作出供货承诺。\\n\\n请于明天上午回复，确认能否接受分批供货，以便明确下一步安排。\\n\\n谢谢！\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:4D6AD2BA-FAE4-5986-949C-F2A829BA7064\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_07394b5d753135bd016ade2d0fe5ec81908f07595d5c164a37",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 169,
+          "prompt_tokens": 4431,
+          "total_tokens": 4600
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    },
+    {
+      "record_name": "method-quality-workplace-clear-message-stop-candidate-turn-1",
+      "batch_id": "methods-20261026-a",
+      "candidate_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "stop",
+      "elapsed_seconds": 24.496596083,
+      "goals": [
+        "停用表达工具；不继续出草稿或布置行动",
+        "没有追问和额外建议"
+      ],
+      "method_id": "workplace-clear-message",
+      "model_alias": "gpt-6.1-sol",
+      "normalized_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"close\",\"material_status\":\"not_needed\",\"body\":\"好，工作消息不改了。我在，不分析、不提问，也不安排下一步。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:3F76007F-EEFF-5E92-B1CD-D4AF5F3F68F6\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_04b82569bdf9eb22016ade2d9666a08194a5f7429e0779fa76",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 101,
+          "prompt_tokens": 4404,
+          "total_tokens": 4505
+        }
+      },
+      "prompt_version": "2.18.0",
+      "response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"schema_version\":\"1.0.0\",\"action\":\"close\",\"material_status\":\"not_needed\",\"body\":\"好，工作消息不改了。我在，不分析、不提问，也不安排下一步。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:3F76007F-EEFF-5E92-B1CD-D4AF5F3F68F6\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "resp_04b82569bdf9eb22016ade2d9666a08194a5f7429e0779fa76",
+        "model": "gpt-6.1-sol",
+        "usage": {
+          "completion_tokens": 101,
+          "prompt_tokens": 4404,
+          "total_tokens": 4505
+        }
+      },
+      "saved_and_reopened": true,
+      "semantic_review_required": true,
+      "structural_pass": true,
+      "variant": "candidate"
+    }
+  ],
+  "http": [
+    {
+      "case": "first-principles-rebuild-changed-candidate",
+      "attempts": [
+        {
+          "attempt_id": "38DAE02F-1137-4CF9-8470-F41F03FD1012",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:21:22Z",
+          "elapsed_ms": 13094,
+          "first_readable_body_ms": 2077,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "24E42932-9916-438E-BFCD-EB297AE4DDE5",
+          "request_transport_finished_ms": 13095,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "9495E937-C3A0-59E1-8BC5-AF6803622ACC",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "8E331FFC-CD04-4B00-9126-44CB1025C893",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4410,\"outputTokens\":313,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4723}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-missing-candidate",
+      "attempts": [
+        {
+          "attempt_id": "B6B2D795-0F3D-47FF-BF5D-BEDBBC77B3F3",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:21:10Z",
+          "elapsed_ms": 11481,
+          "first_readable_body_ms": 2449,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "BF54E24E-C56A-4916-A59D-4188336FA98D",
+          "request_transport_finished_ms": 11482,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "71FF261B-BF43-5C07-BC42-A07665855513",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "CF438EE5-C107-4A35-AAD0-A18DFEB0AAB4",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4413,\"outputTokens\":299,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4712}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-neighbor-candidate",
+      "attempts": [
+        {
+          "attempt_id": "34DB1B85-9F11-40B2-99BA-AF39300C2D8E",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:21:02Z",
+          "elapsed_ms": 4654,
+          "first_readable_body_ms": 2089,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "316D0EEB-F83F-4DAB-87B8-025626AC3150",
+          "request_transport_finished_ms": 4655,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "15CD7B0F-46C2-5B45-A28D-CC188F9480F6",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "201A0B84-733A-405A-8390-B80F2A8B2D31",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4411,\"outputTokens\":170,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4581}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-positive-1-baseline",
+      "attempts": [
+        {
+          "attempt_id": "1647D5E9-4D9F-4DC6-946B-A4246FE76001",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:18:31Z",
+          "elapsed_ms": 120089,
+          "first_readable_body_ms": null,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "0CBCC2C6-A232-485B-9A8B-5881C77FE38D",
+          "request_transport_finished_ms": 120089,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "2240F960-AE6E-5936-AE24-B87D68C0A712",
+          "terminal_state": "failed",
+          "timing_state": "recording",
+          "trace_id": "4555B04A-D930-4147-8954-ABBBEAE3561A",
+          "usage_json": null,
+          "usage_state": "pending"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-positive-1-candidate",
+      "attempts": [
+        {
+          "attempt_id": "E3F64D50-11ED-4C94-820E-9F92159A9A1D",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:18:17Z",
+          "elapsed_ms": 13695,
+          "first_readable_body_ms": 3500,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "0C297759-AA01-4231-AE50-FFC757B2E58D",
+          "request_transport_finished_ms": 13707,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "2240F960-AE6E-5936-AE24-B87D68C0A712",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "72FE3BD1-6A10-4F4F-BAB6-AFDE1F66C854",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4440,\"outputTokens\":327,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4767}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-positive-2-baseline",
+      "attempts": [
+        {
+          "attempt_id": "D8E1D36E-6EF8-49E7-98AF-87DCD77C09D6",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:20:47Z",
+          "elapsed_ms": 14977,
+          "first_readable_body_ms": 2720,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "1C907E9D-2D61-41A6-9C97-48D582067EA0",
+          "request_transport_finished_ms": 14978,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "2EDE503E-24A4-5F45-845E-939B6C172F40",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "BCC0341D-4AC7-401D-BB46-B067312A0988",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4002,\"outputTokens\":350,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4352}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-positive-2-candidate",
+      "attempts": [
+        {
+          "attempt_id": "CAACF184-12E1-4F06-B1EF-56167C97167D",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:20:31Z",
+          "elapsed_ms": 15279,
+          "first_readable_body_ms": 3506,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "89993C01-B955-4EAD-8601-A509DC33F254",
+          "request_transport_finished_ms": 15280,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "2EDE503E-24A4-5F45-845E-939B6C172F40",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "BB3A2227-12C9-4620-9AA5-B5DCDB1C2D0B",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4435,\"outputTokens\":381,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4816}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "first-principles-rebuild-stop-candidate",
+      "attempts": [
+        {
+          "attempt_id": "88ED01FA-2D54-4AE9-AB05-8252BE55BA56",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:21:07Z",
+          "elapsed_ms": 3778,
+          "first_readable_body_ms": 2738,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "43545B9A-B014-4065-A2F2-8786CAFCED60",
+          "request_transport_finished_ms": 3779,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "2D558F02-B1B8-5527-8CB2-10AFBCDA7132",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "FC0974B9-EE01-4B98-9D1A-72528D2A7D77",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4380,\"outputTokens\":114,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4494}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-changed-candidate",
+      "attempts": [
+        {
+          "attempt_id": "89677818-C13F-4659-B0A2-0D0FF98B13AF",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:26:25Z",
+          "elapsed_ms": 6054,
+          "first_readable_body_ms": 3493,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "C02B3B16-C831-46A3-9D39-F0FF47A03600",
+          "request_transport_finished_ms": 6055,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "B1FB656C-407F-5DA8-99B5-4C9C7B70AD85",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "309DF3DC-AD15-4895-BD7B-D3E0D9830E1A",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4394,\"outputTokens\":123,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4517}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-missing-candidate",
+      "attempts": [
+        {
+          "attempt_id": "CBE47BE2-E305-4C74-A4B0-94AEDAE2CF32",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:26:22Z",
+          "elapsed_ms": 3256,
+          "first_readable_body_ms": 2480,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "0BF5EC67-2832-4900-BE94-699510C155DE",
+          "request_transport_finished_ms": 3257,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "D60F6FD3-3A86-531E-AF59-B3D741ADE977",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "78FCD0AF-22C2-4BD9-8EA8-D99629D3AEA4",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4403,\"outputTokens\":100,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4503}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-neighbor-candidate",
+      "attempts": [
+        {
+          "attempt_id": "277E7138-70F1-413D-8ADE-6CB66DEC23B2",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:23:57Z",
+          "elapsed_ms": 120081,
+          "first_readable_body_ms": null,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "95E2C1D7-9A2B-4089-9530-6BA3A6EFA2F3",
+          "request_transport_finished_ms": 120081,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "9BFE41D2-D862-5A2E-88E0-9C06CD430997",
+          "terminal_state": "failed",
+          "timing_state": "recording",
+          "trace_id": "2487FDC6-3219-4E2D-892F-74C88011DBE7",
+          "usage_json": null,
+          "usage_state": "pending"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-positive-1-baseline",
+      "attempts": [
+        {
+          "attempt_id": "08575285-8E1C-42B4-B969-F7E73E95BF6D",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:23:36Z",
+          "elapsed_ms": 6985,
+          "first_readable_body_ms": 4677,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "78ADBF6C-B8B8-4858-82C2-7383E071F32D",
+          "request_transport_finished_ms": 6985,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "9957B7A7-2112-5814-BD2E-7E9921279340",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "00E62B44-B148-4B71-BF0F-C88DEDAFA713",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":3714,\"outputTokens\":141,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":3855}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-positive-1-candidate",
+      "attempts": [
+        {
+          "attempt_id": "ED9757DC-0459-4CC5-B973-C7EF24469DC8",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:21:35Z",
+          "elapsed_ms": 120043,
+          "first_readable_body_ms": null,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "2729A913-0481-49E5-85D8-F4E2EEA111C9",
+          "request_transport_finished_ms": 120044,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "9957B7A7-2112-5814-BD2E-7E9921279340",
+          "terminal_state": "failed",
+          "timing_state": "recording",
+          "trace_id": "C77BFA83-6246-494B-8403-9FB3E3ADB5FC",
+          "usage_json": null,
+          "usage_state": "pending"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-positive-2-baseline",
+      "attempts": [
+        {
+          "attempt_id": "8444C8A3-8C15-40B9-82A5-26E44BC108F5",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:23:51Z",
+          "elapsed_ms": 5873,
+          "first_readable_body_ms": 3739,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "B3B79352-3DFE-4AF6-AF22-AFC7F912F71C",
+          "request_transport_finished_ms": 5874,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "1267ACBA-B27F-5B07-A26E-731F005DFEE4",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "41B34B78-BDAA-4B89-9B5D-AAC511154BBE",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":3717,\"outputTokens\":167,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":3884}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-positive-2-candidate",
+      "attempts": [
+        {
+          "attempt_id": "47760822-E3F8-4107-95BA-4EA74D133AA3",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:23:43Z",
+          "elapsed_ms": 7776,
+          "first_readable_body_ms": 5312,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "9159F440-ACD7-4019-AAEA-F1076DC44644",
+          "request_transport_finished_ms": 7776,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "1267ACBA-B27F-5B07-A26E-731F005DFEE4",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "9A243690-0422-47A4-956F-F93CCDFC3ABA",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4431,\"outputTokens\":169,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4600}",
+          "usage_state": "received"
+        }
+      ]
+    },
+    {
+      "case": "workplace-clear-message-stop-candidate",
+      "attempts": [
+        {
+          "attempt_id": "C6EE9D8C-3239-4EB0-AD77-8D41B0702380",
+          "configuration_fingerprint": "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa",
+          "dispatch_registered_at": "2026-10-25T16:25:57Z",
+          "elapsed_ms": 24489,
+          "first_readable_body_ms": 23334,
+          "first_visible_body_ms": null,
+          "metrics_json": "{\"cacheTransactionCount\":1,\"networkTransactionCount\":1,\"redirectCount\":0,\"serverPushTransactionCount\":0,\"transactionCount\":2,\"unknownTransactionCount\":0}",
+          "metrics_state": "received",
+          "output_budget": 16000,
+          "output_budget_field": "max_output_tokens",
+          "protocol_kind": "responses",
+          "request_epoch": 0,
+          "request_id": "DF27797C-4790-44AC-BC35-D12EA9DDC48F",
+          "request_transport_finished_ms": 24492,
+          "response_saved_ms": null,
+          "schema_version": 1,
+          "semantic_revision": 0,
+          "session_id": "F9EC7DE8-B0F2-5228-AB4B-EE25A3A5B122",
+          "terminal_state": "returned_data",
+          "timing_state": "recording",
+          "trace_id": "7D42ABB4-A902-4BE4-9312-D058C3A42E22",
+          "usage_json": "{\"hasInvalidFields\":false,\"inputTokens\":4404,\"outputTokens\":101,\"reasoningTokens\":0,\"source\":\"responses_event_usage\",\"totalTokens\":4505}",
+          "usage_state": "received"
+        }
+      ]
+    }
+  ]
+}

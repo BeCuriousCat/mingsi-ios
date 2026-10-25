@@ -221,6 +221,7 @@ protocol MentorRepository {
     func saveDraft(sessionID: UUID, revision: Int, text: String) async throws
     func appendItem(_ item: MentorTimelineItem) async throws
     func items(sessionID: UUID) async throws -> [MentorTimelineItem]
+    func methodSnapshots(sessionID: UUID) async throws -> [UUID: CoachMethodSnapshot]
     func deleteSession(id: UUID) async throws
     func retryableRequest(sessionID: UUID) async throws -> MentorRetryableRequest?
     func submitTurn(_ command: MentorSubmitTurn) async throws -> UUID
@@ -242,6 +243,7 @@ protocol MentorRepository {
 }
 
 extension MentorRepository {
+    func methodSnapshots(sessionID: UUID) async throws -> [UUID: CoachMethodSnapshot] { [:] }
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String) async throws -> MentorTimelineItem {
         try await commitResponse(sessionID: sessionID, requestID: requestID, payloadJSON: payloadJSON, consumingDraft: nil)
     }
@@ -1003,8 +1005,30 @@ final class SQLiteMentorRepository: MentorRepository {
         }
     }
 
-    /// Storage boundary only: caller must first validate the mentor response protocol
-    /// and dynamic source/intent rules. Does not mark content as presented.
+    /// Read the original method from each owned, committed request. Never
+    /// rebuild historical guidance from the current mutable catalog.
+    func methodSnapshots(sessionID: UUID) async throws -> [UUID: CoachMethodSnapshot] {
+        try await database.dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT r.item_id, q.context_snapshot_json
+                FROM mentor_request_results r JOIN mentor_requests q
+                ON q.id = r.request_id AND q.session_id = r.session_id
+                WHERE r.session_id = ? AND q.state = 'committed'
+                """, arguments: [sessionID.uuidString])
+            var snapshots: [UUID: CoachMethodSnapshot] = [:]
+            for row in rows {
+                let raw: String = row["context_snapshot_json"]
+                let itemID: String = row["item_id"]
+                if let id = UUID(uuidString: itemID),
+                   let payload = try? JSONDecoder().decode(MentorContextPayload.self, from: Data(raw.utf8)),
+                   let method = payload.selectedMethod { snapshots[id] = method }
+            }
+            return snapshots
+        }
+    }
+
+    /// Storage boundary only: caller validates protocol and source/intent rules.
+    /// Does not mark content as presented.
     func commitResponse(sessionID: UUID, requestID: UUID, payloadJSON: String,
                         consumingDraft: MentorConsumedDraft? = nil) async throws -> MentorTimelineItem {
         guard let data = payloadJSON.data(using: .utf8),

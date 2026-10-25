@@ -124,6 +124,7 @@ jobs:
             -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText \
             -only-testing:MingSiUITests/MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable \
             -only-testing:MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText \
             -only-testing:MingSiUITests/MentorNavigationUITests/testMentorBenefitFeedbackUsesSharedVoiceInput \
             -only-testing:MingSiUITests/MentorNavigationUITests/testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft \
             -only-testing:MingSiUITests/MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer \
@@ -195,7 +196,7 @@ jobs:
           unit = json.loads((task_temp / "mingsi-unit-summary.json").read_text())
           ui = json.loads((task_temp / "permission-ui-evidence/summary.json").read_text())
           assert unit["failedTests"] == 0 and unit["passedTests"] > 0
-          assert ui["failedTests"] == 0 and ui["passedTests"] == 8
+          assert ui["failedTests"] == 0 and ui["passedTests"] == 11
           evidence = task_temp / "verified-simulator-app"
           evidence.mkdir()
           archive = evidence / "MingSi-simulator.zip"

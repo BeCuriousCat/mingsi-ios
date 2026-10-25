@@ -39,7 +39,7 @@ final class LocalPromptProviderTests: XCTestCase {
 
     func testRequestBoundaryRevisionPreservesPriorPromptAndWireContract() throws {
         for mode in SessionMode.allCases {
-            let current = provider.template(for: .mentorRespond, mode: mode)
+            let current = try XCTUnwrap(provider.template(for: .mentorRespond, mode: mode, version: "2.17.0"))
             let prior = try XCTUnwrap(provider.template(for: .mentorRespond, mode: mode, version: "2.16.0"))
             XCTAssertEqual(current.version, "2.17.0")
             XCTAssertEqual(current.rollbackTargetVersion, prior.version)
@@ -182,8 +182,8 @@ final class LocalPromptProviderTests: XCTestCase {
             let earlier = try XCTUnwrap(provider.template(for: id, mode: .standard, version: "1.6.0"))
             let legacy = try XCTUnwrap(provider.template(for: id, mode: .standard, version: "1.5.0"))
             let original = try XCTUnwrap(provider.template(for: id, mode: .standard, version: "1.0.0"))
-            XCTAssertEqual(current.version, id == .mentorRespond ? "2.17.0" : "2.6.0")
-            XCTAssertEqual(current.rollbackTargetVersion, id == .mentorRespond ? "2.16.0" : "2.5.0")
+            XCTAssertEqual(current.version, id == .mentorRespond ? "2.18.0" : "2.6.0")
+            XCTAssertEqual(current.rollbackTargetVersion, id == .mentorRespond ? "2.17.0" : "2.5.0")
             XCTAssertEqual(previousEvidenceUpdate.version, "2.5.0")
             XCTAssertEqual(previousEvidenceUpdate.rollbackTargetVersion, "2.4.0")
             XCTAssertEqual(previousTurnBoundary.version, "2.4.0")
@@ -244,7 +244,7 @@ final class LocalPromptProviderTests: XCTestCase {
     func testMentorPromptPrioritizesRequestedHelpBeforeOptionalQuestion() {
         let response = provider.template(for: .mentorRespond, mode: .standard)
         let combined = response.systemText + "\n" + response.userText
-        XCTAssertEqual(response.version, "2.17.0")
+        XCTAssertEqual(response.version, "2.18.0")
         for phrase in [
             "先辨认用户此刻需要理解、比较、建议、倾听还是纠正",
             "答案会实质改变帮助时才问一项",
@@ -274,7 +274,7 @@ final class LocalPromptProviderTests: XCTestCase {
     func testMentorRecommendationUsesUserOwnedCriteriaRatherThanInventedPriorities() {
         let current = provider.template(for: .mentorRespond, mode: .standard)
         let text = current.systemText + "\n" + current.userText
-        XCTAssertEqual(current.version, "2.17.0")
+        XCTAssertEqual(current.version, "2.18.0")
         XCTAssertTrue(text.contains("缺少会改变选择的目标或可接受代价时"))
         XCTAssertTrue(text.contains("给出条件式取舍"))
         XCTAssertTrue(text.contains("不能从“帮我选”推断用户更重视收入、效率、休息或关系"))
@@ -319,7 +319,7 @@ final class LocalPromptProviderTests: XCTestCase {
         let shortClarification = try XCTUnwrap(provider.template(for: .mentorRespond, mode: .standard, version: "2.10.0"))
         let routedClarification = try XCTUnwrap(provider.template(for: .mentorRespond, mode: .standard, version: "2.11.0"))
         let consolidated = try XCTUnwrap(provider.template(for: .mentorRespond, mode: .standard, version: "2.12.0"))
-        XCTAssertEqual(current.rollbackTargetVersion, "2.16.0")
+        XCTAssertEqual(current.rollbackTargetVersion, "2.17.0")
         XCTAssertEqual(consolidated.rollbackTargetVersion, routedClarification.version)
         XCTAssertEqual(routedClarification.rollbackTargetVersion, shortClarification.version)
         XCTAssertEqual(shortClarification.rollbackTargetVersion, evidenceBoundary.version)

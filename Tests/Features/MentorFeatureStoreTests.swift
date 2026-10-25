@@ -4,6 +4,32 @@ import GRDB
 
 @MainActor
 final class MentorFeatureStoreTests: XCTestCase {
+    func testSelectedMethodIsFrozenForOneTurnAndReopensWithResponse() async throws {
+        let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+        let transport = MentorStoreFixtureTransport()
+        let store = MentorFeatureStore(repository: repo, transport: transport)
+        store.start(entry: "discuss")
+        try await waitUntil { store.state.phase == .editing && !store.state.isTransitioningSession }
+        store.selectMethod("life-value-options")
+        XCTAssertNil(store.state.selectedMethodID, "A held method cannot enter an ordinary request")
+        store.selectMethod("lens.firstPrinciples")
+        XCTAssertEqual(store.state.selectedMethodID, "lens.firstPrinciples")
+        store.submit(text: "请比较两个已有选项")
+        try await waitUntil { store.state.phase == .showingResponse }
+        let sent = try XCTUnwrap(transport.lastRequest)
+        let context = try JSONDecoder().decode(MentorContextPayload.self, from: Data(sent.inputSummary.utf8))
+        XCTAssertEqual(context.selectedMethod?.id, "lens.firstPrinciples")
+        XCTAssertNil(store.state.selectedMethodID)
+        let responseID = try XCTUnwrap(store.state.responseItemID)
+        XCTAssertEqual(store.state.methodSnapshots[responseID], context.selectedMethod)
+        let sessionID = try XCTUnwrap(store.state.session?.id)
+        let reopened = MentorFeatureStore(repository: repo, transport: transport)
+        reopened.viewSession(id: sessionID)
+        try await waitUntil { reopened.state.isViewingHistory && !reopened.state.isTransitioningSession }
+        XCTAssertEqual(reopened.state.methodSnapshots[responseID], context.selectedMethod)
+        XCTAssertEqual(transport.calls, 1)
+    }
+
     func testSuccessfulReplyConsumesComposerAndReopensEmptyWithoutCallingModel() async throws {
         let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
         let transport = MentorStoreFixtureTransport()
@@ -292,7 +318,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         XCTAssertTrue(context.sources.contains { $0.content == original && $0.role == .user })
         XCTAssertTrue(context.sources.contains { $0.role == .assistant && $0.ref.value == "item:" + responseID.uuidString })
         XCTAssertEqual(reopened.state.response?.response.sourceRefs, [try XCTUnwrap(context.latestUserSourceRef)])
-        XCTAssertTrue(transport.requests.allSatisfy { $0.prompt.version == "2.17.0" })
+        XCTAssertTrue(transport.requests.allSatisfy { $0.prompt.version == "2.18.0" })
         let items = try await repository.items(sessionID: sessionID)
         XCTAssertEqual(items.filter { $0.kind == .user }.count, 2)
         XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 2)
@@ -3243,7 +3269,7 @@ final class MentorFeatureStoreTests: XCTestCase {
         try await waitUntil { store.state.phase == .showingResponse }
         let sent = try XCTUnwrap(transport.lastRequest)
         XCTAssertEqual(sent.prompt.id, .mentorRespond)
-        XCTAssertEqual(sent.prompt.version, "2.17.0")
+        XCTAssertEqual(sent.prompt.version, "2.18.0")
         XCTAssertEqual(sent.decisionRoute, .coaching)
         XCTAssertNotEqual(sent.prompt.userText, sent.inputSummary)
         let token = try XCTUnwrap(sent.mentorAuditToken)

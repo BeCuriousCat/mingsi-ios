@@ -4470,7 +4470,19 @@ final class LocalPromptProvider: PromptProvider {
     /// Resolve the current mentor asset. Historical assets remain available
     /// for replay and rollback.
     private static func mentorTemplate(for id: PromptID) -> PromptTemplate {
-        id == .mentorRespond ? mentorTemplateV2170() : mentorTemplateV260(for: id)
+        id == .mentorRespond ? mentorTemplateV2180() : mentorTemplateV260(for: id)
+    }
+
+    private static func mentorTemplateV2180() -> PromptTemplate {
+        let prior = mentorTemplateV2170()
+        let system = prior.systemText + """
+
+        selected_method 是用户为本轮选择的一个方法快照，含版本与有限来源范围。它只提供思考或表达工具，不是用户经历的证据，也不是作者人格或必须完成的任务。先回应当前诉求，相关时只用其中一个有用动作；不适用、用户只想倾听、拒绝或停止时可完全不用。不因为选了方法就多问、布置作业、添加新协议字段或冒用作者口吻。改写请求先给可直接使用的文字，事实不足保留未知，新条件出现后更新，不维护旧结论。只解释有依据的区别，不逐项展示方法清单，不强迫用户学习术语。
+        方法的 sourceTitle/sourceURL/sourceScope/sourceHashes 仅用于溯源，不得加入 source_refs，不得冒充课文 lesson_ref、研究结论或用户已经接受的认识。来源范围不等于读过整本书。没有 selected_method 时沿用现有教练行为。
+        """
+        return PromptTemplate(id: .mentorRespond, version: "2.18.0", systemPolicyVersion: "mentor.system.2.18.0",
+            contextPolicyVersion: prior.contextPolicyVersion, evalSuiteVersion: "mentor.methods.1",
+            rollbackTargetVersion: "2.17.0", systemText: system, userText: prior.userText, outputSchemaVersion: 1)
     }
 
     private static func mentorTemplateV2170() -> PromptTemplate {
@@ -5257,6 +5269,8 @@ final class LocalPromptProvider: PromptProvider {
                 rollbackTargetVersion: rollback, systemText: current.systemText, userText: text,
                 outputSchemaVersion: current.outputSchemaVersion)
 
+        case (.mentorRespond, "2.17.0"):
+            return mentorTemplateV2170()
         case (.mentorRespond, "2.16.0"):
             return mentorTemplateV2160()
         case (.mentorRespond, "2.15.0"):

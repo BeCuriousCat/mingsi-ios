@@ -1,0 +1,24 @@
+{
+  "integrity": "ok",
+  "changed_tables": [
+    {
+      "table": "prompt_eval_runs",
+      "before": 1840,
+      "after": 1862
+    },
+    {
+      "table": "mentor_sessions",
+      "before": 1,
+      "after": 1
+    },
+    {
+      "table": "mentor_usage_events",
+      "before": 23,
+      "after": 26
+    }
+  ],
+  "old_mentor_record_tables_with_removed_or_changed_rows": [],
+  "normal_app_http_attempts": 2,
+  "normal_app_has_no_new_model_calls": true,
+  "observation": "After full offline tests and normal home \u2192 resume existing conversation \u2192 open/close method library \u2192 back. No send, no method selection, no private conversation export. Diagnostic evaluation runs and normal usage/session metadata can change."
+}

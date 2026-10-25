@@ -2,6 +2,136 @@ import XCTest
 @testable import MingSi
 
 final class LiveGLMAcceptanceTests: XCTestCase {
+    /// Frozen synthetic batch. Each request goes through the production context,
+    /// prompt, audited transport, parser, quality policy and SQLite reopening.
+    /// Lexical signals are deliberately not treated as semantic acceptance.
+    @MainActor
+    func testLiveCoachMethodComparisonWhenExplicitlyEnabled() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let raw = env["MINGSI_LIVE_COACH_METHODS_JSON"] else {
+            throw XCTSkip("Explicit frozen method comparison batch only")
+        }
+        let batch = try JSONDecoder().decode(CoachMethodLiveBatch.self, from: Data(raw.utf8))
+        guard batch.no_retry, batch.max_requests <= 18, batch.max_requests > 0,
+              batch.cases.reduce(0, { $0 + $1.texts.count }) <= batch.max_requests,
+              Set(batch.cases.map(\.id)).count == batch.cases.count else {
+            XCTFail("Invalid batch budget"); return
+        }
+        let harness = LiveGLMAcceptanceHarness(environment: env)
+        let key = try XCTUnwrap(try harness.resolvedAPIKey())
+        let config = try harness.mentorConfiguration()
+        let prompt = LocalPromptProvider().template(for: .mentorRespond, mode: .standard)
+        XCTAssertEqual(prompt.version, batch.prompt_version)
+        guard prompt.version == batch.prompt_version else { return }
+        let catalog = try CoachMethodCatalog.loadBundled()
+        // Validate the entire manifest before any model request.
+        for scenario in batch.cases {
+            let candidate = try XCTUnwrap(catalog.methods.first { $0.id == scenario.method_id })
+            XCTAssertEqual(candidate.snapshot.contentHash, scenario.method_hash)
+            guard candidate.snapshot.contentHash == scenario.method_hash,
+                  ["candidate", "baseline"].contains(scenario.variant),
+                  !scenario.texts.isEmpty, scenario.texts.count == scenario.user_ids.count else {
+                XCTFail("Invalid or changed frozen method case"); return
+            }
+            if let lensID = scenario.baseline_lens_id { _ = try XCTUnwrap(BuiltinLensCatalog.items.first { $0.id == lensID }) }
+        }
+        var actualRequests = 0
+        for scenario in batch.cases {
+            let candidate = try XCTUnwrap(catalog.methods.first { $0.id == scenario.method_id })
+            let method: CoachMethodSnapshot? = scenario.variant == "candidate" ? candidate.snapshot :
+                scenario.baseline_lens_id.flatMap { id in BuiltinLensCatalog.items.first { $0.id == id }.map(CoachMethodCatalog.builtinSnapshot) }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("method-qa-" + UUID().uuidString)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let url = folder.appendingPathComponent("synthetic.sqlite")
+            let db = try AppDatabase(url: url)
+            let repository = SQLiteMentorRepository(database: db)
+            let sessionID = try XCTUnwrap(UUID(uuidString: scenario.session_id))
+            try await repository.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+                draftText: "", draftRevision: 0, activityAt: .now))
+            // Reconstruct a previously returned synthetic first turn offline.
+            // This allows only the originally unsent follow-up, never a retry.
+            if let seedContext = scenario.seed_context_json, let seedResponse = scenario.seed_response_json {
+                let payload = try JSONDecoder().decode(MentorContextPayload.self, from: Data(seedContext.utf8))
+                XCTAssertEqual(payload.selectedMethod, method)
+                let userSource = try XCTUnwrap(payload.sources.last { $0.role == .user })
+                let userID = try XCTUnwrap(UUID(uuidString: String(userSource.ref.value.dropFirst(5))))
+                let seedID = try await repository.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+                    text: userSource.content, intent: payload.intent, contextSnapshotJSON: seedContext, userItemID: userID))
+                let saved = try await repository.commitResponse(sessionID: sessionID, requestID: seedID, payloadJSON: seedResponse)
+                _ = try await repository.acknowledgePresentation(sessionID: sessionID, itemID: saved.id, at: .now, timeZone: .current)
+            }
+            let capture = LiveMentorStoreCaptureTransport(base: DirectGLMClient(apiKey: key, configuration: config))
+            let gateway = CentralLLMDecisionCenter(base: PromptTracingLLMClient(base: capture,
+                repository: SQLitePromptRunRepository(database: db), modelProvider: "Responses", modelName: config.model, mentorAudit: repository))
+            for (index, text) in scenario.texts.enumerated() {
+                let caseID = scenario.id + "-turn-\(index + 1 + (scenario.turn_offset ?? 0))"
+                var report: [String: Any] = ["batch_id": batch.batch_id, "case_id": scenario.case_id,
+                    "variant": scenario.variant, "method_id": scenario.method_id, "candidate_hash": scenario.method_hash,
+                    "prompt_version": prompt.version, "model_alias": config.model, "goals": scenario.goals,
+                    "semantic_review_required": true]
+                let priorCaptureCount = capture.records.count
+                do {
+                    let loadedSession = try await repository.session(id: sessionID)
+                    let session = try XCTUnwrap(loadedSession)
+                    let items = try await repository.items(sessionID: sessionID)
+                    let userID = try XCTUnwrap(UUID(uuidString: scenario.user_ids[index]))
+                    let user = MentorTimelineItem(id: userID, sessionID: sessionID,
+                        sequence: (items.map(\.sequence).max() ?? 0) + 1, kind: .user,
+                        payloadJSON: String(decoding: try JSONEncoder().encode(["text": text]), as: UTF8.self))
+                    let built = try MentorContextBuilder().build(session: session, items: items + [user], intent: "reply", selectedMethod: method)
+                    let requestID = try await repository.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+                        text: text, intent: "reply", contextSnapshotJSON: built.json, userItemID: userID))
+                    let token = LLMRequest.MentorAuditToken(sessionID: sessionID, requestID: requestID,
+                        requestEpoch: session.requestEpoch, semanticRevision: session.semanticRevision)
+                    try await repository.prepareRequestContext(token: token, json: built.json)
+                    var request = LLMRequest(prompt: prompt, inputSummary: built.json,
+                        sourceRecordIDs: built.payload.sources.map { $0.ref.value })
+                    request.mentorAuditToken = token
+                    request.mentorExecutionPolicy = .forProtocol(config.protocolKind)
+                    request.mentorStartedAt = .now
+                    request.mentorStreamProgress = MentorStreamProgress()
+                    try attachMentorRequest(request, caseID: caseID)
+                    actualRequests += 1
+                    let data = try await gateway.complete(request)
+                    report["response"] = try JSONSerialization.jsonObject(with: data)
+                    let parsed = try MentorResponseParser().parseTurn(data, context: built.validation)
+                    try MentorResponseQualityPolicy.validate(parsed.response, context: built.validation,
+                        initialEntry: "discuss", intent: "reply")
+                    XCTAssertNil(parsed.response.question, "All batch requests explicitly decline questions")
+                    let item = try await repository.commitResponse(sessionID: sessionID, requestID: requestID,
+                        payloadJSON: String(decoding: try JSONEncoder().encode(parsed.response), as: UTF8.self))
+                    _ = try await repository.acknowledgePresentation(sessionID: sessionID, itemID: item.id, at: .now, timeZone: .current)
+                    let reopened = SQLiteMentorRepository(database: try AppDatabase(url: url))
+                    let frozen = try await reopened.methodSnapshots(sessionID: sessionID)
+                    XCTAssertEqual(frozen[item.id], method)
+                    let replay = try MentorContextBuilder().replay(json: built.json, session: session)
+                    XCTAssertEqual(replay.payload.selectedMethod, method)
+                    report["structural_pass"] = parsed.response.question == nil
+                    report["saved_and_reopened"] = true
+                } catch {
+                    report["structural_pass"] = false
+                    report["error"] = (error as? LLMClientError)?.safeDiagnosticCode ?? String(reflecting: type(of: error))
+                    XCTFail(caseID + ": request/persistence/contract failure; no retry")
+                }
+                if capture.records.count > priorCaptureCount, let record = capture.records.last {
+                    report["elapsed_seconds"] = record.elapsedSeconds
+                    if let raw = record.data { report["normalized_response"] = try? JSONSerialization.jsonObject(with: raw) }
+                }
+                let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]), uniformTypeIdentifier: "public.json")
+                attachment.name = "method-quality-" + caseID; attachment.lifetime = .keepAlways; add(attachment)
+                if report["structural_pass"] as? Bool != true { break }
+            }
+            let package = try await SQLiteDataExportRepository(database: db).exportPackage()
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+            let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+            let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: sections[DataExportSectionName.mentorHTTPAttempts.rawValue] ?? [], options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+            attachment.name = "method-http-" + scenario.id; attachment.lifetime = .keepAlways; add(attachment)
+            XCTAssertEqual(capture.records.count, scenario.texts.count, "No hidden retry; incomplete multi-turn case fails")
+        }
+        XCTAssertLessThanOrEqual(actualRequests, batch.max_requests)
+    }
+
     func testLiveLensGoalsWhenExplicitlyEnabled() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let raw = env["MINGSI_LIVE_LENS_GOALS_JSON"] else {
@@ -1618,7 +1748,7 @@ extension LiveGLMAcceptanceTests {
         XCTAssertEqual(cases.count, 9)
         for scenario in cases {
             let template = LocalPromptProvider().template(for: scenario.promptID, mode: .standard)
-            XCTAssertEqual(template.version, scenario.promptID == .mentorRespond ? "2.17.0" : "2.6.0")
+            XCTAssertEqual(template.version, scenario.promptID == .mentorRespond ? "2.18.0" : "2.6.0")
             let replay = try JSONDecoder().decode(MentorContextPayload.self, from: Data(scenario.context.json.utf8))
             XCTAssertEqual(replay.sources.filter { $0.role == .user }.map(\.content), scenario.userTexts)
             if let latest = replay.latestUserSourceRef {
@@ -2155,5 +2285,28 @@ private final class LiveMentorStoreCaptureTransport: MentorTransport, LLMClient 
             records[index].providerDiagnostic = (error as? LLMClientError)?.safeDiagnosticCode ?? "unclassified_error"
             throw error
         }
+    }
+}
+
+private struct CoachMethodLiveBatch: Decodable {
+    let batch_id: String
+    let prompt_version: String
+    let max_requests: Int
+    let no_retry: Bool
+    let cases: [Case]
+    struct Case: Decodable {
+        let id: String
+        let method_id: String
+        let method_hash: String
+        let case_id: String
+        let variant: String
+        let session_id: String
+        let user_ids: [String]
+        let texts: [String]
+        let goals: [String]
+        let baseline_lens_id: String?
+        let seed_context_json: String?
+        let seed_response_json: String?
+        let turn_offset: Int?
     }
 }

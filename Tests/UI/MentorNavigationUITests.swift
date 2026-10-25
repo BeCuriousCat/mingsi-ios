@@ -2,6 +2,64 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText() throws {
+        var normalTitleHeight: CGFloat = 0
+        for largest in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                "-AppleInterfaceStyle", largest ? "Dark" : "Light", "-UIPreferredContentSizeCategory",
+                largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let discuss = app.buttons["我有一件事"]
+            XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+            scrollTo(discuss, in: app); discuss.tap()
+            let open = app.buttons["mentor.methods.open"]
+            XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
+            let lens = app.buttons["methods.lens.firstPrinciples"]
+            let list = app.collectionViews["methods.library.list"]
+            for _ in 0..<25 {
+                if lens.exists && lens.isHittable { break }
+                list.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(lens.waitForExistence(timeout: 5)); XCTAssertTrue(lens.isHittable); lens.tap()
+            let use = app.buttons["methods.use.firstPrinciples"]
+            let lensDetails = app.scrollViews["methods.lens.detail"]
+            for _ in 0..<25 {
+                if use.exists && use.isHittable { break }
+                lensDetails.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(use.waitForExistence(timeout: 5)); XCTAssertTrue(use.isHittable); use.tap()
+            let clear = app.buttons["mentor.methods.clear"]
+            XCTAssertTrue(clear.waitForExistence(timeout: 5))
+            XCTAssertGreaterThanOrEqual(clear.frame.height, 44)
+            clear.tap(); XCTAssertTrue(clear.waitForNonExistence(timeout: 5))
+            open.tap()
+            let held = app.buttons["methods.book.life-value-options"]
+            for _ in 0..<20 {
+                if held.exists && held.isHittable { break }
+                list.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(held.waitForExistence(timeout: 5)); XCTAssertTrue(held.isHittable); held.tap()
+            let title = app.staticTexts["生活取舍"].firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 5))
+            if largest { XCTAssertGreaterThan(title.frame.height, normalTitleHeight, "The presented sheet must inherit accessibility Dynamic Type") }
+            else { normalTitleHeight = title.frame.height }
+            let pending = app.descendants(matching: .any)["methods.pending.life-value-options"].firstMatch
+            let details = app.scrollViews["methods.detail.scroll"]
+            for _ in 0..<20 {
+                if pending.exists && pending.isHittable { break }
+                details.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(pending.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["methods.use.life-value-options"].exists)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "method-source-held-" + (largest ? "dark-largest" : "light")
+            screenshot.lifetime = .keepAlways; add(screenshot)
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testCaptureDraftRestoresBodyAndUnacceptedSpeechAfterProcessRelaunch() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "--capture-draft-relaunch-fixture",

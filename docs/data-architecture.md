@@ -791,3 +791,9 @@ ReflectionTopicSummaryPolicy 是只读投影，不新增表或迁移。优先读
 ### 辅助提示展示记录（2026-10-21）
 
 无 schema 迁移。`SQLiteGuidanceRepository.recordPresentation(for:at:)` 事务性读取并合并现有 `UserGuidanceState` 的 lastShownAt/updatedAt，保留较新时间、掌握/暂缓偏好、计数与证据。模型决策本身不写已展示；Today 的带身份 offer 出现后才记录，重复 appearance 合并。失败不影响当前输入。进程内 16 项 show/hold 缓存包括完整上下文、有效 Prompt 模板与配置修订；不导出、不持久化，不把 AI 文字写成用户能力证据。见[验收范围](qa/2026-10-21-guidance-presentation/README.md)。
+
+### 导师本轮方法快照（2026-10-26）
+
+`MentorContextPayload.selected_method` 是可选的 `CoachMethodSnapshot`，包含方法ID、版本、限定指令、来源标题/URL/范围与材料哈希。它是方法指导，不进入 `sources`、`source_refs`、`lesson_ref` 或用户认识，缺失字段按nil读取旧记录。使用已有 `mentor_requests.context_snapshot_json` 冻结，不新增数据库表或修改外部透镜包签名序列化。
+
+回复方法通过 `mentor_request_results` 的session/item/request所有权关系读取对应已提交请求，供历史详情展示；不从当前目录重建。方法选择只影响下一次新请求，登记后清空；失败重试继续回放原快照。五项书籍/指南局部适配属于内置目录，必须通过内容哈希、Prompt版本、来源审核、六类效果与增益门槛；当前均保持待验证，不从localCustom路径绕过外部包信任验证。

@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--direct-explanation", action="store_true", help="Run one streamed schema-7 direct-help request through AppStore and SQLite reopening; never retry.")
     parser.add_argument("--answer-review", action="store_true", help="Run three distinct synthetic answer-review choices once each.")
     parser.add_argument("--lens-library", action="store_true", help="Run four distinct synthetic lens scenarios once each.")
+    parser.add_argument("--coach-methods", type=Path, help="Run a frozen synthetic coach method comparison, at most 18 requests, no retry.")
     parser.add_argument("--lens-goals", type=Path, help="Run the synthetic lens goal dataset once per selected turn; never retry.")
     parser.add_argument("--lens-case-ids", help="Optional comma-separated IDs from --lens-goals; unknown IDs fail before calling.")
     parser.add_argument("--perspective-understanding", action="store_true", help="Run the new perspective prompt once, then one distinct user-stop turn; never retry requests.")
@@ -43,6 +44,12 @@ def main():
     parser.add_argument("--initial-coach-evidence", action="store_true", help="Run three synthetic initial coach gap and stop-boundary scenarios.")
     parser.add_argument("--initial-coach-positive", action="store_true", help="Run only one new unsupported-intent guidance scenario; do not repeat the prior three samples.")
     args = parser.parse_args()
+    method_batch = None
+    if args.coach_methods:
+        method_batch = json.loads(args.coach_methods.read_text())
+        count = sum(len(case["texts"]) for case in method_batch["cases"])
+        if not method_batch.get("no_retry") or not 1 <= count <= method_batch.get("max_requests", 0) <= 18:
+            parser.error("Method batch must freeze between 1 and 18 requests with no retries")
     lens_cases = None
     if args.lens_goals:
         lens_cases = json.loads(args.lens_goals.read_text())
@@ -64,7 +71,7 @@ def main():
         args.action_clarity = True
     if args.action_clarity:
         args.topic_boundary = True
-    if sum([bool(args.lens_goals), args.mentor_streaming, args.request_boundaries, args.selected_excerpt, args.mentor_request, args.mentor_uncertainty, args.guidance_selection, args.mentor_criteria, args.direct_explanation, args.perspective_understanding, args.answer_review, args.lens_library, args.initial_coach_evidence, args.topic_boundary, args.import_connection, args.today_guidance, args.outcome_guidance, args.result_calibration, args.history_evidence, args.principle_practice, args.guidance_evidence]) > 1:
+    if sum([bool(args.coach_methods), bool(args.lens_goals), args.mentor_streaming, args.request_boundaries, args.selected_excerpt, args.mentor_request, args.mentor_uncertainty, args.guidance_selection, args.mentor_criteria, args.direct_explanation, args.perspective_understanding, args.answer_review, args.lens_library, args.initial_coach_evidence, args.topic_boundary, args.import_connection, args.today_guidance, args.outcome_guidance, args.result_calibration, args.history_evidence, args.principle_practice, args.guidance_evidence]) > 1:
         parser.error("Choose one operation")
     database = Path.home() / ".cc-switch/cc-switch.db"
     with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
@@ -127,6 +134,8 @@ def main():
                 env["MINGSI_LIVE_ANSWER_REVIEW"] = "1"
             if args.lens_library:
                 env["MINGSI_LIVE_LENS_LIBRARY"] = "1"
+            if method_batch:
+                env["MINGSI_LIVE_COACH_METHODS_JSON"] = json.dumps(method_batch, ensure_ascii=False)
             if lens_cases:
                 env["MINGSI_LIVE_LENS_GOALS_JSON"] = json.dumps(lens_cases, ensure_ascii=False)
             if args.perspective_understanding:
@@ -157,6 +166,8 @@ def main():
                 env["MINGSI_LIVE_ACTION_CLARITY_REMAINING"] = "1"
 
     selector = "testImportModelConnectionWhenExplicitlyEnabled" if args.import_connection else "testLiveMentorSemanticCasesWhenExplicitlyEnabled"
+    if method_batch:
+        selector = "testLiveCoachMethodComparisonWhenExplicitlyEnabled"
     if args.mentor_streaming:
         selector = "testLiveAuditedMentorStreamingWhenExplicitlyEnabled"
     if args.initial_coach_evidence:
@@ -204,7 +215,7 @@ def main():
         with os.fdopen(descriptor, "wb") as handle:
             plistlib.dump(run, handle)
         print(json.dumps({"provider": name, "model": config["model"], "protocol": "responses",
-                          "operation": "synthetic lens goal evaluation (one request per turn)" if lens_cases else "single audited mentor streaming preview and save" if args.mentor_streaming else "two requested-question and quoted-wording turns with SQLite reopening" if args.request_boundaries else "single selected-teacher excerpt request" if args.selected_excerpt else "three fatigue/listening/request turns with SQLite reopening" if args.mentor_request else "three new-version mentor uncertainty turns with SQLite reopening" if args.mentor_uncertainty else "synthetic guidance selection" if args.guidance_selection else "new-version mentor criteria with SQLite reopening" if args.mentor_criteria else "streamed schema-7 direct explanation with AppStore save/reopen" if args.direct_explanation else "new-version perspective and stopping boundary" if args.perspective_understanding else "synthetic answer review" if args.answer_review else "synthetic lens library" if args.lens_library else "synthetic initial coach evidence" if args.initial_coach_evidence else "synthetic topic boundary" if args.topic_boundary else "synthetic guidance evidence" if args.guidance_evidence else "synthetic principle practice" if args.principle_practice else ("synthetic historical evidence" if args.history_evidence else ("import" if args.import_connection else ("synthetic result calibration" if args.result_calibration else ("synthetic outcome acceptance" if args.outcome_guidance else ("synthetic Today acceptance" if args.today_guidance else "synthetic mentor acceptance")))))}, ensure_ascii=False), flush=True)
+                          "operation": "frozen coach method comparison, at most 18 requests, no retry" if method_batch else "synthetic lens goal evaluation (one request per turn)" if lens_cases else "single audited mentor streaming preview and save" if args.mentor_streaming else "two requested-question and quoted-wording turns with SQLite reopening" if args.request_boundaries else "single selected-teacher excerpt request" if args.selected_excerpt else "three fatigue/listening/request turns with SQLite reopening" if args.mentor_request else "three new-version mentor uncertainty turns with SQLite reopening" if args.mentor_uncertainty else "synthetic guidance selection" if args.guidance_selection else "new-version mentor criteria with SQLite reopening" if args.mentor_criteria else "streamed schema-7 direct explanation with AppStore save/reopen" if args.direct_explanation else "new-version perspective and stopping boundary" if args.perspective_understanding else "synthetic answer review" if args.answer_review else "synthetic lens library" if args.lens_library else "synthetic initial coach evidence" if args.initial_coach_evidence else "synthetic topic boundary" if args.topic_boundary else "synthetic guidance evidence" if args.guidance_evidence else "synthetic principle practice" if args.principle_practice else ("synthetic historical evidence" if args.history_evidence else ("import" if args.import_connection else ("synthetic result calibration" if args.result_calibration else ("synthetic outcome acceptance" if args.outcome_guidance else ("synthetic Today acceptance" if args.today_guidance else "synthetic mentor acceptance")))))}, ensure_ascii=False), flush=True)
         result = subprocess.run([
             "xcodebuild", "-xctestrun", temporary,
             "-destination", "platform=iOS Simulator,id=9F93EE80-68DF-4922-8A73-B0590F5143D4",

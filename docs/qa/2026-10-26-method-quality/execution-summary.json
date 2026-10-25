@@ -1,0 +1,149 @@
+{
+  "batch_id": "methods-20261026-a",
+  "http_attempts": 18,
+  "returned": 15,
+  "transport_failures": 3,
+  "retries": 0,
+  "budget_max": 18,
+  "first_batch_test_result": "failed: three transport timeouts and two unsent follow-ups blocked by harness presentation acknowledgement omission",
+  "unsent_followup_test_result": "passed; two requests only; first-turn outputs replayed offline",
+  "service_usage_reports": 15,
+  "usage_reports": [
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4410,
+      "outputTokens": 313,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4723
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4413,
+      "outputTokens": 299,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4712
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4411,
+      "outputTokens": 170,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4581
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4440,
+      "outputTokens": 327,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4767
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4002,
+      "outputTokens": 350,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4352
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4435,
+      "outputTokens": 381,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4816
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4380,
+      "outputTokens": 114,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4494
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4394,
+      "outputTokens": 123,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4517
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4403,
+      "outputTokens": 100,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4503
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 3714,
+      "outputTokens": 141,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 3855
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 3717,
+      "outputTokens": 167,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 3884
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4431,
+      "outputTokens": 169,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4600
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4404,
+      "outputTokens": 101,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4505
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4754,
+      "outputTokens": 142,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 4896
+    },
+    {
+      "hasInvalidFields": false,
+      "inputTokens": 4940,
+      "outputTokens": 391,
+      "reasoningTokens": 0,
+      "source": "responses_event_usage",
+      "totalTokens": 5331
+    }
+  ],
+  "configuration_fingerprints": [
+    "cfg1_7feda08af7bcdc278515dc8f3c1494af2663567f35a0e8d4e809ac81e54025fa"
+  ],
+  "transport_elapsed_ms": {
+    "min": 3256,
+    "max": 120089
+  },
+  "transport_timeout_limit": "Harness mentorConfiguration used 120s requestTimeout (stream flag not enabled). Product default streaming idle budget is 600s. Failures characterize this batch; do not infer product or provider reliability from 18 cases.",
+  "no_more_model_calls_for_this_batch": true,
+  "reported_token_totals": {
+    "inputTokens": 65248,
+    "outputTokens": 3288,
+    "reasoningTokens": 0,
+    "totalTokens": 68536
+  },
+  "reported_token_totals_limit": "Only received numeric service reports; absent reasoning field is not proof of no reasoning; failed request usage and actual invoice unknown."
+}

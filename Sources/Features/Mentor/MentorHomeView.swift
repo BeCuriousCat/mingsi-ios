@@ -654,6 +654,7 @@ struct MentorConversationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var feature: MentorFeatureStore
     @State private var inputFocused = false
+    @State private var showsMethodLibrary = false
     @State private var composerContentHeight: CGFloat = 68
     @State private var showsBenefitFeedback = false
     @State private var benefitInputFocused = false
@@ -807,6 +808,11 @@ struct MentorConversationView: View {
             Text("最近一次成功保存的草稿会保留，当前尚未保存的文字将丢失。")
         }
         .sheet(isPresented: $showsSettings) { SettingsView().environmentObject(app) }
+        .sheet(isPresented: $showsMethodLibrary) {
+            CoachMethodLibraryView(onSelect: { feature.selectMethod($0) }).dynamicTypeSize(dynamicTypeSize)
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
+        }
         .sheet(item: $sourceSelection) { selection in
             MentorSourceDetailView(feature: feature, references: selection.references)
                 .presentationDetents([.medium, .large])
@@ -899,6 +905,12 @@ struct MentorConversationView: View {
                             if item.sequence < (feature.state.timeline.filter { $0.supersedesItemID != nil }.map(\.sequence).max() ?? 0) {
                                 Label("更正之前的 AI 回应", systemImage: "clock.arrow.circlepath")
                                     .font(.subheadline).foregroundStyle(DS.mutedInk)
+                            }
+                            if let method = feature.state.methodSnapshots[item.id] {
+                                DisclosureGroup("本轮方法 · " + method.title) {
+                                    Text(method.sourceTitle + "\n" + method.sourceScope + "\n版本 " + method.version)
+                                        .font(.footnote).foregroundStyle(DS.mutedInk).textSelection(.enabled)
+                                }.font(.subheadline)
                             }
                             Text(response.body).font(.callout).textSelection(.enabled)
                                 .background {
@@ -1391,6 +1403,24 @@ struct MentorConversationView: View {
 
     private func conversationComposer(viewportHeight: CGFloat) -> some View {
         VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button {
+                    inputFocused = false
+                    showsMethodLibrary = true
+                } label: { Label("透镜与方法", systemImage: "camera.filters").font(.subheadline) }
+                    .buttonStyle(DSCompactButtonStyle())
+                    .accessibilityIdentifier("mentor.methods.open")
+                    .disabled(![.editing, .reading, .showingResponse].contains(feature.state.phase) || feature.state.retryableRequest != nil || feature.state.materialSelection != nil)
+                if let id = feature.state.selectedMethodID, let selected = CoachMethodCatalog.usableSnapshot(id: id) {
+                    Text(selected.title).font(.caption).lineLimit(2)
+                    Button { feature.selectMethod(nil) } label: {
+                        Image(systemName: "xmark").frame(minWidth: 44, minHeight: 44)
+                    }.accessibilityLabel("取消本轮方法").accessibilityIdentifier("mentor.methods.clear")
+                } else {
+                    Text("可不选，仅用于下一轮").font(.caption).foregroundStyle(DS.mutedInk)
+                }
+                Spacer(minLength: 0)
+            }
             // Recognition review can expand; only this input area scrolls,
             // while the submit action remains reachable above the keyboard.
             ScrollView {

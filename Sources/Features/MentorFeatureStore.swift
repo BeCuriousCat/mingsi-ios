@@ -68,6 +68,8 @@ struct MentorFeatureState: Equatable {
     var actionError: String?
     var correctionError: String?
     var materialSelection: MentorMaterialSelectionState?
+    var methodSnapshots: [UUID: CoachMethodSnapshot] = [:]
+    var selectedMethodID: String?
     var inputText = ""
     var draftRevision = 0
     var hasUnsavedDraft = false
@@ -107,6 +109,15 @@ final class MentorFeatureStore: ObservableObject {
     private var requestPolicy: MentorRequestPolicy
     private var activeRequestPolicy: MentorRequestPolicy?
     private var activeStreamProgress: MentorStreamProgress?
+
+    /// Selection applies to the next new turn only. Frozen retries preserve the
+    /// original method even if this selection or the catalog changes later.
+    func selectMethod(_ id: String?) {
+        guard !state.isViewingHistory, [.editing, .reading, .showingResponse].contains(state.phase),
+              state.retryableRequest == nil, state.materialSelection == nil else { return }
+        if let id, CoachMethodCatalog.usableSnapshot(id: id) == nil { return }
+        state.selectedMethodID = id
+    }
 
     var hasLessonCatalog: Bool { catalog != nil }
     var canContinueRecall: Bool {
@@ -2302,6 +2313,7 @@ final class MentorFeatureStore: ObservableObject {
                 availableSuggestedActions: response.suggestedActions))
             restored.responseItemID = last.id
         }
+        restored.methodSnapshots = try await repository.methodSnapshots(sessionID: session.id)
         restored.retryableRequest = try await repository.retryableRequest(sessionID: session.id)
         try Task.checkCancellation()
         return restored
@@ -2509,7 +2521,8 @@ final class MentorFeatureStore: ObservableObject {
                     responseIntent: intent == "explain" ? .directTeaching : .discuss,
                     currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [],
                     selectedMaterialFragments: selectedMaterialFragments,
-                    suppressCurrentUserAnchor: trimmed.isEmpty)
+                    suppressCurrentUserAnchor: trimmed.isEmpty,
+                    selectedMethod: state.selectedMethodID.flatMap { CoachMethodCatalog.usableSnapshot(id: $0) })
             }
             if let requestAttemptID { usageAttempts[requestAttemptID]?.pendingOperations += 0 }
             guard acquireForegroundAIActivity() else {
@@ -2523,6 +2536,7 @@ final class MentorFeatureStore: ObservableObject {
                 intent: intent, contextSnapshotJSON: retry?.contextSnapshotJSON ?? built.json, retryOf: retry?.id,
                 userItemID: retry == nil && !trimmed.isEmpty ? prospectiveUserID : nil))
             submittedRequestID = requestID
+            state.selectedMethodID = nil
             state.timeline = try await repository.items(sessionID: current.id)
             let switchedEntry = intent == "reply" && !trimmed.isEmpty &&
                 requestAttemptID.flatMap { usageAttempts[$0]?.currentEntry } == "listen" ? "discuss" : nil
@@ -2674,10 +2688,12 @@ final class MentorFeatureStore: ObservableObject {
             attributes: ["reason": "succeeded"], requestID: pending.requestID)
         let timeline = try await repository.items(sessionID: pending.sessionID)
         let session = try await repository.session(id: pending.sessionID)
+        let methodSnapshots = (try? await repository.methodSnapshots(sessionID: pending.sessionID)) ?? [:]
         guard state.session?.id == pending.sessionID, let session else { return }
         applyConsumedDraft(pending, session: session)
         try Task.checkCancellation()
         state.timeline = timeline
+        state.methodSnapshots = methodSnapshots
         state.session = session
         state.retryableRequest = nil
         state.retryError = nil

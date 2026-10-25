@@ -352,6 +352,7 @@ struct TodayView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var caseTransitionNamespace
+    @State private var showsMethodLibrary = false
     @State private var isCaptureFocused = false
     @State private var isCustomLensSheetPresented = false
     @State private var inspectedLens: LensCatalogItem?
@@ -2258,6 +2259,24 @@ struct TodayView: View {
             .disabled(!store.canContinueTodayWithoutLens)
             .accessibilityIdentifier("today.select-lens.continue-without-lens")
 
+
+            Button { showsMethodLibrary = true } label: {
+                Label("浏览透镜与书籍方法", systemImage: "books.vertical").font(.subheadline)
+            }
+            .buttonStyle(DSCompactButtonStyle())
+            .accessibilityIdentifier("today.methods.open")
+            .sheet(isPresented: $showsMethodLibrary) {
+                CoachMethodLibraryView(onSelectLens: { selectLensItem($0) }).dynamicTypeSize(dynamicTypeSize)
+                    .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+                    .presentationCornerRadius(24)
+            }
+
+            if !store.runtimeLensItems.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("已启用的透镜包").font(.subheadline.weight(.semibold))
+                    ForEach(store.runtimeLensItems) { item in customLensCard(item) }
+                }
+            }
 
             if !store.customLensItems.isEmpty {
                 VStack(alignment: .leading, spacing: 9) {
