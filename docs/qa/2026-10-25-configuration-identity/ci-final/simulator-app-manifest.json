@@ -1,0 +1,20 @@
+{
+  "platform": "iPhoneSimulator",
+  "configuration": "Debug",
+  "source_revision": "3b290752f6eb2ab3ee57fe8bac09a3869ccc8013",
+  "source_tree": "2e102073284963973bc7b079a692b51f958d6ef7",
+  "source_state": "clean",
+  "bundle_id": "com.codex.mingsi",
+  "archive_sha256": "112c7418e756f46e8f7c69c143826b2801d0896555ca1e01460fbf8a4da7c6ee",
+  "unit": {
+    "passedTests": 1588,
+    "failedTests": 0,
+    "skippedTests": 24
+  },
+  "ui": {
+    "passedTests": 8,
+    "failedTests": 0,
+    "skippedTests": 0
+  },
+  "scope": "CI simulator only; no phone, personal data or provider validation"
+}

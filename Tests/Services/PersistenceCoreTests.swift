@@ -1,5 +1,6 @@
 import CryptoKit
 import XCTest
+import CoreFoundation
 import GRDB
 @testable import MingSi
 
@@ -20,6 +21,68 @@ final class PersistenceCoreTests: XCTestCase {
         database = nil
         dbQueue = nil
         super.tearDown()
+    }
+
+    func testOpeningFileWaitsForTemporaryWriterAndPreservesSavedData() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("opening-lock-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("saved.sqlite")
+        let original = try AppDatabase(url: url)
+        try original.dbQueue.write { db in
+            try db.execute(sql: "CREATE TABLE opening_probe (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO opening_probe VALUES ('preserved')")
+        }
+        try original.dbQueue.close()
+
+        var configuration = Configuration()
+        configuration.allowsUnsafeTransactions = true
+        let writer = try DatabaseQueue(path: url.path, configuration: configuration)
+        defer { try? writer.close() }
+        try writer.writeWithoutTransaction { try $0.execute(sql: "BEGIN EXCLUSIVE") }
+        let released = expectation(description: "Existing writer commits")
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(300)) {
+            defer { released.fulfill() }
+            do { try writer.writeWithoutTransaction { try $0.execute(sql: "COMMIT") } }
+            catch { XCTFail("Unable to release fixture writer: \(error)") }
+        }
+        let reopened = try AppDatabase(url: url)
+        defer { try? reopened.dbQueue.close() }
+        let value = try reopened.dbQueue.read { try String.fetchOne($0, sql: "SELECT value FROM opening_probe") }
+        XCTAssertEqual(value, "preserved")
+        wait(for: [released], timeout: 5)
+    }
+
+    func testOpeningFileReportsPersistentWriterLockWithoutReplacingSavedData() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("persistent-opening-lock-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("saved.sqlite")
+        let original = try AppDatabase(url: url)
+        try original.dbQueue.write { db in
+            try db.execute(sql: "CREATE TABLE opening_probe (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO opening_probe VALUES ('preserved')")
+        }
+        try original.dbQueue.close()
+
+        var configuration = Configuration()
+        configuration.allowsUnsafeTransactions = true
+        let writer = try DatabaseQueue(path: url.path, configuration: configuration)
+        defer { try? writer.close() }
+        try writer.writeWithoutTransaction { try $0.execute(sql: "BEGIN EXCLUSIVE") }
+        defer { try? writer.writeWithoutTransaction { try $0.execute(sql: "ROLLBACK") } }
+        let start = ContinuousClock.now
+        XCTAssertThrowsError(try AppDatabase(url: url)) { error in
+            XCTAssertEqual((error as? DatabaseError)?.resultCode, .SQLITE_BUSY)
+        }
+        let elapsed = start.duration(to: .now)
+        XCTAssertGreaterThanOrEqual(elapsed, .seconds(1))
+        XCTAssertLessThan(elapsed, .seconds(10), "Persistent locks must return a bounded failure")
+        try writer.writeWithoutTransaction { try $0.execute(sql: "COMMIT") }
+        let reopened = try AppDatabase(url: url)
+        defer { try? reopened.dbQueue.close() }
+        let value = try reopened.dbQueue.read { try String.fetchOne($0, sql: "SELECT value FROM opening_probe") }
+        XCTAssertEqual(value, "preserved")
     }
 
     func testNewBuiltinLensSelectionsPersistAndRestoreWithExistingStorage() async throws {
@@ -3070,6 +3133,32 @@ final class PersistenceCoreTests: XCTestCase {
     }
 
     // MARK: - DataExportRepository
+
+    func testDataExport_preservesSQLiteStorageInsteadOfCoercingNumbersToBooleans() async throws {
+        let draft = DailyEntryDraft(rawText: "isolated export fixture")
+        try await SQLiteDailyEntryRepository(database: database).saveDraft(draft)
+        // Test-only columns exercise every raw SQLite storage class through the
+        // real exporter, without changing a production migration or user file.
+        try await database.dbQueue.write { db in
+            for (name, type) in [("qa_integer", "INTEGER"), ("qa_real", "REAL"), ("qa_text", "TEXT"),
+                                 ("qa_blob", "BLOB"), ("qa_null", "BLOB")] {
+                try db.execute(sql: "ALTER TABLE daily_entries ADD COLUMN \(name) \(type)")
+            }
+            try db.execute(sql: "UPDATE daily_entries SET qa_integer = 12, qa_real = 1.25, qa_text = 'body', qa_blob = X'626f6479', qa_null = NULL")
+        }
+        let package = try await SQLiteDataExportRepository(database: database).exportPackage()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let rows = try XCTUnwrap(sections["daily_entries"] as? [[String: Any]])
+        let row = try XCTUnwrap(rows.first)
+        let integer = try XCTUnwrap(row["qa_integer"] as? NSNumber)
+        XCTAssertNotEqual(CFGetTypeID(integer), CFBooleanGetTypeID())
+        XCTAssertEqual(integer.int64Value, 12)
+        XCTAssertEqual((row["qa_real"] as? NSNumber)?.doubleValue, 1.25)
+        XCTAssertEqual(row["qa_text"] as? String, "body")
+        XCTAssertEqual(row["qa_blob"] as? String, Data("body".utf8).base64EncodedString())
+        XCTAssertTrue(row["qa_null"] is NSNull)
+    }
 
     func testDataExport_includesSavedDraftAndPromptRun() async throws {
         let dailyRepo = SQLiteDailyEntryRepository(database: database)

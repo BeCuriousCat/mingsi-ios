@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-25",
+  "scope": "new offline read-only local-export reconciliation tool, not a network execution gate",
+  "focused_tests": {
+    "passed": 19,
+    "failed": 0
+  },
+  "all_python_script_tests": {
+    "passed": 61,
+    "failed": 0
+  },
+  "actual_cli_matches_expected": true,
+  "fixture_source": "synthetic adapter over previous actual localhost probe SQLite numeric observations; creation date adapter is synthetic",
+  "native_observed_attempts": 4,
+  "native_network_transactions": 5,
+  "missing_budget_attempts": 1,
+  "stop_new_dispatches": true,
+  "private_user_export_read": false,
+  "source_sha256": {
+    "scripts/summarize_mentor_network.py": "c95c9d809964bbf04f74bd7b6c8cfa531cb998338eedf19d925b102aaca50f13",
+    "Tests/Scripts/test_mentor_network_summary.py": "faec00770547672a33fd741e156bc8ae61240d88a2c15ff6ddc37c03466685a6",
+    "scripts/summarize_mentor_usage.py": "9592b93c8466ff1fb29fb25f957e002a2fcbbfecc417fd1079fc61fd65572611"
+  },
+  "new_model_requests": 0,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "limits": [
+    "No new App build or native UI validation; current candidate 83c5aa9 CI runs independently",
+    "One export cannot establish completeness after deletion or failed observation writes",
+    "Build/Prompt/content/provider and usage identity not verified; no G3 pass or billing claim",
+    "No automatic sender or durable request quota enforcement is implemented by this offline tool"
+  ]
+}

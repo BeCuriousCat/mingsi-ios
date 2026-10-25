@@ -1,0 +1,27 @@
+{
+  "scope": "macOS SwiftPM isolated actual production components with minimal request/Prompt models; not iOS App",
+  "passed": 35,
+  "failed": 0,
+  "test_groups": {
+    "store": 12,
+    "transport": 7,
+    "executor": 16
+  },
+  "source_sha256": {
+    "Sources/Services/MentorHTTPObservationStore.swift": "8ffa8b79b148f52a31a1cff9148b31ffe9fda07455a0490c1ed9d5887049561a",
+    "Sources/Services/MentorRequestExecutor.swift": "f596b5d34914ad2fc8ab05247301620ea3dfe69bc1d070eb1f1a599aac448337",
+    "Sources/Features/MentorFeatureStore.swift": "b17551da864eb49b4de9de9daee1af0dd841a595dd6cb83e4372d44bab823c0f",
+    "Sources/Services/DirectGLMClient.swift": "509f4ac560c5223fc3723b8cddf3702e8262d985f70ca4bdbf937d3ccc293b5e",
+    "Tests/Services/DirectGLMClientTests.swift": "f14d75509c43e03aece447a41f94142a592a60eff94365fe36538ff0b4f41cf0",
+    "Tests/Services/MentorHTTPObservationTests.swift": "7c5d10e86cb5576d934165bb03db77787819e067c9eb11abf3149cbce09a52be",
+    "Sources/Services/MentorHTTPMetrics.swift": "c98ddfc9aa75db08d807ed96f00c90eb54eca0e5f32b658c3a34645ff4df6caa",
+    "Tests/Services/MentorRequestExecutorTests.swift": "9c93c3de7d5d4e9c5277c6f351690e005bda9714709c5ef3d30cd639f16a5d38"
+  },
+  "new_model_requests": 0,
+  "formal_G3_window_started": false,
+  "full_ios_status": "pending for this source",
+  "limits": [
+    "Native localhost probe was not rerun against this migration and is not attributed to it.",
+    "Minimal model stubs exclude App binding, full export integration and normal UI."
+  ]
+}

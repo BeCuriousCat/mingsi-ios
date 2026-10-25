@@ -98,6 +98,7 @@ struct MentorContextPayload: Codable, Equatable {
     let latestUserSourceRef: MentorSourceReference?
     let currentExchangeRefs: [MentorSourceReference]
     let conversationState: MentorConversationState
+    let selectedMethod: CoachMethodSnapshot?
 
     init(
         schemaVersion: String,
@@ -113,7 +114,8 @@ struct MentorContextPayload: Codable, Equatable {
         lessonCandidates: [MentorLessonCandidateSummary],
         latestUserSourceRef: MentorSourceReference? = nil,
         currentExchangeRefs: [MentorSourceReference] = [],
-        conversationState: MentorConversationState = .empty
+        conversationState: MentorConversationState = .empty,
+        selectedMethod: CoachMethodSnapshot? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.sessionID = sessionID
@@ -129,6 +131,7 @@ struct MentorContextPayload: Codable, Equatable {
         self.latestUserSourceRef = latestUserSourceRef
         self.currentExchangeRefs = currentExchangeRefs
         self.conversationState = conversationState
+        self.selectedMethod = selectedMethod
     }
 
     init(from decoder: Decoder) throws {
@@ -147,6 +150,7 @@ struct MentorContextPayload: Codable, Equatable {
         latestUserSourceRef = try container.decodeIfPresent(MentorSourceReference.self, forKey: .latestUserSourceRef)
         currentExchangeRefs = try container.decodeIfPresent([MentorSourceReference].self, forKey: .currentExchangeRefs) ?? []
         conversationState = try container.decodeIfPresent(MentorConversationState.self, forKey: .conversationState) ?? .empty
+        selectedMethod = try container.decodeIfPresent(CoachMethodSnapshot.self, forKey: .selectedMethod)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -155,7 +159,7 @@ struct MentorContextPayload: Codable, Equatable {
         case materialQuestionCount = "material_question_count", allowsMaterialQuestion = "allows_material_question"
         case sources, recentExchanges = "recent_exchanges", lessonCandidates = "lesson_candidates"
         case latestUserSourceRef = "latest_user_source_ref", currentExchangeRefs = "current_exchange_refs"
-        case conversationState = "conversation_state"
+        case conversationState = "conversation_state", selectedMethod = "selected_method"
     }
 }
 
@@ -256,7 +260,8 @@ struct MentorContextBuilder {
                currentLesson: MentorSavedLesson? = nil, selectedUnderstanding: MentorUnderstanding? = nil,
                eligibleLessons: [MentorLesson] = [], characterLimit: Int = 24_000,
                selectedMaterialFragments: [MentorMaterialFragment] = [],
-               suppressCurrentUserAnchor: Bool = false) throws -> MentorBuiltContext {
+               suppressCurrentUserAnchor: Bool = false,
+               selectedMethod: CoachMethodSnapshot? = nil) throws -> MentorBuiltContext {
         guard characterLimit > 0, characterLimit <= 24_000 else { throw MentorContextError.invalidBudget }
         guard !intent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw MentorContextError.invalidIntent }
         let ordered = items.sorted { $0.sequence < $1.sequence }
@@ -420,7 +425,7 @@ struct MentorContextBuilder {
                 allowsMaterialQuestion: session.recallCount < 2 && responseIntent != .directTeaching && responseIntent != .finish,
                 sources: sources, recentExchanges: try exchanges.map { try $0.map { try ref($0.id) } }, lessonCandidates: candidates,
                 latestUserSourceRef: latestUserSourceRef, currentExchangeRefs: currentExchangeRefs,
-                conversationState: conversationState)
+                conversationState: conversationState, selectedMethod: selectedMethod)
             let json = String(decoding: try encoder.encode(payload), as: UTF8.self)
             let length = json.unicodeScalars.count
             if length <= characterLimit {

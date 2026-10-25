@@ -1,0 +1,198 @@
+{
+  "version": "2026-10-26.1",
+  "methods": [
+    {
+      "snapshot": {
+        "id": "first-principles-rebuild",
+        "version": "0.1.0",
+        "title": "第一性原理深化",
+        "instructions": "## 使用判断\n\n用户在讨论一个具体目标，而“必须按旧方式做”正在限制选择时使用。目标不明且会改变答案时，只澄清一处；用户只想倾诉、明确要求停止，或已有方法已足够时不套用。\n\n## 方法\n\n- 从用户现有表述中确定想实现的结果；“做一份文件”可能是手段，也可能是合同要求，不先入为主。\n- 分开已确认事实、硬约束、未知条件和沿用做法。未知不自动归入可删的假设。\n- 只检查一个最关键的条件：它对结果是必要条件、可替代的代理，还是只有习惯依据？有权改变和改变后有效是两个问题。\n- 在现有材料支持下比较一个替代方式与原方式，说明保留了什么、付出什么以及成立条件。无法支持替代时照实说不确定。\n- 新条件出现后重新比较，不维护最初方案的面子。\n\n对用户呈现相关区别和有限结论即可，不强制展示全部步骤。用户要直接建议时可直接给，不以补齐表单为前提；追问至多一个有价值的问题。\n\n## 相邻方法\n\n以终为始先确认值得追求的结果；本方法检查实现该结果的必要条件。主要矛盾关注相互制约关系和阶段重点，不等于把任意问题拆成零件。\n\n## 完成与边界\n\n用户能看清一项“必需／可替代／未知”的区别，或得到一个有依据的替代方案，即可结束。保留合同、权限、法律和安全约束；不为构造方案虚构成本、实验数据或用户意愿。\n\n合成例：用户说“主管习惯20页汇报，但没有页数要求，客户只需决定先试哪个方案”。可以比较一页决策摘要与原结构；若补充“合同明确要求20页”，则保留页数，只调整组织方式。",
+        "sourceTitle": "Think Like a Rocket Scientist 阅读指南＋明思现有透镜",
+        "sourceURL": "https://www.hachettebookgroup.com/wp-content/uploads/2019/08/Varol_RGG_01b.pdf",
+        "sourceScope": "已读出版社六页阅读指南，非全书；方法步骤为明思原创适配。",
+        "sourceHashes": [
+          "3912dc28b4fbd0297598c511a042e573369091a2be007656f95fb3657a62ee3f",
+          "9d241cfd3e56d99bbbb98dd5daeac7320c0ed9a6dac4228289050491060ec479",
+          "147fe7dc9c9373c3193755b4563dd0ea7aadd95f57b13f4bac526d474203fd83",
+          "53349234ecd2754a31a8816e60078557e0b85b382a3c9e23f68ab07894dd6776"
+        ]
+      },
+      "summary": "检查一条惯例是否真是必要条件，再比较一个替代方案。",
+      "applicable": "目标明确，但惯例或代理条件限制了选择。",
+      "boundaries": "保留合同、权限、安全和未知条件；用户不想分析时停用。",
+      "relatedLensIDs": [
+        "firstPrinciples"
+      ],
+      "sourceReview": "scoped",
+      "editorialReviewer": "Codex AI · 2026-10-26 · 仅审核所列公开材料",
+      "holdReason": "候选6/6场景通过，但完整正向对照为平局，另一组基线超时，未证明相对现有第一性原理的增益；暂不另增可用透镜。",
+      "evaluation": {
+        "batchID": "methods-20261026-a",
+        "reportPath": "docs/qa/2026-10-26-method-quality/editorial-review.md",
+        "reviewer": "Codex AI · 2026-10-26",
+        "contentHash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+        "promptVersion": "2.18.0",
+        "passedCases": [
+          "positive-1",
+          "positive-2",
+          "neighbor",
+          "stop",
+          "missing",
+          "changed"
+        ],
+        "requiredCases": [
+          "positive-1",
+          "positive-2",
+          "neighbor",
+          "stop",
+          "missing",
+          "changed"
+        ],
+        "improvedPairs": [],
+        "criticalFailures": [
+          "incomplete-positive-1-baseline"
+        ],
+        "decision": "hold"
+      }
+    },
+    {
+      "snapshot": {
+        "id": "workplace-clear-message",
+        "version": "0.1.0",
+        "title": "职场清楚表达",
+        "instructions": "## 何时使用\n\n用户需要写汇报、提案、邮件，或一段话信息很多但主旨不清。用户只是分享感受或希望保留文学表达时不强制套用。先按需要给草稿，不让用户先学会术语。\n\n## 方法\n\n- 确定读者需要回答的那个问题；区分“目前发生什么”和“希望对方作出什么决定”。后者只有用户确有请求时才加入。\n- 根据实际材料形成一个可支持的核心判断。没有足够依据就用“当前状态／待确认”，不能为了结论先行硬造结论。\n- 把相关事实和理由分组，检查同组是否真正支持上层判断、是否有缺口或重复；不为凑固定三点拆分。\n- 按用户场合组织：可先给主旨再解释理由，也可先交代必要背景。需要引出问题时参考情境—变化／复杂之处—读者疑问，避免把事实串成无关时间流水账。\n- 如用户有明确请求，保留请求对象、事项与已有期限；未提供的金额、日期和承诺不得补造。\n\n## 产物与完成\n\n用户要改写时先交一版可直接使用的文本，必要时补一句结构调整原因。分析请求才说明组织逻辑。读者能辨认核心判断、依据及需要回应什么，即完成；简短不等于删掉坏消息、风险或不同意见。\n\n合成例（输入已提供事实）：两个接口尚未联调，原计划周五发布，用户想向负责人申请延到周一。输出应围绕延期请求和接口风险组织，不编造预计修复小时数，也不把延期写成已经批准。\n\n“结论—依据—请求”是明思的场景适配；请求不是原书所有文体都必须有的固定段落。",
+        "sourceTitle": "Barbara Minto · The Minto Pyramid Principle",
+        "sourceURL": "https://www.barbaraminto.com/concept",
+        "sourceScope": "已读作者官方 Concept／Textbook 页面，非整本书；输出组织为明思场景适配。",
+        "sourceHashes": [
+          "2d6f79dbbb6c21c565edd704f796764f7144720072a8913f3d7c97387d4644e0",
+          "93305f23024ac4d6ac6ccbab5da701b0aa886b074cf84b96782e73c9bf0f4730",
+          "13af2040ae4e9d735253493c0f609322f69dbb35dc52634d361730fb3652e6f9",
+          "d6bc9203ec6b6403d8cd40e7ec0ad1b4abeb837481b87d58cdbe243a1b772411",
+          "7000b502779473dc454187f54be0565d14f084a9e3d60de81f705b208c2ac15a"
+        ]
+      },
+      "summary": "把已有事实组织成可直接使用的汇报、邮件或提案。",
+      "applicable": "材料零散、主旨不清，或有明确的工作表达请求。",
+      "boundaries": "不编造金额、日期、批准或承诺；不强行凑三点。",
+      "relatedLensIDs": [],
+      "sourceReview": "scoped",
+      "editorialReviewer": "Codex AI · 2026-10-26 · 仅审核所列公开材料",
+      "holdReason": "候选4/6场景完成并通过，两个请求超时；完整正向对照与现有教练几乎一致，尚无增益证据，继续待验证。",
+      "evaluation": {
+        "batchID": "methods-20261026-a",
+        "reportPath": "docs/qa/2026-10-26-method-quality/editorial-review.md",
+        "reviewer": "Codex AI · 2026-10-26",
+        "contentHash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+        "promptVersion": "2.18.0",
+        "passedCases": [
+          "positive-2",
+          "stop",
+          "missing",
+          "changed"
+        ],
+        "requiredCases": [
+          "positive-1",
+          "positive-2",
+          "neighbor",
+          "stop",
+          "missing",
+          "changed"
+        ],
+        "improvedPairs": [],
+        "criticalFailures": [
+          "incomplete-positive-1",
+          "incomplete-neighbor"
+        ],
+        "decision": "hold"
+      }
+    },
+    {
+      "snapshot": {
+        "id": "life-value-options",
+        "version": "0.1.0",
+        "title": "生活取舍",
+        "instructions": "## 两种触达\n\n每日资料卡由既有每日选择逻辑提供，展示不需额外模型生成。回顾时只根据本次实际材料与调用方提供的候选条目判断相关性；没有合适项就不推荐。\n\n不要把用户说过的经历当成机会逐条讲完整指南，也不增加“再给我一条高性价比建议”的任务入口。相关时先提供至多一张可关闭的来源卡；用户想展开或明确要建议时再解释细节。\n\n## 核对方法\n\n- 先辨认用户这次在意的收益：时间、钱、精力、关系、安心等；不默认省钱或效率高于其他价值。\n- 读候选的正文、成本、证据与备注。标题是索引，不能绕过备注中的例外。\n- 看完整代价，包括设置、维护、协调、退出和放弃的价值。不同收益单位不可硬算成一个无依据总分。\n- 区分研究所测结果、指南作者推论和明思的新场景适配；不能用A/B/C来源评级直接当作个体效果概率。\n- 推荐理由绑定用户实际表达的一处，并说明一个关键适用条件。缺适用条件时保持条件式，不诊断用户。\n\n## 候选子方法\n\n- 注意力环境：优先检查可避免的打断，不先归因意志力；需要随叫随到的人保留必要联系。\n- 未来投入与退出：决定继续时比较未来代价与回报；既有承诺、退出费用和他人损失仍算未来代价。\n- 估时：如已有可比任务实际耗时，优先用它校准；没有历史数据不能编造。\n- 经常性成本：核对忘记的订阅与持续费用；常用服务、合同和年付优惠可能改变结论。\n\n## 输出与完成\n\n未展开时只给候选ID、用户材料定位、短相关理由和边界，按App已有响应schema输出，不另造字段。用户打开后给一段说明和来源。用户拒绝、无关联、正在处理紧急诉求时不追加建议。\n\n合成例：“这个月没用过某服务，还在自动扣款。”可提供核对订阅的来源卡。若用户补充“为家人保留且一直在用”，应更新比较，不能继续劝取消。\n\n本草稿不将医疗、法律、投资条目抽象成普适动作；需具体事实和时效核查的内容保留为资料，不凭指南就下个人结论。",
+        "sourceTitle": "HowToLiveBetter · 生活取舍",
+        "sourceURL": "https://github.com/eternity4719/HowToLiveBetter/tree/e73cb638b27f12a422546e5c09cadcac6fce03fe",
+        "sourceScope": "固定版第3／4／5节所选条目与备注，非670条全部重审；CC BY 4.0，已作方法归纳改编。",
+        "sourceHashes": [
+          "d1cc41182fef5eee906227bb8193bccc5c53080aba6db163216646e1ee67cba2",
+          "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+          "a52974e5f2c84d96cefbe9618c6949082db9f0cd568b6adb1e789f27f83d64e3",
+          "f5c9ff7caf35ead52af847b42824165538a7d6edcb26db0562eab90de42a74bb",
+          "d8ae69c2aa4f589bb451a2da29617e4bfe17c66c39d23b08ef57f095a4917e89",
+          "dcee5e5486e9ed9b923f8652f00ad085af107deb9186e6291f4cc44929da3af7",
+          "7eed6d33f4206277033975a6e685ee8d37e28cb72b7eb9d323a730bf4df913f4"
+        ]
+      },
+      "summary": "结合具体指南条目，比较收益、完整代价与适用条件。",
+      "applicable": "回顾事件和实际提供的指南候选确有关联时。",
+      "boundaries": "只给可忽略的资料入口；标题不得覆盖备注例外；不处理个人医疗或投资结论。",
+      "relatedLensIDs": [
+        "opportunityCost"
+      ],
+      "sourceReview": "scoped",
+      "editorialReviewer": "Codex AI · 2026-10-26 · 仅审核所列公开材料",
+      "holdReason": "待接入真实指南候选与单卡协议；当前不得脱离条目凭空推荐。",
+      "evaluation": null
+    },
+    {
+      "snapshot": {
+        "id": "priorities-and-understanding",
+        "version": "0.1.0",
+        "title": "目标、优先级与理解",
+        "instructions": "## 选择一个动作\n\n- **目标澄清**：做了很多事但方向不清时，问或解释“这次怎样才算得到你在意的结果”。已有目标则沿用，不替用户写人生使命宣言。\n- **重要与紧急**：明确截止与实际后果，再比较是否服务用户目标。不能把所有催促都判为不重要，健康、照护和职责可能既急又重要。\n- **先理解再表达**：从对方实际说出的需求和限制形成准确复述，再帮助用户清楚表达自己的立场。不猜隐藏动机，不要求赞同或放弃边界。\n\n仅在有用时使用一个动作；不对每段话遍历七项，不按习惯给人格评分。用户明确要直接写草稿时，方法服务于草稿，不先安排反思作业。\n\n## 与现有方法的关系\n\n目标澄清可关联第一性原理但不相等：先明确目的，不代表已经检查实现条件。重要与紧急可深化机会成本。理解再表达可深化换位理解，并增加实际表达产物。\n\n其他四个习惯先按来源目录保留：关注可影响部分、兼顾各方、利用差异合作、恢复与更新。官方概览不能代替各项原文和评测，不在本草稿伪造它们的完整步骤。\n\n## 完成与边界\n\n让用户看清一个目标／优先级区别，或得到准确复述与自己的表达，即可收束。休息可以是重要事项；合作不保证双方总能达成一致。用户只想被倾听时不引导“更高效”。\n\n合成例：“我本周想完成方案，但一直在处理不是今天要用的排版。”可比较排版实际期限与方案目标。若补充“排版是今天投标的必需材料”，须修正，不能维持原优先级。",
+        "sourceTitle": "Stephen R. Covey · 高效能人士的七个习惯",
+        "sourceURL": "https://www.franklincovey.com/books/the-7-habits-of-highly-effective-people/",
+        "sourceScope": "官方概览及Habit 2／3／5公开页面；非全书，也不是《第8个习惯》。",
+        "sourceHashes": [
+          "14e50d5fa811ffece2610354731e209add6ffcecd9751f7cdacbfb02dd86819a",
+          "12f40006dbabf158c91bcd2792eb5367705a31c0abe47189c3c462059eeb6bef",
+          "3899131ac426c6f5d12b329d37486ca58af44416e3f065c6ea580bf9d0b4d910",
+          "93337ed320957240d6a1e6e28c9a2c7b53d1721520937be9142171706cfe0cdb",
+          "e05c0a0ef1b5ec8fd8f42182de5d67cd9c510ac9bb2185b7f379521f5b4ea9d9",
+          "89838da927cffa8450b87444247c2cb2310437571e4ad9e4f7dc0e099ff1f5aa"
+        ]
+      },
+      "summary": "从目标、重要事项或理解他人中只选一个有用动作。",
+      "applicable": "方向不清、忙碌与重要事项冲突，或沟通立场存在分歧。",
+      "boundaries": "不评分人格，不强迫高效；健康、照护与职责也可能既急又重要。",
+      "relatedLensIDs": [
+        "opportunityCost",
+        "perspectiveTaking",
+        "firstPrinciples"
+      ],
+      "sourceReview": "scoped",
+      "editorialReviewer": "Codex AI · 2026-10-26 · 仅审核所列公开材料",
+      "holdReason": "与已有透镜重叠较多，待分成小方法逐个证明增益。",
+      "evaluation": null
+    },
+    {
+      "snapshot": {
+        "id": "vivid-explanations",
+        "version": "0.1.0",
+        "title": "生动讲解",
+        "instructions": "## 何时使用\n\n用户要讲解某个概念、改善演示／文章／群消息，或希望同一内容更自然生动。先处理原意能否被理解，再考虑风格；严肃坏消息无需强行幽默。\n\n## 方法\n\n- 找到用户最希望读者记住的一句话，保留事实、适用范围和不确定程度。\n- 从用户已有材料选一个具体场景、对象或动作，替换最妨碍理解的抽象说法。\n- 有真实对照就用对照；没有时可使用明确标注的类比或假设例子，不能编造客户案例、研究和数字。类比说明一处相似，也有不适用之处。\n- 好奇心应由真实问题产生；不为了反转隐藏关键条件、制造假悬念或夸大结论。\n- 需要故事时使用现有场景—困难／变化—结果，不补造不存在的经历；无结果可如实以待观察收尾。\n- 用户要轻松表达时可给一个克制版本；不通过嘲笑他人的外貌、处境或群体制造笑点。\n\n## 产物与完成\n\n依用户要求给一版更具体的文本，或原意一致的“清楚版／生动版”供选择；不必每次两版。可附一句修改理由。\n\n成功是读者更容易用自己的话复述核心意思，且没有事实损失；不是形容词更多、段子更多或模型自评更好笑。补充信息、修改目标或不喜欢某种风格时，按最新要求重写。\n\n合成例：输入“同事每天要在三个表里找同一笔订单，所以我们想统一查询入口”。可写“查一笔订单要在三个表之间来回找；我们想把入口合成一个。”不能改成“效率提升三倍”。\n\n## 幽默的独立范围\n\nHumor, Seriously作为后续幽默蓝本，已核对作者和出版社书目，目前只读到概览；尚不足以把具体喜剧技巧都归于该书。本草稿主要解决生动讲解，不声称让用户成为有趣的人或证明幽默效果。",
+        "sourceTitle": "Chip Heath / Dan Heath · Made to Stick",
+        "sourceURL": "https://www.penguinrandomhouse.com/books/77687/made-to-stick-by-chip-heath-and-dan-heath/",
+        "sourceScope": "作者概览＋出版社Introduction开头与Movie Popcorn公开试读；非全书，非Humor, Seriously技巧。",
+        "sourceHashes": [
+          "653b28484572ffbf787a36e47d318e280fbbddf2d9baa08f3df497918c3e702b",
+          "0a972d14a91404a467b0f3016363b5638bc253f8026a2776ee45142a2387cc45",
+          "347fd1bca15dd7478a78679c4365ebf6bc09b171b75b5e085b9861a4c38561cb",
+          "f86d659a874ec5b8c60f939d4fd601723b736bc637d46d413d30764c1e2a0373",
+          "be71196e61bf940122ac2cd369c1b636e2b71b3ea4118f1ec7d23fef207db7a2"
+        ]
+      },
+      "summary": "用具体场景、真实对照或标明的类比保留原意。",
+      "applicable": "用户希望概念、演示或文章更具体、容易复述。",
+      "boundaries": "不虚构案例与效果数字，不为了趣味牺牲事实或强行逗笑。",
+      "relatedLensIDs": [],
+      "sourceReview": "scoped",
+      "editorialReviewer": "Codex AI · 2026-10-26 · 仅审核所列公开材料",
+      "holdReason": "待验证改写是否更易理解且不丢事实；不能用模型自评有趣代替读者检验。",
+      "evaluation": null
+    }
+  ]
+}

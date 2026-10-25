@@ -1,0 +1,18 @@
+{
+  "result": "Failed",
+  "passed": 1,
+  "failed": 2,
+  "skipped": 0,
+  "stopped_after_verified_hang": true,
+  "details": "Initial and largest keyboard cases passed; normal next-turn hung with 100 percent CPU on keyboard dismissal. Sent SIGINT to xcodebuild after sampling repeated failure; xcodebuild exit 73. No generation or user data involved.",
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+      "message": "Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: \"Expect predicate `BLOCKPREDICATE(0x115560120)`\"."
+    },
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+      "message": "Testing was canceled"
+    }
+  ]
+}

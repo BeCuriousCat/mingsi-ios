@@ -279,23 +279,46 @@ final class MentorReadingGeometry: ObservableObject {
         guard !isSuspended else { return }
         sampleTask?.cancel()
         sampleTask = nil
-        guard let scroll, scroll.window != nil else { return }
+        guard let scroll, let window = scroll.window, !window.isHidden else { return }
         // SwiftUI extends the native scroll view beneath navigation bars. Only
         // the area inside its adjusted insets is actually readable.
         let viewport = scroll.convert(scroll.bounds.inset(by: scroll.adjustedContentInset), to: nil)
-        guard viewport.width > 0, viewport.height > 0 else { return }
+            .intersection(window.convert(window.bounds, to: nil))
+        guard !viewport.isNull, viewport.width > 0, viewport.height > 0 else { return }
         var frames: [MentorReadingAnchor: CGRect] = [:]
         var visibleItems = Set<UUID>()
         markers = markers.filter { $0.value.view != nil }
         for marker in markers.values {
-            guard let view = marker.view, view.window != nil, view.bounds.height > 0 else { continue }
+            guard let view = marker.view, view.window === window, view.bounds.height > 0,
+                  Self.hasVisibleAncestors(view) else { continue }
             let frame = view.convert(view.bounds, to: nil)
             if let section = view.section {
                 frames[MentorReadingAnchor(itemID: view.itemID, section: section)] = frame
-            } else if frame.intersects(viewport) { visibleItems.insert(view.itemID) }
+            } else {
+                var visibleFrame = frame.intersection(viewport)
+                var ancestor = view.superview
+                while let parent = ancestor, !visibleFrame.isNull {
+                    if parent.clipsToBounds {
+                        visibleFrame = visibleFrame.intersection(parent.convert(parent.bounds, to: nil))
+                    }
+                    ancestor = parent.superview
+                }
+                if !visibleFrame.isNull, visibleFrame.width > 0, visibleFrame.height > 0 {
+                    visibleItems.insert(view.itemID)
+                }
+            }
         }
         sample?(scroll, frames, viewport)
         for id in visibleItems { presented?(id) }
+    }
+
+    private static func hasVisibleAncestors(_ view: UIView) -> Bool {
+        var ancestor: UIView? = view
+        while let current = ancestor {
+            if current.isHidden || current.alpha <= 0.01 { return false }
+            ancestor = current.superview
+        }
+        return true
     }
 
     /// Stops callbacks before a view begins leaving its window. The final

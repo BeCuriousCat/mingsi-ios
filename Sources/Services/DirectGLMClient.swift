@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct GLMClientConfiguration: Hashable {
     enum ProtocolKind: String, Hashable, CaseIterable {
@@ -76,6 +77,35 @@ struct GLMClientConfiguration: Hashable {
         }
     }
 
+    /// A versioned grouping key for configuration, never a credential/account
+    /// identity or proof of the upstream model. Do not hash API keys or URLs
+    /// carrying credentials/query parameters. Historical/unsupported cases stay unknown.
+    var mentorObservationFingerprint: String? {
+        guard let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false),
+              let scheme = parts.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = parts.host?.lowercased(), !host.isEmpty,
+              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+              temperature.isFinite, requestTimeout.isFinite else { return nil }
+        struct Fields: Encodable {
+            let scheme: String
+            let host: String
+            let port: Int?
+            let path: String
+            let protocolKind: String
+            let requestedModel: String
+            let temperature: Double
+            let idleTimeout: Double
+            let jsonResponseFormat: Bool
+        }
+        let fields = Fields(scheme: scheme, host: host, port: parts.port, path: parts.percentEncodedPath,
+            protocolKind: protocolKind.rawValue, requestedModel: model, temperature: temperature,
+            idleTimeout: requestTimeout, jsonResponseFormat: usesJSONResponseFormat)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(fields) else { return nil }
+        return "cfg1_" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     static func normalizeBaseURL(_ url: URL, protocolKind: ProtocolKind = .openAICompatible) -> URL {
         baseURL(from: url, protocolKind: protocolKind)
     }
@@ -117,15 +147,18 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     private let configuration: GLMClientConfiguration
     private let session: URLSession
     private let encoder: JSONEncoder
+    private let mentorExecutor: MentorRequestExecutor
 
     init(
         apiKey: String,
         configuration: GLMClientConfiguration = GLMClientConfiguration(),
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        mentorExecutor: MentorRequestExecutor = MentorRequestExecutor()
     ) {
         self.apiKey = apiKey
         self.configuration = configuration
         self.session = session
+        self.mentorExecutor = mentorExecutor
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
     }
@@ -133,7 +166,7 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     func complete(_ request: LLMRequest) async throws -> Data {
         if let policy = request.mentorExecutionPolicy {
             // Bypass both the recoverable-status loop and the response_format fallback.
-            return try await MentorRequestExecutor().execute({ [self] in
+            return try await mentorExecutor.execute({ [self] in
                 try await send(request, usesJSONResponseFormat: configuration.usesJSONResponseFormat)
             }, policy: policy, startedAt: request.mentorStartedAt, progress: request.mentorStreamProgress).data
         }
@@ -184,21 +217,26 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
         }
 
 
-        do {
-            let (data, response) = try await session.data(for: urlRequest)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw LLMClientError.invalidResponse
-            }
+        return try await observeMentorHTTP(request) { attempt in
+            do {
+                let (data, response) = try await session.data(for: urlRequest, delegate: attempt?.delegate)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw LLMClientError.invalidResponse
+                }
+                if let attempt, let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    try await attempt.recordServiceUsage(MentorServiceUsage(envelope: object, source: .chatCompletion))
+                }
 
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                throw LLMClientError.httpStatus(httpResponse.statusCode, data)
-            }
+                guard (200..<300).contains(httpResponse.statusCode) else {
+                    throw LLMClientError.httpStatus(httpResponse.statusCode, data)
+                }
 
-            return data
-        } catch let error as LLMClientError {
-            throw error
-        } catch {
-            throw LLMClientError.transport(error)
+                return data
+            } catch let error as LLMClientError {
+                throw error
+            } catch {
+                throw LLMClientError.transport(error)
+            }
         }
     }
 
@@ -320,15 +358,20 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
 
         do {
             if configuration.protocolKind == .responses {
-                urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                var body: [String: Any] = [
                     "model": configuration.model,
                     "instructions": request.prompt.systemText,
                     "input": [["role": "user", "content": GLMChatCompletionRequest.userContent(for: request)]],
                     "store": false,
                     "stream": true
-                ])
+                ]
+                if let policy = request.mentorExecutionPolicy {
+                    body["max_output_tokens"] = policy.outputTokenBudget
+                }
+                urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
                 return urlRequest
             }
+            let budget = mentorOutputBudgetFields(for: request)
             urlRequest.httpBody = try encoder.encode(
                 GLMChatCompletionRequest(
                     request,
@@ -336,7 +379,11 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
                     temperature: configuration.temperature,
                     stream: stream,
                     usesJSONResponseFormat: usesJSONResponseFormat,
-                    reasoningEffort: mentorReasoningEffort(for: request)
+                    reasoningEffort: mentorReasoningEffort(for: request),
+                    maxTokens: budget.maxTokens,
+                    maxCompletionTokens: budget.maxCompletionTokens,
+                    includesStreamUsage: stream && request.mentorExecutionPolicy != nil &&
+                        configuration.baseURL.host?.lowercased() == "api.openai.com"
                 )
             )
         } catch {
@@ -349,31 +396,38 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
     /// preview as a completed response. Final content still goes through the parser.
     private func sendMentorStream(_ request: LLMRequest) async throws -> Data {
         let urlRequest = try makeURLRequest(request, usesJSONResponseFormat: false, stream: true)
-        do {
-            let (bytes, response) = try await session.bytes(for: urlRequest)
-            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
-            guard (200..<300).contains(http.statusCode) else {
-                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
-            }
-            var responses = ResponsesStreamAccumulator()
-            var chat = ChatStreamAccumulator(requiresStopReason: true)
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                if configuration.protocolKind == .responses {
-                    if let token = try responses.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
-                    if responses.isCompleted { return try responses.normalizedResponse() }
-                    continue
+        return try await observeMentorHTTP(request) { attempt in
+            do {
+                let (bytes, response) = try await session.bytes(for: urlRequest, delegate: attempt?.delegate)
+                defer { bytes.task.cancel() }
+                guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
                 }
-                if let token = try chat.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
-                if chat.isCompleted {
-                    return try JSONSerialization.data(withJSONObject: ["choices": [[
-                        "message": ["role": "assistant", "content": chat.text], "finish_reason": "stop"]]])
+                var responses = ResponsesStreamAccumulator()
+                var chat = ChatStreamAccumulator(requiresStopReason: true)
+                for try await line in bytes.lines {
+                    try Task.checkCancellation()
+                    if let attempt {
+                        try await attempt.recordServiceUsage(MentorServiceUsage.fromSSE(line,
+                            protocolKind: configuration.protocolKind == .responses ? .responses : .openAICompatible))
+                    }
+                    if configuration.protocolKind == .responses {
+                        if let token = try responses.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                        if responses.isCompleted { return try responses.normalizedResponse() }
+                        continue
+                    }
+                    if let token = try chat.consume(line: line) { try request.mentorStreamProgress?.receive(token) }
+                    if chat.isCompleted {
+                        return try JSONSerialization.data(withJSONObject: ["choices": [[
+                            "message": ["role": "assistant", "content": chat.text], "finish_reason": "stop"]]])
+                    }
                 }
-            }
-            throw LLMClientError.incompleteResponse
-        } catch let error as LLMClientError { throw error }
-        catch is CancellationError { throw CancellationError() }
-        catch { throw LLMClientError.transport(error) }
+                throw LLMClientError.incompleteResponse
+            } catch let error as LLMClientError { throw error }
+            catch is CancellationError { throw CancellationError() }
+            catch { throw LLMClientError.transport(error) }
+        }
     }
 
     /// Responses providers may require SSE even for a logically complete request.
@@ -385,26 +439,83 @@ final class DirectGLMClient: LLMClient, StreamingLLMClient {
             urlRequest.timeoutInterval = min(configuration.requestTimeout,
                 Double(components.seconds) + Double(components.attoseconds) / 1e18)
         }
+        return try await observeMentorHTTP(request) { attempt in
+            do {
+                let (bytes, response) = try await session.bytes(for: urlRequest, delegate: attempt?.delegate)
+                defer { bytes.task.cancel() }
+                guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
+                }
+                let iterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
+                var accumulator = ResponsesStreamAccumulator()
+                while let line = try await nextLineWithIdleTimeout(from: iterator) {
+                    try Task.checkCancellation()
+                    if let attempt {
+                        try await attempt.recordServiceUsage(MentorServiceUsage.fromSSE(line, protocolKind: .responses))
+                    }
+                    _ = try accumulator.consume(line: line)
+                    if accumulator.isCompleted { return try accumulator.normalizedResponse() }
+                }
+                throw LLMClientError.incompleteResponse
+            } catch let error as LLMClientError {
+                throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw LLMClientError.transport(error)
+            }
+        }
+    }
+
+    private func observeMentorHTTP(
+        _ request: LLMRequest,
+        operation: (MentorHTTPAttempt?) async throws -> Data
+    ) async throws -> Data {
+        let kind: MentorHTTPProtocol = configuration.protocolKind == .responses ? .responses : .openAICompatible
+        let budget = mentorOutputBudgetFields(for: request)
+        let attempt = try await request.mentorHTTPObservation?.beginAttempt(protocolKind: kind,
+            outputBudgetField: budget.field, outputBudget: budget.value,
+            configurationFingerprint: configuration.mentorObservationFingerprint)
+        if let attempt { try request.mentorStreamProgress?.bindTimingAttempt(attempt) }
+        let result: Result<Data, Error>
         do {
-            let (bytes, response) = try await session.bytes(for: urlRequest)
-            guard let http = response as? HTTPURLResponse else { throw LLMClientError.invalidResponse }
-            guard (200..<300).contains(http.statusCode) else {
-                throw LLMClientError.httpStatus(http.statusCode, try await Self.collectStreamErrorBody(from: bytes))
-            }
-            let iterator = AsyncIteratorBox(bytes.lines.makeAsyncIterator())
-            var accumulator = ResponsesStreamAccumulator()
-            while let line = try await nextLineWithIdleTimeout(from: iterator) {
-                try Task.checkCancellation()
-                _ = try accumulator.consume(line: line)
-                if accumulator.isCompleted { return try accumulator.normalizedResponse() }
-            }
-            throw LLMClientError.incompleteResponse
-        } catch let error as LLMClientError {
+            try Task.checkCancellation()
+            result = .success(try await operation(attempt))
+        } catch { result = .failure(error) }
+        request.mentorStreamProgress?.recordTiming(.transportFinished)
+        switch result {
+        case .success(let data):
+            try await attempt?.finish(.returnedData)
+            return data
+        case .failure(let error):
+            let cancelled = Task.isCancelled || error is CancellationError ||
+                (error as? URLError)?.code == .cancelled || {
+                    if case LLMClientError.transport(let underlying) = error {
+                        return (underlying as? URLError)?.code == .cancelled
+                    }
+                    return false
+                }()
+            try await attempt?.finish(cancelled ? .cancelled : .failed)
             throw error
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            throw LLMClientError.transport(error)
+        }
+    }
+
+    private func mentorOutputBudgetFields(for request: LLMRequest) -> (field: String?, value: Int?, maxTokens: Int?, maxCompletionTokens: Int?) {
+        guard let policy = request.mentorExecutionPolicy else { return (nil, nil, nil, nil) }
+        if configuration.protocolKind == .responses {
+            return ("max_output_tokens", policy.outputTokenBudget, nil, nil)
+        }
+        switch configuration.baseURL.host?.lowercased() {
+        case "api.z.ai", "open.bigmodel.cn":
+            return ("max_tokens", policy.outputTokenBudget, policy.outputTokenBudget, nil)
+        case "api.openai.com":
+            return ("max_completion_tokens", policy.outputTokenBudget, nil, policy.outputTokenBudget)
+        default:
+            // Unknown compatible gateways are not silently assigned a provider
+            // contract. The request still runs for legacy compatibility, while
+            // its budget field is explicitly unknown and must not enter G3.
+            return (nil, nil, nil, nil)
         }
     }
 
@@ -716,6 +827,9 @@ private struct GLMChatCompletionRequest: Encodable {
     let stream: Bool
     let responseFormat: GLMResponseFormat?
     let reasoningEffort: String?
+    let maxTokens: Int?
+    let maxCompletionTokens: Int?
+    let streamOptions: GLMStreamOptions?
 
     init(
         _ request: LLMRequest,
@@ -723,7 +837,10 @@ private struct GLMChatCompletionRequest: Encodable {
         temperature: Double,
         stream: Bool,
         usesJSONResponseFormat: Bool,
-        reasoningEffort: String?
+        reasoningEffort: String?,
+        maxTokens: Int? = nil,
+        maxCompletionTokens: Int? = nil,
+        includesStreamUsage: Bool = false
     ) {
         self.model = model
         self.messages = [
@@ -734,6 +851,15 @@ private struct GLMChatCompletionRequest: Encodable {
         self.stream = stream
         self.responseFormat = usesJSONResponseFormat && !stream ? GLMResponseFormat(type: "json_object") : nil
         self.reasoningEffort = reasoningEffort
+        self.maxTokens = maxTokens
+        self.maxCompletionTokens = maxCompletionTokens
+        self.streamOptions = includesStreamUsage ? GLMStreamOptions(includeUsage: true) : nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case model, messages, temperature, stream, responseFormat = "response_format"
+        case reasoningEffort = "reasoning_effort", maxTokens = "max_tokens", maxCompletionTokens = "max_completion_tokens"
+        case streamOptions = "stream_options"
     }
 
     static func userContent(for request: LLMRequest) -> String {
@@ -760,6 +886,10 @@ private struct GLMChatCompletionRequest: Encodable {
 private struct GLMChatMessage: Encodable {
     let role: String
     let content: String
+}
+
+private struct GLMStreamOptions: Encodable {
+    let includeUsage: Bool
 }
 
 private struct GLMResponseFormat: Encodable {

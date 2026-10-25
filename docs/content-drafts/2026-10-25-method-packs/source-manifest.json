@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-25",
+  "reviewer": "Codex AI",
+  "status": "partial_source_based_editorial_drafts",
+  "source_texts_committed": false,
+  "sources": [
+    {
+      "id": "minto-concept",
+      "url": "https://www.barbaraminto.com/concept",
+      "kind": "author_concept_page",
+      "scope": "pyramid grouping, higher-order thought, business writing",
+      "full_book_read": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "web/minto-concept.txt",
+          "sha256": "2d6f79dbbb6c21c565edd704f796764f7144720072a8913f3d7c97387d4644e0"
+        },
+        {
+          "artifact": "web/minto.txt",
+          "sha256": "93305f23024ac4d6ac6ccbab5da701b0aa886b074cf84b96782e73c9bf0f4730"
+        },
+        {
+          "artifact": "web/minto-textbook.txt",
+          "sha256": "13af2040ae4e9d735253493c0f609322f69dbb35dc52634d361730fb3652e6f9"
+        }
+      ]
+    },
+    {
+      "id": "covey-habits",
+      "url": "https://www.franklincovey.com/books/the-7-habits-of-highly-effective-people/",
+      "kind": "official_overview_and_method_pages",
+      "scope": "overview plus complete public Habit 2, 3, 5 pages",
+      "full_book_read": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "web/covey7.txt",
+          "sha256": "14e50d5fa811ffece2610354731e209add6ffcecd9751f7cdacbfb02dd86819a"
+        },
+        {
+          "artifact": "web/habit2.txt",
+          "sha256": "12f40006dbabf158c91bcd2792eb5367705a31c0abe47189c3c462059eeb6bef"
+        },
+        {
+          "artifact": "web/habit3.txt",
+          "sha256": "3899131ac426c6f5d12b329d37486ca58af44416e3f065c6ea580bf9d0b4d910"
+        },
+        {
+          "artifact": "web/habit5.txt",
+          "sha256": "93337ed320957240d6a1e6e28c9a2c7b53d1721520937be9142171706cfe0cdb"
+        }
+      ]
+    },
+    {
+      "id": "rocket-reading-guide",
+      "url": "https://www.hachettebookgroup.com/wp-content/uploads/2019/08/Varol_RGG_01b.pdf",
+      "kind": "publisher_reading_group_guide",
+      "scope": "all 6 PDF pages; chapter 2 questions at PDF page 3; form/function questions at PDF page 5",
+      "full_book_read": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "web/rocket-reading-guide.pdf",
+          "sha256": "3912dc28b4fbd0297598c511a042e573369091a2be007656f95fb3657a62ee3f"
+        },
+        {
+          "artifact": "web/rocket-reading-guide.txt",
+          "sha256": "9d241cfd3e56d99bbbb98dd5daeac7320c0ed9a6dac4228289050491060ec479"
+        }
+      ]
+    },
+    {
+      "id": "made-to-stick",
+      "url": "https://www.penguinrandomhouse.com/books/77687/made-to-stick-by-chip-heath-and-dan-heath/",
+      "kind": "publisher_public_excerpt_and_author_overview",
+      "scope": "normal browser Read a text excerpt: Introduction opening and Movie Popcorn section; author overview",
+      "full_book_read": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "web/stick-public-excerpt-ax.txt",
+          "sha256": "653b28484572ffbf787a36e47d318e280fbbddf2d9baa08f3df497918c3e702b"
+        },
+        {
+          "artifact": "web/stick.txt",
+          "sha256": "0a972d14a91404a467b0f3016363b5638bc253f8026a2776ee45142a2387cc45"
+        },
+        {
+          "artifact": "web/stick-publisher.txt",
+          "sha256": "347fd1bca15dd7478a78679c4365ebf6bc09b171b75b5e085b9861a4c38561cb"
+        }
+      ]
+    },
+    {
+      "id": "humor-seriously",
+      "url": "https://www.humorseriously.com/the-book",
+      "kind": "author_book_overview_and_publisher_metadata",
+      "scope": "author description and publisher book page; no humor techniques chapter acquired",
+      "full_book_read": false,
+      "skill_draft_produced": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "web/humor.txt",
+          "sha256": "1b8ec9194b3c35abc47197256b35f7037f0e8553f7681180abc2cbacce032a33"
+        },
+        {
+          "artifact": "web/humor-excerpt.txt",
+          "sha256": "57b9a7cef6459a8591f3c7be771a9d0174880030254f75d14e1b990e63bfe5fd"
+        }
+      ]
+    },
+    {
+      "id": "howtolivebetter",
+      "url": "https://github.com/eternity4719/HowToLiveBetter/tree/e73cb638b27f12a422546e5c09cadcac6fce03fe",
+      "kind": "fixed_revision_open_reference",
+      "scope": "selected entries and notes from sections 3, 4, 5; not all 670 entries re-reviewed",
+      "license": "CC-BY-4.0",
+      "full_book_read": false,
+      "retrieved_at": "2026-10-25",
+      "local_material_hashes": [
+        {
+          "artifact": "HowToLiveBetter/README.md",
+          "sha256": "d1cc41182fef5eee906227bb8193bccc5c53080aba6db163216646e1ee67cba2"
+        },
+        {
+          "artifact": "HowToLiveBetter/LICENSE",
+          "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411"
+        },
+        {
+          "artifact": "HowToLiveBetter/book/03-不要浪费精力.md",
+          "sha256": "a52974e5f2c84d96cefbe9618c6949082db9f0cd568b6adb1e789f27f83d64e3"
+        },
+        {
+          "artifact": "HowToLiveBetter/book/04-不要浪费时间.md",
+          "sha256": "f5c9ff7caf35ead52af847b42824165538a7d6edcb26db0562eab90de42a74bb"
+        },
+        {
+          "artifact": "HowToLiveBetter/book/05-不要浪费钱.md",
+          "sha256": "d8ae69c2aa4f589bb451a2da29617e4bfe17c66c39d23b08ef57f095a4917e89"
+        }
+      ]
+    }
+  ],
+  "acquisition_limits": [
+    {
+      "source": "rocket author page/workbook",
+      "state": "HTTP 403; not bypassed"
+    },
+    {
+      "source": "Covey eighth habit publisher page and Franklin news page",
+      "state": "HTTP 403; book identity from search metadata only; no method extraction"
+    },
+    {
+      "source": "Heath resources",
+      "state": "registration required; no registration or gated material retrieval"
+    },
+    {
+      "source": "PRH Canada excerpt",
+      "state": "no readable excerpt obtained; public US book UI excerpt used instead"
+    }
+  ],
+  "method_files": [
+    {
+      "path": "first-principles-rebuild/SKILL.md",
+      "sha256": "147fe7dc9c9373c3193755b4563dd0ea7aadd95f57b13f4bac526d474203fd83"
+    },
+    {
+      "path": "first-principles-rebuild/references/sources.md",
+      "sha256": "53349234ecd2754a31a8816e60078557e0b85b382a3c9e23f68ab07894dd6776"
+    },
+    {
+      "path": "life-value-options/SKILL.md",
+      "sha256": "dcee5e5486e9ed9b923f8652f00ad085af107deb9186e6291f4cc44929da3af7"
+    },
+    {
+      "path": "life-value-options/references/sources.md",
+      "sha256": "7eed6d33f4206277033975a6e685ee8d37e28cb72b7eb9d323a730bf4df913f4"
+    },
+    {
+      "path": "priorities-and-understanding/SKILL.md",
+      "sha256": "e05c0a0ef1b5ec8fd8f42182de5d67cd9c510ac9bb2185b7f379521f5b4ea9d9"
+    },
+    {
+      "path": "priorities-and-understanding/references/sources.md",
+      "sha256": "89838da927cffa8450b87444247c2cb2310437571e4ad9e4f7dc0e099ff1f5aa"
+    },
+    {
+      "path": "vivid-explanations/SKILL.md",
+      "sha256": "f86d659a874ec5b8c60f939d4fd601723b736bc637d46d413d30764c1e2a0373"
+    },
+    {
+      "path": "vivid-explanations/references/sources.md",
+      "sha256": "be71196e61bf940122ac2cd369c1b636e2b71b3ea4118f1ec7d23fef207db7a2"
+    },
+    {
+      "path": "workplace-clear-message/SKILL.md",
+      "sha256": "d6bc9203ec6b6403d8cd40e7ec0ad1b4abeb837481b87d58cdbe243a1b772411"
+    },
+    {
+      "path": "workplace-clear-message/references/sources.md",
+      "sha256": "7000b502779473dc454187f54be0565d14f084a9e3d60de81f705b208c2ac15a"
+    }
+  ],
+  "new_paid_model_requests": 0,
+  "upstream_full_distillation_executed": false
+}

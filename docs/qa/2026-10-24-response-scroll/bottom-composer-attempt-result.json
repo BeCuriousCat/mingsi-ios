@@ -1,0 +1,13 @@
+{
+  "result": "Failed",
+  "passed": 2,
+  "failed": 1,
+  "skipped": 0,
+  "details": "Light next input and initial keyboard passed. Largest test could not find new lazy response while viewport stayed on original long message. Added response reveal and natural composer height measurement afterward; this result does not cover that later candidate.",
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+      "message": "XCTAssertTrue failed"
+    }
+  ]
+}

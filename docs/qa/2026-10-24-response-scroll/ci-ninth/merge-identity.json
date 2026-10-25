@@ -1,0 +1,11 @@
+{
+  "api": "https://api.github.com/repos/BeCuriousCat/mingsi-ios/git/commits/299acd4683c42d573317d25a8eeee57093ae14c5",
+  "sha": "299acd4683c42d573317d25a8eeee57093ae14c5",
+  "parents": [
+    "09a20787d7863717c98195f3ed19eade4cae34f7",
+    "ec444881d138fb9112cef7689cee313ddbee7b50"
+  ],
+  "tree": "61f5e2536413e3aec6f088a4e8e67bfc87ecc6a0",
+  "retrieved_using": "authenticated gh api",
+  "local_candidate_tree": "61f5e2536413e3aec6f088a4e8e67bfc87ecc6a0"
+}

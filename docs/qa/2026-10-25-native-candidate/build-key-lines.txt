@@ -1,0 +1,3 @@
+<REPOSITORY_ROOT>/Vendor/GRDB.swift/GRDB/Record/EncodableRecord.swift:243:28: warning: type 'Any' does not conform to the 'Sendable' protocol
+<REPOSITORY_ROOT>/Vendor/GRDB.swift/GRDB/Record/FetchableRecord.swift:269:28: warning: type 'Any' does not conform to the 'Sendable' protocol
+** BUILD SUCCEEDED **

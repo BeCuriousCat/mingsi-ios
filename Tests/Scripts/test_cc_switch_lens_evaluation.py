@@ -40,10 +40,10 @@ class LensEvaluationRunnerTests(unittest.TestCase):
         self.cases.write_text(json.dumps([{"id": "first", "lens": "evidenceCheck", "text": "synthetic",
             "steps": [{"mode": "question", "goals": ["grounding"]}]}]))
 
-    def invoke(self, extra=(), fail=False):
+    def invoke(self, extra=(), fail=False, method_batch=None):
         args = [str(SCRIPT), "--source-xctestrun", str(self.source),
             "--result-bundle-path", str(self.root / "result.xcresult"),
-            "--lens-goals", str(self.cases), *extra]
+            *( ["--lens-goals", str(self.cases)] if method_batch is None else ["--coach-methods", str(method_batch)] ), *extra]
         output = io.StringIO()
         temporary_paths = []
 
@@ -56,10 +56,14 @@ class LensEvaluationRunnerTests(unittest.TestCase):
             self.assertEqual(env["MINGSI_LIVE_GLM_API_KEY"], "synthetic-private-key")
             self.assertNotIn("MINGSI_LIVE_OLD", env)
             self.assertEqual(env["KEEP"], "value")
-            self.assertEqual(len(json.loads(env["MINGSI_LIVE_LENS_GOALS_JSON"])), 1)
+            if method_batch is None:
+                self.assertEqual(len(json.loads(env["MINGSI_LIVE_LENS_GOALS_JSON"])), 1)
+            else:
+                self.assertEqual(json.loads(env["MINGSI_LIVE_COACH_METHODS_JSON"])["max_requests"], 18)
+                self.assertNotIn("MINGSI_LIVE_LENS_GOALS_JSON", env)
             self.assertEqual(run["TestingEnvironmentVariables"], {})
             self.assertIn("test-without-building", command)
-            self.assertTrue(any(arg.endswith("/testLiveLensGoalsWhenExplicitlyEnabled") for arg in command))
+            self.assertTrue(any(arg.endswith("/testLiveLensGoalsWhenExplicitlyEnabled" if method_batch is None else "/testLiveCoachMethodComparisonWhenExplicitlyEnabled") for arg in command))
             if fail:
                 raise RuntimeError("simulated execution failure")
             return type("Result", (), {"returncode": 0})()
@@ -90,6 +94,25 @@ class LensEvaluationRunnerTests(unittest.TestCase):
     def test_mutually_exclusive_paid_operations_are_rejected(self):
         with self.assertRaises(SystemExit), patch.object(runner.subprocess, "run") as run:
             self.invoke(["--mentor-streaming"])
+        run.assert_not_called()
+
+    def test_method_batch_uses_isolated_credentials_and_its_only_selector(self):
+        dataset = self.root / "methods.json"
+        dataset.write_text(json.dumps({"no_retry": True, "max_requests": 18, "cases": [{"texts": ["synthetic"]}]}))
+        self.assertEqual(self.invoke(method_batch=dataset), 1)
+
+    def test_over_budget_method_batch_is_rejected_before_any_provider_request(self):
+        dataset = self.root / "methods.json"
+        dataset.write_text(json.dumps({"no_retry": True, "max_requests": 18, "cases": [{"texts": ["synthetic"] * 19}]}))
+        with self.assertRaises(SystemExit), patch.object(runner.subprocess, "run") as run:
+            self.invoke(method_batch=dataset)
+        run.assert_not_called()
+
+    def test_method_batch_cannot_enable_another_paid_path(self):
+        dataset = self.root / "methods.json"
+        dataset.write_text(json.dumps({"no_retry": True, "max_requests": 18, "cases": [{"texts": ["synthetic"]}]}))
+        with self.assertRaises(SystemExit), patch.object(runner.subprocess, "run") as run:
+            self.invoke(extra=["--mentor-streaming"], method_batch=dataset)
         run.assert_not_called()
 
 

@@ -2,6 +2,64 @@ import XCTest
 
 final class MentorNavigationUITests: XCTestCase {
     @MainActor
+    func testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText() throws {
+        var normalTitleHeight: CGFloat = 0
+        for largest in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                "-AppleInterfaceStyle", largest ? "Dark" : "Light", "-UIPreferredContentSizeCategory",
+                largest ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let discuss = app.buttons["我有一件事"]
+            XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+            scrollTo(discuss, in: app); discuss.tap()
+            let open = app.buttons["mentor.methods.open"]
+            XCTAssertTrue(open.waitForExistence(timeout: 5)); open.tap()
+            let lens = app.buttons["methods.lens.firstPrinciples"]
+            let list = app.collectionViews["methods.library.list"]
+            for _ in 0..<25 {
+                if lens.exists && lens.isHittable { break }
+                list.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(lens.waitForExistence(timeout: 5)); XCTAssertTrue(lens.isHittable); lens.tap()
+            let use = app.buttons["methods.use.firstPrinciples"]
+            let lensDetails = app.scrollViews["methods.lens.detail"]
+            for _ in 0..<25 {
+                if use.exists && use.isHittable { break }
+                lensDetails.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(use.waitForExistence(timeout: 5)); XCTAssertTrue(use.isHittable); use.tap()
+            let clear = app.buttons["mentor.methods.clear"]
+            XCTAssertTrue(clear.waitForExistence(timeout: 5))
+            XCTAssertGreaterThanOrEqual(clear.frame.height, 44)
+            clear.tap(); XCTAssertTrue(clear.waitForNonExistence(timeout: 5))
+            open.tap()
+            let held = app.buttons["methods.book.life-value-options"]
+            for _ in 0..<20 {
+                if held.exists && held.isHittable { break }
+                list.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(held.waitForExistence(timeout: 5)); XCTAssertTrue(held.isHittable); held.tap()
+            let title = app.staticTexts["生活取舍"].firstMatch
+            XCTAssertTrue(title.waitForExistence(timeout: 5))
+            if largest { XCTAssertGreaterThan(title.frame.height, normalTitleHeight, "The presented sheet must inherit accessibility Dynamic Type") }
+            else { normalTitleHeight = title.frame.height }
+            let pending = app.descendants(matching: .any)["methods.pending.life-value-options"].firstMatch
+            let details = app.scrollViews["methods.detail.scroll"]
+            for _ in 0..<20 {
+                if pending.exists && pending.isHittable { break }
+                details.swipeUp(velocity: .slow)
+            }
+            XCTAssertTrue(pending.waitForExistence(timeout: 5))
+            XCTAssertFalse(app.buttons["methods.use.life-value-options"].exists)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "method-source-held-" + (largest ? "dark-largest" : "light")
+            screenshot.lifetime = .keepAlways; add(screenshot)
+            app.terminate()
+        }
+    }
+
+    @MainActor
     func testCaptureDraftRestoresBodyAndUnacceptedSpeechAfterProcessRelaunch() throws {
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture", "--capture-draft-relaunch-fixture",
@@ -612,7 +670,139 @@ final class MentorNavigationUITests: XCTestCase {
     }
 
     @MainActor
+    func testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback() throws {
+        try verifyNextInputAfterSavedResponse(largestText: false)
+    }
+
+    @MainActor
+    func testSavedNetworkResponseAllowsNextInputAtLargestDarkText() throws {
+        try verifyNextInputAfterSavedResponse(largestText: true)
+    }
+
+    @MainActor
+    func testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText() throws {
+        continueAfterFailure = false
+        executionTimeAllowance = 120
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--speech-ui-fixture",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-AppleInterfaceStyle", "Dark",
+            "-UIPreferredContentSizeCategory", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        defer { app.terminate() }
+        let discuss = app.buttons["我有一件事"]
+        XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+        scrollTo(discuss, in: app)
+        discuss.tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("保留原文")
+        let voice = app.buttons["speech-input.toggle"]
+        voice.tap()
+        assertVoiceLabel("停止语音输入", voice)
+        voice.tap()
+        assertVoiceLabel("取消语音识别", voice)
+        voice.tap()
+        assertVoiceLabel("开始语音输入", voice)
+        voice.tap()
+        assertVoiceLabel("停止语音输入", voice)
+        voice.tap()
+        let review = app.textFields["speech-input.review"]
+        XCTAssertTrue(review.waitForExistence(timeout: 5))
+        XCTAssertEqual(input.value as? String, "保留原文")
+        let area = app.scrollViews["mentor.conversation.composer-scroll"]
+        XCTAssertTrue(area.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !review.isHittable { area.swipeUp(velocity: .slow) }
+        review.tap()
+        review.typeText("校对")
+        let corrected = try XCTUnwrap(review.value as? String)
+        XCTAssertTrue(corrected.contains("校对"))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        for _ in 0..<3 where app.keyboards.firstMatch.exists { area.swipeDown(velocity: .slow) }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let accept = app.buttons["speech-input.accept"]
+        for _ in 0..<8 where !accept.isHittable { area.swipeUp(velocity: .slow) }
+        XCTAssertTrue(accept.isHittable)
+        XCTAssertTrue(app.buttons["发送"].isHittable)
+        attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-review")
+        accept.tap()
+        XCTAssertEqual(input.value as? String, "保留原文\n" + corrected.trimmingCharacters(in: .whitespacesAndNewlines))
+        XCTAssertTrue(review.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["发送"].isHittable)
+        attachVoiceScreenshot(app, name: "bottom-composer-largest-speech-accepted")
+    }
+
+    @MainActor
+    private func verifyNextInputAfterSavedResponse(largestText: Bool) throws {
+        continueAfterFailure = false
+        executionTimeAllowance = 120
+        let app = XCUIApplication()
+        app.launchArguments += ["--mentor-ui-test", "--mentor-response-scroll-fixture", "--speech-ui-fixture",
+            "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+            "-AppleInterfaceStyle", largestText ? "Dark" : "Light",
+            "-UIPreferredContentSizeCategory", largestText ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+        app.launch()
+        defer { app.terminate() }
+        let discuss = app.buttons["我有一件事"]
+        XCTAssertTrue(discuss.waitForExistence(timeout: 15))
+        scrollTo(discuss, in: app)
+        discuss.tap()
+        let input = app.textViews["你想说的话"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        scrollTo(input, in: app)
+        input.tap()
+        input.typeText("我周五有两小时。可以整理已有笔记，也可以学习一个新工具。我暂时没有紧急交付，想把选择依据说清楚。请用中文简短解释两个选择各自适合什么情况，不必追问，也不替我选。")
+        app.buttons["speech-input.keyboard-dismiss"].tap()
+        let send = app.buttons["发送"]
+        scrollTo(send, in: app)
+        send.tap()
+        let answer = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "这两个选择的关键取舍是：")).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 8))
+        scrollTo(answer, in: app, towardEarlierContent: true)
+        XCTAssertTrue(answer.label.hasSuffix("可能仍不确定。"))
+        let variant = largestText ? "dark-largest" : "light"
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-before-next-input")
+
+        XCTAssertFalse(app.textViews["mentor.benefit.note"].exists,
+                       "Optional feedback starts collapsed so it does not displace the answer")
+        if !largestText {
+            XCTAssertGreaterThanOrEqual(send.frame.height, 44)
+            XCTAssertLessThanOrEqual(send.frame.height, 52, "Compact visual button keeps a full touch target")
+            XCTAssertLessThanOrEqual(input.frame.height, 60, "Empty composer starts at about two lines")
+        }
+
+        // Reach the next composer with actual native swipes, leaving optional
+        // benefit feedback untouched. This replay is not real-network acceptance.
+        scrollTo(input, in: app)
+        input.tap()
+        let nextTurn = "补充一个条件：下周一要用现有笔记做五分钟分享，新工具没有近期用途。请按这个新条件重新比较，不必布置额外任务。"
+        input.typeText(nextTurn)
+        XCTAssertEqual(input.value as? String, nextTurn)
+        let fullyVisible = NSPredicate { _, _ in
+            input.isHittable && app.buttons["speech-input.keyboard-dismiss"].isHittable &&
+            input.frame.minY >= app.navigationBars["这次交流"].frame.maxY - 1 &&
+            input.frame.maxY <= app.keyboards.firstMatch.frame.minY + 1
+        }
+        expectation(for: fullyVisible, evaluatedWith: nil)
+        waitForExpectations(timeout: 5)
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-next-input-keyboard")
+        XCTAssertTrue(input.isHittable)
+        XCTAssertTrue(app.navigationBars["这次交流"].buttons["到这里"].isHittable)
+        XCTAssertTrue(app.buttons["speech-input.keyboard-dismiss"].isHittable)
+        XCTAssertGreaterThanOrEqual(input.frame.minY, app.navigationBars["这次交流"].frame.maxY - 1)
+        XCTAssertLessThanOrEqual(input.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        app.buttons["speech-input.keyboard-dismiss"].tap()
+        scrollTo(send, in: app)
+        XCTAssertTrue(send.isEnabled, "Next turn must not require optional benefit feedback")
+        XCTAssertTrue(send.isHittable)
+        XCTAssertEqual(input.value as? String, nextTurn)
+        attachVoiceScreenshot(app, name: "saved-response-\(variant)-next-send-ready")
+        // Do not send a second response or create synthetic benefit feedback.
+    }
+
+    @MainActor
     private func verifyMentorStream(interrupted: Bool) throws {
+        executionTimeAllowance = 120
         let app = XCUIApplication()
         app.launchArguments += ["--mentor-ui-test", "--mentor-stream-ui-fixture", "--speech-ui-fixture",
             "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
@@ -643,6 +833,51 @@ final class MentorNavigationUITests: XCTestCase {
             expectation(for: grew, evaluatedWith: nil)
             waitForExpectations(timeout: 4)
         }
+        let readingArea = app.scrollViews["mentor.conversation.reading-scroll"]
+        XCTAssertTrue(readingArea.waitForExistence(timeout: 5))
+        let composerArea = app.scrollViews["mentor.conversation.composer-scroll"]
+        XCTAssertTrue(composerArea.waitForExistence(timeout: 5))
+        func elementSnapshot(in node: any XCUIElementSnapshot, type: XCUIElement.ElementType,
+                             identifier: String) -> (any XCUIElementSnapshot)? {
+            if node.elementType == type, node.identifier == identifier || node.label == identifier { return node }
+            for child in node.children {
+                if let found = elementSnapshot(in: child, type: type, identifier: identifier) { return found }
+            }
+            return nil
+        }
+        let visiblePreview = NSPredicate { _, _ in
+            // Every frame must come from the same accessibility snapshot.
+            // Repeated live queries can mix two stream/layout states and take
+            // most of the predicate's observation window on hosted runners.
+            guard let root = try? app.snapshot(),
+                  let text = elementSnapshot(in: root, type: .staticText, identifier: "mentor.request.stream-preview"),
+                  let reading = elementSnapshot(in: root, type: .scrollView, identifier: "mentor.conversation.reading-scroll"),
+                  let composer = elementSnapshot(in: root, type: .scrollView, identifier: "mentor.conversation.composer-scroll"),
+                  let navigation = elementSnapshot(in: root, type: .navigationBar, identifier: "这次交流") else {
+                print("MENTOR_PREVIEW_VISIBILITY missing snapshot element")
+                return false
+            }
+            let textFrame = text.frame
+            let readingFrame = reading.frame
+            let composerFrame = composer.frame
+            guard textFrame.height > 0, textFrame.width > 0 else { return false }
+            // A scroll view's AX frame may extend under a safe-area inset.
+            // Exclude the fixed composer and navigation bar explicitly.
+            let top = max(readingFrame.minY, navigation.frame.maxY)
+            let bottom = min(readingFrame.maxY, composerFrame.minY)
+            let viewport = CGRect(x: readingFrame.minX, y: top,
+                                  width: readingFrame.width, height: max(0, bottom - top))
+            let visible = textFrame.intersection(viewport).intersection(root.frame)
+            let hittable = preview.isHittable
+            let matches = !visible.isNull && hittable && visible.height >= min(80, textFrame.height) &&
+                visible.width >= min(100, textFrame.width)
+            print("MENTOR_PREVIEW_VISIBILITY preview=\(textFrame) viewport=\(viewport) app=\(root.frame) intersection=\(visible) hittable=\(hittable) matches=\(matches)")
+            return matches
+        }
+        attachVoiceScreenshot(app, name: interrupted ? "mentor-stream-dark-largest-before-auto-visibility-check" : "mentor-stream-light-before-auto-visibility-check")
+        print("MENTOR_PREVIEW_GEOMETRY preview=\(preview.frame) reading=\(readingArea.frame) composer=\(composerArea.frame) navigation=\(app.navigationBars["这次交流"].frame)")
+        expectation(for: visiblePreview, evaluatedWith: nil)
+        waitForExpectations(timeout: 3)
         scrollTo(preview, in: app)
         XCTAssertTrue(preview.isHittable)
         XCTAssertGreaterThanOrEqual(preview.frame.minX, app.frame.minX + 18)
@@ -1046,13 +1281,19 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertTrue(known.waitForExistence(timeout: 5))
         known.tap()
 
-        let section = app.descendants(matching: .any).matching(identifier: "mentor.benefit.section").firstMatch
+        let section = app.buttons["mentor.benefit.toggle"]
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
         for _ in 0..<12 {
-            if section.isHittable { break }
-            app.swipeUp(velocity: .slow)
+            if section.isHittable && section.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
         }
 
         let note = app.textViews["mentor.benefit.note"]
+        let disclosure = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "这次交流对你有帮助吗")).firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        XCTAssertLessThan(disclosure.frame.maxY, composer.frame.minY)
+        disclosure.tap()
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         let speechToggle = app.buttons["mentor.benefit.note.voice-toggle"]
         XCTAssertTrue(speechToggle.waitForExistence(timeout: 5))
@@ -1062,9 +1303,17 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["点击开始录音"].exists)
 
         let feedback = app.buttons["mentor.benefit.benefit_helped"]
+        // isHittable can be true for a sliver behind the fixed composer.
+        // Bring the whole control into the reading viewport before tapping.
+        for _ in 0..<12 {
+            if feedback.isHittable && feedback.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
         XCTAssertTrue(feedback.isHittable)
+        XCTAssertLessThan(feedback.frame.maxY, composer.frame.minY)
         feedback.tap()
         XCTAssertTrue(app.staticTexts["已记录：看清了一件事"].waitForExistence(timeout: 5))
+        attachVoiceScreenshot(app, name: "mentor-feedback-expanded-saved-compact")
     }
 
     @MainActor
@@ -1737,12 +1986,28 @@ extension MentorNavigationUITests {
         let known = app.buttons["mentor.lesson.known"]
         for _ in 0..<10 where !known.isHittable { app.swipeUp() }
         known.tap()
+        let disclosure = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "这次交流对你有帮助吗")).firstMatch
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
+        for _ in 0..<12 {
+            if disclosure.isHittable && disclosure.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        disclosure.tap()
         let note = app.textViews["mentor.benefit.note"]
-        for _ in 0..<12 where !note.isHittable { app.swipeUp() }
+        for _ in 0..<12 {
+            if note.isHittable && note.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         note.tap()
         note.typeText("已有反馈")
         let voice = app.buttons["mentor.benefit.note.voice-toggle"]
+        XCTAssertGreaterThanOrEqual(voice.frame.minY, app.navigationBars["这次交流"].frame.maxY)
+        XCTAssertLessThan(voice.frame.maxY, composer.frame.minY,
+                          "Focusing feedback reveals its mic above the fixed composer")
+        attachVoiceScreenshot(app, name: "mentor-feedback-keyboard-mic-visible")
         voice.tap()
         assertVoiceLabel("停止语音输入", voice)
         voice.tap()
@@ -1754,11 +2019,34 @@ extension MentorNavigationUITests {
         voice.tap()
         assertVoiceLabel("重新录音", voice)
         let accept = app.buttons["mentor.benefit.note.voice-accept"]
-        for _ in 0..<5 where !accept.isHittable { app.swipeUp() }
+        revealMentorReadingControl(accept, in: app)
         accept.tap()
+        revealMentorReadingControl(voice, in: app)
         assertVoiceLabel("开始语音输入", voice)
         XCTAssertEqual(note.value as? String, "已有反馈\n语音测试第 2 次。")
         attachVoiceScreenshot(app, name: "mentor-feedback-voice-appended")
+    }
+
+    @MainActor
+    private func revealMentorReadingControl(_ control: XCUIElement, in app: XCUIApplication,
+                                            file: StaticString = #filePath, line: UInt = #line) {
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
+        for _ in 0..<8 {
+            let top = app.navigationBars["这次交流"].frame.maxY + 8
+            let bottom = composer.frame.minY - 8
+            if control.isHittable && control.frame.minY >= top && control.frame.maxY <= bottom { return }
+            // The reading scroll view extends behind the composer/keyboard.
+            // Swipe in its visible margin, as a person would, not over the keyboard.
+            let origin = reading.coordinate(withNormalizedOffset: .zero)
+            let startY = bottom - 12
+            let endY = max(top + 12, startY - 140)
+            let downward = control.frame.minY < top
+            let start = origin.withOffset(CGVector(dx: 8, dy: (downward ? endY : startY) - reading.frame.minY))
+            let end = origin.withOffset(CGVector(dx: 8, dy: (downward ? startY : endY) - reading.frame.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTFail("Control must be fully visible above the composer before tapping", file: file, line: line)
     }
 
     @MainActor

@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-25",
+  "run_id": 40118518363,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40118518363",
+  "head_revision": "ca052ecadced1b90396cbf02f7551facd04be2be",
+  "tested_merge_revision": "494bf8b39f807d81ff161dd7171087c97509bdef",
+  "tested_tree": "545df313754ed0104c19a4d3d34a5c3212bc7e6e",
+  "head_tree_matches_tested_tree": true,
+  "status": "completed",
+  "conclusion": "success",
+  "scripts": {
+    "passed": 61,
+    "failed": 0
+  },
+  "unit": {
+    "passed": 1582,
+    "failed": 0,
+    "skipped": 24
+  },
+  "ui": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "release_debug_markers_and_optional_healthkit": "passed",
+  "simulator_archive": {
+    "sha256": "088812deff010e17f2517e40b1eb3abd7292d9cce1504545473a5884f86b49cf",
+    "hash_zip_integrity_markers_platform_and_tree_verified": true,
+    "installed": false
+  },
+  "new_configuration_identity_candidate_covered": false,
+  "screenshots_preserved_privately": 23,
+  "screenshots_individually_reviewed_this_run": 0,
+  "formal_G3_window_started": false,
+  "goal_complete": false
+}

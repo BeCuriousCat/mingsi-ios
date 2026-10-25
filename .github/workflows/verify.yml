@@ -33,7 +33,9 @@ jobs:
   source-verification:
     name: Clean build and offline tests
     runs-on: macos-26
-    timeout-minutes: 45
+    # A clean Release, Debug/unit run and eight UI paths exceeded 45 minutes
+    # on a slow hosted simulator. Keep the full gates and artifact collection.
+    timeout-minutes: 75
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
@@ -69,6 +71,7 @@ jobs:
           # Inspect existing devices; do not create, delete or reset a simulator.
           python3 scripts/select_ci_simulator.py >> "$GITHUB_ENV"
       - name: Run unit tests with no paid model requests
+        id: offline-unit
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
@@ -103,15 +106,29 @@ jobs:
           assert "healthkit" not in required, "HealthKit must remain optional"
           print("Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed")
           PY
-      - name: Run isolated permission UI in light and dark largest text
+      - name: Run isolated permission and next-turn UI in light and dark largest text
+        # Preserve a failed unit gate while still collecting independent UI
+        # evidence. No continue-on-error: the overall job remains failed.
+        if: ${{ !cancelled() && (steps.offline-unit.outcome == 'success' || steps.offline-unit.outcome == 'failure') }}
         run: |
           xcodebuild -project MingSi.xcodeproj -scheme MingSi \
             -configuration Debug -destination "platform=iOS Simulator,id=$MINGSI_CI_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/mingsi-tests" \
             -resultBundlePath "$RUNNER_TEMP/mingsi-permissions-ui.xcresult" \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 -maximum-test-execution-time-allowance 600 \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInLight \
             -only-testing:MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorBenefitFeedbackUsesSharedVoiceInput \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText \
             -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             MINGSI_SOURCE_REVISION="$GITHUB_SHA" MINGSI_SOURCE_STATE=clean test
@@ -154,6 +171,54 @@ jobs:
           (evidence / "screenshots.json").write_text(json.dumps(mapping, indent=2) + "\n")
           PY
           fi
+      - name: Package verified simulator App for normal local validation
+        # Preserve the same Debug bundle that passed offline and UI gates.
+        # No device data, Keychain, API credentials or simulator container is
+        # packaged. This is a simulator artifact, never an iPhone distribution.
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import plistlib
+          import subprocess
+          task_temp = Path(os.environ["RUNNER_TEMP"])
+          app = task_temp / "mingsi-tests/Build/Products/Debug-iphonesimulator/MingSi.app"
+          info = plistlib.loads((app / "Info.plist").read_bytes())
+          revision = os.environ["GITHUB_SHA"]
+          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == revision
+          assert info["MingSiSourceRevision"] == revision
+          assert info["MingSiSourceState"] == "clean"
+          assert info["CFBundleIdentifier"] == "com.codex.mingsi"
+          assert "iPhoneSimulator" in info["CFBundleSupportedPlatforms"]
+          unit = json.loads((task_temp / "mingsi-unit-summary.json").read_text())
+          ui = json.loads((task_temp / "permission-ui-evidence/summary.json").read_text())
+          assert unit["failedTests"] == 0 and unit["passedTests"] > 0
+          assert ui["failedTests"] == 0 and ui["passedTests"] == 11
+          evidence = task_temp / "verified-simulator-app"
+          evidence.mkdir()
+          archive = evidence / "MingSi-simulator.zip"
+          subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(archive)], check=True)
+          manifest = {"platform": "iPhoneSimulator", "configuration": "Debug",
+                      "source_revision": revision,
+                      "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                      "source_state": "clean", "bundle_id": info["CFBundleIdentifier"],
+                      "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                      "unit": {key: unit[key] for key in ["passedTests", "failedTests", "skippedTests"]},
+                      "ui": {key: ui[key] for key in ["passedTests", "failedTests", "skippedTests"]},
+                      "scope": "CI simulator only; no phone, personal data or provider validation"}
+          (evidence / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+      - name: Attach verified simulator App
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-simulator-app
+          path: ${{ runner.temp }}/verified-simulator-app
+          if-no-files-found: error
+          retention-days: 7
       - name: Attach compact test summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

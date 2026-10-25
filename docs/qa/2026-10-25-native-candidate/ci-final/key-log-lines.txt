@@ -1,0 +1,12 @@
+Clean build and offline tests	Verify local scripts without model credentials	2026-10-24T17:08:01.4501700Z Ran 42 tests in 2.978s
+Clean build and offline tests	Build Release for Simulator	2026-10-24T17:08:04.5840700Z     MINGSI_SOURCE_REVISION = 3665153e0ee6877b65f373c5a08315e7fa4ef769
+Clean build and offline tests	Build Release for Simulator	2026-10-24T17:18:42.0147630Z ** BUILD SUCCEEDED **
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T17:18:48.8816990Z     MINGSI_SOURCE_REVISION = 3665153e0ee6877b65f373c5a08315e7fa4ef769
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T17:29:28.3329400Z 	 Executed 1606 tests, with 24 tests skipped and 0 failures (0 unexpected) in 197.885 (235.131) seconds
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T17:29:28.3330870Z 	 Executed 1606 tests, with 24 tests skipped and 0 failures (0 unexpected) in 197.885 (235.136) seconds
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T17:29:31.6275070Z ** TEST SUCCEEDED **
+Clean build and offline tests	Check optional HealthKit entitlement embedded for Simulator	2026-10-24T17:29:40.7847470Z Simulator executable embeds optional HealthKit entitlement; no health authorization or data access performed
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T17:29:42.0404670Z     MINGSI_SOURCE_REVISION = 3665153e0ee6877b65f373c5a08315e7fa4ef769
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T17:33:53.2501900Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 283.27457682291663, 338.0, 497.66666666666663) viewport=(0.0, 132.0, 402.0, 434.66666666666663) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 283.27457682291663, 338.0, 283.39208984375) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T17:34:32.6873800Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 324.6163736979167, 338.0, 64.33333333333331) viewport=(0.0, 132.0, 402.0, 506.0) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 324.6163736979167, 338.0, 64.33333333333331) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T17:40:10.5566030Z ** TEST SUCCEEDED **

@@ -1,0 +1,53 @@
+{
+  "batch_id": "methods-20261026-a-unsent-followups",
+  "prompt_version": "2.18.0",
+  "max_requests": 2,
+  "no_retry": true,
+  "reviewer": "Codex AI; not ordinary-user acceptance",
+  "cases": [
+    {
+      "id": "first-principles-rebuild-changed-candidate-continuation",
+      "method_id": "first-principles-rebuild",
+      "method_hash": "d0d4a9f45632adfd0662f249972acfd33a1aaf9aec78278c7bdb33210ef670c8",
+      "case_id": "changed",
+      "variant": "candidate",
+      "session_id": "9495e937-c3a0-59e1-8bc5-af6803622acc",
+      "user_ids": [
+        "88624363-b1a9-586f-8f1d-1f9cfd659513"
+      ],
+      "texts": [
+        "补充一个新条件：合同确实规定必须交付20页，今天不能修改合同。请按新条件更新比较，不要再建议只交一页，也不用布置任务。"
+      ],
+      "goals": [
+        "首轮区分目标与形式；次轮明确更新，保留20页并可在其中加摘要",
+        "不暗示绕过合同、不维护第一轮方案"
+      ],
+      "baseline_lens_id": "firstPrinciples",
+      "seed_context_json": "{\"allows_material_question\":true,\"conversation_state\":{\"hasNewUserExpression\":true,\"visibleTurnIndex\":1},\"current_exchange_refs\":[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"],\"initial_entry\":\"discuss\",\"intent\":\"reply\",\"latest_user_source_ref\":\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\",\"lesson_candidates\":[],\"material_question_count\":0,\"recent_exchanges\":[[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"]],\"request_epoch\":0,\"schema_version\":\"1.0.0\",\"selected_method\":{\"id\":\"first-principles-rebuild\",\"instructions\":\"## 使用判断\\n\\n用户在讨论一个具体目标，而“必须按旧方式做”正在限制选择时使用。目标不明且会改变答案时，只澄清一处；用户只想倾诉、明确要求停止，或已有方法已足够时不套用。\\n\\n## 方法\\n\\n- 从用户现有表述中确定想实现的结果；“做一份文件”可能是手段，也可能是合同要求，不先入为主。\\n- 分开已确认事实、硬约束、未知条件和沿用做法。未知不自动归入可删的假设。\\n- 只检查一个最关键的条件：它对结果是必要条件、可替代的代理，还是只有习惯依据？有权改变和改变后有效是两个问题。\\n- 在现有材料支持下比较一个替代方式与原方式，说明保留了什么、付出什么以及成立条件。无法支持替代时照实说不确定。\\n- 新条件出现后重新比较，不维护最初方案的面子。\\n\\n对用户呈现相关区别和有限结论即可，不强制展示全部步骤。用户要直接建议时可直接给，不以补齐表单为前提；追问至多一个有价值的问题。\\n\\n## 相邻方法\\n\\n以终为始先确认值得追求的结果；本方法检查实现该结果的必要条件。主要矛盾关注相互制约关系和阶段重点，不等于把任意问题拆成零件。\\n\\n## 完成与边界\\n\\n用户能看清一项“必需／可替代／未知”的区别，或得到一个有依据的替代方案，即可结束。保留合同、权限、法律和安全约束；不为构造方案虚构成本、实验数据或用户意愿。\\n\\n合成例：用户说“主管习惯20页汇报，但没有页数要求，客户只需决定先试哪个方案”。可以比较一页决策摘要与原结构；若补充“合同明确要求20页”，则保留页数，只调整组织方式。\",\"sourceHashes\":[\"3912dc28b4fbd0297598c511a042e573369091a2be007656f95fb3657a62ee3f\",\"9d241cfd3e56d99bbbb98dd5daeac7320c0ed9a6dac4228289050491060ec479\",\"147fe7dc9c9373c3193755b4563dd0ea7aadd95f57b13f4bac526d474203fd83\",\"53349234ecd2754a31a8816e60078557e0b85b382a3c9e23f68ab07894dd6776\"],\"sourceScope\":\"已读出版社六页阅读指南，非全书；方法步骤为明思原创适配。\",\"sourceTitle\":\"Think Like a Rocket Scientist 阅读指南＋明思现有透镜\",\"sourceURL\":\"https://www.hachettebookgroup.com/wp-content/uploads/2019/08/Varol_RGG_01b.pdf\",\"title\":\"第一性原理深化\",\"version\":\"0.1.0\"},\"semantic_revision\":0,\"session_id\":\"9495E937-C3A0-59E1-8BC5-AF6803622ACC\",\"sources\":[{\"content\":\"主管过去习惯20页，没有正式页数要求；客户只需决定A或B，预算一样。我想改一页摘要，直接比较，不要追问。\",\"is_current\":true,\"ref\":\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\",\"role\":\"user\"}]}",
+      "seed_response_json": "{\"schema_version\":\"1.0.0\",\"action\":\"compare\",\"material_status\":\"usable\",\"body\":\"按你给出的条件，我更偏向一页摘要：客户需要决定A或B，预算一样，也没有正式页数要求。这个建议成立的条件是，一页能保留足以改变选择的关键信息，而不只是把20页缩成小字。\\n\\n决定性的取舍是：一页摘要突出A、B之间影响选择的差异，代价是减少背景与推导的展开；20页能容纳更多说明，但页数本身并不是完成这次决策的必要条件。摘要可以围绕“要决定什么—A、B的关键差异—各自适用条件与主要代价”组织；预算既然相同，就不必把它作为区分两者的重点。\\n\\n主管习惯20页，说明存在原有做法，不等于20页不可替代；不过，没有正式页数要求，也不代表主管一定接受一页。我的偏向是改变主文形式、保留决策依据，而不是为了压到一页删掉会影响A/B选择的重要限制。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:C40813A4-8E2E-5A49-9E70-3FC23022A0C0\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+      "turn_offset": 1
+    },
+    {
+      "id": "workplace-clear-message-changed-candidate-continuation",
+      "method_id": "workplace-clear-message",
+      "method_hash": "642db1eda0e03dc191808303c8a2714c99a215049578c633eb1d6ac81f1a69a5",
+      "case_id": "changed",
+      "variant": "candidate",
+      "session_id": "b1fb656c-407f-5da8-99b5-4c9c7b70ad85",
+      "user_ids": [
+        "fa474b3d-0c73-5b8a-8606-b0eef58a9537"
+      ],
+      "texts": [
+        "补充：负责人已经批准延到周一，但联调完成时间仍未知。请更新成一条进度消息，不再申请延期，也不能承诺周一一定上线。"
+      ],
+      "goals": [
+        "首轮申请与事实区分；次轮反映已批准",
+        "次轮不重复申请、不把批准当技术就绪、不保证周一上线"
+      ],
+      "baseline_lens_id": null,
+      "seed_context_json": "{\"allows_material_question\":true,\"conversation_state\":{\"hasNewUserExpression\":true,\"visibleTurnIndex\":1},\"current_exchange_refs\":[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"],\"initial_entry\":\"discuss\",\"intent\":\"reply\",\"latest_user_source_ref\":\"item:709B28CD-8A00-5968-A007-A9A62F00868C\",\"lesson_candidates\":[],\"material_question_count\":0,\"recent_exchanges\":[[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"]],\"request_epoch\":0,\"schema_version\":\"1.0.0\",\"selected_method\":{\"id\":\"workplace-clear-message\",\"instructions\":\"## 何时使用\\n\\n用户需要写汇报、提案、邮件，或一段话信息很多但主旨不清。用户只是分享感受或希望保留文学表达时不强制套用。先按需要给草稿，不让用户先学会术语。\\n\\n## 方法\\n\\n- 确定读者需要回答的那个问题；区分“目前发生什么”和“希望对方作出什么决定”。后者只有用户确有请求时才加入。\\n- 根据实际材料形成一个可支持的核心判断。没有足够依据就用“当前状态／待确认”，不能为了结论先行硬造结论。\\n- 把相关事实和理由分组，检查同组是否真正支持上层判断、是否有缺口或重复；不为凑固定三点拆分。\\n- 按用户场合组织：可先给主旨再解释理由，也可先交代必要背景。需要引出问题时参考情境—变化／复杂之处—读者疑问，避免把事实串成无关时间流水账。\\n- 如用户有明确请求，保留请求对象、事项与已有期限；未提供的金额、日期和承诺不得补造。\\n\\n## 产物与完成\\n\\n用户要改写时先交一版可直接使用的文本，必要时补一句结构调整原因。分析请求才说明组织逻辑。读者能辨认核心判断、依据及需要回应什么，即完成；简短不等于删掉坏消息、风险或不同意见。\\n\\n合成例（输入已提供事实）：两个接口尚未联调，原计划周五发布，用户想向负责人申请延到周一。输出应围绕延期请求和接口风险组织，不编造预计修复小时数，也不把延期写成已经批准。\\n\\n“结论—依据—请求”是明思的场景适配；请求不是原书所有文体都必须有的固定段落。\",\"sourceHashes\":[\"2d6f79dbbb6c21c565edd704f796764f7144720072a8913f3d7c97387d4644e0\",\"93305f23024ac4d6ac6ccbab5da701b0aa886b074cf84b96782e73c9bf0f4730\",\"13af2040ae4e9d735253493c0f609322f69dbb35dc52634d361730fb3652e6f9\",\"d6bc9203ec6b6403d8cd40e7ec0ad1b4abeb837481b87d58cdbe243a1b772411\",\"7000b502779473dc454187f54be0565d14f084a9e3d60de81f705b208c2ac15a\"],\"sourceScope\":\"已读作者官方 Concept／Textbook 页面，非整本书；输出组织为明思场景适配。\",\"sourceTitle\":\"Barbara Minto · The Minto Pyramid Principle\",\"sourceURL\":\"https://www.barbaraminto.com/concept\",\"title\":\"职场清楚表达\",\"version\":\"0.1.0\"},\"semantic_revision\":0,\"session_id\":\"B1FB656C-407F-5DA8-99B5-4C9C7B70AD85\",\"sources\":[{\"content\":\"帮我写给负责人：两个接口没联调，原计划周五上线，我想申请延到周一，但还未批准。直接给短消息，不追问。\",\"is_current\":true,\"ref\":\"item:709B28CD-8A00-5968-A007-A9A62F00868C\",\"role\":\"user\"}]}",
+      "seed_response_json": "{\"schema_version\":\"1.0.0\",\"action\":\"explain\",\"material_status\":\"usable\",\"body\":\"负责人好，目前两个接口尚未联调，我想申请将原定周五的上线时间延至周一，以便完成联调、降低上线风险。目前延期尚未获批，请您确认是否同意。\",\"question\":null,\"question_purpose\":null,\"source_refs\":[\"item:709B28CD-8A00-5968-A007-A9A62F00868C\"],\"lesson_ref\":null,\"suggested_actions\":[\"finish\"]}",
+      "turn_offset": 1
+    }
+  ]
+}

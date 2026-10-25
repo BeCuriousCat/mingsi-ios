@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		178963F6D91BA3577AB1423C /* CoachMethodCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC6A248A950CA82E0FC46CA /* CoachMethodCatalog.swift */; };
+		C627E4F2A194CFA8F957793A /* coach-methods.json in Resources */ = {isa = PBXBuildFile; fileRef = 10FBBBBDC1935935393C30BE /* coach-methods.json */; };
+		CACED4DED37F7C547F86D3AD /* CoachMethodCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA8500DA5B42886CDBF65A2 /* CoachMethodCatalogTests.swift */; };
+		ECE6B84A8CC78FEC6C3C1EF5 /* CoachMethodLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9232F018F1F4485710234809 /* CoachMethodLibraryView.swift */; };
+		D8AD58054F81C2F594CBF001 /* MentorHTTPMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8AD58054F81C2F594CBF002 /* MentorHTTPMetrics.swift */; };
+		D8AD58054F81C2F594CBF011 /* MentorHTTPObservationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8AD58054F81C2F594CBF012 /* MentorHTTPObservationStore.swift */; };
+		D8AD58054F81C2F594CBF003 /* MentorHTTPMetricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8AD58054F81C2F594CBF004 /* MentorHTTPMetricsTests.swift */; };
+		D8AD58054F81C2F594CBF013 /* MentorHTTPObservationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8AD58054F81C2F594CBF014 /* MentorHTTPObservationTests.swift */; };
 		00B8408ACA6F964C6B400DE8 /* life-guidance-m1.draft.json in Resources */ = {isa = PBXBuildFile; fileRef = 1B3D1B2F4477625004A72DF3 /* life-guidance-m1.draft.json */; };
 		0488F94A589BD0CE19F45F46 /* CaptureIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B086B439CA85A75D6A46E7 /* CaptureIntent.swift */; };
 		072C0A83E0DD08C0D607DAED /* MentorUnderstandingEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE22A45ABCEA94C76C51D98 /* MentorUnderstandingEditor.swift */; };
@@ -122,6 +130,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		10FBBBBDC1935935393C30BE /* coach-methods.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "coach-methods.json"; sourceTree = "<group>"; };
+		7CA8500DA5B42886CDBF65A2 /* CoachMethodCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachMethodCatalogTests.swift; sourceTree = "<group>"; };
+		8CC6A248A950CA82E0FC46CA /* CoachMethodCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachMethodCatalog.swift; sourceTree = "<group>"; };
+		9232F018F1F4485710234809 /* CoachMethodLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachMethodLibraryView.swift; sourceTree = "<group>"; };
+		D8AD58054F81C2F594CBF002 /* MentorHTTPMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorHTTPMetrics.swift; sourceTree = "<group>"; };
+		D8AD58054F81C2F594CBF012 /* MentorHTTPObservationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorHTTPObservationStore.swift; sourceTree = "<group>"; };
+		D8AD58054F81C2F594CBF004 /* MentorHTTPMetricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorHTTPMetricsTests.swift; sourceTree = "<group>"; };
+		D8AD58054F81C2F594CBF014 /* MentorHTTPObservationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MentorHTTPObservationTests.swift; sourceTree = "<group>"; };
 		01A37981F9DE1233506E6DDB /* PhotoMemoryMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoMemoryMediaService.swift; sourceTree = "<group>"; };
 		03D360D67582B7D9424B3FF7 /* PromptSpecificationDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptSpecificationDocumentTests.swift; sourceTree = "<group>"; };
 		0492ADFFCC647956F2F0D259 /* test_live_glm_acceptance_script.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = test_live_glm_acceptance_script.sh; sourceTree = "<group>"; };
@@ -241,6 +257,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9896D283EFDBD02BF0DD61E0 /* Methods */ = {
+			isa = PBXGroup;
+			children = (
+				10FBBBBDC1935935393C30BE /* coach-methods.json */,
+			);
+			path = Methods;
+			sourceTree = "<group>";
+		};
 		04737266245AE0940873EBD5 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -377,6 +401,8 @@
 				CE23B37286FB45ACCCF742BC /* MentorContextBuilder.swift */,
 				63A4B3C4A3A7E38A69E47361 /* MentorPersistence.swift */,
 				D41E5332846976FBBFBAC11D /* MentorRequestExecutor.swift */,
+				D8AD58054F81C2F594CBF002 /* MentorHTTPMetrics.swift */,
+				D8AD58054F81C2F594CBF012 /* MentorHTTPObservationStore.swift */,
 				35993467B43FF5E9C4147855 /* MockLLMClient.swift */,
 				423CCB6B93914E2785C31DD5 /* PersistenceCore.swift */,
 				01A37981F9DE1233506E6DDB /* PhotoMemoryMediaService.swift */,
@@ -432,6 +458,7 @@
 		C696B9146302E6A62DAC3F78 /* Mentor */ = {
 			isa = PBXGroup;
 			children = (
+				9232F018F1F4485710234809 /* CoachMethodLibraryView.swift */,
 				D6964047DB12FA6B2B186774 /* MentorHistoryView.swift */,
 				4C796281289CA3AE2F0E5CD8 /* MentorHomeView.swift */,
 				93363531C748BA9EB619F533 /* MentorLessonPreferencesView.swift */,
@@ -444,6 +471,7 @@
 		CB82B6FBC02A67DC20E12272 /* Domain */ = {
 			isa = PBXGroup;
 			children = (
+				8CC6A248A950CA82E0FC46CA /* CoachMethodCatalog.swift */,
 				831494666A2CE930CA9837F0 /* CaptureDigestModels.swift */,
 				16DDD2F003904518F51B030F /* LifeGuidanceModels.swift */,
 				3180C0C49D4B7C8DEEC95B43 /* LifeGuidanceReferenceModels.swift */,
@@ -463,6 +491,7 @@
 			isa = PBXGroup;
 			children = (
 				DF0C92DBE445439B83B6B1A2 /* PrivacyInfo.xcprivacy */,
+				9896D283EFDBD02BF0DD61E0 /* Methods */,
 				B6B234AD1C2CE886B7D0F038 /* LifeGuidance */,
 				BAABD5F65A592FF1D075E2CB /* Mentor */,
 			);
@@ -472,6 +501,7 @@
 		FFAF67C082B3C918D8603FA6 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				7CA8500DA5B42886CDBF65A2 /* CoachMethodCatalogTests.swift */,
 				56E206FA9084F920AD506F08 /* DirectGLMClientTests.swift */,
 				2195CAD95411529273D4EB09 /* LegacyNudgeAdapterTests.swift */,
 				4E78707DF42B2608398064F5 /* LifeGuidanceFlowTests.swift */,
@@ -483,6 +513,8 @@
 				68290AC2698E3FE10F16D3B0 /* MentorLessonCatalogTests.swift */,
 				EBB2611EEF481AC776AAF886 /* MentorPersistenceTests.swift */,
 				4F625D3908E8FEE18D3DE56A /* MentorRequestExecutorTests.swift */,
+				D8AD58054F81C2F594CBF004 /* MentorHTTPMetricsTests.swift */,
+				D8AD58054F81C2F594CBF014 /* MentorHTTPObservationTests.swift */,
 				4868ABB675A8EC62EC09C333 /* MentorResponseParserTests.swift */,
 				4E760490456D59D6D381AC20 /* PersistenceCoreTests.swift */,
 				2B31D6274C47CEA046C914E9 /* ProjectAIServiceContextTests.swift */,
@@ -609,6 +641,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C627E4F2A194CFA8F957793A /* coach-methods.json in Resources */,
 				CF55CD9B63B0D193E4D8342B /* Assets.xcassets in Resources */,
 				EFE60A2CF5C67E425113E731 /* LaunchScreen.storyboard in Resources */,
 				00B8408ACA6F964C6B400DE8 /* life-guidance-m1.draft.json in Resources */,
@@ -647,6 +680,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CACED4DED37F7C547F86D3AD /* CoachMethodCatalogTests.swift in Sources */,
 				77F18F8B99867060A51EC282 /* AppStoreStateMachineTests.swift in Sources */,
 				9E61418EA710A150EAC4073F /* DirectGLMClientTests.swift in Sources */,
 				DD8C78A7885EB0919AAB77A4 /* HistoryFeatureTests.swift in Sources */,
@@ -662,6 +696,8 @@
 				609EB1A98761E8C7C8C73B33 /* MentorPersistenceTests.swift in Sources */,
 				3532492643311A3AB09BCB94 /* MentorReadingPositionTests.swift in Sources */,
 				AC4BEA024D283AAF734DB26D /* MentorRequestExecutorTests.swift in Sources */,
+				D8AD58054F81C2F594CBF003 /* MentorHTTPMetricsTests.swift in Sources */,
+				D8AD58054F81C2F594CBF013 /* MentorHTTPObservationTests.swift in Sources */,
 				F848D3917105F124BC0E6339 /* MentorResponseParserTests.swift in Sources */,
 				E05E6B1AE186F8801CB40E25 /* MentorUnderstandingEditorTests.swift in Sources */,
 				972D9E7D52B4E8AB41D7777D /* PersistenceCoreTests.swift in Sources */,
@@ -685,6 +721,8 @@
 				4F8852152107C5A2EFC929B1 /* AppStore.swift in Sources */,
 				7116ACDAAEEBDEE7432855F3 /* CaptureDigestModels.swift in Sources */,
 				3FD730A3BC8B54F3C0FBB133 /* CaptureDigestService.swift in Sources */,
+				178963F6D91BA3577AB1423C /* CoachMethodCatalog.swift in Sources */,
+				ECE6B84A8CC78FEC6C3C1EF5 /* CoachMethodLibraryView.swift in Sources */,
 				0488F94A589BD0CE19F45F46 /* CaptureIntent.swift in Sources */,
 				72C905B0830552DF8D3DDE55 /* CoreProtocols.swift in Sources */,
 				8F5DF34A6C458F808B2FFF5B /* DirectGLMClient.swift in Sources */,
@@ -710,6 +748,8 @@
 				07420B214D7D48BB31CBAC58 /* MentorPersistence.swift in Sources */,
 				6B4F897D8F5E7B564DC02BAF /* MentorReadingPosition.swift in Sources */,
 				73FB6477F6651F843AC07BAD /* MentorRequestExecutor.swift in Sources */,
+				D8AD58054F81C2F594CBF001 /* MentorHTTPMetrics.swift in Sources */,
+				D8AD58054F81C2F594CBF011 /* MentorHTTPObservationStore.swift in Sources */,
 				31148CBC90B846FE01375E43 /* MentorResponseModels.swift in Sources */,
 				C7B7E037FFA26EA9A7E31BC1 /* MentorSourceDetails.swift in Sources */,
 				072C0A83E0DD08C0D607DAED /* MentorUnderstandingEditor.swift in Sources */,

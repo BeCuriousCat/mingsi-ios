@@ -1,0 +1,162 @@
+{
+  "source_base": "4b4720b",
+  "source_state": "uncommitted local candidate",
+  "embedded_build_identity": {
+    "MingSiSourceRevision": "unknown",
+    "MingSiSourceState": "unknown"
+  },
+  "ui_device": "iPhone 17 / iOS 26.5",
+  "selected_fixture_tests_paid_model_requests": 0,
+  "personal_data_unchanged_after_fixture_tests": true,
+  "normal_http_attempts_after_fixture_tests": 2,
+  "files_sha256": {
+    "Sources/DesignSystem/Theme.swift": "7cc2d03db22d32ba2f3d09176dde27f9eeb7aee3f032ba106432c987d05005e4",
+    "Sources/Features/Mentor/MentorHomeView.swift": "9bfc58eee62180ca92fb76c38ce606c3a376e64e5801766e46385b2e956923ea",
+    "Tests/UI/MentorNavigationUITests.swift": "e0d22252596bb605afb999963ac1228b99ecf9780c67cb839156aa6f16ae681c"
+  },
+  "rounds": [
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/ui-tests.log",
+      "cases": [
+        {
+          "test": "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText",
+          "result": "passed",
+          "duration": "35.430 seconds"
+        },
+        {
+          "test": "testMentorBenefitFeedbackUsesSharedVoiceInput",
+          "result": "failed",
+          "duration": "23.609 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputAtLargestDarkText",
+          "result": "passed",
+          "duration": "22.467 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback",
+          "result": "passed",
+          "duration": "18.556 seconds"
+        }
+      ]
+    },
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/ui-final-tests.log",
+      "cases": [
+        {
+          "test": "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText",
+          "result": "passed",
+          "duration": "32.783 seconds"
+        },
+        {
+          "test": "testMentorBenefitFeedbackUsesSharedVoiceInput",
+          "result": "failed",
+          "duration": "16.264 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputAtLargestDarkText",
+          "result": "passed",
+          "duration": "22.709 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback",
+          "result": "passed",
+          "duration": "19.280 seconds"
+        }
+      ]
+    },
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/feedback-fixed-tests.log",
+      "cases": [
+        {
+          "test": "testMentorBenefitFeedbackUsesSharedVoiceInput",
+          "result": "failed",
+          "duration": "22.447 seconds"
+        }
+      ]
+    },
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/ui-hit-target-fixed-tests.log",
+      "cases": [
+        {
+          "test": "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText",
+          "result": "passed",
+          "duration": "35.464 seconds"
+        },
+        {
+          "test": "testMentorBenefitFeedbackUsesSharedVoiceInput",
+          "result": "passed",
+          "duration": "21.463 seconds"
+        },
+        {
+          "test": "testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft",
+          "result": "failed",
+          "duration": "62.703 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputAtLargestDarkText",
+          "result": "passed",
+          "duration": "24.917 seconds"
+        },
+        {
+          "test": "testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback",
+          "result": "passed",
+          "duration": "18.542 seconds"
+        }
+      ]
+    },
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/voice-scroll-fixed-tests.log",
+      "cases": [
+        {
+          "test": "testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft",
+          "result": "failed",
+          "duration": "52.378 seconds"
+        }
+      ]
+    },
+    {
+      "log_local": "/tmp/mingsi-ui-density-20261025/feedback-focus-tests.log",
+      "cases": [
+        {
+          "test": "testMentorBenefitFeedbackUsesSharedVoiceInput",
+          "result": "passed",
+          "duration": "19.035 seconds"
+        },
+        {
+          "test": "testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft",
+          "result": "passed",
+          "duration": "26.808 seconds"
+        }
+      ]
+    }
+  ],
+  "normal_navigation": {
+    "changed_tables_after_normal_navigation": [
+      {
+        "table": "mentor_usage_events",
+        "before_rows": 21,
+        "after_rows": 23
+      }
+    ],
+    "integrity": "ok",
+    "http_attempt_rows": 2,
+    "N02_saved_body_reopened_and_visible": true,
+    "capture_previous_draft_restored": true,
+    "capture_draft_closed_with_keep_action": true,
+    "sources_opened_and_closed": true,
+    "medium_to_large_drag_verified": false,
+    "new_model_requests": 0
+  },
+  "visually_reviewed_screenshots": [
+    "screenshots/normal-home.png",
+    "screenshots/normal-capture-medium.png",
+    "screenshots/normal-capture-drag-attempt.png",
+    "screenshots/normal-conversation.png",
+    "screenshots/normal-sources.png",
+    "screenshots/response-light.png",
+    "screenshots/response-dark-largest-keyboard.png",
+    "screenshots/feedback-saved.png",
+    "screenshots/feedback-keyboard-mic-visible.png"
+  ]
+}

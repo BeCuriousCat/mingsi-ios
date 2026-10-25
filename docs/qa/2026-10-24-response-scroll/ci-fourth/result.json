@@ -1,0 +1,22 @@
+{
+  "run_id": 40019516199,
+  "url": "https://github.com/BeCuriousCat/mingsi-ios/actions/runs/40019516199",
+  "head_revision": "a5989c37a79d0611ccb22077324af8085013c50f",
+  "tested_merge_revision": "dd587075fc8d395aa233882cb28c158c30d81571",
+  "tested_tree": "9e7175130f3cde49f84a3a143c724ca73858f80e",
+  "head_tree_equal_to_merge_tree": true,
+  "status": "completed",
+  "conclusion": "failure",
+  "release_build_and_markers": "passed",
+  "script_tests": {
+    "passed": 42,
+    "failed": 0
+  },
+  "unit": "not executed: test target failed to compile",
+  "native_ui": "not executed: same test target failed to compile",
+  "debug_marker_postcheck": "not executed after test build failure",
+  "optional_healthkit_check": "not executed after test build failure",
+  "failure": "DirectGLMClientTests.swift:793:25: passing closure as a sending parameter risks causing data races; Task captures non-Sendable client and request in a nonisolated XCTest helper.",
+  "new_model_requests": 0,
+  "goal_complete": false
+}

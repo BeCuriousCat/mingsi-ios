@@ -1,0 +1,20 @@
+[0/1] Planning build
+Building for debugging...
+[0/6] Write sources
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/9] Emitting module MingSi
+[5/9] Compiling MingSi DirectGLMClient.swift
+[6/9] Compiling MingSi MentorHTTPMetrics.swift
+[7/12] Compiling MingSi Models.swift
+[8/12] Compiling MingSi MentorHTTPObservationStore.swift
+[9/12] Compiling MingSi MentorRequestExecutor.swift
+[10/19] Emitting module NativeProbe
+[11/19] Compiling NativeProbe Probe.swift
+/private/tmp/mingsi-http-observation-20261024/Sources/NativeProbe/Probe.swift:42:67: error: contextual closure type '@Sendable () -> ContinuousClock.Instant' expects 0 arguments, but 1 was used in closure body
+40 |             var request = LLMRequest()
+41 |             request.mentorExecutionPolicy = scenario == "chat" ? .m1 : .responses
+42 |             request.mentorStreamProgress = MentorStreamProgress { preview in
+   |                                                                   `- error: contextual closure type '@Sendable () -> ContinuousClock.Instant' expects 0 arguments, but 1 was used in closure body
+43 |                 if !preview.isEmpty { sawPreview.withLock { $0 = true } }
+44 |             }
+error: fatalError

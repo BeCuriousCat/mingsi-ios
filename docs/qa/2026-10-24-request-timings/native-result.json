@@ -1,0 +1,105 @@
+[
+  {
+    "exactNetworkTransactionCount" : 1,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 1,
+      "redirectCount" : 0,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 1,
+      "unknownTransactionCount" : 0
+    },
+    "requestTimings" : {
+      "first_readable_body_ms" : 12,
+      "request_transport_finished_ms" : 13
+    },
+    "returnedData" : true,
+    "scenario" : "chat",
+    "serviceUsage" : {
+      "hasInvalidFields" : false,
+      "inputTokens" : 12,
+      "outputTokens" : 8,
+      "reasoningTokens" : 5,
+      "source" : "chat_stream_usage",
+      "totalTokens" : 20
+    },
+    "terminalState" : "returned_data",
+    "usageState" : "received"
+  },
+  {
+    "exactNetworkTransactionCount" : 2,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 2,
+      "redirectCount" : 1,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 2,
+      "unknownTransactionCount" : 0
+    },
+    "requestTimings" : {
+      "first_readable_body_ms" : 2,
+      "request_transport_finished_ms" : 3
+    },
+    "returnedData" : true,
+    "scenario" : "redirect",
+    "serviceUsage" : {
+      "hasInvalidFields" : false,
+      "inputTokens" : 12,
+      "outputTokens" : 8,
+      "reasoningTokens" : 5,
+      "source" : "responses_event_usage",
+      "totalTokens" : 20
+    },
+    "terminalState" : "returned_data",
+    "usageState" : "received"
+  },
+  {
+    "exactNetworkTransactionCount" : 1,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 1,
+      "redirectCount" : 0,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 1,
+      "unknownTransactionCount" : 0
+    },
+    "requestTimings" : {
+      "request_transport_finished_ms" : 1
+    },
+    "returnedData" : false,
+    "scenario" : "limit",
+    "serviceUsage" : {
+      "hasInvalidFields" : false,
+      "inputTokens" : 12,
+      "outputTokens" : 8,
+      "reasoningTokens" : 5,
+      "source" : "responses_event_usage",
+      "totalTokens" : 20
+    },
+    "terminalState" : "failed",
+    "usageState" : "received"
+  },
+  {
+    "exactNetworkTransactionCount" : 1,
+    "metricsState" : "received",
+    "nativeMetrics" : {
+      "cacheTransactionCount" : 0,
+      "networkTransactionCount" : 1,
+      "redirectCount" : 0,
+      "serverPushTransactionCount" : 0,
+      "transactionCount" : 1,
+      "unknownTransactionCount" : 0
+    },
+    "requestTimings" : {
+      "first_readable_body_ms" : 1,
+      "request_transport_finished_ms" : 21
+    },
+    "returnedData" : false,
+    "scenario" : "cancel",
+    "terminalState" : "cancelled",
+    "usageState" : "pending"
+  }
+]

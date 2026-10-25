@@ -32,6 +32,7 @@ struct MentorFeatureState: Equatable {
     var isSavingBenefitFeedback = false
     var response: MentorValidatedTurn?
     var responseItemID: UUID?
+    var responseBodyRequestID: UUID?
     var acknowledgedResponseItemID: UUID?
     var presentationError: String?
     var understandings: [MentorUnderstanding] = []
@@ -60,12 +61,15 @@ struct MentorFeatureState: Equatable {
     /// threshold. It is separate from the transport timeout and session phase.
     var requestWaitingNotice = false
     var streamingPreview = ""
+    var streamingPreviewRequestID: UUID?
     var requestFailureMessage: String?
     var retryableRequest: MentorRetryableRequest?
     var retryError: String?
     var actionError: String?
     var correctionError: String?
     var materialSelection: MentorMaterialSelectionState?
+    var methodSnapshots: [UUID: CoachMethodSnapshot] = [:]
+    var selectedMethodID: String?
     var inputText = ""
     var draftRevision = 0
     var hasUnsavedDraft = false
@@ -106,6 +110,15 @@ final class MentorFeatureStore: ObservableObject {
     private var activeRequestPolicy: MentorRequestPolicy?
     private var activeStreamProgress: MentorStreamProgress?
 
+    /// Selection applies to the next new turn only. Frozen retries preserve the
+    /// original method even if this selection or the catalog changes later.
+    func selectMethod(_ id: String?) {
+        guard !state.isViewingHistory, [.editing, .reading, .showingResponse].contains(state.phase),
+              state.retryableRequest == nil, state.materialSelection == nil else { return }
+        if let id, CoachMethodCatalog.usableSnapshot(id: id) == nil { return }
+        state.selectedMethodID = id
+    }
+
     var hasLessonCatalog: Bool { catalog != nil }
     var canContinueRecall: Bool {
         !state.isViewingHistory && sessionTransitionID == nil && state.phase == .showingResponse &&
@@ -121,6 +134,8 @@ final class MentorFeatureStore: ObservableObject {
         let requestID: UUID
         let payload: String
         let validated: MentorValidatedTurn
+        let consumedDraft: MentorConsumedDraft?
+        let progress: MentorStreamProgress
     }
     private struct PendingRequestEnd {
         let sessionID: UUID
@@ -135,6 +150,8 @@ final class MentorFeatureStore: ObservableObject {
     private var requestWaitingGeneration = UUID()
     private var activeRequestID: UUID?
     private var activeRequestGeneration: UUID?
+    private var displayedPreviewTiming: (requestID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
+    private var savedResponseTiming: (itemID: UUID, requestID: UUID, sessionID: UUID, progress: MentorStreamProgress)?
     private var dependencyGeneration = UUID()
     private struct DraftSnapshot: Equatable {
         let sessionID: UUID
@@ -236,7 +253,8 @@ final class MentorFeatureStore: ObservableObject {
             deadline: requestDeadlineAfter ?? requestPolicy.deadline,
             waitingNoticeAfter: requestWaitingNoticeAfter ?? requestPolicy.waitingNoticeAfter,
             maxHTTPAttempts: requestPolicy.maxHTTPAttempts,
-            allowsFormatFallback: requestPolicy.allowsFormatFallback)
+            allowsFormatFallback: requestPolicy.allowsFormatFallback,
+            outputTokenBudget: requestPolicy.outputTokenBudget)
     }
 
     deinit { understandingDebounceTask?.cancel(); draftDebounceTask?.cancel(); draftWriteTask?.cancel(); readingPositionTask?.cancel(); lessonFeedbackTask?.cancel(); benefitFeedbackTask?.cancel(); requestTask?.cancel(); requestWaitingTask?.cancel(); requestDeadlineTask?.cancel(); historyTask?.cancel(); presentationTask?.cancel(); understandingTask?.cancel(); understandingGenerationTask?.cancel() }
@@ -265,6 +283,8 @@ final class MentorFeatureStore: ObservableObject {
         activeRequestGeneration = nil
         state.requestWaitingNotice = false
         state.streamingPreview = ""
+        state.streamingPreviewRequestID = nil
+        displayedPreviewTiming = nil
         activeStreamProgress = nil
         requestWaitingTask = Task { [weak self] in
             do {
@@ -288,7 +308,22 @@ final class MentorFeatureStore: ObservableObject {
             }
         }
         activeStreamProgress = progress
+        if let requestID = activeRequestID, let sessionID = state.session?.id {
+            state.streamingPreviewRequestID = requestID
+            displayedPreviewTiming = (requestID, sessionID, progress)
+        }
         return progress
+    }
+
+    /// Called only by the native reading-region geometry sampler for the exact
+    /// non-empty preview marker, never by State updates or onAppear.
+    func acknowledgeStreamingPreview(requestID: UUID) {
+        guard !state.isViewingHistory, !state.isTransitioningSession,
+              !state.streamingPreview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              state.streamingPreviewRequestID == requestID,
+              let displayed = displayedPreviewTiming, displayed.requestID == requestID,
+              displayed.sessionID == state.session?.id else { return }
+        displayed.progress.recordTiming(.firstVisibleBody)
     }
 
     private func armRequestDeadline(generation: UUID, policy: MentorRequestPolicy, startedAt: ContinuousClock.Instant) {
@@ -482,6 +517,16 @@ final class MentorFeatureStore: ObservableObject {
             return true
         }
         do {
+            // A response transaction may have finished just as Return or
+            // Finish cancelled its task. Reconcile its consumed composer
+            // before suspension tries to persist an obsolete snapshot.
+            if let pending = pendingResponse, let draft = pending.consumedDraft,
+               state.session?.id == pending.sessionID, state.draftRevision == draft.revision,
+               state.inputText == draft.text,
+               try await repository.requestOutcome(sessionID: pending.sessionID, requestID: pending.requestID) == .succeeded,
+               let session = try await repository.session(id: pending.sessionID) {
+                applyConsumedDraft(pending, session: session)
+            }
             guard let materialized = try await materializePendingSessionIfNeeded() else {
                 return pendingSession == nil
             }
@@ -1511,6 +1556,7 @@ final class MentorFeatureStore: ObservableObject {
                 let saved = try await repository.beginAIUnderstanding(sessionID: current.id, draftID: UUID(),
                     text: draft.text, sourceRefs: draft.sourceRefs)
                 try await repository.completeUnderstandingRequest(sessionID: current.id, requestID: requestID)
+                progress.recordTiming(.responseSaved)
                 recordUsageEvent(.requestFinished, sessionID: current.id,
                                  attributes: ["reason": "succeeded"], requestID: requestID)
                 requestCompleted = true
@@ -1849,6 +1895,16 @@ final class MentorFeatureStore: ObservableObject {
         guard state.responseItemID == itemID else { return }
         if state.isViewingHistory { observeHistoryPresentation(itemID: itemID, isResponse: true); return }
         acknowledge(itemID: itemID, isResponse: true)
+    }
+
+    /// A separate body-only marker observes timing without changing the
+    /// existing whole-response presentation receipt or next-turn gate.
+    func acknowledgeSavedResponseBody(requestID: UUID) {
+        guard !state.isViewingHistory, !state.isTransitioningSession,
+              state.responseBodyRequestID == requestID,
+              let saved = savedResponseTiming, saved.requestID == requestID,
+              saved.itemID == state.responseItemID, saved.sessionID == state.session?.id else { return }
+        saved.progress.recordTiming(.firstVisibleBody)
     }
 
     /// The visible lesson's identity travels with scroll events, so a disappearing
@@ -2257,6 +2313,7 @@ final class MentorFeatureStore: ObservableObject {
                 availableSuggestedActions: response.suggestedActions))
             restored.responseItemID = last.id
         }
+        restored.methodSnapshots = try await repository.methodSnapshots(sessionID: session.id)
         restored.retryableRequest = try await repository.retryableRequest(sessionID: session.id)
         try Task.checkCancellation()
         return restored
@@ -2440,6 +2497,8 @@ final class MentorFeatureStore: ObservableObject {
             pruneUsageAttempts()
         }
         var submittedRequestID: UUID?
+        let consumedDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.inputText == text
+            ? MentorConsumedDraft(revision: state.draftRevision, text: text) : nil
         var prospectiveItems: [MentorTimelineItem] = []
         let prospectiveUserID = pendingMaterialSubmission?.userItemID ?? UUID()
         do {
@@ -2462,7 +2521,8 @@ final class MentorFeatureStore: ObservableObject {
                     responseIntent: intent == "explain" ? .directTeaching : .discuss,
                     currentLesson: state.lesson, eligibleLessons: catalog?.lessonsInEditorialOrder ?? [],
                     selectedMaterialFragments: selectedMaterialFragments,
-                    suppressCurrentUserAnchor: trimmed.isEmpty)
+                    suppressCurrentUserAnchor: trimmed.isEmpty,
+                    selectedMethod: state.selectedMethodID.flatMap { CoachMethodCatalog.usableSnapshot(id: $0) })
             }
             if let requestAttemptID { usageAttempts[requestAttemptID]?.pendingOperations += 0 }
             guard acquireForegroundAIActivity() else {
@@ -2476,6 +2536,7 @@ final class MentorFeatureStore: ObservableObject {
                 intent: intent, contextSnapshotJSON: retry?.contextSnapshotJSON ?? built.json, retryOf: retry?.id,
                 userItemID: retry == nil && !trimmed.isEmpty ? prospectiveUserID : nil))
             submittedRequestID = requestID
+            state.selectedMethodID = nil
             state.timeline = try await repository.items(sessionID: current.id)
             let switchedEntry = intent == "reply" && !trimmed.isEmpty &&
                 requestAttemptID.flatMap { usageAttempts[$0]?.currentEntry } == "listen" ? "discuss" : nil
@@ -2508,7 +2569,8 @@ final class MentorFeatureStore: ObservableObject {
                 initialEntry: built.payload.initialEntry, intent: intent)
             let validated = supportedSuggestions(parsed)
             let pending = PendingResponse(sessionID: current.id, requestID: requestID,
-                payload: String(decoding: try JSONEncoder().encode(validated.response), as: UTF8.self), validated: validated)
+                payload: String(decoding: try JSONEncoder().encode(validated.response), as: UTF8.self), validated: validated,
+                consumedDraft: consumedDraft, progress: progress)
             pendingResponse = pending
             try await saveResponse(pending)
             state.streamingPreview = ""
@@ -2606,20 +2668,39 @@ final class MentorFeatureStore: ObservableObject {
         }
     }
 
+    private func applyConsumedDraft(_ pending: PendingResponse, session: MentorSession) {
+        guard state.session?.id == pending.sessionID,
+              let draft = pending.consumedDraft, state.draftRevision == draft.revision, state.inputText == draft.text,
+              session.draftRevision == draft.revision, session.draftText.isEmpty else { return }
+        draftDebounceTask?.cancel()
+        draftDebounceTask = nil
+        state.inputText = ""
+        state.hasUnsavedDraft = false
+        state.draftSaveError = nil
+    }
+
     private func saveResponse(_ pending: PendingResponse) async throws {
         try Task.checkCancellation()
         let item = try await repository.commitResponse(sessionID: pending.sessionID,
-            requestID: pending.requestID, payloadJSON: pending.payload)
+            requestID: pending.requestID, payloadJSON: pending.payload, consumingDraft: pending.consumedDraft)
+        pending.progress.recordTiming(.responseSaved)
         recordUsageEvent(.requestFinished, sessionID: pending.sessionID,
             attributes: ["reason": "succeeded"], requestID: pending.requestID)
         let timeline = try await repository.items(sessionID: pending.sessionID)
+        let session = try await repository.session(id: pending.sessionID)
+        let methodSnapshots = (try? await repository.methodSnapshots(sessionID: pending.sessionID)) ?? [:]
+        guard state.session?.id == pending.sessionID, let session else { return }
+        applyConsumedDraft(pending, session: session)
         try Task.checkCancellation()
-        guard state.session?.id == pending.sessionID else { return }
         state.timeline = timeline
+        state.methodSnapshots = methodSnapshots
+        state.session = session
         state.retryableRequest = nil
         state.retryError = nil
         state.response = pending.validated
         state.responseItemID = item.id
+        state.responseBodyRequestID = pending.requestID
+        savedResponseTiming = (item.id, pending.requestID, pending.sessionID, pending.progress)
         state.acknowledgedResponseItemID = nil
         state.canRetryResponseSave = false
         pendingResponse = nil

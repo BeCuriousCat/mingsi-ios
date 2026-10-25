@@ -1,0 +1,114 @@
+[
+  {
+    "file": "screenshots/mentor-active-conversation-keyboard-visible.png",
+    "test": "MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable()",
+    "sha256": "7cd3e00175590a9c36bfa1b1a29fff990d421bb1648bcd2ebf5e1cb50b48b2be",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/mentor-stream-dark-largest-interrupted.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "b2ffe154e5ef821a615afa2a6c17c9df0e92f276c317ea8c805961c2d2618252",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/mentor-stream-dark-largest-preview.png",
+    "test": "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+    "sha256": "5a46ae5645e1b44f3f0a6ee30c965ff5d77eb066077149fffe04d75e65b23f04",
+    "data_kind": "synthetic",
+    "review": "AI reviewed after manual test scrolling; not evidence of automatic visibility"
+  },
+  {
+    "file": "screenshots/mentor-stream-light-completed.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "9feb0edd40a925d8e8625bdc7aaee3abd80c64b8dbf8e49edc707697935af5ca",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/mentor-stream-light-preview.png",
+    "test": "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+    "sha256": "d810ec69b3f73e60818b9eeeac9601fb4085814ee2c012f27bf1a8d32941cfb6",
+    "data_kind": "synthetic",
+    "review": "AI reviewed after manual test scrolling; not evidence of automatic visibility"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-next-send-ready.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "f533349f4067d634ddb5c4ba43fab663c40120d53741abe8fa978831e79b9c50",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-next-input-keyboard.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "a3e5ee37ece8ad2cfd2879e7baf968f6c0d89db10212bc530d11a3f7200a96c1",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/saved-response-dark-largest-before-next-input.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+    "sha256": "5e93826d00d6094cf82dd43ad21903b88eccf1e57d4a6447a9174d1012fe6d94",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/saved-response-light-next-send-ready.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "7325621d0220033082ac00aaa6a04fc27abe8ee9f9aaac7a66ed5761c28c6ee3",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/saved-response-light-next-input-keyboard.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "0a184f89b7d38310fe5ca2fb05b3d78be4935e8bbe76ef73ad715ea3876cd170",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/saved-response-light-before-next-input.png",
+    "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+    "sha256": "856130fba0294b915e9e5abd4982034af1587769d82f0762c46ba8e401545913",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/build-identity-dark-largest.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+    "sha256": "72ec675ce453b23cfe43e2b7444b4598e068a351226445813b2774bb5257f619",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/permissions-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "589d65a0a76e8c467794ea083847bbbaacc7753c7aad87c8bbc40ab3b55752c7",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/health-permission-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "d160bf19f7dcb8c2be267515e4e454c464d2a0cc0b1b8a388b35b9d79e1c73c4",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/calendar-permission-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "30a323af944370d264a13532dddfb09e73cdc791b6fea075e6fa4cb679b4dffd",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  },
+  {
+    "file": "screenshots/build-identity-light-normal.png",
+    "test": "MingSiUITests/testPermissionStatesAndFailureInLight()",
+    "sha256": "34d4d621595471b147bfd6c26c0e0493f66875acf0dd560c6a6a65b4f8f6bc73",
+    "data_kind": "synthetic",
+    "review": "retained; not newly visually adjudicated"
+  }
+]

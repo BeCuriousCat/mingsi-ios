@@ -190,6 +190,19 @@ final class MentorRequestExecutorTests: XCTestCase {
         XCTAssertEqual(calls.value, 0)
     }
 
+    func testInvalidOutputBudgetCannotReachTransport() async {
+        let calls = Locked(0)
+        for budget in [0, 100_001] {
+            let policy = MentorRequestPolicy(deadline: .seconds(1), waitingNoticeAfter: .milliseconds(1),
+                maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: budget)
+            do {
+                _ = try await MentorRequestExecutor().execute({ calls.withLock { $0 += 1 }; return Data() }, policy: policy)
+                XCTFail("Invalid output budget")
+            } catch { XCTAssertEqual(error as? MentorRequestExecutionError, .invalidPolicy) }
+        }
+        XCTAssertEqual(calls.value, 0)
+    }
+
     func testPolicyMakesNoHiddenRetryOrFormatFallback() {
         XCTAssertEqual(MentorRequestPolicy.m1.maxHTTPAttempts, 1)
         XCTAssertFalse(MentorRequestPolicy.m1.allowsFormatFallback)

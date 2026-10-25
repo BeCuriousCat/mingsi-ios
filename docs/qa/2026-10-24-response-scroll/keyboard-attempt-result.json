@@ -1,0 +1,15 @@
+{
+  "result": "not passed",
+  "test_log_outcome": {
+    "passed": 1,
+    "failed": 2
+  },
+  "result_bundle_finalized": false,
+  "xcodebuild_exit": -5,
+  "reason": "Result collection crashed while disk full; raw staging and log retained locally. Both replay tests had already failed stricter keyboard visibility assertions.",
+  "failures": [
+    "/Users/chenzewei/Documents/codex/projects/mingsi-ios/Tests/UI/MentorNavigationUITests.swift:665: error: -[MingSiUITests.MentorNavigationUITests testSavedNetworkResponseAllowsNextInputAtLargestDarkText] : XCTAssertGreaterThanOrEqual failed: (\"80.99999999999875\") is less than (\"131.0\")",
+    "/Users/chenzewei/Documents/codex/projects/mingsi-ios/Tests/UI/MentorNavigationUITests.swift:664: error: -[MingSiUITests.MentorNavigationUITests testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback] : XCTAssertTrue failed",
+    "CASTreeDataStructure/Importer.swift:131: Fatal error: FIXME: Unable to write data for /tmp/mingsi-response-scroll-20261024/keyboard.xcresult/Staging/1_Test/Diagnostics/simctl_diagnostics/9F93EE80-68DF-4922-8A73-B0590F5143D4/lsaw.csstoredump due to ioError"
+  ]
+}

@@ -1,0 +1,9 @@
+Clean build and offline tests	Verify local scripts without model credentials	2026-10-24T01:14:19.9111990Z Ran 42 tests in 1.002s
+Clean build and offline tests	Build Release for Simulator	2026-10-24T01:14:21.6774660Z     MINGSI_SOURCE_REVISION = 0545fa24ad00d6d0d3cedbbdc8be6aafea3d041c
+Clean build and offline tests	Build Release for Simulator	2026-10-24T01:22:44.6116610Z ** BUILD SUCCEEDED **
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T01:22:49.6068290Z     MINGSI_SOURCE_REVISION = 0545fa24ad00d6d0d3cedbbdc8be6aafea3d041c
+Clean build and offline tests	Run unit tests with no paid model requests	2026-10-24T01:33:32.5746410Z ** TEST SUCCEEDED **
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T01:33:43.1984220Z     MINGSI_SOURCE_REVISION = 0545fa24ad00d6d0d3cedbbdc8be6aafea3d041c
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T01:41:12.2803220Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 283.27457682291663, 338.0, 497.66666666666663) viewport=(0.0, 132.0, 402.0, 434.66666666666663) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 283.27457682291663, 338.0, 283.39208984375) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T01:41:56.7784540Z MENTOR_PREVIEW_VISIBILITY preview=(32.0, 324.6163736979167, 338.0, 64.33333333333331) viewport=(0.0, 132.0, 402.0, 506.0) app=(0.0, 0.0, 402.0, 874.0) intersection=(32.0, 324.6163736979167, 338.0, 64.33333333333331) hittable=true matches=true
+Clean build and offline tests	Run isolated permission and next-turn UI in light and dark largest text	2026-10-24T01:46:41.7058790Z ** TEST SUCCEEDED **

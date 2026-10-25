@@ -5,10 +5,23 @@ struct MentorRequestPolicy: Hashable {
     let waitingNoticeAfter: Duration
     let maxHTTPAttempts: Int
     let allowsFormatFallback: Bool
-    static let m1 = MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+    /// Provider output budget. It includes reasoning and other non-visible
+    /// tokens where the provider contract says so; it is not a visible-text cap.
+    let outputTokenBudget: Int
+
+    init(deadline: Duration, waitingNoticeAfter: Duration, maxHTTPAttempts: Int,
+         allowsFormatFallback: Bool, outputTokenBudget: Int = 8_192) {
+        self.deadline = deadline
+        self.waitingNoticeAfter = waitingNoticeAfter
+        self.maxHTTPAttempts = maxHTTPAttempts
+        self.allowsFormatFallback = allowsFormatFallback
+        self.outputTokenBudget = outputTokenBudget
+    }
+
+    static let m1 = MentorRequestPolicy(deadline: .seconds(30), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 8_192)
     // Legacy completions without a progress channel retain a finite total budget.
     // Production mentor streams use the shared content-idle budget below.
-    static let responses = MentorRequestPolicy(deadline: .seconds(120), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false)
+    static let responses = MentorRequestPolicy(deadline: .seconds(120), waitingNoticeAfter: .seconds(10), maxHTTPAttempts: 1, allowsFormatFallback: false, outputTokenBudget: 16_000)
 
     static func forProtocol(_ kind: GLMClientConfiguration.ProtocolKind) -> Self {
         kind == .responses ? .responses : .m1
@@ -37,8 +50,19 @@ struct MentorRequestExecutionResult {
 /// The transport must separately enforce one HTTP attempt and owned audit writes.
 final class MentorRequestExecutor: Sendable {
     private static let maximumDeadline: Duration = .seconds(120)
-    private let clock: ContinuousClock
-    init(clock: ContinuousClock = ContinuousClock()) { self.clock = clock }
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private let sleepUntil: @Sendable (ContinuousClock.Instant) async throws -> Void
+    init(clock: ContinuousClock = ContinuousClock()) {
+        now = { clock.now }
+        sleepUntil = { try await clock.sleep(until: $0) }
+    }
+
+    /// Inject only time, retaining the production cancellation and race logic.
+    init(now: @escaping @Sendable () -> ContinuousClock.Instant,
+         sleepUntil: @escaping @Sendable (ContinuousClock.Instant) async throws -> Void) {
+        self.now = now
+        self.sleepUntil = sleepUntil
+    }
 
     func execute(_ operation: @escaping () async throws -> Data,
                  policy: MentorRequestPolicy = .m1,
@@ -49,16 +73,17 @@ final class MentorRequestExecutor: Sendable {
         guard policy.deadline > .zero, policy.deadline <= Self.maximumDeadline,
               policy.waitingNoticeAfter >= .zero, policy.waitingNoticeAfter <= .seconds(10),
               policy.waitingNoticeAfter < policy.deadline, policy.maxHTTPAttempts == 1,
-              !policy.allowsFormatFallback else { throw MentorRequestExecutionError.invalidPolicy }
-        let start = startedAt ?? clock.now
-        guard start <= clock.now else { throw MentorRequestExecutionError.invalidPolicy }
-        let race = MentorRequestRace(clock: clock, start: start, policy: policy, progress: progress, onState: onState)
+              !policy.allowsFormatFallback, policy.outputTokenBudget > 0,
+              policy.outputTokenBudget <= 100_000 else { throw MentorRequestExecutionError.invalidPolicy }
+        let start = startedAt ?? now()
+        guard start <= now() else { throw MentorRequestExecutionError.invalidPolicy }
+        let race = MentorRequestRace(now: now, start: start, policy: policy, progress: progress, onState: onState)
         onState(.started)
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard race.install(continuation) else { return }
                 if Task.isCancelled { race.cancel(); return }
-                if clock.now >= race.expiresAt { race.timeout(); return }
+                if now() >= race.expiresAt { race.timeout(); return }
                 // Unstructured tasks are intentional: a task group waits for children which
                 // ignore cancellation and would prevent the foreground deadline from returning.
                 let transport = Task {
@@ -73,15 +98,15 @@ final class MentorRequestExecutor: Sendable {
                 let watchdog = Task {
                     do {
                         while race.isPending {
-                            try await clock.sleep(until: race.expiresAt)
-                            if clock.now >= race.expiresAt { race.timeout(); return }
+                            try await sleepUntil(race.expiresAt)
+                            if now() >= race.expiresAt { race.timeout(); return }
                         }
                     }
                     catch { /* Terminal completion cancelled the watchdog. */ }
                 }
                 race.track(watchdog)
                 let notice = Task {
-                    do { try await clock.sleep(until: start.advanced(by: policy.waitingNoticeAfter)); race.showWaiting() }
+                    do { try await sleepUntil(start.advanced(by: policy.waitingNoticeAfter)); race.showWaiting() }
                     catch { /* No waiting notice after a terminal result. */ }
                 }
                 race.track(notice)
@@ -94,7 +119,7 @@ final class MentorRequestExecutor: Sendable {
 /// return promptly; recursive locking allows an observer to cancel its own caller.
 private final class MentorRequestRace: @unchecked Sendable {
     private let lock = NSRecursiveLock()
-    private let clock: ContinuousClock
+    private let now: @Sendable () -> ContinuousClock.Instant
     private let start: ContinuousClock.Instant
     private let policy: MentorRequestPolicy
     private let progress: MentorStreamProgress?
@@ -104,9 +129,9 @@ private final class MentorRequestRace: @unchecked Sendable {
     private var tasks: [Task<Void, Never>] = []
     private var waitingShown = false
 
-    init(clock: ContinuousClock, start: ContinuousClock.Instant, policy: MentorRequestPolicy, progress: MentorStreamProgress?,
+    init(now: @escaping @Sendable () -> ContinuousClock.Instant, start: ContinuousClock.Instant, policy: MentorRequestPolicy, progress: MentorStreamProgress?,
          onState: @escaping @Sendable (MentorRequestExecutionState) -> Void) {
-        self.clock = clock; self.start = start; self.policy = policy; self.progress = progress; self.onState = onState
+        self.now = now; self.start = start; self.policy = policy; self.progress = progress; self.onState = onState
     }
 
     var expiresAt: ContinuousClock.Instant {
@@ -136,7 +161,7 @@ private final class MentorRequestRace: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard outcome == nil, !waitingShown else { return }
-        if clock.now >= expiresAt { timeout(); return }
+        if now() >= expiresAt { timeout(); return }
         waitingShown = true
         onState?(.waiting)
     }
@@ -149,11 +174,11 @@ private final class MentorRequestRace: @unchecked Sendable {
     private func finish(data: Data?, error: Error?, state: MentorRequestExecutionState) {
         lock.lock()
         guard outcome == nil else { lock.unlock(); return }
-        let elapsed = start.duration(to: clock.now)
+        let elapsed = start.duration(to: now())
         let terminalState: MentorRequestExecutionState
         let result: Result<MentorRequestExecutionResult, Error>
         // The watchdog may be scheduled late. Never accept a response past the deadline.
-        if state != .cancelled && clock.now >= expiresAt {
+        if state != .cancelled && now() >= expiresAt {
             terminalState = .timedOut
             result = .failure(MentorRequestExecutionError.timedOut)
         } else if let error {
@@ -183,9 +208,21 @@ final class MentorStreamProgress: @unchecked Sendable, Hashable {
     private let field: String
     private let onPreview: @Sendable (String) -> Void
     private var preview = ""
+    private let requestStartedAt: ContinuousClock.Instant
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private var timings: [MentorRequestTimingStage: Int64] = [:]
+    private var timingAttempt: MentorHTTPAttempt?
+    private var timingWrites: [Task<Void, Never>] = []
 
-    init(startedAt: ContinuousClock.Instant = .now, field: String = "body",
+    convenience init(startedAt: ContinuousClock.Instant = .now, field: String = "body",
          onPreview: @escaping @Sendable (String) -> Void = { _ in }) {
+        self.init(startedAt: startedAt, field: field, clockNow: { .now }, onPreview: onPreview)
+    }
+
+    init(startedAt: ContinuousClock.Instant, field: String = "body",
+         clockNow: @escaping @Sendable () -> ContinuousClock.Instant,
+         onPreview: @escaping @Sendable (String) -> Void = { _ in }) {
+        requestStartedAt = startedAt; self.now = clockNow
         lastContent = startedAt; self.field = field; self.onPreview = onPreview
     }
     static func == (lhs: MentorStreamProgress, rhs: MentorStreamProgress) -> Bool { lhs === rhs }
@@ -198,13 +235,60 @@ final class MentorStreamProgress: @unchecked Sendable, Hashable {
         guard raw.utf8.count + token.utf8.count <= 128_000 else {
             lock.unlock(); throw LLMClientError.invalidResponse
         }
-        lastContent = .now
+        lastContent = now()
         raw += token
         let next = Self.preview(in: raw, field: field)
         let changed = next != preview
         preview = next
+        if !next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            recordTimingWhileLocked(.firstReadableBody)
+        }
         lock.unlock()
         if changed { onPreview(next) }
+    }
+
+    /// One root clock is shared by parsing, native UI presentation and saving.
+    /// Binding may happen after an early event; buffered numeric events retain
+    /// their original time and never get retimed at database-write completion.
+    func bindTimingAttempt(_ attempt: MentorHTTPAttempt) throws {
+        lock.lock(); defer { lock.unlock() }
+        if let previous = timingAttempt {
+            guard previous.identity == attempt.identity else { throw MentorHTTPObservationError.conflict }
+            return
+        }
+        timingAttempt = attempt
+        for (stage, elapsed) in timings { enqueueTiming(stage, elapsed: elapsed, attempt: attempt) }
+    }
+
+    func recordTiming(_ stage: MentorRequestTimingStage) {
+        lock.lock(); defer { lock.unlock() }
+        // A visibility callback cannot manufacture first-readable content.
+        guard stage != .firstVisibleBody || timings[.firstReadableBody] != nil else { return }
+        recordTimingWhileLocked(stage)
+    }
+
+    private func recordTimingWhileLocked(_ stage: MentorRequestTimingStage) {
+        guard timings[stage] == nil else { return }
+        let duration = requestStartedAt.duration(to: now())
+        guard duration >= .zero else { return }
+        let parts = duration.components
+        let (seconds, overflow) = parts.seconds.multipliedReportingOverflow(by: 1_000)
+        guard !overflow else { return }
+        let (elapsed, additionOverflow) = seconds.addingReportingOverflow(parts.attoseconds / 1_000_000_000_000_000)
+        guard !additionOverflow else { return }
+        timings[stage] = elapsed
+        if let attempt = timingAttempt { enqueueTiming(stage, elapsed: elapsed, attempt: attempt) }
+    }
+
+    private func enqueueTiming(_ stage: MentorRequestTimingStage, elapsed: Int64, attempt: MentorHTTPAttempt) {
+        timingWrites.append(Task { await attempt.recordTiming(stage, elapsedMilliseconds: elapsed) })
+    }
+
+    private func pendingTimingWrites() -> [Task<Void, Never>] {
+        lock.lock(); defer { lock.unlock() }; return timingWrites
+    }
+    func flushTimingWrites() async {
+        for write in pendingTimingWrites() { await write.value }
     }
 
     /// Decode only a top-level string field. Partial escapes and surrogate pairs

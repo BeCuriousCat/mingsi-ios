@@ -1,0 +1,18 @@
+{
+  "base_revision": "09a20787d7863717c98195f3ed19eade4cae34f7",
+  "working_tree_state": "modified",
+  "test_host_markers": "unknown; do not infer installed revision",
+  "source_sha256": {
+    "Sources/Features/Mentor/MentorHomeView.swift": "c960c0b622eb485cf96b6b5f84c5c266c3d10e9ea3c82ff35f9e4e647c8c8487",
+    "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
+    "Sources/Services/MentorPersistence.swift": "7a20690a0d1f4faa4c7be926cdec160215b0fb64ac555b69b7ab7a0860736b22",
+    "Sources/Features/PushToTalkInput.swift": "aac7de0155b1cc90f8ebedc05170e2373fd81e1ef2eda7bad777d1966ebf4f87",
+    "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
+    "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
+    "Tests/UI/MentorNavigationUITests.swift": "0a50e28973732a6887c5b9cb835e68e3455e5eface2d4274f5322bd27d598629"
+  },
+  "test_host_sha256": {
+    "MingSi": "4730049d13e22805680ae9e3279721ec4102bec2258aff8242904c039af81414",
+    "MingSi.debug.dylib": "6c77e0b765ea27fabf321aa8fd9ee9f97555fbdac2afcb0e81e6c62f325f1f7b"
+  }
+}

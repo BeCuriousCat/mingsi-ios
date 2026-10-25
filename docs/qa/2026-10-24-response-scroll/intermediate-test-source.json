@@ -1,0 +1,20 @@
+{
+  "base_revision": "09a20787d7863717c98195f3ed19eade4cae34f7",
+  "working_tree_state": "modified",
+  "installed_test_host_markers": {
+    "MingSiSourceRevision": "unknown",
+    "MingSiSourceState": "unknown"
+  },
+  "source_sha256": {
+    "Sources/Features/Mentor/MentorHomeView.swift": "440dd17832bd28d11f49d76b395a860f11eb61ed19b96e4d2b95ee7a4957542f",
+    "Sources/Features/MentorFeatureStore.swift": "32cdc6db34f6829461d5a679487d95259437264d55a585c51fbe3846107c2a10",
+    "Sources/Services/MentorPersistence.swift": "7a20690a0d1f4faa4c7be926cdec160215b0fb64ac555b69b7ab7a0860736b22",
+    "Tests/Features/MentorFeatureStoreTests.swift": "4f94af99705357f529f1fc8419d9eb88e0c448557a5cea1d13954bf8acf75072",
+    "Tests/Services/MentorPersistenceTests.swift": "d46f994077b99e21e8740dffaf2ab30e0944b462b9e974df902941efd41bfa5d",
+    "Tests/UI/MentorNavigationUITests.swift": "068c93dd54e8a8f4f59cabcc00cfb5a351864f9905d714bd2ceb9fd55b760583"
+  },
+  "test_host_sha256": {
+    "MingSi": "7af432107c1d064cc6f30ac6d49a54b8fc960882fe44bd8a89e7c17a45201c0b",
+    "MingSi.debug.dylib": "40b8521ee3a09cdfb249482f9e8e966f6b1bb1e20da01624f2f99f177ac3e6df"
+  }
+}

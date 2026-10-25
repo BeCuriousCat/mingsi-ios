@@ -1,0 +1,14 @@
+[
+  {
+    "file": "method-held-dark-largest.png",
+    "sha256": "a3e6402ceca74b3b13d46f6ed035ee9bc5014a34aec02a3d78e3366a58894dc8",
+    "original_name": "method-source-held-dark-largest_0_0B7F85C2-E6EB-45D7-A30B-70A76AB39E90.png",
+    "test": "MentorNavigationUITests/testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText()"
+  },
+  {
+    "file": "method-held-light.png",
+    "sha256": "64ec0784739777b5a47b6b20ca47d181d0008b54f474285e4d3a84f85f40c774",
+    "original_name": "method-source-held-light_0_2A387DB8-F059-4EAA-A3F1-6308FB21E97F.png",
+    "test": "MentorNavigationUITests/testMethodLibrarySelectionAndHeldSourceAreReachableInNormalAndLargestDarkText()"
+  }
+]

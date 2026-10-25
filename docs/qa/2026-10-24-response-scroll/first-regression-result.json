@@ -1,0 +1,25 @@
+{
+  "stage": "draft consumption fix, before keyboard focus fix and before race-test correction",
+  "base_revision": "09a20787d7863717c98195f3ed19eade4cae34f7",
+  "app_debug_dylib_sha256": "4d7cca68c71416009a43bd183e94d9f43a9ee25b8a71e1f94b9d7a16f991663c",
+  "unit": {
+    "passed": 1535,
+    "failed": 1,
+    "skipped": 24
+  },
+  "ui": {
+    "passed": 3,
+    "failed": 1,
+    "skipped": 0
+  },
+  "failures": [
+    {
+      "test": "MentorFeatureStoreTests/testReturnDuringResponseCommitDoesNotResurrectConsumedComposer()",
+      "message": "XCTAssertEqual failed: (\"返回时这轮已经保存\") is not equal to (\"\")"
+    },
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText()",
+      "message": "XCTAssertTrue failed"
+    }
+  ]
+}

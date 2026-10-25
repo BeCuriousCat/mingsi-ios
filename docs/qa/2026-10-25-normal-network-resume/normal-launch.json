@@ -1,0 +1,16 @@
+{
+  "installed_revision": "521d824dd1042cf7036b6f0bb145c4fab11c84b6",
+  "source_state": "clean",
+  "integrity": "ok",
+  "v79_applied": true,
+  "normal_http_attempt_rows": 0,
+  "normal_desktop_launch": true,
+  "Responses_config_readable_UI": true,
+  "API_key_configured_label_visible": true,
+  "normal_network_calls_this_turn": 0,
+  "N02_sent": false,
+  "N03_sent": false,
+  "private_backup_saved": true,
+  "items_unchanged": true,
+  "requests_unchanged": true
+}

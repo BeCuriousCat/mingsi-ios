@@ -1,0 +1,17 @@
+{
+  "personal_sqlite_integrity": "ok",
+  "old_user_and_assistant_item_payloads_unchanged": true,
+  "request_ids_sessions_states_unchanged": true,
+  "normal_http_attempts_after_ui": 0,
+  "migrations_applied": [
+    "v70_mentor_benefit_feedback",
+    "v75_mentor_http_attempts",
+    "v76_mentor_http_output_budget",
+    "v77_mentor_service_usage",
+    "v78_mentor_request_timings"
+  ],
+  "N02_sent": false,
+  "N03_sent": false,
+  "new_model_calls": 0,
+  "phone_modified": false
+}

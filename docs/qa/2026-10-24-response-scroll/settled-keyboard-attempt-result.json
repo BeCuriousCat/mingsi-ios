@@ -1,0 +1,13 @@
+{
+  "result": "Failed",
+  "passed": 2,
+  "failed": 1,
+  "skipped": 0,
+  "cause": "Light next-turn keyboard dismissal stalled, sampled main thread busy in SwiftUI graph updates; largest test and initial keyboard test passed. Removed viewport-height dependency from reveal task; final retest pending.",
+  "failures": [
+    {
+      "test": "MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputWithoutBenefitFeedback()",
+      "message": "Test exceeded execution time allowance of 2 minutes"
+    }
+  ]
+}

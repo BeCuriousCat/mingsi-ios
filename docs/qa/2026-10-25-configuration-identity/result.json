@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-25",
+  "scope": "G3 client configuration identity candidate",
+  "migration": "v79_mentor_configuration_fingerprint",
+  "local_macos_swift": {
+    "passed": 56,
+    "failed": 0,
+    "scope": "production components and minimal request models; selected direct transport tests extracted from repository"
+  },
+  "python_focused": {
+    "passed": 22,
+    "failed": 0
+  },
+  "python_all": {
+    "passed": 64,
+    "failed": 0
+  },
+  "ios_app_and_full_test_targets": "built; local30 focused iOS passed; full CI1588 unit/24 skipped and8UI passed on matching App/project/test/script source",
+  "candidate_installed": true,
+  "candidate_full_ci_passed": true,
+  "installed_simulator_revision": "521d824dd1042cf7036b6f0bb145c4fab11c84b6",
+  "report_schema_version": 2,
+  "legacy_export_configuration_unknown_attempts": 4,
+  "new_model_calls": 0,
+  "phone_modified": false,
+  "formal_G3_window_started": false,
+  "goal_complete": false,
+  "source_sha256": {
+    "Sources/Services/DirectGLMClient.swift": "6e10a41d0bdaf435b473e17c1f032b4980084f971d4a97039522195456e152e1",
+    "Sources/Services/MentorHTTPMetrics.swift": "062c49224e2b42efa52d549709243e93b78d220f68f2769e190828fb60c01d51",
+    "Sources/Services/MentorHTTPObservationStore.swift": "03f6d9a086108ba2d59406dd055aa87280ae411c44def65dfa374279423087fa",
+    "Tests/Services/DirectGLMClientTests.swift": "4aaabfdf97f01f474d44e3d4e7008bb22f80d7ba30b808fd6f71692620209d38",
+    "Tests/Services/MentorHTTPObservationTests.swift": "69f2d92037c10cbece6829b074cef44b02dc33f63661cf67a1fbc4580fe967f5",
+    "Tests/Services/MentorPersistenceTests.swift": "fd942d40900f122d207368a557c97c31930c5fdd1022f9b1cf1420a40fe0aed2",
+    "scripts/summarize_mentor_network.py": "65f509577538679a111bc4ef441561da8edb8c2941ecddcf6cf28454a0e709ad",
+    "Tests/Scripts/test_mentor_network_summary.py": "e461a037636012bef184dc3003b6866cecbd43f7dd245cfd9cdd8fae43a3b9ad"
+  },
+  "limits": [
+    "Configuration fingerprint does not identify API key/account, verified upstream or enforce output budgets.",
+    "Returned model identity and independent durable observation-write-failure diagnosis remain missing.",
+    "Actual normal App N02/N03, phone, formal window and all human-value requirements remain outstanding.",
+    "CI40121558528 successfully covers matching source; actual normal App/provider and human/phone gates remain outstanding."
+  ],
+  "focused_ios_tests": {
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0
+  },
+  "previous_normal_runtime_verified_revision": "0aad77eaf48515c8d4b3b471f24ec9c1010a6bec",
+  "normal_candidate_launch_performed": false,
+  "personal_database_unchanged_after_isolated_tests": true,
+  "candidate_full_ci_evidence": "ci-final/result.json",
+  "candidate_ci_head_revision": "23c47e5bd9d6a5a4d01ed00fe720dc1204bc6983"
+}

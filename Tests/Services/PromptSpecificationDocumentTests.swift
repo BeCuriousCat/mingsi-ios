@@ -16,7 +16,7 @@ final class PromptSpecificationDocumentTests: XCTestCase {
 
     func testPromptSpecDocumentsCurrentMentorProgressiveMultiturnBoundary() throws {
         let spec = try readRepositoryFile("docs/prompt-spec.md")
-        XCTAssertTrue(spec.contains("`mentorRespond` 当前为 2.17.0"))
+        XCTAssertTrue(spec.contains("`mentorRespond` 当前为 2.18.0"))
         XCTAssertTrue(spec.contains("第二个可见回合后的默认收束不是硬上限"))
         XCTAssertTrue(spec.contains("首轮及后续每轮都不一次列出所有可能"))
         XCTAssertTrue(spec.contains("当前界面中的“明思一下”已经统一进入"))

@@ -1,0 +1,99 @@
+[0/1] Planning build
+Building for debugging...
+[0/6] Write sources
+[1/6] Write swift-version--58304C5D6DBC2206.txt
+[3/6] Emitting module MingSiTests
+[4/6] Compiling MingSiTests DirectHTTPObservationTests.swift
+[5/7] Compiling MingSiTests MentorRequestExecutorTests.swift
+[5/7] Write Objects.LinkFileList
+[6/7] Linking MingSiHTTPObservationProbePackageTests
+Build complete! (2.20s)
+Test Suite 'All tests' started at 2026-10-24 09:07:22.351.
+Test Suite 'MingSiHTTPObservationProbePackageTests.xctest' started at 2026-10-24 09:07:22.352.
+Test Suite 'DirectGLMClientTests' started at 2026-10-24 09:07:22.352.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorDeadlineCancelsActualURLSessionTask]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorDeadlineCancelsActualURLSessionTask]' passed (0.005 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorHTTPFailureIsAccountedOnceWithoutFallbackOrRetry]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorHTTPFailureIsAccountedOnceWithoutFallbackOrRetry]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationFailureBeforeDispatchMakesNoHTTPRequest]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationFailureBeforeDispatchMakesNoHTTPRequest]' passed (0.000 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testMentorObservationRegistersEachCompleteTransportPathWithoutGuessingNativeMetrics]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testProviderBudgetRejectionCannotStripFieldAndResend]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testProviderBudgetRejectionCannotStripFieldAndResend]' passed (0.001 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesMentorDeadlineCancelsUnderlyingTask]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testResponsesMentorDeadlineCancelsUnderlyingTask]' passed (0.000 seconds).
+Test Case '-[MingSiTests.DirectGLMClientTests testSentOutputBudgetMatchesAttemptMetadataForEachSupportedContract]' started.
+Test Case '-[MingSiTests.DirectGLMClientTests testSentOutputBudgetMatchesAttemptMetadataForEachSupportedContract]' passed (0.002 seconds).
+Test Suite 'DirectGLMClientTests' passed at 2026-10-24 09:07:22.363.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'MentorHTTPObservationTests' started at 2026-10-24 09:07:22.363.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetColumnsFromIntermediateCandidateCanUpgradeWithoutErasure]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testBudgetMetadataRejectsPrivateStringsMismatchedFieldsAndInvalidAmounts]' passed (0.001 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testCompletedTransportWithoutNativeMetricsNeverBecomesOneHTTP]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testConflictingMetricsRemainUnknownAndOriginalCountersRemainAvailable]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testDeletionCascadesAndLateCallbacksCannotResurrectRecords]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testIndependentAttemptsAndDuplicateCallbacksDoNotCollapseOrInflateNetworkCount]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testLateMetricsAfterCancellationStayWithOldRequestAndCannotModifyNewTurn]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMigrationPreservesOldDataAndReopenKeepsCountersAndIdentity]' passed (0.005 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testMissingParentGraphCannotSilentlyMarkMigrationApplied]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testObservationWriteFailureIsSurfacedAndPendingRecordCannotMasqueradeAsComplete]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testRegistrationRejectsForeignOrStaleIdentityAndConflictingReuse]' passed (0.002 seconds).
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' started.
+Test Case '-[MingSiTests.MentorHTTPObservationTests testV75DatabaseUpgradesWithoutRewritingExistingMetricsOrDraft]' passed (0.002 seconds).
+Test Suite 'MentorHTTPObservationTests' passed at 2026-10-24 09:07:22.390.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.026 (0.027) seconds
+Test Suite 'MentorRequestExecutorTests' started at 2026-10-24 09:07:22.390.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testCancellationPropagatesAndDoesNotClaimSuccess]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testCancellationPropagatesAndDoesNotClaimSuccess]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testCancelReturnsBeforeUncooperativeTransportAndRejectsLateFailure]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testCancelReturnsBeforeUncooperativeTransportAndRejectsLateFailure]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testDeadlineReturnsWhileTransportIgnoresCancellationAndDropsLateSuccess]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testDeadlineReturnsWhileTransportIgnoresCancellationAndDropsLateSuccess]' passed (0.158 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testFailureIsTerminalAndNoRetryOrFallback]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testFailureIsTerminalAndNoRetryOrFallback]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testInvalidOutputBudgetCannotReachTransport]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testInvalidOutputBudgetCannotReachTransport]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testInvalidPolicyCannotDisableDeadlineOrEnableRetries]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testInvalidPolicyCannotDisableDeadlineOrEnableRetries]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testOperationKeepsCallerIsolationAcrossSuspension]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testOperationKeepsCallerIsolationAcrossSuspension]' passed (0.001 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPolicyMakesNoHiddenRetryOrFormatFallback]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPolicyMakesNoHiddenRetryOrFormatFallback]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPreparationTimeCountsAndExpiredRequestNeverStartsTransport]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPreparationTimeCountsAndExpiredRequestNeverStartsTransport]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPreviewDecodesOnlyTopLevelBodyAndWaitsForSplitEscapes]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testPreviewDecodesOnlyTopLevelBodyAndWaitsForSplitEscapes]' passed (0.003 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testProtocolSelectionKeepsOneAttemptAndEarlyWaitingNotice]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testProtocolSelectionKeepsOneAttemptAndEarlyWaitingNotice]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testResponsesBudgetAcceptsCompletionAfterHistoricalThirtySecondLimit]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testResponsesBudgetAcceptsCompletionAfterHistoricalThirtySecondLimit]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testResponsesBudgetStillExpiresBeforeStartingExpiredTransport]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testResponsesBudgetStillExpiresBeforeStartingExpiredTransport]' passed (0.000 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testStalledStreamStillExpiresAndRejectsLateCompletion]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testStalledStreamStillExpiresAndRejectsLateCompletion]' passed (0.091 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testStreamingContentExtendsIdleBudgetBeyondOriginalTotalDeadline]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testStreamingContentExtendsIdleBudgetBeyondOriginalTotalDeadline]' passed (0.298 seconds).
+Test Case '-[MingSiTests.MentorRequestExecutorTests testSuccessfulRequestDoesNotRetryAndEmitsWaitingState]' started.
+Test Case '-[MingSiTests.MentorRequestExecutorTests testSuccessfulRequestDoesNotRetryAndEmitsWaitingState]' passed (0.024 seconds).
+Test Suite 'MentorRequestExecutorTests' passed at 2026-10-24 09:07:22.968.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.576 (0.578) seconds
+Test Suite 'MingSiHTTPObservationProbePackageTests.xctest' passed at 2026-10-24 09:07:22.968.
+	 Executed 35 tests, with 0 failures (0 unexpected) in 0.613 (0.616) seconds
+Test Suite 'All tests' passed at 2026-10-24 09:07:22.968.
+	 Executed 35 tests, with 0 failures (0 unexpected) in 0.613 (0.617) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

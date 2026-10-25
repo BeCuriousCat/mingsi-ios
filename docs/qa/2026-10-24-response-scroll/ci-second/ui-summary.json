@@ -1,0 +1,73 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "F94FB7BA-C33C-4B3B-B505-F0FB478DB847",
+        "deviceName" : "iPhone 17",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 4,
+      "passedTests" : 4,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "MingSi · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 4,
+  "finishTime" : 1792784970.325,
+  "passedTests" : 4,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1792784287.096,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "MingSiUITests",
+      "testIdentifier" : 2,
+      "testIdentifierString" : "MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText",
+      "testName" : "testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText()"
+    },
+    {
+      "failureText" : "Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: \"Expect predicate `BLOCKPREDICATE(0x1140a7060)`\".",
+      "targetName" : "MingSiUITests",
+      "testIdentifier" : 3,
+      "testIdentifierString" : "MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiUITests/MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText",
+      "testName" : "testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText()"
+    },
+    {
+      "failureText" : "Asynchronous wait failed: Exceeded timeout of 3 seconds, with unfulfilled expectations: \"Expect predicate `BLOCKPREDICATE(0x1140a5aa0)`\".",
+      "targetName" : "MingSiUITests",
+      "testIdentifier" : 4,
+      "testIdentifierString" : "MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiUITests/MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer",
+      "testName" : "testMentorStreamShowsGrowingPreviewThenValidatedAnswer()"
+    },
+    {
+      "failureText" : "Test exceeded execution time allowance of 2 minutes",
+      "targetName" : "MingSiUITests",
+      "testIdentifier" : 7,
+      "testIdentifierString" : "MingSiUITests/testPermissionStatesAndFailureInDarkLargest()",
+      "testIdentifierURL" : "test://com.apple.xcode/MingSi/MingSiUITests/MingSiUITests/testPermissionStatesAndFailureInDarkLargest",
+      "testName" : "testPermissionStatesAndFailureInDarkLargest()"
+    }
+  ],
+  "title" : "Test - MingSi",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 8
+}

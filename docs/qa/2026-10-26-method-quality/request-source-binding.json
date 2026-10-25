@@ -1,0 +1,28 @@
+{
+  "base_commit": "77fe766548aad35d46f17895c24da0294f6c8067",
+  "working_tree": "dirty; explicit file hashes bind requests, not a clean release",
+  "date": "2026-10-26",
+  "files": {
+    "Sources/Domain/CoachMethodCatalog.swift": "8ad8b33cce1c02c332358289982b3cc5797890423cbddb8118168e3d16ccf90c",
+    "Sources/Services/CoreProtocols.swift": "4b543cf785fbb5d5bcd313e035b7124b3db5a9b6ab3177d58158e27a6d355a9c",
+    "Sources/Services/MentorContextBuilder.swift": "a8ee41732505c0f439745b8bb6d28553bcca5c2930d0e2a3fa8a7c8b4c2ebc56",
+    "Tests/Services/LiveGLMAcceptanceTests.swift": "1ee54340844542b02da22238b5496650254744d321dccb3946cba45db8d06a35",
+    "Sources/Resources/Methods/coach-methods.json": "ed1b23f6df4b629e7f98336f41264ffd7b3e819067a54b941686e31fea590e99",
+    "docs/qa/2026-10-26-method-quality/cases.json": "9559102ad798f4a7657baf48049ed839f4f67b218355099c4a1a01023d676fc5"
+  },
+  "provider": "CC Switch currently selected Codex provider: 伊莉丝",
+  "model_alias": "gpt-6.1-sol",
+  "protocol": "Responses/SSE",
+  "model_identity_limit": "Provider alias and returned usage do not independently prove the ultimate upstream model.",
+  "executed_binary_hashes": {
+    "MingSi": "24ac11389aa7ad25c7cad0893bad6116233a154d50b8a4eeb8877ca7aef42d25",
+    "PlugIns/MingSiTests.xctest/MingSiTests": "9d2d6c043fe97b2fe2bbf4c7984bd3c5001f6fefce20563b1919cd7c6bd1019c"
+  },
+  "source_binding_limit": "Runtime app sources and selected method test function match the built candidate. An unrelated live-test version assertion and documentation were adjusted after build; whole test-file source hash is a current checkout observation, not an exact clean-build identity.",
+  "followup_binding": {
+    "harness_fix": "Acknowledge the prior synthetic saved response before continuing; seed exact captured first-turn output offline, send only unsent second turn.",
+    "manifest_sha256": "b97c8def728f6da7d6a8a0d99b5344b524d81db806866586f3f659159b7d393b",
+    "methods_runtime_hash_unchanged": true,
+    "prompt_version": "2.18.0"
+  }
+}

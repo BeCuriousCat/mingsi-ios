@@ -3,6 +3,84 @@ import GRDB
 @testable import MingSi
 
 final class MentorPersistenceTests: XCTestCase {
+    func testProductionHTTPObservationBindingExportsNumericMetadataAndCascadesOnSessionDelete() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let mentor = SQLiteMentorRepository(database: db)
+        let sessionID = UUID()
+        try await mentor.createSession(MentorSession(id: sessionID, initialEntry: "discuss", lifecycle: .active,
+            draftText: "", draftRevision: 0, activityAt: .now))
+        let requestID = try await mentor.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: sessionID,
+            text: "PRIVATE_SOURCE_SENTINEL", intent: "reply", contextSnapshotJSON: "{}"))
+        var request = LLMRequest(prompt: PromptTemplate(id: .singleNudge, version: "observation", systemText: "PRIVATE_SYSTEM_SENTINEL",
+            userText: "{}", outputSchemaVersion: 1), inputSummary: "PRIVATE_SUMMARY_SENTINEL")
+        request.mentorExecutionPolicy = .m1
+        request.mentorAuditToken = .init(sessionID: sessionID, requestID: requestID, requestEpoch: 0, semanticRevision: 0)
+        let client = PromptTracingLLMClient(base: HTTPBindingProbeClient(), repository: SQLitePromptRunRepository(database: db),
+            modelProvider: "synthetic", modelName: "synthetic", mentorAudit: mentor)
+        _ = try await client.complete(request)
+        let package = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(package.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 1)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: package.data) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [String: Any])
+        let records = try XCTUnwrap(sections[DataExportSectionName.mentorHTTPAttempts.rawValue] as? [[String: Any]])
+        let record = try XCTUnwrap(records.first)
+        XCTAssertEqual(record["request_id"] as? String, requestID.uuidString)
+        XCTAssertEqual(record["trace_id"] as? String, request.traceID.uuidString)
+        XCTAssertEqual(record["configuration_fingerprint"] as? String, "cfg1_" + String(repeating: "c", count: 64))
+        XCTAssertEqual(record["terminal_state"] as? String, "returned_data")
+        XCTAssertEqual(record["metrics_state"] as? String, "pending")
+        XCTAssertEqual(record["output_budget_field"] as? String, nil)
+        XCTAssertEqual(record["output_budget"] as? Int, nil)
+        XCTAssertEqual(record["usage_state"] as? String, "received")
+        let usageJSON = try XCTUnwrap(record["usage_json"] as? String)
+        let usage = try JSONDecoder().decode(MentorServiceUsage.self, from: Data(usageJSON.utf8))
+        XCTAssertEqual(usage.source, .responsesEvent)
+        XCTAssertEqual(usage.inputTokens, 12)
+        XCTAssertEqual(usage.outputTokens, 4)
+        XCTAssertEqual(usage.totalTokens, 16)
+        XCTAssertEqual(record["first_readable_body_ms"] as? Int, 12)
+        XCTAssertEqual(record["request_transport_finished_ms"] as? Int, 20)
+        XCTAssertTrue(record["first_visible_body_ms"] is NSNull)
+        XCTAssertTrue(record["response_saved_ms"] is NSNull)
+        let numericSection = String(decoding: try JSONSerialization.data(withJSONObject: records), as: UTF8.self)
+        XCTAssertFalse(numericSection.contains("PRIVATE_"))
+        XCTAssertEqual(Set(record.keys), Set(["attempt_id", "schema_version", "trace_id", "session_id", "request_id",
+            "request_epoch", "semantic_revision", "protocol_kind", "dispatch_registered_at", "terminal_state", "elapsed_ms", "metrics_state", "metrics_json", "output_budget_field", "output_budget", "usage_state", "usage_json", "timing_state",
+            "first_readable_body_ms", "first_visible_body_ms", "request_transport_finished_ms", "response_saved_ms", "configuration_fingerprint"]))
+        try await mentor.deleteSession(id: sessionID)
+        let afterDelete = try await SQLiteDataExportRepository(database: db).exportPackage()
+        XCTAssertEqual(afterDelete.counts[DataExportSectionName.mentorHTTPAttempts.rawValue], 0)
+    }
+
+    func testPreVNextDatabaseDoesNotMarkObservationMigrationAsAlreadyApplied() throws {
+        let queue = try DatabaseQueue()
+        _ = try AppDatabase(dbQueue: queue, includesVNextMigrations: false)
+        try queue.read { db in
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v75_mentor_http_attempts"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v76_mentor_http_output_budget"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v77_mentor_service_usage"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v78_mentor_request_timings"))
+            XCTAssertFalse(try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations").contains("v79_mentor_configuration_fingerprint"))
+            XCTAssertFalse(try db.tableExists("mentor_http_attempts"))
+        }
+    }
+
+    private final class HTTPBindingProbeClient: LLMClient {
+        func complete(_ request: LLMRequest) async throws -> Data {
+            let channel = try XCTUnwrap(request.mentorHTTPObservation)
+            let attempt = try await channel.beginAttempt(protocolKind: .responses,
+                configurationFingerprint: "cfg1_" + String(repeating: "c", count: 64))
+            let usage = try XCTUnwrap(MentorServiceUsage(envelope: ["usage": ["input_tokens": 12,
+                "output_tokens": 4, "total_tokens": 16, "private": "PRIVATE_USAGE_SENTINEL"],
+                "model": "PRIVATE_MODEL_SENTINEL"], source: .responsesEvent))
+            try await attempt.recordServiceUsage(usage)
+            await attempt.recordTiming(.firstReadableBody, elapsedMilliseconds: 12)
+            await attempt.recordTiming(.transportFinished, elapsedMilliseconds: 20)
+            try await attempt.finish(.returnedData)
+            return Data("{}".utf8)
+        }
+    }
+
     func testRequestOutcomeReturnsOnlyOwnedTerminalMetadata() async throws {
         let db = try AppDatabase(dbQueue: DatabaseQueue())
         let repo = SQLiteMentorRepository(database: db)
@@ -1115,6 +1193,63 @@ final class MentorPersistenceTests: XCTestCase {
         do { _ = try await repo.commitResponse(sessionID: id, requestID: first, payloadJSON: result.payloadJSON); XCTFail("Deleted response recreated") } catch {}
         let links = try await db.dbQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM mentor_request_results") }
         XCTAssertEqual(links, 0)
+    }
+
+    func testResponseConsumesOnlyTheMatchingDraftAndReplayPreservesLaterEdits() async throws {
+        for scenario in ["unchanged", "newer", "changed", "intentOnly", "otherInput"] {
+            let repo = SQLiteMentorRepository(database: try AppDatabase(dbQueue: DatabaseQueue()))
+            let id = UUID()
+            try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+                draftText: "已发送", draftRevision: 1, activityAt: .now))
+            let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+                text: scenario == "intentOnly" ? nil : (scenario == "otherInput" ? "别的输入" : "已发送"),
+                intent: scenario == "intentOnly" ? "explain" : "reply", contextSnapshotJSON: "{}"))
+            if scenario == "newer" || scenario == "changed" {
+                try await repo.saveDraft(sessionID: id, revision: 2, text: scenario == "newer" ? "已发送" : "下一轮")
+            }
+            let consumed = MentorConsumedDraft(revision: 1, text: "已发送")
+            let item = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+            let session = try await repo.session(id: id)
+            XCTAssertEqual(session?.draftText, scenario == "unchanged" ? "" : (scenario == "changed" ? "下一轮" : "已发送"), scenario)
+            if scenario == "unchanged" {
+                do {
+                    try await repo.saveDraft(sessionID: id, revision: 1, text: "已发送")
+                    XCTFail("A delayed same-revision write must not resurrect consumed text")
+                } catch {}
+            }
+            try await repo.saveDraft(sessionID: id, revision: 3, text: "另写的下一轮")
+            let replay = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}",
+                consumingDraft: MentorConsumedDraft(revision: 3, text: "另写的下一轮"))
+            XCTAssertEqual(replay, item)
+            let afterReplay = try await repo.session(id: id)
+            XCTAssertEqual(afterReplay?.draftText, "另写的下一轮")
+        }
+    }
+
+    func testDraftConsumptionFailureRollsBackResponseAndAllowsLocalRetry() async throws {
+        let db = try AppDatabase(dbQueue: DatabaseQueue())
+        let repo = SQLiteMentorRepository(database: db)
+        let id = UUID()
+        try await repo.createSession(MentorSession(id: id, initialEntry: "discuss", lifecycle: .active,
+            draftText: "不能丢失的原话", draftRevision: 1, activityAt: .now))
+        let request = try await repo.submitTurn(MentorSubmitTurn(commandID: UUID(), sessionID: id,
+            text: "不能丢失的原话", intent: "reply", contextSnapshotJSON: "{}"))
+        let consumed = MentorConsumedDraft(revision: 1, text: "不能丢失的原话")
+        try await db.dbQueue.write { try $0.execute(sql: "CREATE TRIGGER reject_consumption BEFORE UPDATE OF draft_text ON mentor_sessions BEGIN SELECT RAISE(ABORT, 'injected'); END") }
+        do {
+            _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+            XCTFail("Expected an atomic rollback")
+        } catch {}
+        let beforeRetry = try await repo.session(id: id)
+        XCTAssertEqual(beforeRetry?.draftText, consumed.text)
+        let items = try await repo.items(sessionID: id)
+        XCTAssertEqual(items.filter { $0.kind == .assistant }.count, 0)
+        let outcome = try await repo.requestOutcome(sessionID: id, requestID: request)
+        XCTAssertNil(outcome, "The request must remain pending after rollback")
+        try await db.dbQueue.write { try $0.execute(sql: "DROP TRIGGER reject_consumption") }
+        _ = try await repo.commitResponse(sessionID: id, requestID: request, payloadJSON: "{}", consumingDraft: consumed)
+        let afterRetry = try await repo.session(id: id)
+        XCTAssertEqual(afterRetry?.draftText, "")
     }
 
     func testResponseOwnershipAndAtomicRollback() async throws {
