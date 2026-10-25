@@ -19,11 +19,12 @@ struct MentorHomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("忙了一天，也可以从一句话开始。")
                         .font(.title2.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Text("不用先想清楚。回看一个片段，或者听一个新视角。")
+                        .font(.subheadline)
                         .foregroundStyle(DS.mutedInk)
                     VStack(alignment: .leading, spacing: 12) {
                         if let recent = feature.state.latestUnfinishedSession {
@@ -68,10 +69,9 @@ struct MentorHomeView: View {
                         showsQuickCapture = true
                     } label: {
                         Label("先记一条闪念", systemImage: "bolt")
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                    .buttonStyle(DSCompactButtonStyle())
                     .accessibilityIdentifier(MentorAutomationID.quickCaptureAction)
                     LifeGuidanceSection(guidance: app.lifeGuidanceStore)
                     if !feature.state.recentSessions.isEmpty {
@@ -142,6 +142,10 @@ struct MentorHomeView: View {
             })
                 .environmentObject(app)
                 .dynamicTypeSize(dynamicTypeSize)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
+                .presentationBackground(DS.background)
         }
         .onReceive(NotificationCenter.default.publisher(for: .mingsiOpenTodayCapture)) { _ in
             showsQuickCapture = true
@@ -164,16 +168,13 @@ struct MentorHomeView: View {
                 }
             }
                 .multilineTextAlignment(.leading)
-                .padding(.vertical, 6)
                 .foregroundStyle(primary ? DS.onAccent : DS.accentInk)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityLabel(title)
         .accessibilityHint(subtitle ?? "")
-        .controlSize(.large)
         .disabled(disabled)
-        if primary { button.buttonStyle(.borderedProminent) }
-        else { button.buttonStyle(.bordered) }
+        button.buttonStyle(DSCompactButtonStyle(prominent: primary))
     }
 
     private func start(_ entry: String) {
@@ -653,7 +654,10 @@ struct MentorConversationView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var feature: MentorFeatureStore
     @State private var inputFocused = false
-    @State private var composerContentHeight: CGFloat = 180
+    @State private var composerContentHeight: CGFloat = 68
+    @State private var showsBenefitFeedback = false
+    @State private var benefitInputFocused = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var wantsClose = false
     @State private var pendingExitEnding = false
     @State private var showsDiscardUnsavedDraftConfirmation = false
@@ -728,6 +732,14 @@ struct MentorConversationView: View {
                             scroll.scrollTo(id, anchor: .top)
                         }
                     }
+                    .task(id: "\(benefitInputFocused)/\(Int(viewport.size.height.rounded()))") {
+                        guard benefitInputFocused else { return }
+                        await Task.yield()
+                        guard !Task.isCancelled, benefitInputFocused else { return }
+                        // Keyboard avoidance keeps the caret visible but can
+                        // leave its adjacent mic behind the fixed composer.
+                        scroll.scrollTo("mentor.benefit.section", anchor: .top)
+                    }
                     .task(id: "\(feature.state.lesson?.id.uuidString ?? "")/\(feature.state.isTransitioningSession)") {
                         guard !feature.state.isTransitioningSession, let lesson = feature.state.lesson else { return }
                         await Task.yield()
@@ -752,7 +764,6 @@ struct MentorConversationView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("返回") { leave(ending: false) }
-                        .frame(minWidth: 44, minHeight: 44)
                         .disabled(feature.state.isTransitioningSession)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -766,7 +777,6 @@ struct MentorConversationView: View {
                         .disabled(feature.state.isTransitioningSession)
                     } else {
                         Button("到这里") { leave(ending: true) }
-                            .frame(minWidth: 44, minHeight: 44)
                             .disabled(feature.state.isTransitioningSession)
                     }
                 }
@@ -799,6 +809,10 @@ struct MentorConversationView: View {
         .sheet(isPresented: $showsSettings) { SettingsView().environmentObject(app) }
         .sheet(item: $sourceSelection) { selection in
             MentorSourceDetailView(feature: feature, references: selection.references)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
+                .presentationBackground(DS.background)
         }
         .sheet(item: $correctionSelection) { selection in
             MentorCorrectionEditor(feature: feature, selection: selection)
@@ -871,9 +885,8 @@ struct MentorConversationView: View {
                                     correctionSelection = MentorCorrectionSelection(id: item.id, text: text)
                                 } label: {
                                     Label("更正这条原话", systemImage: "pencil")
-                                        .frame(minHeight: 44)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(DSCompactButtonStyle())
                                 .accessibilityIdentifier("mentor.correction.open.\(item.id.uuidString)")
                                 .accessibilityHint("保留原文，保存更正后的版本，停止基于旧原话的请求")
                             }
@@ -887,7 +900,7 @@ struct MentorConversationView: View {
                                 Label("更正之前的 AI 回应", systemImage: "clock.arrow.circlepath")
                                     .font(.subheadline).foregroundStyle(DS.mutedInk)
                             }
-                            Text(response.body).textSelection(.enabled)
+                            Text(response.body).font(.callout).textSelection(.enabled)
                                 .background {
                                     if item.id == feature.state.responseItemID, let requestID = feature.state.responseBodyRequestID {
                                         MentorReadingMarker(geometry: readingGeometry, itemID: requestID)
@@ -910,8 +923,8 @@ struct MentorConversationView: View {
         if feature.state.session?.initialEntry == "review", let sessionID = feature.state.session?.id {
             LifeGuidanceReviewSection(guidance: app.lifeGuidanceStore, reviewID: "mentor:" + sessionID.uuidString)
         }
-        if feature.state.benefitFeedback != nil ||
-            (!feature.state.isViewingHistory && (feature.state.responseItemID != nil || feature.state.lesson != nil)) {
+        if feature.state.phase != .submitting && (feature.state.benefitFeedback != nil ||
+            (!feature.state.isViewingHistory && (feature.state.responseItemID != nil || feature.state.lesson != nil))) {
             benefitFeedbackSection
         }
         if let chain = feature.state.legacyChain, !chain.canContinueAutomatically {
@@ -967,9 +980,41 @@ struct MentorConversationView: View {
     @ViewBuilder
     private var benefitFeedbackSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("这次交流对你有帮助吗？")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    showsBenefitFeedback.toggle()
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("这次交流对你有帮助吗？")
+                            .font(.subheadline.weight(.medium))
+                        Text(feature.state.benefitFeedback.map { "已记录：\($0.kind.title)" } ?? "可选，想说的时候再展开")
+                            .font(.caption)
+                            .foregroundStyle(DS.mutedInk)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: showsBenefitFeedback ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, minHeight: DS.minimumTapTarget, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("mentor.benefit.toggle")
+            .accessibilityValue(showsBenefitFeedback ? "已展开" : "已折叠")
+            if showsBenefitFeedback { benefitFeedbackEditor }
+        }
+        .tint(DS.accent)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mentor.benefit.section")
+        .id("mentor.benefit.section")
+    }
+
+    @ViewBuilder
+    private var benefitFeedbackEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if let saved = feature.state.benefitFeedback {
                 Label("已记录：\(saved.kind.title)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(DS.accent)
@@ -990,15 +1035,11 @@ struct MentorConversationView: View {
                     ),
                     placeholder: "具体看清或改变了什么（可选）",
                     accessibilityIdentifier: "mentor.benefit.note",
-                    usesTextEditor: true
+                    focusBinding: $benefitInputFocused,
+                    usesTextEditor: true,
+                    textEditorHeight: dynamicTypeSize.isAccessibilitySize ? 120 : 64
                 )
-                .frame(minHeight: 84, alignment: .top)
-                .padding(8)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
-                        .stroke(DS.hairline, lineWidth: 1)
-                }
                 VStack(spacing: 8) {
                     ForEach(MentorBenefitFeedbackKind.allCases, id: \.self) { kind in
                         Button {
@@ -1011,9 +1052,9 @@ struct MentorConversationView: View {
                                     Image(systemName: "checkmark")
                                 }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(DSCompactButtonStyle())
                         .tint(feature.state.benefitFeedback?.kind == kind ? DS.accent : DS.accentInk)
                         .disabled(feature.state.isSavingBenefitFeedback || feature.state.isTransitioningSession)
                         .accessibilityIdentifier("mentor.benefit.\(kind.rawValue)")
@@ -1030,14 +1071,7 @@ struct MentorConversationView: View {
                 }
             }
         }
-        .padding(12)
-        .background(DS.cardBackground, in: RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: DS.smallRadius, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1)
-        }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("mentor.benefit.section")
     }
 
     @ViewBuilder private func lesson(_ lesson: MentorLesson, itemID: UUID) -> some View {
@@ -1084,9 +1118,8 @@ struct MentorConversationView: View {
             sourceSelection = MentorSourceSelection(references: references)
         } label: {
             Label("查看来源（\(references.count)）", systemImage: "doc.text.magnifyingglass")
-                .frame(minHeight: 44)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(DSCompactButtonStyle())
         .accessibilityIdentifier("mentor.sources.open")
     }
 
@@ -1304,12 +1337,14 @@ struct MentorConversationView: View {
 
     private var input: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("你想说的话").font(.headline).accessibilityAddTraits(.isHeader)
-            Text("支持继续交流：每一轮只推进一个角度，你也可以随时点“到这里”。")
-                .font(.footnote)
-                .foregroundStyle(DS.mutedInk)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("mentor.conversation.multiturn-hint")
+            if feature.state.responseItemID == nil && feature.state.lesson == nil {
+                Text("你想说的话").font(.headline).accessibilityAddTraits(.isHeader)
+                Text("支持继续交流：每一轮只推进一个角度，你也可以随时点“到这里”。")
+                    .font(.footnote)
+                    .foregroundStyle(DS.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("mentor.conversation.multiturn-hint")
+            }
             ForEach(feature.state.response?.availableSuggestedActions.filter {
                 $0 == .explain || $0 == .anotherLesson || $0 == .draftUnderstanding
             } ?? [], id: \.self) { action in
@@ -1364,8 +1399,9 @@ struct MentorConversationView: View {
                     placeholder: "你想说的话",
                     focusBinding: Binding(get: { inputFocused }, set: { inputFocused = $0 }),
                     usesTextEditor: true,
-                    textEditorHeight: dynamicTypeSize.isAccessibilitySize ? 140 : 88
+                    textEditorHeight: dynamicTypeSize.isAccessibilitySize ? 120 : (feature.state.inputText.isEmpty ? 52 : 88)
                 )
+                .font(.callout)
                 .background(DS.surface, in: RoundedRectangle(cornerRadius: DS.cornerRadius))
                 .background {
                     GeometryReader { content in
@@ -1386,9 +1422,9 @@ struct MentorConversationView: View {
                 online { feature.submit() }
             } label: {
                 Text(canDiscussCapture ? "聊聊这条闪念" : "发送")
-                    .foregroundStyle(DS.onAccent).frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(DSCompactButtonStyle(prominent: true))
             .disabled(![.editing, .reading, .showingResponse].contains(feature.state.phase) || app.isAIRunning ||
                       feature.state.materialSelection != nil ||
                       (feature.state.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !canDiscussCapture) ||

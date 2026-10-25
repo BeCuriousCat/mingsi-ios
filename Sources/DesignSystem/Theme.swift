@@ -119,6 +119,26 @@ enum DS {
     }
 }
 
+/// Compact visual chrome with a full native touch target. Avoid combining a
+/// 44pt label with the system large button's additional vertical padding.
+struct DSCompactButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(minHeight: DS.minimumTapTarget)
+            .foregroundStyle(prominent ? DS.onAccent : DS.accentInk)
+            .background(prominent ? DS.accent : DS.surfaceStrong,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
+    }
+}
+
 /// Applies the tab-bar surface after SwiftUI has installed its UITabBarController.
 /// iOS 26 can replace the appearance object during view mounting, so the global
 /// appearance proxy alone is not sufficient to prevent content bleed-through.

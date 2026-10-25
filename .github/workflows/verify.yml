@@ -124,6 +124,8 @@ jobs:
             -only-testing:MingSiUITests/MentorNavigationUITests/testSavedNetworkResponseAllowsNextInputAtLargestDarkText \
             -only-testing:MingSiUITests/MentorNavigationUITests/testActiveConversationKeyboardKeepsInputAndExitReachable \
             -only-testing:MingSiUITests/MentorNavigationUITests/testBottomComposerReviewsSpeechWithoutLosingTypedDraftAtLargestText \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorBenefitFeedbackUsesSharedVoiceInput \
+            -only-testing:MingSiUITests/MentorNavigationUITests/testMentorFeedbackUsesSameVoiceLifecycleAndKeepsTypedDraft \
             -only-testing:MingSiUITests/MentorNavigationUITests/testMentorStreamShowsGrowingPreviewThenValidatedAnswer \
             -only-testing:MingSiUITests/MentorNavigationUITests/testInterruptedMentorStreamKeepsCopyablePreviewAtLargestDarkText \
             -collect-test-diagnostics never \

@@ -705,6 +705,14 @@ final class MentorNavigationUITests: XCTestCase {
         let variant = largestText ? "dark-largest" : "light"
         attachVoiceScreenshot(app, name: "saved-response-\(variant)-before-next-input")
 
+        XCTAssertFalse(app.textViews["mentor.benefit.note"].exists,
+                       "Optional feedback starts collapsed so it does not displace the answer")
+        if !largestText {
+            XCTAssertGreaterThanOrEqual(send.frame.height, 44)
+            XCTAssertLessThanOrEqual(send.frame.height, 52, "Compact visual button keeps a full touch target")
+            XCTAssertLessThanOrEqual(input.frame.height, 60, "Empty composer starts at about two lines")
+        }
+
         // Reach the next composer with actual native swipes, leaving optional
         // benefit feedback untouched. This replay is not real-network acceptance.
         scrollTo(input, in: app)
@@ -1215,13 +1223,19 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertTrue(known.waitForExistence(timeout: 5))
         known.tap()
 
-        let section = app.descendants(matching: .any).matching(identifier: "mentor.benefit.section").firstMatch
+        let section = app.buttons["mentor.benefit.toggle"]
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
         for _ in 0..<12 {
-            if section.isHittable { break }
-            app.swipeUp(velocity: .slow)
+            if section.isHittable && section.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
         }
 
         let note = app.textViews["mentor.benefit.note"]
+        let disclosure = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "这次交流对你有帮助吗")).firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        XCTAssertLessThan(disclosure.frame.maxY, composer.frame.minY)
+        disclosure.tap()
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         let speechToggle = app.buttons["mentor.benefit.note.voice-toggle"]
         XCTAssertTrue(speechToggle.waitForExistence(timeout: 5))
@@ -1231,9 +1245,17 @@ final class MentorNavigationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["点击开始录音"].exists)
 
         let feedback = app.buttons["mentor.benefit.benefit_helped"]
+        // isHittable can be true for a sliver behind the fixed composer.
+        // Bring the whole control into the reading viewport before tapping.
+        for _ in 0..<12 {
+            if feedback.isHittable && feedback.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
         XCTAssertTrue(feedback.isHittable)
+        XCTAssertLessThan(feedback.frame.maxY, composer.frame.minY)
         feedback.tap()
         XCTAssertTrue(app.staticTexts["已记录：看清了一件事"].waitForExistence(timeout: 5))
+        attachVoiceScreenshot(app, name: "mentor-feedback-expanded-saved-compact")
     }
 
     @MainActor
@@ -1906,12 +1928,28 @@ extension MentorNavigationUITests {
         let known = app.buttons["mentor.lesson.known"]
         for _ in 0..<10 where !known.isHittable { app.swipeUp() }
         known.tap()
+        let disclosure = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "这次交流对你有帮助吗")).firstMatch
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
+        for _ in 0..<12 {
+            if disclosure.isHittable && disclosure.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+        disclosure.tap()
         let note = app.textViews["mentor.benefit.note"]
-        for _ in 0..<12 where !note.isHittable { app.swipeUp() }
+        for _ in 0..<12 {
+            if note.isHittable && note.frame.maxY < composer.frame.minY - 4 { break }
+            reading.swipeUp(velocity: .slow)
+        }
         XCTAssertTrue(note.waitForExistence(timeout: 5))
         note.tap()
         note.typeText("已有反馈")
         let voice = app.buttons["mentor.benefit.note.voice-toggle"]
+        XCTAssertGreaterThanOrEqual(voice.frame.minY, app.navigationBars["这次交流"].frame.maxY)
+        XCTAssertLessThan(voice.frame.maxY, composer.frame.minY,
+                          "Focusing feedback reveals its mic above the fixed composer")
+        attachVoiceScreenshot(app, name: "mentor-feedback-keyboard-mic-visible")
         voice.tap()
         assertVoiceLabel("停止语音输入", voice)
         voice.tap()
@@ -1923,11 +1961,34 @@ extension MentorNavigationUITests {
         voice.tap()
         assertVoiceLabel("重新录音", voice)
         let accept = app.buttons["mentor.benefit.note.voice-accept"]
-        for _ in 0..<5 where !accept.isHittable { app.swipeUp() }
+        revealMentorReadingControl(accept, in: app)
         accept.tap()
+        revealMentorReadingControl(voice, in: app)
         assertVoiceLabel("开始语音输入", voice)
         XCTAssertEqual(note.value as? String, "已有反馈\n语音测试第 2 次。")
         attachVoiceScreenshot(app, name: "mentor-feedback-voice-appended")
+    }
+
+    @MainActor
+    private func revealMentorReadingControl(_ control: XCUIElement, in app: XCUIApplication,
+                                            file: StaticString = #filePath, line: UInt = #line) {
+        let reading = app.scrollViews["mentor.conversation.reading-scroll"]
+        let composer = app.scrollViews["mentor.conversation.composer-scroll"]
+        for _ in 0..<8 {
+            let top = app.navigationBars["这次交流"].frame.maxY + 8
+            let bottom = composer.frame.minY - 8
+            if control.isHittable && control.frame.minY >= top && control.frame.maxY <= bottom { return }
+            // The reading scroll view extends behind the composer/keyboard.
+            // Swipe in its visible margin, as a person would, not over the keyboard.
+            let origin = reading.coordinate(withNormalizedOffset: .zero)
+            let startY = bottom - 12
+            let endY = max(top + 12, startY - 140)
+            let downward = control.frame.minY < top
+            let start = origin.withOffset(CGVector(dx: 8, dy: (downward ? endY : startY) - reading.frame.minY))
+            let end = origin.withOffset(CGVector(dx: 8, dy: (downward ? startY : endY) - reading.frame.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTFail("Control must be fully visible above the composer before tapping", file: file, line: line)
     }
 
     @MainActor
